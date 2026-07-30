@@ -18,7 +18,10 @@ vi.mock('../src/command-runner', (): object => ({ runCommandWithTimeout }));
 
 const input: KubernetesInstallDeploymentInput = {
   acmeEmail: 'owner@example.com',
+  clearConfiguredIngressEndpoint: false,
+  configuredIngressEndpoint: null,
   domainMode: 'custom',
+  ingressClassName: 'traefik',
   namespace: 'compartment',
   registryHostname: 'registry.example.test',
   registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'platform-issuer' },

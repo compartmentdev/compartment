@@ -7,9 +7,9 @@ import type {
 } from './kubernetes-install-local-tools.service.types';
 
 const helmInstallInstruction: string =
-  'Install Helm >= 4.0.0 with `curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash`, then re-run install. See https://helm.sh/docs/intro/install/.';
+  'Install Helm >= 4.0.0 with `curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash`, then re-run the command. See https://helm.sh/docs/intro/install/.';
 const kubectlInstallInstruction: string =
-  'Install kubectl >= 1.30.0, then re-run install. See https://kubernetes.io/docs/tasks/tools/#kubectl.';
+  'Install kubectl >= 1.30.0, then re-run the command. See https://kubernetes.io/docs/tasks/tools/#kubectl.';
 
 const kubernetesInstallLocalTools: readonly KubernetesInstallLocalToolRequirement[] = [
   {
@@ -56,7 +56,7 @@ export function formatMissingKubernetesInstallTool(binary: string): string {
     (candidate: KubernetesInstallLocalToolRequirement): boolean => candidate.binary === binary,
   );
   return requirement === undefined
-    ? `${binary} not found on PATH. Install ${binary} and re-run install.`
+    ? `${binary} not found on PATH. Install ${binary} and re-run the command.`
     : `${binary} not found on PATH. ${requirement.installInstruction}`;
 }
 

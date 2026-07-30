@@ -1,6 +1,9 @@
-import { readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
 import type { ManagedDomainReservationRequest } from '@compartment/contracts';
-import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
+import type { JsonValue } from '@compartment/utils';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { CommandResult } from '../src/command-runner.types';
 import { createCommandProgress } from '../src/commands/command.progress';
 import { deployAndWaitForKubernetesInstall } from '../src/services/kubernetes-install.service';
@@ -10,7 +13,6 @@ import { readRetainedKubernetesInstallState } from '../src/services/kubernetes-i
 import type {
   KubernetesInstallDeploymentInput,
   KubernetesInstallDeploymentResult,
-  KubernetesInstallRegistryValues,
   KubernetesInstallSecretValues,
   KubernetesInstallState,
   KubernetesIngressEndpoint,
@@ -20,11 +22,16 @@ import { createCliCapture, readCliStderr, type CliCommandCapture } from './cli-t
 import {
   createFetchConnectionError,
   deployedReleaseList,
+  existingInstallValues,
+  existingInstallValuesWithStorage,
+  existingLocalhostInstallValues,
   helmReleaseList,
   type ImageTrustWriteInput,
   type InstallHarnessState,
   type KubernetesInstallServiceMocks,
   ingressAddressList,
+  legacyOperatorFoundationValues,
+  managedInstallValuesWithoutIngress,
   readyControlPlaneResponse,
   RecordingProgressReporter,
   retainedInstallStateSecretList,
@@ -33,9 +40,11 @@ import {
 } from './kubernetes-install.service.test-support';
 
 type RunCommand = (command: readonly string[]) => Promise<CommandResult>;
+type ReadChartValues = (chartPath: string) => Promise<JsonValue>;
 const mocks: KubernetesInstallServiceMocks = vi.hoisted(
   (): KubernetesInstallServiceMocks => ({
     assertRegistryDns: vi.fn(async (): Promise<void> => await Promise.resolve()),
+    readChartValues: vi.fn<ReadChartValues>().mockResolvedValue({}),
     runCommand: vi.fn<RunCommand>(),
     verifyRegistryNodePull: vi.fn(async (): Promise<void> => await Promise.resolve()),
     usesOperatorTlsSecret: vi.fn(async (): Promise<boolean> => await Promise.resolve(false)),
@@ -47,10 +56,14 @@ const mocks: KubernetesInstallServiceMocks = vi.hoisted(
 const detectedPublicIpv4: string = [8, 8, 8, 8].join('.');
 const configuredPublicIpv4: string = [8, 8, 4, 4].join('.');
 process.env.COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN = 'test-reservation-token';
+let operatorValuesDirectory: string;
 
 vi.mock('../src/command-runner', (): object => ({
   runCommand: mocks.runCommand,
   runCommandWithTimeout: mocks.runCommand,
+}));
+vi.mock('../src/services/kubernetes-chart-values.service', (): object => ({
+  readKubernetesChartValues: mocks.readChartValues,
 }));
 vi.mock('../src/services/kubernetes-image-trust.service', (): object => ({
   writeVerifiedKubernetesInstallImageValues: mocks.writeVerifiedImages,
@@ -69,7 +82,10 @@ const managedDeploymentInput: KubernetesInstallDeploymentInput = {
   acmeEmail: 'admin@example.com',
   brokerUrl: 'https://broker.compartment.run',
   chartPath: '/tmp/compartment-chart',
+  clearConfiguredIngressEndpoint: false,
+  configuredIngressEndpoint: null,
   domainMode: 'managed',
+  ingressClassName: 'traefik',
   managedDomainRequestedLabelSource: 'Acme Dev',
   namespace: 'compartment',
   registryHostname: 'registry.acme.compartment.run',
@@ -79,13 +95,28 @@ const managedDeploymentInput: KubernetesInstallDeploymentInput = {
 };
 
 describe('Kubernetes install deployment', (): void => {
-  afterEach((): void => {
+  beforeAll(async (): Promise<void> => {
+    operatorValuesDirectory = await mkdtemp(resolve(tmpdir(), 'compartment-resume-values-test-'));
+    managedDeploymentInput.valuesPath = resolve(operatorValuesDirectory, 'values.yaml');
+    await writeFile(managedDeploymentInput.valuesPath, '{}');
+  });
+
+  afterAll(async (): Promise<void> => {
+    await rm(operatorValuesDirectory, { force: true, recursive: true });
+  });
+
+  beforeEach((): void => {
     mocks.runCommand.mockReset();
-    mocks.assertRegistryDns.mockClear();
-    mocks.verifyRegistryNodePull.mockClear();
-    mocks.usesOperatorTlsSecret.mockReset();
-    mocks.usesOperatorTlsSecret.mockResolvedValue(false);
-    mocks.writeVerifiedImages.mockClear();
+    mocks.assertRegistryDns.mockReset().mockResolvedValue(undefined);
+    mocks.readChartValues.mockReset().mockResolvedValue({});
+    mocks.verifyRegistryNodePull.mockReset().mockResolvedValue(undefined);
+    mocks.usesOperatorTlsSecret.mockReset().mockResolvedValue(false);
+    mocks.writeVerifiedImages.mockReset().mockImplementation(async (input: ImageTrustWriteInput): Promise<void> => {
+      await writeFile(input.outputPath, JSON.stringify({ images: {} }), { mode: 0o600 });
+    });
+  });
+
+  afterEach((): void => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -482,8 +513,18 @@ describe('Kubernetes install deployment', (): void => {
       'fetch',
       vi.fn(async (): Promise<Response> => await Promise.resolve(readyControlPlaneResponse())),
     );
+    const valuesPath: string = resolve(operatorValuesDirectory, 'changed-values.yaml');
+    await writeFile(
+      valuesPath,
+      `ingress:\n  className: nginx\n  endpoint:\n    type: A\n    value: ${configuredPublicIpv4}\nregistry:\n  issuerRef:\n    kind: ClusterIssuer\n    name: letsencrypt-production\n`,
+    );
+    const progressEvents: string[] = [];
     const customInput: KubernetesInstallDeploymentInput = customDeploymentInput({
+      progress: new RecordingProgressReporter(progressEvents),
+      configuredIngressEndpoint: { type: 'A', value: configuredPublicIpv4 },
+      ingressClassName: 'nginx',
       registryIssuerRef: { group: 'cert-manager.io', kind: 'ClusterIssuer', name: 'letsencrypt-production' },
+      valuesPath,
     });
     await expect(deployAndWaitForKubernetesInstall(customInput)).resolves.toMatchObject({
       baseDomain: 'apps.example.com',
@@ -494,7 +535,44 @@ describe('Kubernetes install deployment', (): void => {
       kind: 'ClusterIssuer',
       name: 'letsencrypt-production',
     });
+    expect(state.installValues[0]?.ingress?.className).toBe('nginx');
+    expect(state.installValues[0]?.ingress?.endpoint.value).toBe(configuredPublicIpv4);
+    expect(progressEvents).toContain(
+      'Reconciling changed Helm values: ingress.className, ingress.endpoint.value, ingress.targetsJson, registry.issuerRef.kind, registry.issuerRef.name',
+    );
     expect(mocks.assertRegistryDns).toHaveBeenCalledBefore(mocks.verifyRegistryNodePull);
+  });
+  it('reconciles a removed managed override without reserving another domain', async (): Promise<void> => {
+    const state: InstallHarnessState = createInstallHarnessState(
+      existingInstallValuesWithStorage('full', 'managed', 'legacy-storage', { type: 'A', value: configuredPublicIpv4 }),
+    );
+    mocks.readChartValues.mockResolvedValue({ storage: { storageClass: '' } });
+    mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
+    const brokerUrls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request): Promise<Response> => {
+        const url: string = readFetchUrl(input);
+        brokerUrls.push(url);
+        return await Promise.resolve(
+          url.startsWith('https://broker.compartment.run') ? managedBrokerResponse(url) : readyControlPlaneResponse(),
+        );
+      }),
+    );
+    const progressEvents: string[] = [];
+
+    await deployAndWaitForKubernetesInstall({
+      ...managedDeploymentInput,
+      clearConfiguredIngressEndpoint: true,
+      progress: new RecordingProgressReporter(progressEvents),
+    });
+
+    expect(progressEvents).toContain(
+      'Reconciling changed Helm values: ingress.endpoint.value, ingress.targetsJson, storage.storageClass',
+    );
+    expect(readHelmStages()).toEqual(['foundation', 'foundation', 'full']);
+    expect(brokerUrls.some((url: string): boolean => url.endsWith('/allocations'))).toBe(false);
+    expect(brokerUrls.some((url: string): boolean => url.endsWith('/targets'))).toBe(true);
   });
   it('rechecks Certificate readiness when resuming after a full-stage timeout', async (): Promise<void> => {
     const state: InstallHarnessState = createInstallHarnessState();
@@ -968,76 +1046,6 @@ function readOptionValueFromEnd(command: readonly string[], option: string, occu
     throw new Error(`Missing ${option} occurrence ${occurrenceFromEnd.toString()} from end in command.`);
   }
   return value;
-}
-
-function existingInstallValues(stage: 'foundation' | 'full', domainMode: 'custom' | 'managed'): string {
-  return JSON.stringify({
-    ingress: {
-      className: 'traefik',
-      endpoint: { type: 'A', value: detectedPublicIpv4 },
-      targetsJson: JSON.stringify([{ type: 'A', value: detectedPublicIpv4 }]),
-    },
-    platform: {
-      acmeEmail: 'admin@example.com',
-      baseDomain: domainMode === 'managed' ? 'acme.compartment.run' : 'apps.example.com',
-      domainMode,
-      installationId: 'installation-123',
-      managedDomainAllocationId: domainMode === 'managed' ? 'allocation-1' : '',
-      managedDomainBrokerUrl: domainMode === 'managed' ? 'https://broker.compartment.run' : '',
-      publicProtocol: 'https',
-      startupStage: stage,
-      tlsMode: domainMode === 'managed' ? 'broker-dns01' : 'issuer',
-    },
-    registry: {
-      hostname: `registry.${domainMode === 'managed' ? 'acme.compartment.run' : 'apps.example.com'}`,
-      issuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'compartment-platform' },
-    },
-    secrets: {
-      installToken: 'existing-install-token',
-      managedDomainBrokerToken: domainMode === 'managed' ? 'allocation-token' : '',
-    },
-  });
-}
-
-function legacyOperatorFoundationValues(): string {
-  const values: KubernetesInstallSecretValues & { registry?: KubernetesInstallRegistryValues } = JSON.parse(
-    existingInstallValues('foundation', 'custom'),
-  ) as KubernetesInstallSecretValues;
-  Reflect.deleteProperty(values, 'registry');
-  return JSON.stringify(values);
-}
-
-function managedInstallValuesWithoutIngress(): string {
-  const values: KubernetesInstallSecretValues = JSON.parse(
-    existingInstallValues('foundation', 'managed'),
-  ) as KubernetesInstallSecretValues;
-  values.ingress = { className: 'traefik', endpoint: { type: '', value: '' }, targetsJson: '[]' };
-  return JSON.stringify(values);
-}
-
-function existingLocalhostInstallValues(): string {
-  return JSON.stringify({
-    ingress: {
-      className: 'traefik',
-      endpoint: { type: '', value: '' },
-      targetsJson: '[]',
-    },
-    platform: {
-      acmeEmail: 'admin@example.com',
-      baseDomain: 'compartment.localhost',
-      domainMode: 'custom',
-      installationId: 'installation-localhost',
-      managedDomainBrokerUrl: '',
-      publicProtocol: 'http',
-      startupStage: 'full',
-      tlsMode: 'issuer',
-    },
-    registry: {
-      hostname: 'registry.compartment.localhost',
-      issuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'compartment-platform' },
-    },
-    secrets: { installToken: 'existing-install-token', managedDomainBrokerToken: '' },
-  });
 }
 
 function readRetainedState(releaseValues: string): KubernetesInstallState {

@@ -24,7 +24,10 @@ describe('Kubernetes platform Certificate readiness', (): void => {
     await expect(
       waitForKubernetesPlatformCertificates({
         acmeEmail: 'admin@example.com',
+        clearConfiguredIngressEndpoint: false,
+        configuredIngressEndpoint: null,
         domainMode: 'managed',
+        ingressClassName: 'traefik',
         namespace: 'compartment',
         registryHostname: 'registry.example.test',
         registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'platform-issuer' },

@@ -143,7 +143,10 @@ describe('install registry node-pull verification', (): void => {
 function input(): KubernetesInstallDeploymentInput {
   return {
     acmeEmail: 'admin@example.com',
+    clearConfiguredIngressEndpoint: false,
+    configuredIngressEndpoint: null,
     domainMode: 'custom',
+    ingressClassName: 'traefik',
     namespace: 'compartment',
     registryHostname: 'registry.example.test',
     registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'platform-issuer' },

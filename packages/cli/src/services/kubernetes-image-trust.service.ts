@@ -3,13 +3,12 @@ import {
   type SelfHostedRuntimeImageSignaturePolicy,
 } from '@compartment/contracts';
 import type { JsonValue } from '@compartment/utils';
-import { parse } from 'yaml';
 import { readCosignCommand } from '../bundled-cosign';
 import { readNonCompartmentEnvironment } from '../command-environment';
 import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
-import { buildHelmCommand } from './kubernetes-command.support';
 import { createImageTrustCommandError } from './kubernetes-image-trust-error';
+import { readKubernetesChartValues } from './kubernetes-chart-values.service';
 import { readYamlFile } from './yaml-file';
 import { kubernetesPlatformImageNames } from './kubernetes-platform-image-names';
 import type { KubernetesPlatformImageName } from './kubernetes-platform-image.types';
@@ -30,7 +29,7 @@ const imageDigestPattern: RegExp = /^sha256:[a-f0-9]{64}$/u;
 export async function writeVerifiedKubernetesInstallImageValues(
   input: KubernetesInstallImageTrustInput,
 ): Promise<void> {
-  const chartValues: JsonValue = await readChartValues(input.chartPath);
+  const chartValues: JsonValue = await readKubernetesChartValues(input.chartPath);
   const overrideValues: JsonValue[] = await Promise.all(input.overrideValuesPaths.map(readImageTrustValuesFile));
   await writeVerifiedPlatformImageValues(input.outputPath, chartValues, overrideValues);
 }
@@ -41,20 +40,6 @@ export async function writeVerifiedKubernetesReleaseImageValues(
   const releaseValues: JsonValue = await readKubernetesReleaseValues(input);
   const overrideValues: JsonValue[] = await Promise.all(input.operatorValuesPaths.map(readImageTrustValuesFile));
   await writeVerifiedPlatformImageValues(input.outputPath, releaseValues, overrideValues);
-}
-
-async function readChartValues(chartPath: string): Promise<JsonValue> {
-  const result: CommandResult = await runCommandWithTimeout(
-    buildHelmCommand({}, ['show', 'values', chartPath]),
-    30_000,
-  );
-  if (result.exitCode !== 0) {
-    throw createImageTrustCommandError(
-      `Failed to read Helm chart values from "${chartPath}" before platform image verification.`,
-      result,
-    );
-  }
-  return parse(result.stdout) as JsonValue;
 }
 
 async function readImageTrustValuesFile(path: string): Promise<JsonValue> {
