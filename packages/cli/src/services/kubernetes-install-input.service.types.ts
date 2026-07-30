@@ -19,6 +19,7 @@ export interface OperatorKubernetesInstallDomain {
 export type KubernetesInstallDomainInput = ManagedKubernetesInstallDomain | OperatorKubernetesInstallDomain;
 
 export interface KubernetesInstallInput {
+  clearIngressEndpoint: boolean;
   domain: KubernetesInstallDomainInput;
   ingressClass: string;
   ingressEndpoint?: string | undefined;

@@ -4,6 +4,7 @@ import { readExistingKubernetesInstall } from './kubernetes-install-release.serv
 import { mergeRetainedKubernetesInstallState } from './kubernetes-install-retained-state.service';
 import { requireFoundationInstall } from './kubernetes-install-runtime.support';
 import { buildInitialInstallValues, buildResumableFoundationValues } from './kubernetes-install-state.service';
+import { applyKubernetesConfiguredIngressState } from './kubernetes-install-state-ingress.service';
 import type {
   ExistingKubernetesInstall,
   KubernetesInstallDeploymentInput,
@@ -63,8 +64,19 @@ async function deployResumableFoundation(
   installationId: string,
   existingState: KubernetesInstallState,
 ): Promise<void> {
-  const state: KubernetesInstallState = {
+  const state: KubernetesInstallState = buildResumableState(input, installationId, existingState);
+  await writeKubernetesInstallValues(material.installValuesPath, buildResumableFoundationValues(state, installToken));
+  await runFoundationHelmInstall(input, material);
+}
+
+function buildResumableState(
+  input: KubernetesInstallDeploymentInput,
+  installationId: string,
+  existingState: KubernetesInstallState,
+): KubernetesInstallState {
+  return applyKubernetesConfiguredIngressState(input, {
     ...existingState,
+    ingressClassName: input.ingressClassName,
     installationId,
     registryHostname:
       input.domainMode === 'custom' || existingState.registryHostname === ''
@@ -74,9 +86,7 @@ async function deployResumableFoundation(
       input.domainMode === 'custom' || existingState.registryIssuerRef.name === ''
         ? input.registryIssuerRef
         : existingState.registryIssuerRef,
-  };
-  await writeKubernetesInstallValues(material.installValuesPath, buildResumableFoundationValues(state, installToken));
-  await runFoundationHelmInstall(input, material);
+  });
 }
 
 async function deployInitialFoundation(

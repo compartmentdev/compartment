@@ -396,6 +396,7 @@ function preflightInput(): KubernetesExistingClusterPreflightInput {
   return {
     apiHosts: ['console.apps.example.com'],
     install: {
+      clearIngressEndpoint: false,
       domain: { baseDomain: 'apps.example.com', mode: 'operator' },
       ingressClass: 'nginx',
       kubeContext: 'production',

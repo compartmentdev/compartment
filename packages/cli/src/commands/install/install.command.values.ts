@@ -16,7 +16,9 @@ export interface MaterializedInstallWizardValues {
 }
 
 export interface OperatorInstallInputValues {
+  clearIngressEndpoint: boolean;
   ingressClass: string;
+  ingressEndpoint?: string | undefined;
   storageClass: string;
 }
 
@@ -29,6 +31,12 @@ interface OperatorInstallValuesDocument {
 
 interface OperatorInstallIngressValues {
   className: string;
+  endpoint?: OperatorInstallIngressEndpoint | undefined;
+}
+
+interface OperatorInstallIngressEndpoint {
+  type: 'A' | 'AAAA' | 'hostname' | '';
+  value: string;
 }
 
 interface OperatorInstallStorageValues {
@@ -54,7 +62,13 @@ const issuerReferenceSchema: z.ZodType<DomainIssuerReference> = z
 const operatorInstallValuesSchema: z.ZodType<OperatorInstallValuesDocument> = z
   .object({
     ingress: z
-      .object({ className: z.string().trim().min(1, 'must not be empty') })
+      .object({
+        className: z.string().trim().min(1, 'must not be empty'),
+        endpoint: z
+          .object({ type: z.enum(['', 'A', 'AAAA', 'hostname']), value: z.string() })
+          .strict()
+          .optional(),
+      })
       .passthrough()
       .optional(),
     registry: z.object({ issuerRef: issuerReferenceSchema.optional() }).passthrough().optional(),
@@ -143,7 +157,11 @@ function readYamlObject(value: YamlFileValue | undefined): YamlFileObject | unde
 
 function readOperatorInputValues(values: OperatorInstallValuesDocument): OperatorInstallInputValues {
   return {
+    clearIngressEndpoint: values.ingress?.endpoint?.value === '',
     ingressClass: values.ingress?.className ?? '',
+    ...(values.ingress?.endpoint?.value === undefined || values.ingress.endpoint.value === ''
+      ? {}
+      : { ingressEndpoint: values.ingress.endpoint.value }),
     storageClass: values.storage?.storageClass ?? '',
   };
 }

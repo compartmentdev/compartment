@@ -26,6 +26,11 @@ import { buildResolvedInstallValues, resolveKubernetesInstallState } from './kub
 import { verifyKubernetesInstallRegistryNodePull } from './kubernetes-install-registry-verification.service';
 import { assertOperatorRegistryDns } from './kubernetes-install-registry-dns.service';
 import { usesOperatorOwnedKubernetesTlsSecret } from './kubernetes-install-tls.service';
+import {
+  inspectKubernetesInstallResumeValues,
+  reportKubernetesInstallValuesReconciliation,
+} from './kubernetes-install-values-reconciliation.service';
+import type { KubernetesInstallValuesReconciliation } from './kubernetes-install-values-reconciliation.service.types';
 import type {
   ExistingKubernetesInstall,
   KubernetesInstallDeploymentInput,
@@ -41,34 +46,51 @@ export async function deployAndWaitForKubernetesInstall(
 ): Promise<KubernetesInstallDeploymentResult> {
   const inspection: KubernetesInstallInspection = await inspectKubernetesInstall(input);
   const { existingInstall, retainedState }: KubernetesInstallInspection = inspection;
+  assertRetainedInstallState(existingInstall, retainedState);
+  const effectiveInstall: ExistingKubernetesInstall | null = mergeRetainedKubernetesInstallState(
+    existingInstall,
+    retainedState,
+  );
+  assertMatchingInstallState(input, effectiveInstall);
+  const reconciliation: KubernetesInstallValuesReconciliation | null = await inspectKubernetesInstallResumeValues(
+    input,
+    existingInstall,
+    effectiveInstall,
+    inspection.releaseValues,
+  );
+  if (canResumeOwnerBootstrap(existingInstall, effectiveInstall, reconciliation)) {
+    return await resumeKubernetesOwnerBootstrap(input, effectiveInstall);
+  }
+  reportKubernetesInstallValuesReconciliation(input, reconciliation);
+  return await deployKubernetesInstall(input, existingInstall, effectiveInstall, retainedState);
+}
+
+function assertMatchingInstallState(
+  input: KubernetesInstallDeploymentInput,
+  matchingState: KubernetesInstallState | null,
+): void {
+  if (matchingState !== null) {
+    assertMatchingKubernetesInstallDomain(input, matchingState);
+  }
+}
+
+function assertRetainedInstallState(
+  existingInstall: ExistingKubernetesInstall | null,
+  retainedState: RetainedKubernetesInstallState | null,
+): void {
   if (existingInstall !== null && retainedState === null) {
     throw new Error(
       'The existing Helm release has no canonical retained install state. Remove that preview release before installing.',
     );
   }
-  const effectiveInstall: ExistingKubernetesInstall | null = mergeRetainedKubernetesInstallState(
-    existingInstall,
-    retainedState,
-  );
-  const matchingState: KubernetesInstallState | null = effectiveInstall;
-  if (matchingState !== null) {
-    assertMatchingKubernetesInstallDomain(input, matchingState);
-  }
-  if (canResumeOwnerBootstrap(existingInstall, effectiveInstall)) {
-    return await resumeKubernetesOwnerBootstrap(input, effectiveInstall);
-  }
-  return await deployKubernetesInstall(input, existingInstall, effectiveInstall, retainedState);
 }
 
 function canResumeOwnerBootstrap(
   existingInstall: ExistingKubernetesInstall | null,
   effectiveInstall: ExistingKubernetesInstall | null,
+  reconciliation: KubernetesInstallValuesReconciliation | null,
 ): effectiveInstall is ExistingKubernetesInstall {
-  return (
-    existingInstall?.stage === 'full' &&
-    effectiveInstall !== null &&
-    !requiresOperatorCertificateReconciliation(effectiveInstall)
-  );
+  return existingInstall?.stage === 'full' && effectiveInstall !== null && reconciliation?.required === false;
 }
 
 async function deployKubernetesInstall(
@@ -202,10 +224,6 @@ async function resumeKubernetesOwnerBootstrap(
     input.domainMode,
     input.progress,
   );
-}
-
-function requiresOperatorCertificateReconciliation(install: ExistingKubernetesInstall): boolean {
-  return install.domainMode === 'custom' && !isReservedKubernetesInstallLocalhostDomain(install.baseDomain);
 }
 
 async function checkOperatorRegistryDns(

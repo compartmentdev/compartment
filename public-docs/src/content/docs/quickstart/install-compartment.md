@@ -188,7 +188,10 @@ the required registry DNS record. Installation stops with remediation instructio
 not satisfy those requirements.
 
 The command installs the matching bundled chart, creates the first owner, and saves the CLI session. If it stops
-before owner creation, repair the reported cluster or Helm condition and retry with the same release coordinates.
+before owner creation, repair the reported cluster or Helm condition and retry with the same release coordinates
+and the intended values file. A retry compares the complete desired Helm values with the deployed release. Identical
+values keep the fast resume path without an upgrade; changed, added, or removed values are listed and reconciled
+through Helm before owner creation resumes.
 
 ## Public routing and TLS
 

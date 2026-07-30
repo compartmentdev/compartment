@@ -61,8 +61,33 @@ describe('operator install values boundary', (): void => {
     const valuesPath: string = await writeValues('ingress:\n  className: traefik\n');
 
     await expect(readOperatorInstallInputValues(valuesPath, false)).resolves.toEqual({
+      clearIngressEndpoint: false,
       ingressClass: 'traefik',
       storageClass: '',
+    });
+  });
+
+  it('reads a configured ingress endpoint for resume reconciliation', async (): Promise<void> => {
+    const endpoint: string = [8, 8, 4, 4].join('.');
+    const valuesPath: string = await writeValues(
+      `ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: ${endpoint}\n`,
+    );
+
+    await expect(readOperatorInstallInputValues(valuesPath, false)).resolves.toEqual({
+      clearIngressEndpoint: false,
+      ingressClass: 'traefik',
+      ingressEndpoint: endpoint,
+      storageClass: '',
+    });
+  });
+
+  it('marks an empty ingress endpoint for LoadBalancer rediscovery', async (): Promise<void> => {
+    const valuesPath: string = await writeValues(
+      'ingress:\n  className: traefik\n  endpoint:\n    type: ""\n    value: ""\n',
+    );
+
+    await expect(readOperatorInstallInputValues(valuesPath, false)).resolves.toMatchObject({
+      clearIngressEndpoint: true,
     });
   });
 
@@ -75,6 +100,7 @@ describe('operator install values boundary', (): void => {
     temporaryDirectories.push(material.directory);
 
     await expect(readOperatorInstallInputValues(material.path, true)).resolves.toEqual({
+      clearIngressEndpoint: false,
       ingressClass: 'traefik',
       storageClass: 'local-path',
     });

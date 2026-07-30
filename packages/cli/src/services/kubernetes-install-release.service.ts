@@ -12,6 +12,7 @@ import { parseKubernetesIngressTargetsJson } from './kubernetes-install-ingress-
 import type { KubernetesInstallRegistryIssuerReference } from './kubernetes-install-registry.service.types';
 import type {
   ExistingKubernetesInstall,
+  ExistingKubernetesInstallRelease,
   HelmReleaseSummary,
   KubernetesInstallDeploymentInput,
   KubernetesInstallDomainMode,
@@ -28,6 +29,12 @@ const kubernetesInspectionTimeoutMs: number = 30_000;
 export async function readExistingKubernetesInstall(
   input: KubernetesInstallDeploymentInput,
 ): Promise<ExistingKubernetesInstall | null> {
+  return (await readExistingKubernetesInstallRelease(input))?.install ?? null;
+}
+
+export async function readExistingKubernetesInstallRelease(
+  input: KubernetesInstallDeploymentInput,
+): Promise<ExistingKubernetesInstallRelease | null> {
   const listResult: CommandResult = await runHelmInspection(buildHelmReleaseListCommand(input), 'release lookup');
   const release: HelmReleaseSummary | null = readNamedHelmRelease(listResult.stdout, input.releaseName);
   if (release === null) {
@@ -39,7 +46,8 @@ export async function readExistingKubernetesInstall(
     buildHelmReleaseValuesCommand(input),
     'release values lookup',
   );
-  return parseExistingKubernetesInstall(valuesResult.stdout);
+  const values: HelmJsonObject = parseHelmValues(valuesResult.stdout);
+  return { install: parseExistingKubernetesInstall(values), values };
 }
 
 function buildHelmReleaseListCommand(input: KubernetesInstallDeploymentInput): string[] {
@@ -106,8 +114,11 @@ function requireDeployedHelmRelease(release: HelmReleaseSummary): void {
   );
 }
 
-function parseExistingKubernetesInstall(output: string): ExistingKubernetesInstall {
-  const value: HelmJsonObject = parseJsonWith(helmJsonObjectSchema, output);
+function parseHelmValues(output: string): HelmJsonObject {
+  return parseJsonWith(helmJsonObjectSchema, output);
+}
+
+function parseExistingKubernetesInstall(value: HelmJsonObject): ExistingKubernetesInstall {
   const platform: JsonValue | undefined = value.platform;
   const registry: JsonValue | undefined = value.registry;
   const ingress: JsonValue | undefined = value.ingress;

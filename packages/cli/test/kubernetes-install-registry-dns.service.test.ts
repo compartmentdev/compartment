@@ -80,7 +80,10 @@ describe('operator registry DNS prerequisite', (): void => {
 function input(): KubernetesInstallDeploymentInput {
   return {
     acmeEmail: 'admin@example.com',
+    clearConfiguredIngressEndpoint: false,
+    configuredIngressEndpoint: null,
     domainMode: 'custom',
+    ingressClassName: 'traefik',
     namespace: 'compartment',
     registryHostname: 'registry.apps.example.com',
     registryIssuerRef: { group: 'cert-manager.io', kind: 'ClusterIssuer', name: 'letsencrypt-production' },

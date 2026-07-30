@@ -1,4 +1,5 @@
 import type { DomainIssuerReference } from '@compartment/contracts';
+import type { JsonValue } from '@compartment/utils';
 import type { KubernetesInstallProgressReporter } from './kubernetes-install-progress.types';
 import type {
   KubernetesInstallRegistryConfiguration,
@@ -11,7 +12,10 @@ export interface KubernetesInstallDeploymentInput extends KubernetesInstallRegis
   baseDomain?: string | undefined;
   brokerUrl?: string | undefined;
   chartPath?: string | undefined;
+  clearConfiguredIngressEndpoint: boolean;
+  configuredIngressEndpoint: KubernetesIngressEndpoint | null;
   domainMode: KubernetesInstallDomainMode;
+  ingressClassName: string;
   kubeconfigPath?: string | undefined;
   kubeContext?: string | undefined;
   managedDomainRequestedLabelSource?: string | undefined;
@@ -29,7 +33,13 @@ export interface KubernetesInstallDeploymentResult {
 
 export interface KubernetesInstallInspection {
   existingInstall: ExistingKubernetesInstall | null;
+  releaseValues: JsonValue | null;
   retainedState: RetainedKubernetesInstallState | null;
+}
+
+export interface ExistingKubernetesInstallRelease {
+  install: ExistingKubernetesInstall;
+  values: JsonValue;
 }
 
 export interface KubernetesInstallHelmMaterial {

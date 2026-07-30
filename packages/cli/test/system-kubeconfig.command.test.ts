@@ -69,6 +69,12 @@ describe('system command kubeconfig resolution', (): void => {
       return await Promise.reject(Object.assign(new Error('not found'), { code: 'ENOENT' }));
     });
     mocks.runCommand.mockImplementation(async (command: readonly string[]): Promise<CommandResult> => {
+      if (command[0] === 'helm' && command[1] === 'version') {
+        return await Promise.resolve({ exitCode: 0, stderr: '', stdout: 'v4.0.0' });
+      }
+      if (command[0] === 'kubectl' && command[1] === 'version') {
+        return await Promise.resolve(successfulCommand({ clientVersion: { gitVersion: 'v1.30.0' } }));
+      }
       if (command[0] === 'helm') {
         return await Promise.resolve(successfulCommand({ info: { status: 'deployed' } }));
       }
@@ -90,8 +96,8 @@ describe('system command kubeconfig resolution', (): void => {
 
     expectCliSuccess(result);
     expect(readCliStdout(result.capture)).toContain('Platform readiness: ready.');
-    expect(mocks.runCommand).toHaveBeenCalledTimes(2);
-    for (const [command] of mocks.runCommand.mock.calls) {
+    expect(mocks.runCommand).toHaveBeenCalledTimes(4);
+    for (const [command] of mocks.runCommand.mock.calls.slice(2)) {
       expect(command).toEqual(expect.arrayContaining(['--kubeconfig', k3sKubeconfigPath]));
     }
   });

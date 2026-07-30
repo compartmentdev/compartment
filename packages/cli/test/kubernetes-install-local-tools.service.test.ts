@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi, type MockedFunction } from 'vitest';
+import { runCli } from '../src/app';
 import { runCommand } from '../src/command-runner';
 import { assertKubernetesInstallLocalTools } from '../src/services/kubernetes-install-local-tools.service';
+import { withKubernetesLocalTools } from '../src/services/kubernetes-local-tools.service';
+import { createCliCapture, readCliStderr, type CliCommandCapture } from './cli-test.harness';
 
 vi.mock('../src/command-runner', (): object => ({ runCommand: vi.fn() }));
 
@@ -20,7 +23,7 @@ describe('Kubernetes install local tool preflight', (): void => {
     });
 
     await expect(assertKubernetesInstallLocalTools()).rejects.toThrow(
-      /helm not found on PATH.*Install Helm >= 4\.0\.0.*get-helm-4.*re-run install/su,
+      /helm not found on PATH.*Install Helm >= 4\.0\.0.*get-helm-4.*re-run the command/su,
     );
     expect(mockedRunCommand).toHaveBeenCalledTimes(1);
   });
@@ -62,5 +65,53 @@ describe('Kubernetes install local tool preflight', (): void => {
     await expect(assertKubernetesInstallLocalTools()).resolves.toBeUndefined();
     expect(mockedRunCommand).toHaveBeenNthCalledWith(1, ['helm', 'version', '--template', '{{.Version}}']);
     expect(mockedRunCommand).toHaveBeenNthCalledWith(2, ['kubectl', 'version', '--client', '--output=json']);
+  });
+
+  it('reports the product Helm remediation before system restart when Helm is missing', async (): Promise<void> => {
+    mockedRunCommand.mockResolvedValueOnce({
+      exitCode: 127,
+      failure: { command: 'helm', kind: 'command-not-found' },
+      stderr: '',
+      stdout: '',
+    });
+    const capture: CliCommandCapture = createCliCapture();
+
+    const exitCode: number = await runCli(['system', 'restart'], capture.io);
+
+    expect(exitCode).toBe(1);
+    expect(readCliStderr(capture)).toMatch(/helm not found on PATH.*Install Helm >= 4\.0\.0/su);
+    expect(mockedRunCommand).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports detected and required Helm versions before system restart with Helm 3', async (): Promise<void> => {
+    mockedRunCommand.mockResolvedValueOnce({
+      exitCode: 0,
+      stderr: '',
+      stdout: 'v3.21.3+g1ad6e68',
+    });
+    const capture: CliCommandCapture = createCliCapture();
+
+    const exitCode: number = await runCli(['system', 'restart'], capture.io);
+
+    expect(exitCode).toBe(1);
+    expect(readCliStderr(capture)).toContain('helm v3.21.3+g1ad6e68 is installed, but helm >= 4.0.0 is required.');
+    expect(mockedRunCommand).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not repeat the tool gate inside one wrapped Kubernetes command', async (): Promise<void> => {
+    mockedRunCommand.mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: 'v4.2.3' }).mockResolvedValueOnce({
+      exitCode: 0,
+      stderr: '',
+      stdout: JSON.stringify({ clientVersion: { gitVersion: 'v1.33.2' } }),
+    });
+
+    await withKubernetesLocalTools(
+      async (): Promise<void> =>
+        await withKubernetesLocalTools(async (): Promise<void> => {
+          await Promise.resolve();
+        }),
+    );
+
+    expect(mockedRunCommand).toHaveBeenCalledTimes(2);
   });
 });
