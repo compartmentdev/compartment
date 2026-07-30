@@ -40,10 +40,12 @@ import type {
   KubernetesInstallState,
   RetainedKubernetesInstallState,
 } from './kubernetes-install.service.types';
+import { assertConfiguredManagedDomainEndpoint } from './kubernetes-install-state-ingress.service';
 
 export async function deployAndWaitForKubernetesInstall(
   input: KubernetesInstallDeploymentInput,
 ): Promise<KubernetesInstallDeploymentResult> {
+  assertConfiguredManagedDomainEndpoint(input);
   const inspection: KubernetesInstallInspection = await inspectKubernetesInstall(input);
   const { existingInstall, retainedState }: KubernetesInstallInspection = inspection;
   assertRetainedInstallState(existingInstall, retainedState);

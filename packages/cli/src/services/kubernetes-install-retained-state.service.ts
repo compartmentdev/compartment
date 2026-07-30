@@ -72,7 +72,7 @@ export async function readRetainedManagedKubernetesDomainState(
 }
 
 function assertCompleteRetainedManagedDomain(state: RetainedManagedDomainState): void {
-  if ([state.allocationId, state.baseDomain, state.brokerUrl, state.brokerToken, state.acmeEmail].includes('')) {
+  if ([state.baseDomain, state.brokerUrl, state.acmeDnsToken, state.acmeEmail].includes('')) {
     throw new Error('This installation has no retained managed domain to restore.');
   }
 }
@@ -80,9 +80,8 @@ function assertCompleteRetainedManagedDomain(state: RetainedManagedDomainState):
 function buildRetainedManagedDomainState(data: Record<string, string>): RetainedManagedDomainState {
   return {
     acmeEmail: readSecretText(data, 'acme-email'),
-    allocationId: readSecretText(data, 'managed-domain-allocation-id'),
+    acmeDnsToken: readSecretText(data, 'managed-domain-acme-dns-token'),
     baseDomain: readSecretText(data, 'managed-base-domain').toLowerCase(),
-    brokerToken: readSecretText(data, 'managed-domain-broker-token'),
     brokerUrl: readSecretText(data, 'managed-domain-broker-url'),
     issuerRef: parseJsonWith(domainIssuerReferenceSchema, readRequiredSecretText(data, 'managed-issuer-ref-json')),
     publicProtocol: 'https',
@@ -121,13 +120,9 @@ function mergeRetainedIngressFields(merged: ExistingKubernetesInstall, current: 
 
 function mergeRetainedBrokerFields(merged: ExistingKubernetesInstall, current: ExistingKubernetesInstall): void {
   merged.brokerUrl = preferRetainedText(merged.brokerUrl, current.brokerUrl);
-  merged.managedDomainAllocationId = preferRetainedText(
-    merged.managedDomainAllocationId,
-    current.managedDomainAllocationId,
-  );
-  merged.managedDomainBrokerToken = preferRetainedText(
-    merged.managedDomainBrokerToken,
-    current.managedDomainBrokerToken,
+  merged.managedDomainAcmeDnsToken = preferRetainedText(
+    merged.managedDomainAcmeDnsToken,
+    current.managedDomainAcmeDnsToken,
   );
   merged.registryHostname = preferRetainedText(merged.registryHostname, current.registryHostname);
   if (merged.registryIssuerRef.name === '') {
@@ -180,8 +175,7 @@ function parseRetainedStateSecret(data: Record<string, string>): RetainedKuberne
     ingressClassName: readRequiredSecretText(data, 'ingress-class-name'),
     ingressEndpoint: readIngressEndpoint(data),
     ingressTargets: readIngressTargets(data),
-    managedDomainAllocationId: readSecretText(data, 'managed-domain-allocation-id'),
-    managedDomainBrokerToken: readSecretText(data, 'managed-domain-broker-token'),
+    managedDomainAcmeDnsToken: readSecretText(data, 'managed-domain-acme-dns-token'),
     publicProtocol: readPublicProtocol(data),
     registryHostname: readSecretText(data, 'registry-hostname').toLowerCase(),
     registryIssuerRef: {

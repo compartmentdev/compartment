@@ -127,7 +127,7 @@ describe('GitHub account discovery broker adapter', (): void => {
   it('fails when canonical broker config is disabled', async (): Promise<void> => {
     mocks.getApiConfig.mockReturnValue(
       createApiConfig({
-        managedDomainBrokerToken: null,
+        managedDomainAcmeDnsToken: null,
         managedDomainBrokerUrl: null,
       }),
     );
@@ -154,7 +154,7 @@ function createJsonResponse(body: object): Response {
 
 function createApiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
   return {
-    managedDomainBrokerToken: 'broker-token',
+    managedDomainAcmeDnsToken: 'broker-token',
     managedDomainBrokerUrl: 'https://broker.example/',
     tenantSecretsKek: Buffer.from('11'.repeat(32), 'hex'),
     variablesMasterKey: Buffer.from('11'.repeat(32), 'hex'),

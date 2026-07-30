@@ -1,68 +1,41 @@
 import { describe, expect, it } from 'vitest';
 import {
-  managedDomainDns01ChallengeRequestSchema,
-  managedDomainReservationResponseSchema,
-  managedDomainTargetBindingRequestSchema,
-  managedDomainTargetBindingResponseSchema,
-  type ManagedDomainReservationResponse,
-  type ManagedDomainTargetBindingResponse,
+  managedDomainAllocationResponseSchema,
+  type ManagedDomainAllocationRequest,
+  type ManagedDomainAllocationResponse,
 } from '../src';
 
 describe('managed-domain broker contracts', (): void => {
-  const ipv4: string = [8, 8, 8, 8].join('.');
-  const ipv6: string = ['2001', '4860', '4860', '', '8888'].join(':');
-  it('reserves an allocation without an ingress target', (): void => {
-    const response: ManagedDomainReservationResponse = managedDomainReservationResponseSchema.parse({
-      allocationId: 'allocation-1',
+  it('parses the main broker allocation response', (): void => {
+    const response: ManagedDomainAllocationResponse = managedDomainAllocationResponseSchema.parse({
+      acmeDnsToken: 'acme-dns-token',
       baseDomain: 'acme.compartment.run',
-      scopedToken: 'allocation-token',
+      dnsRecords: [{ host: '*.acme.compartment.run', purpose: 'Managed ingress', type: 'A/AAAA-or-CNAME' }],
     });
     expect(response).toEqual({
-      allocationId: 'allocation-1',
+      acmeDnsToken: 'acme-dns-token',
       baseDomain: 'acme.compartment.run',
-      scopedToken: 'allocation-token',
+      dnsRecords: [{ host: '*.acme.compartment.run', purpose: 'Managed ingress', type: 'A/AAAA-or-CNAME' }],
     });
   });
 
-  it('preserves typed A, AAAA, and hostname targets', (): void => {
-    const response: ManagedDomainTargetBindingResponse = managedDomainTargetBindingResponseSchema.parse({
-      allocationId: 'allocation-1',
-      targets: [
-        { type: 'A', value: ipv4 },
-        { type: 'AAAA', value: ipv6 },
-        { type: 'hostname', value: 'shared-lb.example.com' },
-      ],
-    });
-    expect(response.targets[2]).toEqual({ type: 'hostname', value: 'shared-lb.example.com' });
+  it('requires a public IP in the allocation request type', (): void => {
+    const publicIp: string = [8, 8, 8, 8].join('.');
+    const request: ManagedDomainAllocationRequest = {
+      installationId: 'installation-123',
+      publicIp,
+      requestedLabelSource: 'Acme Dev',
+    };
+    expect(request.publicIp).toBe(publicIp);
   });
 
-  it('rejects an IP address encoded as a hostname target', (): void => {
+  it('rejects incomplete or extended allocation responses', (): void => {
+    expect(managedDomainAllocationResponseSchema.safeParse({ baseDomain: 'acme.compartment.run' }).success).toBe(false);
     expect(
-      managedDomainTargetBindingResponseSchema.safeParse({
-        allocationId: 'allocation-1',
-        targets: [{ type: 'hostname', value: ipv4 }],
-      }).success,
-    ).toBe(false);
-  });
-
-  it('rejects malformed binding and challenge requests at the contract boundary', (): void => {
-    expect(managedDomainTargetBindingRequestSchema.safeParse({ targets: [] }).success).toBe(false);
-    expect(
-      managedDomainTargetBindingRequestSchema.safeParse({ targets: [{ type: 'A', value: '999.1.1.1' }] }).success,
-    ).toBe(false);
-    expect(
-      managedDomainTargetBindingRequestSchema.safeParse({ targets: [{ type: 'AAAA', value: 'not:ipv6' }] }).success,
-    ).toBe(false);
-    expect(
-      managedDomainTargetBindingRequestSchema.safeParse({
-        targets: [{ type: 'hostname', value: ipv4 }],
-      }).success,
-    ).toBe(false);
-    expect(
-      managedDomainDns01ChallengeRequestSchema.safeParse({
-        extra: true,
-        name: '_acme-challenge.acme.compartment.run',
-        value: 'proof',
+      managedDomainAllocationResponseSchema.safeParse({
+        acmeDnsToken: 'token',
+        baseDomain: 'acme.compartment.run',
+        removedField: 'removed',
       }).success,
     ).toBe(false);
   });

@@ -72,7 +72,7 @@ export interface ApiConfig {
   edgeToken: string;
   edgeUrl: string;
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
-  managedDomainBrokerToken?: string | null;
+  managedDomainAcmeDnsToken?: string | null;
   managedDomainBrokerUrl?: string | null;
   trustedOutboundHosts: string[];
   sessionSecret: string;
@@ -108,7 +108,7 @@ type ApiCoreConfig = Pick<
 type ApiHostConfig = Pick<ApiConfig, 'baseDomain' | 'tlsMode' | 'controlPlaneHost' | 'edgeUrl'>;
 type ApiIntegrationConfig = Pick<
   ApiConfig,
-  'managedDomainBrokerToken' | 'managedDomainBrokerUrl' | 'trustedOutboundHosts'
+  'managedDomainAcmeDnsToken' | 'managedDomainBrokerUrl' | 'trustedOutboundHosts'
 >;
 type ApiPublicConfig = Pick<ApiConfig, 'publicProtocol' | 'publicHttpPort' | 'publicHttpsPort'>;
 type ApiRuntimeConfig = Pick<
@@ -171,10 +171,10 @@ function readApiIntegrationConfig(parsed: ApiConfigEnv): ApiIntegrationConfig {
     parsed.COMPARTMENT_MANAGED_DOMAIN_BROKER_URL,
     'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL',
   );
-  const managedDomainBrokerToken: string | null = readOptionalConfigText(
+  const managedDomainAcmeDnsToken: string | null = readOptionalConfigText(
     parsed.COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN,
   );
-  if ((managedDomainBrokerUrl === null) !== (managedDomainBrokerToken === null)) {
+  if ((managedDomainBrokerUrl === null) !== (managedDomainAcmeDnsToken === null)) {
     throw new Error(
       'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL and COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN must be configured together.',
     );
@@ -186,7 +186,7 @@ function readApiIntegrationConfig(parsed: ApiConfigEnv): ApiIntegrationConfig {
   }
 
   return {
-    managedDomainBrokerToken,
+    managedDomainAcmeDnsToken,
     managedDomainBrokerUrl,
     trustedOutboundHosts: readTrustedOutboundHosts(parsed),
   };

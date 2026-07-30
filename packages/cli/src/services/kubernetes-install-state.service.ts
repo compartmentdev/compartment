@@ -1,16 +1,19 @@
-import { buildPrivateRegistryHost, type ManagedDomainReservationResponse } from '@compartment/contracts';
+import { buildPrivateRegistryHost, type ManagedDomainAllocationResponse } from '@compartment/contracts';
 import { isValidDnsHostname } from '@compartment/utils';
 import { isReservedKubernetesInstallLocalhostDomain } from '../kubernetes-install-domain';
-import { resolveInstallPublicIngress } from './kubernetes-install-state-ingress.service';
+import {
+  assertManagedDomainIngressEndpoint,
+  resolveInstallPublicIngress,
+} from './kubernetes-install-state-ingress.service';
 import {
   buildManagedDomainAllocationMetadata,
   readExistingManagedAllocation,
   requireManagedBrokerUrl,
   requireManagedDomainRequestedLabelSource,
+  type ExistingManagedDomainAllocation,
 } from './kubernetes-install-managed-state.support';
 import { runObservableInstallStep } from './kubernetes-install-progress.service';
-import { bindInstallManagedDomainTargets, reserveInstallManagedDomain } from './managed-domain.service';
-import { readManagedDomainReservationToken } from './managed-domain-reservation-token.service';
+import { allocateInstallManagedDomain } from './managed-domain.service';
 import type {
   ExistingKubernetesInstall,
   KubernetesInstallDeploymentInput,
@@ -65,13 +68,12 @@ export function buildResolvedInstallValues(
       domainGeneration: resolvedDomainGeneration,
       domainMode: state.domainMode,
       installationId: state.installationId,
-      managedDomainAllocationId: state.managedDomainAllocationId,
       managedDomainBrokerUrl: state.brokerUrl,
       publicProtocol: state.publicProtocol,
       tlsMode: state.tlsMode,
     },
     installToken,
-    state.managedDomainBrokerToken,
+    state.managedDomainAcmeDnsToken,
     buildInstallIngressValues(state),
   );
 }
@@ -88,13 +90,12 @@ export function buildResumableFoundationValues(
       domainGeneration: initialDomainGeneration,
       domainMode: state.domainMode,
       installationId: state.installationId,
-      managedDomainAllocationId: state.managedDomainAllocationId,
       managedDomainBrokerUrl: state.brokerUrl,
       publicProtocol: state.publicProtocol,
       tlsMode: state.tlsMode,
     },
     installToken,
-    state.managedDomainBrokerToken,
+    state.managedDomainAcmeDnsToken,
     buildInstallIngressValues(state),
   );
 }
@@ -111,14 +112,14 @@ function buildInstallValues(
   registry: Pick<KubernetesInstallState, 'registryHostname' | 'registryIssuerRef'>,
   platformValues: KubernetesInstallPlatformValues,
   installToken: string,
-  managedDomainBrokerToken: string,
+  managedDomainAcmeDnsToken: string,
   ingress?: KubernetesInstallIngressValues,
 ): KubernetesInstallSecretValues {
   return {
     ...(ingress === undefined ? {} : { ingress }),
     platform: platformValues,
     registry: { hostname: registry.registryHostname, issuerRef: registry.registryIssuerRef },
-    secrets: { installToken, managedDomainBrokerToken },
+    secrets: { installToken, managedDomainAcmeDnsToken },
   };
 }
 
@@ -127,52 +128,34 @@ async function resolveManagedInstallState(
   foundationInstall: ExistingKubernetesInstall,
   publicIngress: KubernetesPublicIngress,
 ): Promise<KubernetesInstallState> {
-  const existingAllocation: ManagedDomainReservationResponse | null = readExistingManagedAllocation(foundationInstall);
+  assertManagedDomainIngressEndpoint(publicIngress.ingressEndpoint);
+  const existingAllocation: ExistingManagedDomainAllocation | null = readExistingManagedAllocation(foundationInstall);
   const brokerUrl: string = requireManagedBrokerUrl(foundationInstall.brokerUrl);
-  const allocation: ManagedDomainReservationResponse =
+  const allocation: ExistingManagedDomainAllocation =
     existingAllocation ??
     (await runObservableInstallStep(
       input.progress,
       'Requesting managed domain',
-      async (): Promise<ManagedDomainReservationResponse> =>
-        await requestManagedDomainReservation(input, foundationInstall, brokerUrl),
+      async (): Promise<ManagedDomainAllocationResponse> =>
+        await requestManagedDomainAllocation(input, foundationInstall, publicIngress, brokerUrl),
     ));
-  await bindObservableManagedDomainTargets(input, publicIngress, brokerUrl, allocation);
   return buildManagedInstallState(input, foundationInstall, publicIngress, brokerUrl, allocation);
 }
 
-async function bindObservableManagedDomainTargets(
-  input: KubernetesInstallDeploymentInput,
-  publicIngress: KubernetesPublicIngress,
-  brokerUrl: string,
-  allocation: ManagedDomainReservationResponse,
-): Promise<void> {
-  await runObservableInstallStep(input.progress, 'Binding managed-domain DNS targets', async (): Promise<void> => {
-    await bindInstallManagedDomainTargets(
-      {
-        allocationId: allocation.allocationId,
-        brokerUrl,
-        scopedToken: allocation.scopedToken,
-        targets: publicIngress.ingressTargets,
-      },
-      input.progress,
-    );
-  });
-}
-
-async function requestManagedDomainReservation(
+async function requestManagedDomainAllocation(
   input: KubernetesInstallDeploymentInput,
   foundationInstall: ExistingKubernetesInstall,
+  publicIngress: KubernetesPublicIngress,
   brokerUrl: string,
-): Promise<ManagedDomainReservationResponse> {
-  const reservationToken: string | undefined = readManagedDomainReservationToken();
-  return await reserveInstallManagedDomain(
+): Promise<ManagedDomainAllocationResponse> {
+  const publicIp: string = publicIngress.ingressEndpoint?.value ?? '';
+  return await allocateInstallManagedDomain(
     {
       brokerUrl,
       installationId: foundationInstall.installationId,
       metadata: buildManagedDomainAllocationMetadata(),
+      publicIp,
       requestedLabelSource: requireManagedDomainRequestedLabelSource(input.managedDomainRequestedLabelSource),
-      ...(reservationToken === undefined ? {} : { reservationToken }),
     },
     input.progress,
   );
@@ -183,7 +166,7 @@ function buildManagedInstallState(
   foundationInstall: ExistingKubernetesInstall,
   publicIngress: KubernetesPublicIngress,
   brokerUrl: string,
-  allocation: ManagedDomainReservationResponse,
+  allocation: ExistingManagedDomainAllocation,
 ): KubernetesInstallState {
   return {
     acmeEmail: foundationInstall.acmeEmail !== '' ? foundationInstall.acmeEmail : input.acmeEmail,
@@ -191,8 +174,7 @@ function buildManagedInstallState(
     brokerUrl,
     domainMode: 'managed',
     installationId: foundationInstall.installationId,
-    managedDomainAllocationId: allocation.allocationId,
-    managedDomainBrokerToken: allocation.scopedToken,
+    managedDomainAcmeDnsToken: allocation.acmeDnsToken,
     ...publicIngress,
     publicProtocol: 'https',
     registryHostname: resolveManagedRegistryHostname(input.registryHostname, allocation.baseDomain),
@@ -220,8 +202,7 @@ function resolveCustomInstallState(
     brokerUrl: '',
     domainMode: 'custom',
     installationId: foundationInstall.installationId,
-    managedDomainAllocationId: '',
-    managedDomainBrokerToken: '',
+    managedDomainAcmeDnsToken: '',
     ...publicIngress,
     publicProtocol: isReservedKubernetesInstallLocalhostDomain(input.baseDomain)
       ? foundationInstall.publicProtocol

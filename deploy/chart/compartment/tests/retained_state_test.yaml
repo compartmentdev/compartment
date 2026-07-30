@@ -37,8 +37,7 @@ kubernetesProvider:
         ingress-targets-json: W3sidHlwZSI6Imhvc3RuYW1lIiwidmFsdWUiOiJsYi5leGFtcGxlLmNvbSJ9XQ==
         acme-email: cmV0YWluZWRAZXhhbXBsZS5jb20=
         managed-domain-broker-url: aHR0cHM6Ly9yZXRhaW5lZC1icm9rZXIuZXhhbXBsZQ==
-        managed-domain-allocation-id: YWxsb2NhdGlvbi1tYW5hZ2Vk
-        managed-domain-broker-token: YnJva2VyLXRva2Vu
+        managed-domain-acme-dns-token: YnJva2VyLXRva2Vu
         domain-generation: Nw==
         domain-mode: bWFuYWdlZA==
         base-domain: cmV0YWluZWQuZXhhbXBsZS5jb20=
@@ -79,7 +78,7 @@ kubernetesProvider:
         installation-id: cmV0YWluZWQtaW50ZXJydXB0ZWQ=
         acme-email: cmV0YWluZWRAZXhhbXBsZS50ZXN0
         managed-domain-broker-url: aHR0cHM6Ly9icm9rZXIuZXhhbXBsZS50ZXN0
-        managed-domain-broker-token: ''
+        managed-domain-acme-dns-token: ''
         domain-generation: MA==
         domain-mode: bWFuYWdlZA==
         base-domain: ''
@@ -170,7 +169,7 @@ tests:
         tlsMode: issuer
         acmeEmail: incoming@example.com
       secrets:
-        managedDomainBrokerToken: incoming-token
+        managedDomainAcmeDnsToken: incoming-token
         registryCredentialSigningKey: test-registry-signing-key-with-at-least-32-characters
         productLogIngestToken: test-product-log-token
     asserts:
@@ -217,7 +216,7 @@ tests:
           value: '7'
         template: install-state-secret.yaml
       - equal:
-          path: stringData.managed-domain-broker-token
+          path: stringData.managed-domain-acme-dns-token
           value: broker-token
         template: install-state-secret.yaml
       - equal:
@@ -254,7 +253,7 @@ tests:
         acmeEmail: retained@example.test
         managedDomainBrokerUrl: https://broker.example.test
       secrets:
-        managedDomainBrokerToken: ''
+        managedDomainAcmeDnsToken: ''
     asserts:
       - notFailedTemplate: {}
       - equal:
@@ -291,7 +290,7 @@ tests:
         acmeEmail: retained@example.test
         managedDomainBrokerUrl: https://broker.example.test
       secrets:
-        managedDomainBrokerToken: incoming-token
+        managedDomainAcmeDnsToken: incoming-token
     asserts:
       - notFailedTemplate: {}
       - equal:

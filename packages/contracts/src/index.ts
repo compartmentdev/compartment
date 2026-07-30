@@ -84,6 +84,7 @@ export * from './contracts/audit-retention.contract';
 export * from './contracts/rollback-retention.contract';
 export * from './contracts/projects.contract';
 export * from './contracts/project-lifecycle.contract';
+export { type PublicIngressTarget, publicIngressTargetSchema } from './contracts/public-ingress-target.contract';
 export {
   type PromoteDeploymentRequest,
   type DeploymentListQuery,

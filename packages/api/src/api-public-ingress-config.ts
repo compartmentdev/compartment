@@ -1,22 +1,24 @@
-import { managedDomainTargetSchema, type ManagedDomainTarget } from '@compartment/contracts';
+import { publicIngressTargetSchema, type PublicIngressTarget } from '@compartment/contracts';
 import { z } from 'zod';
+
+export type ApiPublicIngressTarget = PublicIngressTarget;
 
 interface ApiPublicIngressConfigEnv {
   COMPARTMENT_INGRESS_TARGETS_JSON: string;
 }
 
 export interface ApiPublicIngressConfig {
-  targets: ManagedDomainTarget[];
+  targets: ApiPublicIngressTarget[];
 }
 
 const apiPublicIngressConfigSchema: z.ZodType<ApiPublicIngressConfigEnv> = z.object({
   COMPARTMENT_INGRESS_TARGETS_JSON: z.string().min(1),
 });
-const ingressTargetsSchema: z.ZodType<ManagedDomainTarget[]> = z
-  .array(managedDomainTargetSchema)
-  .superRefine((targets: ManagedDomainTarget[], context: z.RefinementCtx): void => {
-    const hasHostname: boolean = targets.some((target: ManagedDomainTarget): boolean => target.type === 'hostname');
-    const hasAddress: boolean = targets.some((target: ManagedDomainTarget): boolean => target.type !== 'hostname');
+const ingressTargetsSchema: z.ZodType<ApiPublicIngressTarget[]> = z
+  .array(publicIngressTargetSchema)
+  .superRefine((targets: ApiPublicIngressTarget[], context: z.RefinementCtx): void => {
+    const hasHostname: boolean = targets.some((target: ApiPublicIngressTarget): boolean => target.type === 'hostname');
+    const hasAddress: boolean = targets.some((target: ApiPublicIngressTarget): boolean => target.type !== 'hostname');
     if (hasHostname && hasAddress) {
       context.addIssue({
         code: 'custom',

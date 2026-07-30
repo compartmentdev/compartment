@@ -97,7 +97,7 @@ function requireGitHubAccountDiscoveryBrokerConfig(): GitHubAccountDiscoveryBrok
   if (brokerUrl === null) {
     throw createGitSourceRegistrationFailedError('GitHub account discovery is not configured for this install.');
   }
-  const brokerToken: string | null = getApiConfig().managedDomainBrokerToken ?? null;
+  const brokerToken: string | null = getApiConfig().managedDomainAcmeDnsToken ?? null;
   if (brokerToken === null) {
     throw createGitSourceRegistrationFailedError('GitHub account discovery broker credentials are incomplete.');
   }

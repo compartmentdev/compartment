@@ -10,13 +10,7 @@ export {
 export { isRetryableTransportRequestError } from './http/request-error';
 
 export { activateCompartment } from './services/activate.service';
-export {
-  bindManagedDomainTargets,
-  cleanUpManagedDomainDns01Challenge,
-  presentManagedDomainDns01Challenge,
-  replayManagedDomainDesiredState,
-  reserveManagedDomain,
-} from './services/managed-domain.service';
+export { allocateManagedDomain } from './services/managed-domain.service';
 export { exportAuditEvents, listAuditEvents } from './services/audit-events.service';
 export { exchangeCliLogin, getCliLoginStatus, startCliLogin } from './services/cli-login.service';
 export {

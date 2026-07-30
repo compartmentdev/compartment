@@ -12,13 +12,13 @@ Managed platform domains cover install-level public domain ownership for the who
 - The install still has exactly one active `baseDomain`.
 - Managed-domain mode changes only how that `baseDomain` is allocated; it does not change browser traffic termination, which stays on the customer host.
 - In the managed-domain path, the broker allocates the install domain and owns DNS writes for that broker-owned zone.
-- Certificate private keys stay on the customer host. The broker stores only the scoped ACME DNS credential material needed to authorize TXT updates.
+- Certificate private keys stay on the customer host. The installation retains only the broker-issued acme-dns token needed to authorize TXT updates.
 - The broker stores allocation metadata for managed-domain installs: installation id, public ingress address, and generated base domain.
 
 ## Ownership and boundaries
 
 - The broker is the source of truth for managed-domain allocation state; provider DNS is derived state.
-- The broker owns allocation, DNS record mutation inside its zone, token scoping, and recovery from provider drift by replaying its own state.
+- The broker owns allocation and DNS record mutation inside its zone.
 - The Helm release owns the active base domain, public ingress mode, and certificate configuration.
 - Pending whole-install custom-domain setup state belongs to the API and represents staged verification/activation data only. The active domain remains chart-owned.
 - Ordinary public API domain commands do not mutate installation-level ingress or certificate state. Privileged
@@ -30,12 +30,14 @@ Managed platform domains cover install-level public domain ownership for the who
 - DNS authority stays with the broker-owned parent zone; installs do not receive direct provider credentials for that zone.
 - Managed allocation uses a broker-generated label, not an exact vanity reservation from operator input.
 - ACME DNS access is limited to the install's challenge record and must reject writes outside that scope.
+- Managed allocation accepts only an IPv4 or IPv6 public ingress endpoint. Hostname endpoints require an operator-owned
+  domain and are never resolved once into unstable IP records.
 - Whole-install custom-domain activation requires proof of domain ownership and proof that traffic resolves directly to this install's public ingress.
 - Managed domains are immutable for the lifetime of that allocation. Public-IP changes are handled by a fresh allocation rather than in-place resync.
 
 ## Rationale
 
-- Keeping broker state authoritative makes DNS recreation possible without depending on provider-specific record identifiers.
+- Keeping broker DNS ownership central avoids distributing provider credentials to installations.
 - Keeping certificate issuance on the customer host preserves direct browser-to-install traffic and avoids central certificate custody.
 - Requiring direct ingress proof for whole-install custom domains avoids accepting CDN or proxy answers that do not prove traffic lands on this install.
 

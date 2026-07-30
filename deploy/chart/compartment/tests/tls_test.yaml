@@ -72,9 +72,8 @@ tests:
         domainMode: managed
         baseDomain: managed.example.com
         acmeEmail: admin@example.com
-        managedDomainAllocationId: allocation-1
       secrets:
-        managedDomainBrokerToken: allocation-token
+        managedDomainAcmeDnsToken: acme-dns-token
       nodePools:
         system:
           nodeSelector: { compartment.dev/node-pool: system }
@@ -139,8 +138,8 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
-            name: ALLOCATION_ID
-            value: allocation-1
+            name: TOKEN_SECRET_KEY
+            value: managed-domain-acme-dns-token
         template: managed-domain-dns01.yaml
         documentIndex: 11
       - contains:

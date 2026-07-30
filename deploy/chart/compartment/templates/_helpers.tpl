@@ -95,13 +95,9 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
   valuesSection: platform
   valueKey: managedDomainBrokerUrl
   policy: stable
-- secretKey: managed-domain-allocation-id
-  valuesSection: platform
-  valueKey: managedDomainAllocationId
-  policy: stable
-- secretKey: managed-domain-broker-token
+- secretKey: managed-domain-acme-dns-token
   valuesSection: secrets
-  valueKey: managedDomainBrokerToken
+  valueKey: managedDomainAcmeDnsToken
   policy: stable
 - secretKey: public-protocol
   valuesSection: platform
@@ -198,8 +194,8 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- $_ = required "platform.baseDomain is required for a full installation" $effective.platform.baseDomain -}}
 {{- $_ = required "registry.hostname is required for a full installation" $effective.registry.hostname -}}
 {{- $_ = required "registry.issuerRef.name is required for a full installation" $effective.registryIssuerRef.name -}}
-{{- if and (not (empty $effective.secrets.managedDomainBrokerToken)) (empty $effective.platform.managedDomainBrokerUrl) -}}
-{{- fail "platform.managedDomainBrokerUrl is required when secrets.managedDomainBrokerToken is configured" -}}
+{{- if and (not (empty $effective.secrets.managedDomainAcmeDnsToken)) (empty $effective.platform.managedDomainBrokerUrl) -}}
+{{- fail "platform.managedDomainBrokerUrl is required when secrets.managedDomainAcmeDnsToken is configured" -}}
 {{- end -}}
 {{- if eq $effective.platform.tlsMode "broker-dns01" -}}
 {{- if ne .Values.platform.acmeIssuer "acme" -}}
@@ -216,10 +212,9 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- fail "tls.issuerRef.kind must be Issuer for managed TLS" -}}
 {{- end -}}
 {{- $_ := required "platform.managedDomainBrokerUrl is required for managed TLS" $effective.platform.managedDomainBrokerUrl -}}
-{{- if empty $effective.secrets.managedDomainBrokerToken -}}
-{{- fail "secrets.managedDomainBrokerToken is required for managed TLS" -}}
+{{- if empty $effective.secrets.managedDomainAcmeDnsToken -}}
+{{- fail "secrets.managedDomainAcmeDnsToken is required for managed TLS" -}}
 {{- end -}}
-{{- $_ = required "platform.managedDomainAllocationId is required for managed TLS" $effective.platform.managedDomainAllocationId -}}
 {{- end -}}
 {{- end -}}
 {{- end }}

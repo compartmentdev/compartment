@@ -23,7 +23,7 @@ tests:
         systemToken: test-system-token
         tenantSecretsKek: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         variablesMasterKey: test-variables-master-key
-        managedDomainBrokerToken: ''
+        managedDomainAcmeDnsToken: ''
     asserts:
       - notFailedTemplate: {}
       - hasDocuments:
@@ -1292,7 +1292,7 @@ tests:
         managedDomainBrokerUrl: https://broker.example.test
       secrets:
         <<: *stableSecrets
-        managedDomainBrokerToken: retained-token
+        managedDomainAcmeDnsToken: retained-token
     asserts:
       - notFailedTemplate: {}
       - equal:
@@ -1300,7 +1300,7 @@ tests:
           value: https://broker.example.test
         template: configmap.yaml
       - equal:
-          path: stringData.managed-domain-broker-token
+          path: stringData.managed-domain-acme-dns-token
           value: retained-token
         template: install-state-secret.yaml
       - contains:
@@ -1310,7 +1310,7 @@ tests:
             valueFrom:
               secretKeyRef:
                 name: compartment-install-state
-                key: managed-domain-broker-token
+                key: managed-domain-acme-dns-token
           any: true
         template: api.yaml
         documentIndex: 1
@@ -1463,11 +1463,10 @@ tests:
         baseDomain: managed.compartment.run
         publicProtocol: https
         tlsMode: broker-dns01
-        managedDomainAllocationId: allocation-managed
         acmeEmail: admin@example.com
       secrets:
         <<: *stableSecrets
-        managedDomainBrokerToken: broker-token
+        managedDomainAcmeDnsToken: broker-token
     asserts:
       - notFailedTemplate: {}
       - equal:

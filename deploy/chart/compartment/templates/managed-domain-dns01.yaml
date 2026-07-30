@@ -155,14 +155,12 @@ spec:
               value: {{ $groupName | quote }}
             - name: BROKER_URL
               value: {{ $installState.effective.platform.managedDomainBrokerUrl | quote }}
-            - name: ALLOCATION_ID
-              value: {{ $installState.effective.platform.managedDomainAllocationId | quote }}
             - name: TOKEN_SECRET_NAMESPACE
               value: {{ .Release.Namespace | quote }}
             - name: TOKEN_SECRET_NAME
               value: {{ include "compartment.installStateSecretName" . | quote }}
             - name: TOKEN_SECRET_KEY
-              value: managed-domain-broker-token
+              value: managed-domain-acme-dns-token
           ports:
             - { name: https, containerPort: 8443 }
           readinessProbe:

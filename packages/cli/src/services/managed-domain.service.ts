@@ -1,64 +1,27 @@
 import { randomInt } from 'node:crypto';
-import {
-  managedDomainAllocationsPathname,
-  managedDomainTargetsPathname,
-  type ManagedDomainReservationResponse,
-  type ManagedDomainTargetBindingResponse,
-} from '@compartment/contracts';
-import {
-  bindManagedDomainTargets,
-  isCompartmentRequestError,
-  isRetryableTransportRequestError,
-  reserveManagedDomain,
-} from '@compartment/sdk';
+import { managedDomainAllocationPathname, type ManagedDomainAllocationResponse } from '@compartment/contracts';
+import { allocateManagedDomain, isCompartmentRequestError, isRetryableTransportRequestError } from '@compartment/sdk';
 import { waitForInstallDelay } from './kubernetes-install-delay.service';
 import type { KubernetesInstallProgressReporter } from './kubernetes-install-progress.types';
 import { createApiRequester } from './context.service';
-import type {
-  ManagedDomainBindingInput,
-  ManagedDomainRequestFailure,
-  ManagedDomainReservationInput,
-} from './managed-domain.service.types';
+import type { ManagedDomainAllocationInput, ManagedDomainRequestFailure } from './managed-domain.service.types';
 
 const brokerRequestTimeoutMs: number = 10_000;
 const brokerMaxAttempts: number = 4;
 const brokerRetryBaseMs: number = 1_000;
 const brokerRetryCapMs: number = 8_000;
 
-export async function reserveInstallManagedDomain(
-  input: ManagedDomainReservationInput,
+export async function allocateInstallManagedDomain(
+  input: ManagedDomainAllocationInput,
   progress?: KubernetesInstallProgressReporter,
-): Promise<ManagedDomainReservationResponse> {
-  const { brokerUrl, reservationToken, ...request } = input;
-  const requestUrl: string = resolveManagedDomainRequestUrl(brokerUrl, managedDomainAllocationsPathname);
+): Promise<ManagedDomainAllocationResponse> {
+  const { brokerUrl, ...request } = input;
+  const requestUrl: string = resolveManagedDomainRequestUrl(brokerUrl, managedDomainAllocationPathname);
   return await runManagedDomainRequest(
-    async (): Promise<ManagedDomainReservationResponse> =>
-      await reserveManagedDomain(createApiRequester(brokerUrl, brokerRequestTimeoutMs), reservationToken, request),
-    'reserve managed domain',
+    async (): Promise<ManagedDomainAllocationResponse> =>
+      await allocateManagedDomain(createApiRequester(brokerUrl, brokerRequestTimeoutMs), request),
+    'allocate managed domain',
     'POST',
-    requestUrl,
-    progress,
-  );
-}
-
-export async function bindInstallManagedDomainTargets(
-  input: ManagedDomainBindingInput,
-  progress?: KubernetesInstallProgressReporter,
-): Promise<ManagedDomainTargetBindingResponse> {
-  const requestUrl: string = resolveManagedDomainRequestUrl(
-    input.brokerUrl,
-    managedDomainTargetsPathname(input.allocationId),
-  );
-  return await runManagedDomainRequest(
-    async (): Promise<ManagedDomainTargetBindingResponse> =>
-      await bindManagedDomainTargets(
-        createApiRequester(input.brokerUrl, brokerRequestTimeoutMs),
-        input.allocationId,
-        input.scopedToken,
-        { targets: input.targets },
-      ),
-    'bind managed-domain targets',
-    'PUT',
     requestUrl,
     progress,
   );
@@ -67,7 +30,7 @@ export async function bindInstallManagedDomainTargets(
 async function runManagedDomainRequest<TResult>(
   request: () => Promise<TResult>,
   operation: string,
-  method: 'POST' | 'PUT',
+  method: 'POST',
   requestUrl: string,
   progress?: KubernetesInstallProgressReporter,
 ): Promise<TResult> {
@@ -100,7 +63,7 @@ function createManagedDomainError(
   error: Error,
   attempts: number,
   operation: string,
-  method: 'POST' | 'PUT',
+  method: 'POST',
   requestUrl: string,
 ): Error {
   if (isCompartmentRequestError(error)) {

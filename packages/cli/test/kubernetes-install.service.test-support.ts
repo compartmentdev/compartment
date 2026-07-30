@@ -75,8 +75,7 @@ export function retainedInstallStateSecretList(
           'ingress-endpoint-type': encodeSecretValue(state.ingressEndpoint?.type ?? ''),
           'ingress-endpoint-value': encodeSecretValue(state.ingressEndpoint?.value ?? ''),
           'ingress-targets-json': encodeSecretValue(JSON.stringify(state.ingressTargets)),
-          'managed-domain-allocation-id': encodeSecretValue(state.managedDomainAllocationId),
-          'managed-domain-broker-token': encodeSecretValue(state.managedDomainBrokerToken),
+          'managed-domain-acme-dns-token': encodeSecretValue(state.managedDomainAcmeDnsToken),
           'managed-domain-broker-url': encodeSecretValue(state.brokerUrl),
           'public-protocol': encodeSecretValue(state.publicProtocol),
           ...(includeRegistry
@@ -112,7 +111,6 @@ export function existingInstallValues(stage: 'foundation' | 'full', domainMode: 
       domainGeneration: stage === 'full' ? 1 : 0,
       domainMode,
       installationId: 'installation-123',
-      managedDomainAllocationId: domainMode === 'managed' ? 'allocation-1' : '',
       managedDomainBrokerUrl: domainMode === 'managed' ? 'https://broker.compartment.run' : '',
       publicProtocol: 'https',
       startupStage: stage,
@@ -124,7 +122,7 @@ export function existingInstallValues(stage: 'foundation' | 'full', domainMode: 
     },
     secrets: {
       installToken: 'existing-install-token',
-      managedDomainBrokerToken: domainMode === 'managed' ? 'allocation-token' : '',
+      managedDomainAcmeDnsToken: domainMode === 'managed' ? 'acme-dns-token' : '',
     },
   });
 }
@@ -164,7 +162,7 @@ export function existingLocalhostInstallValues(): string {
       hostname: 'registry.compartment.localhost',
       issuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'compartment-platform' },
     },
-    secrets: { installToken: 'existing-install-token', managedDomainBrokerToken: '' },
+    secrets: { installToken: 'existing-install-token', managedDomainAcmeDnsToken: '' },
   });
 }
 

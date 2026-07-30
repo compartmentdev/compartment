@@ -207,7 +207,7 @@ function createRuntimeStorageApiConfig(runtimeRoot: string): ApiConfig {
     edgeToken: 'test-edge-token',
     edgeUrl: 'http://127.0.0.1:9081',
     logLevel: 'silent',
-    managedDomainBrokerToken: null,
+    managedDomainAcmeDnsToken: null,
     managedDomainBrokerUrl: null,
     port: 9443,
     publicHttpPort: 9080,

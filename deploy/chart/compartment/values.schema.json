@@ -201,7 +201,6 @@
         "domainGeneration",
         "domainCommit",
         "installationId",
-        "managedDomainAllocationId",
         "domainMode",
         "baseDomain",
         "publicProtocol",
@@ -216,7 +215,6 @@
         "domainGeneration": { "type": "integer", "minimum": 0 },
         "domainCommit": { "type": "boolean" },
         "installationId": { "type": "string" },
-        "managedDomainAllocationId": { "type": "string" },
         "domainMode": { "type": "string", "enum": ["custom", "managed"] },
         "baseDomain": { "type": "string" },
         "publicProtocol": { "type": "string", "enum": ["http", "https"] },
@@ -289,7 +287,7 @@
       "type": "object",
       "properties": {
         "installToken": { "type": "string" },
-        "managedDomainBrokerToken": { "type": "string" },
+        "managedDomainAcmeDnsToken": { "type": "string" },
         "tenantSecretsKek": {
           "oneOf": [{ "const": "" }, { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }]
         },

@@ -15,4 +15,4 @@ secrets:
   sessionSecret: test-session-secret
   systemToken: test-system-token
   variablesMasterKey: test-variables-master-key
-  managedDomainBrokerToken: ''
+  managedDomainAcmeDnsToken: ''

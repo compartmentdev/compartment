@@ -1,13 +1,13 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { isIP } from 'node:net';
 import { dirname } from 'node:path';
 
-const allocationPath = '/v1/managed-domains/allocations';
+const managedDomainPath = '/v1/managed-domains';
+const acmeDnsTxtPath = '/v1/managed-domains/acme-dns/txt';
 const brokerBaseDomain = normalizeName(readRequiredEnvironment('MANAGED_DOMAIN_BASE_DOMAIN'));
 const challengeServerUrl = new URL(readRequiredEnvironment('MANAGED_DOMAIN_CHALLENGE_SERVER_URL'));
-const reservationToken = readOptionalEnvironment('MANAGED_DOMAIN_RESERVATION_TOKEN');
 const statePath = readRequiredEnvironment('MANAGED_DOMAIN_STATE_PATH');
 const port = Number(process.env.PORT ?? '3000');
 const state = await readPersistedState();
@@ -22,7 +22,6 @@ const server = createServer(async (request, response) => {
   }
 });
 
-await replayPersistedDesiredState();
 server.listen(port, '0.0.0.0', () => {
   process.stdout.write(`managed-domain broker fixture listening on :${port.toString()}\n`);
 });
@@ -37,166 +36,104 @@ async function handleRequest(request, response) {
     writeJson(response, 200, publicState());
     return;
   }
-  if (request.method === 'POST' && requestUrl.pathname === allocationPath) {
-    await reserveAllocation(request, response);
+  if (request.method === 'POST' && requestUrl.pathname === managedDomainPath) {
+    await allocateDomain(request, response);
     return;
   }
-  const match = requestUrl.pathname.match(
-    /^\/v1\/managed-domains\/allocations\/([^/]+)\/(targets|challenges|replay)$/u,
-  );
-  if (match !== null) {
-    const allocation = state.allocations.find((entry) => entry.allocationId === decodeURIComponent(match[1]));
-    if (!authorizeAllocation(request, response, allocation)) {
-      return;
-    }
-    if (match[2] === 'targets' && request.method === 'PUT') {
-      await bindTargets(request, response, allocation);
-      return;
-    }
-    if (match[2] === 'challenges' && (request.method === 'POST' || request.method === 'DELETE')) {
-      await updateChallenge(request, response, allocation);
-      return;
-    }
-    if (match[2] === 'replay' && request.method === 'POST') {
-      await replayAllocation(response, allocation);
-      return;
-    }
+  if ((request.method === 'PUT' || request.method === 'DELETE') && requestUrl.pathname === acmeDnsTxtPath) {
+    await updateTxtRecord(request, response);
+    return;
   }
   writeJson(response, 404, { error: 'not found' });
 }
 
-async function reserveAllocation(request, response) {
-  if (reservationToken !== undefined && request.headers.authorization !== `Bearer ${reservationToken}`) {
-    writeJson(response, 401, { error: 'reservation authorization is required' });
+async function allocateDomain(request, response) {
+  if (request.headers.authorization !== undefined) {
+    writeJson(response, 400, { error: 'managed-domain allocation must not use authorization' });
     return;
   }
   const body = await readJsonBody(request);
-  assertReservationRequest(body);
-  if (request.headers['idempotency-key'] !== body.installationId) {
-    writeJson(response, 400, { error: 'Idempotency-Key must match installationId' });
-    return;
-  }
+  assertAllocationRequest(body);
   const requestedLabel = normalizeRequestedLabel(body.requestedLabelSource);
-  let allocation = state.allocations.find((entry) => entry.installationId === body.installationId);
-  if (allocation !== undefined && allocation.requestedLabel !== requestedLabel) {
-    writeJson(response, 409, { error: 'installation already owns a different allocation' });
-    return;
-  }
-  const labelOwner = state.allocations.find((entry) => entry.requestedLabel === requestedLabel);
-  if (labelOwner !== undefined && labelOwner.installationId !== body.installationId) {
-    writeJson(response, 409, { error: 'requested label is already reserved' });
+  let allocation = state.managedDomains.find((entry) => entry.installationId === body.installationId);
+  if (
+    allocation !== undefined &&
+    (allocation.requestedLabel !== requestedLabel || allocation.publicIp !== body.publicIp)
+  ) {
+    writeJson(response, 409, { error: 'installation already owns a different managed domain' });
     return;
   }
   if (allocation === undefined) {
+    const ipVersion = isIP(body.publicIp);
     allocation = {
-      allocationId: randomUUID(),
+      acmeDnsToken: randomBytes(24).toString('base64url'),
       baseDomain: `${requestedLabel}.${brokerBaseDomain}`,
-      challenges: [],
+      txtRecords: [],
       installationId: body.installationId,
+      publicIp: body.publicIp,
       requestedLabel,
       requestedLabelSource: body.requestedLabelSource,
-      scopedToken: randomBytes(24).toString('base64url'),
-      targets: [],
+      targets: [{ type: ipVersion === 4 ? 'A' : 'AAAA', value: body.publicIp }],
     };
-    state.allocations.push(allocation);
-    state.audit.push({ allocationId: allocation.allocationId, event: 'allocation_reserved' });
+    state.managedDomains.push(allocation);
+    state.audit.push({ event: 'domain_allocated', installationId: body.installationId });
     await persistState();
+    await challengeRequest(ipVersion === 4 ? '/add-a' : '/add-aaaa', {
+      addresses: [body.publicIp],
+      host: allocation.baseDomain,
+    });
   }
-  writeJson(response, 201, {
-    allocationId: allocation.allocationId,
+  writeJson(response, 200, {
+    acmeDnsToken: allocation.acmeDnsToken,
     baseDomain: allocation.baseDomain,
-    scopedToken: allocation.scopedToken,
   });
 }
 
-async function bindTargets(request, response, allocation) {
-  const body = await readJsonBody(request);
-  if (!isRecord(body) || !Array.isArray(body.targets) || body.targets.length === 0) {
-    throw new Error('targets must be a non-empty array');
+async function updateTxtRecord(request, response) {
+  const allocation = state.managedDomains.find(
+    (entry) => request.headers.authorization === `Bearer ${entry.acmeDnsToken}`,
+  );
+  if (allocation === undefined) {
+    writeJson(response, 403, { error: 'invalid acme-dns token' });
+    return;
   }
-  const targets = body.targets.map(validateTarget);
-  allocation.targets = targets;
-  state.audit.push({ allocationId: allocation.allocationId, event: 'targets_bound', targets });
-  await persistState();
-  await clearTargetDns(allocation);
-  await applyTargetDns(allocation);
-  writeJson(response, 200, { allocationId: allocation.allocationId, targets });
-}
-
-async function updateChallenge(request, response, allocation) {
   const body = await readJsonBody(request);
   if (!isRecord(body) || !hasText(body.name) || !hasText(body.value)) {
     throw new Error('name and value are required');
   }
   const name = normalizeName(body.name);
   if (!name.startsWith('_acme-challenge.') || !name.endsWith(`.${normalizeName(allocation.baseDomain)}`)) {
-    writeJson(response, 403, { error: 'challenge name is outside the allocation zone' });
+    writeJson(response, 403, { error: 'challenge name is outside the allocated zone' });
     return;
   }
   const challenge = { name, value: body.value };
-  if (request.method === 'POST') {
-    if (!allocation.challenges.some((entry) => entry.name === name && entry.value === body.value)) {
-      allocation.challenges.push(challenge);
+  if (request.method === 'PUT') {
+    if (!allocation.txtRecords.some((entry) => entry.name === name && entry.value === body.value)) {
+      allocation.txtRecords.push(challenge);
     }
-    state.audit.push({ allocationId: allocation.allocationId, event: 'challenge_presented', ...challenge });
-    await persistState();
-    await updateChallengeDns('POST', challenge);
-    writeJson(response, 201, challenge);
-    return;
+    state.audit.push({ event: 'challenge_presented', ...challenge });
+    await challengeRequest('/set-txt', { host: `${name}.`, value: body.value });
+  } else {
+    allocation.txtRecords = allocation.txtRecords.filter(
+      (entry) => entry.name !== challenge.name || entry.value !== challenge.value,
+    );
+    state.audit.push({ event: 'challenge_cleaned', ...challenge });
+    await challengeRequest('/clear-txt', { host: `${name}.`, value: body.value });
   }
-  allocation.challenges = allocation.challenges.filter(
-    (entry) => entry.name !== challenge.name || entry.value !== challenge.value,
-  );
-  state.audit.push({ allocationId: allocation.allocationId, event: 'challenge_cleaned', ...challenge });
   await persistState();
-  await updateChallengeDns('DELETE', challenge);
   response.writeHead(204).end();
-}
-
-async function replayAllocation(response, allocation) {
-  await applyTargetDns(allocation);
-  for (const challenge of allocation.challenges) {
-    await updateChallengeDns('POST', challenge);
-  }
-  state.replayCount += 1;
-  state.audit.push({ allocationId: allocation.allocationId, event: 'desired_state_replayed' });
-  await persistState();
-  writeJson(response, 200, {
-    allocationId: allocation.allocationId,
-    challengeCount: allocation.challenges.length,
-    targetCount: allocation.targets.length,
-  });
-}
-
-async function replayPersistedDesiredState() {
-  for (const allocation of state.allocations) {
-    await applyTargetDns(allocation);
-    for (const challenge of allocation.challenges) {
-      await updateChallengeDns('POST', challenge);
-    }
-  }
-  if (state.allocations.length > 0) {
-    state.replayCount += 1;
-    state.audit.push({ event: 'startup_desired_state_replayed' });
-    await persistState();
-  }
 }
 
 async function readPersistedState() {
   try {
     const persisted = JSON.parse(await readFile(statePath, 'utf8'));
-    if (
-      !isRecord(persisted) ||
-      !Array.isArray(persisted.allocations) ||
-      !Array.isArray(persisted.audit) ||
-      !Number.isInteger(persisted.replayCount)
-    ) {
+    if (!isRecord(persisted) || !Array.isArray(persisted.managedDomains) || !Array.isArray(persisted.audit)) {
       throw new Error('Persisted managed-domain broker state is malformed.');
     }
     return persisted;
   } catch (error) {
     if (isRecord(error) && error.code === 'ENOENT') {
-      return { allocations: [], audit: [], replayCount: 0 };
+      return { managedDomains: [], audit: [] };
     }
     throw error;
   }
@@ -213,81 +150,8 @@ function persistState() {
   return persistenceQueue;
 }
 
-function authorizeAllocation(request, response, allocation) {
-  if (allocation === undefined) {
-    writeJson(response, 404, { error: 'allocation not found' });
-    return false;
-  }
-  if (request.headers.authorization !== `Bearer ${allocation.scopedToken}`) {
-    state.audit.push({
-      allocationId: allocation.allocationId,
-      event: 'authority_denied',
-      reason: 'allocation_token_mismatch',
-    });
-    writeJson(response, 403, { error: 'token is not authorized for this allocation' });
-    return false;
-  }
-  return true;
-}
-
-function validateTarget(target) {
-  if (!isRecord(target) || !['A', 'AAAA', 'hostname'].includes(target.type) || !hasText(target.value)) {
-    throw new Error('Each target requires type A, AAAA, or hostname and a value.');
-  }
-  if (target.type === 'A' && isIP(target.value) !== 4) {
-    throw new Error('Invalid A target.');
-  }
-  if (target.type === 'AAAA' && isIP(target.value) !== 6) {
-    throw new Error('Invalid AAAA target.');
-  }
-  if (target.type === 'hostname') {
-    const hostname = normalizeName(target.value);
-    if (
-      isIP(hostname) !== 0 ||
-      hostname.length > 253 ||
-      !hostname.split('.').every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u.test(label))
-    ) {
-      throw new Error('Hostname target must remain a valid hostname.');
-    }
-    return { type: target.type, value: hostname };
-  }
-  return { type: target.type, value: target.value };
-}
-
-async function applyTargetDns(allocation) {
-  const ipv4 = allocation.targets.filter((target) => target.type === 'A').map((target) => target.value);
-  const ipv6 = allocation.targets.filter((target) => target.type === 'AAAA').map((target) => target.value);
-  const hostname = allocation.targets.find((target) => target.type === 'hostname');
-  if (ipv4.length > 0) {
-    await challengeRequest('/add-a', { addresses: ipv4, host: `a.${allocation.baseDomain}` });
-  }
-  if (ipv6.length > 0) {
-    await challengeRequest('/add-aaaa', { addresses: ipv6, host: `aaaa.${allocation.baseDomain}` });
-  }
-  if (hostname !== undefined) {
-    await challengeRequest('/set-cname', {
-      host: `hostname.${allocation.baseDomain}`,
-      target: normalizeName(hostname.value),
-    });
-  }
-}
-
-async function clearTargetDns(allocation) {
-  await challengeRequest('/clear-a', { host: `a.${allocation.baseDomain}` });
-  await challengeRequest('/clear-aaaa', { host: `aaaa.${allocation.baseDomain}` });
-  await challengeRequest('/clear-cname', { host: `hostname.${allocation.baseDomain}` });
-}
-
-async function updateChallengeDns(method, record) {
-  await challengeRequest(method === 'POST' ? '/set-txt' : '/clear-txt', {
-    host: `${record.name}.`,
-    value: record.value,
-  });
-}
-
 async function challengeRequest(path, body) {
-  const endpoint = new URL(path, challengeServerUrl);
-  const response = await fetch(endpoint, {
+  const response = await fetch(new URL(path, challengeServerUrl), {
     body: JSON.stringify(body),
     headers: { 'content-type': 'application/json' },
     method: 'POST',
@@ -297,9 +161,15 @@ async function challengeRequest(path, body) {
   }
 }
 
-function assertReservationRequest(body) {
-  if (!isRecord(body) || !hasText(body.installationId) || !hasText(body.requestedLabelSource)) {
-    throw new Error('Invalid managed-domain reservation request.');
+function assertAllocationRequest(body) {
+  if (
+    !isRecord(body) ||
+    !hasText(body.installationId) ||
+    !hasText(body.publicIp) ||
+    isIP(body.publicIp) === 0 ||
+    !hasText(body.requestedLabelSource)
+  ) {
+    throw new Error('Invalid managed-domain allocation request.');
   }
 }
 
@@ -319,13 +189,12 @@ function normalizeRequestedLabel(value) {
 
 function publicState() {
   return {
-    allocations: state.allocations.map((allocation) => {
-      const publicAllocation = { ...allocation };
-      delete publicAllocation.scopedToken;
-      return publicAllocation;
+    managedDomains: state.managedDomains.map((entry) => {
+      const allocation = { ...entry };
+      delete allocation.acmeDnsToken;
+      return allocation;
     }),
     audit: state.audit,
-    replayCount: state.replayCount,
   };
 }
 
@@ -352,11 +221,6 @@ function readRequiredEnvironment(name) {
     throw new Error(`${name} is required.`);
   }
   return value;
-}
-
-function readOptionalEnvironment(name) {
-  const value = process.env[name];
-  return hasText(value) ? value : undefined;
 }
 
 function normalizeName(value) {

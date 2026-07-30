@@ -36,7 +36,7 @@ describe('readApiConfig', (): void => {
     expect(config.controlPlaneHost).toBe('console.localhost');
     expect(config.edgeToken).toBe('edge-secret');
     expect(config.edgeUrl).toBe('http://127.0.0.1:9081');
-    expect(config.managedDomainBrokerToken).toBeNull();
+    expect(config.managedDomainAcmeDnsToken).toBeNull();
     expect(config.managedDomainBrokerUrl).toBeNull();
     expect(config.publicProtocol).toBe('http');
     expect(config.publicHttpPort).toBe(9080);
@@ -97,7 +97,7 @@ describe('readApiConfig', (): void => {
       }),
     );
 
-    expect(config.managedDomainBrokerToken).toBe('broker-token');
+    expect(config.managedDomainAcmeDnsToken).toBe('broker-token');
     expect(config.managedDomainBrokerUrl).toBe('https://broker.compartment.run/');
   });
 

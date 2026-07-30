@@ -37,9 +37,9 @@ export const managedInstallReleaseName: string = 'managed-e2e';
 export const managedInstallValuesPath: string =
   process.env.COMPARTMENT_E2E_MANAGED_VALUES_PATH ?? '.compartment/platform-k3d-managed-e2e-values.yaml';
 
-interface ManagedDomainAllocationObservation {
-  readonly allocationId: string;
+interface ManagedDomainObservation {
   readonly installationId: string;
+  readonly publicIp: string;
   readonly requestedLabelSource: string;
   readonly targets: readonly ManagedDomainTargetObservation[];
 }
@@ -58,9 +58,8 @@ interface ManagedInstallHelmPlatformValues {
 }
 
 export interface ManagedDomainBrokerObservation {
-  readonly allocations: readonly ManagedDomainAllocationObservation[];
+  readonly managedDomains: readonly ManagedDomainObservation[];
   readonly audit: readonly ManagedDomainAuditObservation[];
-  readonly replayCount: number;
 }
 
 interface ManagedDomainTargetObservation {
@@ -396,7 +395,7 @@ export async function waitForManagedDomainBrokerObservation(): Promise<ManagedDo
     ]);
     if (result.exitCode === 0) {
       const observation: ManagedDomainBrokerObservation = readManagedDomainBrokerObservation(result.stdout);
-      if (observation.allocations.length === 1) {
+      if (observation.managedDomains.length === 1) {
         return observation;
       }
     } else {
@@ -405,7 +404,7 @@ export async function waitForManagedDomainBrokerObservation(): Promise<ManagedDo
     }
     if (Date.now() >= deadline) {
       const diagnostic: string = lastFailure !== '' ? ` Last Kubernetes API error: ${lastFailure}` : '';
-      throw new Error(`Timed out waiting for managed-domain allocation.${diagnostic}`);
+      throw new Error(`Timed out waiting for managed domain.${diagnostic}`);
     }
     await delay(500);
   }

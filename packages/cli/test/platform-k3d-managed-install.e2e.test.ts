@@ -66,7 +66,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
   }, fixtureTimeoutMs);
 
   it(
-    'installs the default managed domain without reservation environment, then accepts a fresh login',
+    'installs the default managed domain without user authorization, then accepts a fresh login',
     async (): Promise<void> => {
       const suffix: string = randomUUID().replaceAll('-', '').slice(0, 12);
       const ownerEmail: string = `managed-e2e-${suffix}@compartment.test`;
@@ -101,7 +101,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       expect(freshIdentity.currentOrganization?.slug).toBe(organizationSlug);
 
       const broker: ManagedDomainBrokerObservation = await waitForManagedDomainBrokerObservation();
-      expect(broker.allocations[0]).toMatchObject({
+      expect(broker.managedDomains[0]).toMatchObject({
         requestedLabelSource: organizationSlug,
         targets: [{ type: 'A', value: managedIngressIpv4 }],
       });
@@ -132,7 +132,6 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
 async function createFreshCli(adminPassword?: string): Promise<SelfHostedUserSetupCli> {
   const homeDirectory: string = await createTemporaryDirectory();
   const env: NodeJS.ProcessEnv = buildSelfHostedUserSetupClientEnv(homeDirectory);
-  delete env.COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN;
   env.COMPARTMENT_MANAGED_DOMAIN_BROKER_URL = managedInstallBrokerUrl;
   env.NODE_EXTRA_CA_CERTS = managedInstallCertificateAuthorityPath;
   if (adminPassword !== undefined) {
