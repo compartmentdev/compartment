@@ -33,6 +33,7 @@ export function createSsoOidcApiConfig(): ApiConfig {
     systemToken: 'system-token',
     throttle: defaultApiAuthThrottleConfig,
     trustedOutboundHosts: [],
+    tenantSecretsKek: Buffer.from('11'.repeat(32), 'hex'),
     variablesMasterKey: Buffer.from('11'.repeat(32), 'hex'),
   };
 }

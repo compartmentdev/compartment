@@ -1,5 +1,5 @@
 import type { ResolvedCompartmentServiceBuildConfig } from '@compartment/contracts';
-import { decryptVariableValueFromStorage } from '../lib/variables-crypto';
+import { decryptTenantVariableValueFromStorage } from '../lib/variables-crypto';
 import { createInvalidDeployConfigError } from '../errors/api-business-error';
 import { getApiConfig } from '../runtime/runtime-access';
 import {
@@ -145,13 +145,13 @@ function createBuildEnvSnapshotValue(variable: StoredEffectiveVariable): BuildEn
 
 function decryptBuildEnvSnapshot(buildEnvSnapshot: BuildEnvSnapshot): BuildEnvMap {
   const buildEnv: BuildEnvMap = {};
-  const masterKey: Buffer = getApiConfig().variablesMasterKey;
 
   for (const [keyName, snapshotValue] of Object.entries(buildEnvSnapshot)) {
-    buildEnv[keyName] = decryptVariableValueFromStorage(
+    buildEnv[keyName] = decryptTenantVariableValueFromStorage(
       snapshotValue.valueCiphertext,
       snapshotValue.encryptionKeyId,
-      masterKey,
+      getApiConfig().tenantSecretsKek,
+      getApiConfig().tenantSecretsPreviousKek,
     );
   }
 

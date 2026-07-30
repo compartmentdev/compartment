@@ -79,6 +79,7 @@ async function runWorkerCycle(
       config.runtimeControlToken,
       config.artifactRegistry,
       logger,
+      config.tenantSecretsKek,
     );
     state.hasReachedApi = true;
     if (!claimedWork) {

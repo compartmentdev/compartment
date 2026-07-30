@@ -12,6 +12,8 @@ import type { RegistryCredential } from '../registry-credentials.types';
 import { appendDeploymentLogLineSafely, buildDeploymentEventContext } from './worker-deployment-event.service';
 import type { WorkerDeploymentEventContext } from './worker-deployment-event.types';
 import type { PreparedWorkerSource } from './worker-source.service.types';
+import { decryptTenantSecretEnvironment } from '../tenant-secret-environment';
+import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
 
 class WorkerDockerBuildImageInput implements DockerBuildImageInput {
   appPath?: string | undefined;
@@ -42,10 +44,11 @@ interface BuildDockerImageInputRequest {
   preparedSource: PreparedWorkerSource;
   pushImageTag: string;
   request: CompartmentRequester;
+  tenantSecretsKek: TenantSecretsKeyring;
 }
 
 export function buildDockerImageInput(input: BuildDockerImageInputRequest): DockerBuildImageInput {
-  const buildEnv: Record<string, string> | undefined = buildSourceBuildEnv(input.deployment);
+  const buildEnv: Record<string, string> | undefined = buildSourceBuildEnv(input.deployment, input.tenantSecretsKek);
 
   return new WorkerDockerBuildImageInput({
     ...readPreparedSourceBuildInput(input.preparedSource, input.deployment),
@@ -102,8 +105,11 @@ function readPreparedSourceBuildInput(
     : (preparedSource.sourceBuildInput ?? {});
 }
 
-function buildSourceBuildEnv(deployment: WorkerClaimedDeployment): Record<string, string> | undefined {
-  const buildEnv: Record<string, string> = { ...deployment.buildEnv };
+function buildSourceBuildEnv(
+  deployment: WorkerClaimedDeployment,
+  tenantSecretsKek: TenantSecretsKeyring,
+): Record<string, string> | undefined {
+  const buildEnv: Record<string, string> = decryptTenantSecretEnvironment(deployment.buildEnv, tenantSecretsKek);
   return Object.keys(buildEnv).length > 0 ? buildEnv : undefined;
 }
 

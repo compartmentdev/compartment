@@ -2,6 +2,7 @@ import type {
   DeploymentReconcileProjection,
   DeploymentReconcileTarget,
   ResolvedOptionalServiceReadinessConfig,
+  TenantSecretEnvironment,
   WorkerObserveDeploymentReconcileRequest,
   WorkerPrepareDeploymentReconcileRequest,
 } from '@compartment/contracts';
@@ -28,11 +29,12 @@ import { parseResolvedRun } from './deployment-run.service';
 import { archivedProjectDeploymentFailureMessage, finalizeFailedDeployment } from './deployment-failure.service';
 import { planRollbackRetentionCleanup } from './deployment-retention.service';
 import type { DeploymentReconcileObservationResult } from './deployment-reconcile.service.types';
+import { encryptTenantSecretEnvironment } from './tenant-secret-environment.service';
 
 const defaultTerminationGracePeriodSeconds: number = 45;
 
 interface ProjectionRuntime {
-  env: Record<string, string>;
+  env: TenantSecretEnvironment;
   terminationGracePeriodSeconds: number;
 }
 
@@ -155,7 +157,7 @@ function projectionRuntime(plan: DeploymentRuntimePlan, primaryPort: number | un
     throw new Error('Deployment must resolve at least one application port.');
   }
   return {
-    env: { ...plan.runtimeEnv, PORT: primaryPort.toString() },
+    env: encryptTenantSecretEnvironment({ ...plan.runtimeEnv, PORT: primaryPort.toString() }),
     terminationGracePeriodSeconds: readTerminationGracePeriod(
       plan.runtimeEnv.COMPARTMENT_TERMINATION_GRACE_PERIOD_SECONDS,
     ),

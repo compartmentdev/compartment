@@ -1,7 +1,7 @@
 import type { VariableSensitivity } from '@compartment/contracts';
 import { createVariableCollisionError } from '../errors/api-business-error';
 import { createId } from '../lib/tokens';
-import { encryptVariableValueForStorage, type EncryptedVariableValue } from '../lib/variables-crypto';
+import { encryptTenantVariableValueForStorage, type EncryptedVariableValue } from '../lib/variables-crypto';
 import type {
   CaptureVariableGroupInput as CaptureVariableGroupQueryInput,
   CreateVariableGroupInput as CreateVariableGroupQueryInput,
@@ -54,7 +54,11 @@ export function encryptCapturedVariableGroupValues(
 ): EncryptedVariableValue[] {
   return variables.map(
     (variable: CapturedVariableValue): EncryptedVariableValue =>
-      encryptVariableValueForStorage(variable.value, getApiConfig().variablesMasterKey),
+      encryptTenantVariableValueForStorage(
+        variable.value,
+        getApiConfig().tenantSecretsKek,
+        getApiConfig().variablesMasterKey,
+      ),
   );
 }
 

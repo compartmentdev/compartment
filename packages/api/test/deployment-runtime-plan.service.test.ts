@@ -96,6 +96,7 @@ const apiConfig: ApiConfig = {
   systemApiSocketPath: '/tmp/compartment/compartment-runtime-plan-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
+  tenantSecretsKek: variablesMasterKey,
   variablesMasterKey,
   runtimeControlToken: 'worker-token',
 };

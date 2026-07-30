@@ -4,10 +4,17 @@ import type {
   WorkerPersistProductJobIntentResponse,
   WorkerPersistProductJobResultRequest,
 } from '@compartment/contracts';
-import type { KubeJobResult, KubeJobSpec, KubeObservedManifest, KubeRuntime } from '@compartment/kube-runtime';
+import type {
+  KubeJobResult,
+  KubeJobSpec,
+  KubeObservedManifest,
+  KubeRuntime,
+  KubeWorkloadScheduling,
+} from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { executeProductJob } from '../src/services/worker-product-job.service';
+import { executeProductJob as executeProductJobWithKek } from '../src/services/worker-product-job.service';
+import { encryptTestTenantEnvironment, testTenantSecretsKek } from './tenant-secret-test.fixtures';
 
 interface ProductJobSdkMocks {
   finalize: Mock<
@@ -22,6 +29,15 @@ interface ProductJobSdkMocks {
       result: WorkerPersistProductJobResultRequest,
     ) => Promise<WorkerPersistProductJobResultRequest>
   >;
+}
+
+async function executeProductJob(
+  request: CompartmentRequester,
+  runtime: KubeRuntime,
+  intent: ProductJobIntent,
+  scheduling?: KubeWorkloadScheduling,
+): Promise<WorkerPersistProductJobResultRequest> {
+  return await executeProductJobWithKek(request, runtime, intent, testTenantSecretsKek, scheduling);
 }
 
 const mocks: ProductJobSdkMocks = vi.hoisted(
@@ -115,6 +131,29 @@ describe('executeProductJob', (): void => {
     );
     expect((result.finalize as Mock).mock.calls).toHaveLength(1);
     expect(durable).toBe(true);
+  });
+
+  it('redacts projected tenant secret values before persisting Job logs', async (): Promise<void> => {
+    const runtime: KubeRuntime & { runJob: Mock } = runtimeWithResult({
+      ...successResult(),
+      logs: 'dockerfile connecting to postgres://internal on port 8080\n',
+    });
+
+    const result: WorkerPersistProductJobResultRequest = await executeProductJob(
+      requester(),
+      runtime,
+      releaseIntent({
+        COMPARTMENT_SERVICE: 'dockerfile',
+        DATABASE_URL: 'postgres://internal',
+        PORT: '8080',
+      }),
+    );
+
+    expect(result.logs).toBe('dockerfile connecting to [REDACTED] on port 8080\n');
+    expect(mocks.persistResult).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ logs: 'dockerfile connecting to [REDACTED] on port 8080\n' }),
+    );
   });
 
   it('adds configured tenant scheduling to product Jobs', async (): Promise<void> => {
@@ -277,11 +316,13 @@ describe('executeProductJob', (): void => {
   });
 });
 
-function releaseIntent(): ProductJobIntent {
+function releaseIntent(
+  environment: Readonly<Record<string, string>> = { DATABASE_URL: 'postgres://internal' },
+): ProductJobIntent {
   return {
     command: ['bin/release'],
     deploymentId: 'dep-01jz',
-    env: { DATABASE_URL: 'postgres://internal' },
+    env: encryptTestTenantEnvironment(environment),
     image: 'registry.example/release@sha256:abc',
     imagePullSecretId: 'pull-01jz',
     jobClass: 'release',

@@ -1,9 +1,11 @@
+import type { DeploymentReconcileTarget } from '@compartment/contracts';
 import type { DeploymentReconcilePair } from '../src/queries/deployment-reconcile.query.types';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
   claimDeploymentReconcileTarget,
   observeDeploymentReconcile,
 } from '../src/services/deployment-reconcile.service';
+import { decryptTenantVariableValueFromStorage } from '../src/lib/variables-crypto';
 
 interface ReconcileMocks {
   buildPlan: Mock;
@@ -47,6 +49,13 @@ vi.mock('../src/services/app-access-edge.service', (): object => ({
   synchronizeEdgeAppAccessState: mocks.synchronizeEdge,
 }));
 
+vi.mock('../src/runtime/runtime-access', (): object => ({
+  getApiConfig: (): object => ({
+    tenantSecretsKek: Buffer.alloc(32, 1),
+    variablesMasterKey: Buffer.alloc(32, 2),
+  }),
+}));
+
 describe('deployment reconcile projection', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks();
@@ -82,13 +91,22 @@ describe('deployment reconcile projection', (): void => {
       runtimeNetwork: { requiresResourceNetwork: false },
     });
 
-    await expect(claimDeploymentReconcileTarget()).resolves.toMatchObject({
+    const target: DeploymentReconcileTarget | null = await claimDeploymentReconcileTarget();
+    expect(target).toMatchObject({
       candidate: {
         containerPorts: [8080, 9090],
         readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
         runCommand: 'npm run start:override',
       },
     });
+    expect(JSON.stringify(target?.candidate.env)).not.toContain('8080');
+    expect(
+      decryptTenantVariableValueFromStorage(
+        target!.candidate.env.PORT!.valueCiphertext,
+        target!.candidate.env.PORT!.encryptionKeyId,
+        Buffer.alloc(32, 1),
+      ),
+    ).toBe('8080');
   });
 });
 

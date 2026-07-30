@@ -34,6 +34,7 @@ spec:
         {{- include "compartment.componentLabels" (dict "root" . "component" "api") | nindent 8 }}
       annotations:
         {{- include "compartment.apiDomainRolloutAnnotations" . | nindent 8 }}
+        compartment.dev/tenant-kek-values: {{ printf "%s:%s" .Values.secrets.tenantSecretsKek (.Values.secrets.tenantSecretsPreviousKek | default "") | sha256sum | quote }}
     spec:
       priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
       {{- include "compartment.nodePool" .Values.nodePools.system | nindent 6 }}
@@ -85,6 +86,12 @@ spec:
             - name: COMPARTMENT_SYSTEM_TOKEN
               valueFrom:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: system-token}
+            - name: COMPARTMENT_TENANT_SECRETS_KEK
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: tenant-secrets-kek}
+            - name: COMPARTMENT_TENANT_SECRETS_PREVIOUS_KEK
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: tenant-secrets-previous-kek}
             - name: COMPARTMENT_VARIABLES_MASTER_KEY
               valueFrom:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: variables-master-key}

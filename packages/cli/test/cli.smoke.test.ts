@@ -714,6 +714,7 @@ function buildApiEnvironment(
     COMPARTMENT_SYSTEM_API_SOCKET: join(tempDirectory, 's', `sys-${apiPort.toString()}.sock`),
     COMPARTMENT_SYSTEM_TOKEN: cliTestSystemToken,
     COMPARTMENT_VARIABLES_MASTER_KEY: readCliTestVariablesMasterKeyHex(),
+    COMPARTMENT_TENANT_SECRETS_KEK: readCliTestVariablesMasterKeyHex(),
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: cliTestRuntimeControlToken,
     TMPDIR: tempDirectory,
   };

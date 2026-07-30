@@ -12,6 +12,7 @@ import {
 } from '@compartment/sdk';
 import type { Logger } from 'pino';
 import type { WorkerArtifactRegistryConfig } from '../worker-artifact-registry.types';
+import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
 import { buildReleaseImageFromSource } from './worker-build.service';
 import { appendDeploymentStepEventSafely, buildDeploymentEventContext } from './worker-deployment-event.service';
 import { readWorkerFailureMessage } from './worker-failure-message.service';
@@ -30,6 +31,7 @@ export async function runWorkerIteration(
   internalToken: string,
   artifactRegistry: WorkerArtifactRegistryConfig,
   logger: Logger<never, boolean>,
+  tenantSecretsKek: TenantSecretsKeyring,
 ): Promise<boolean> {
   const requesterInput: WorkerRequesterInput = { apiUrl, internalToken };
   const request: CompartmentRequester = createCompartmentRequester(requesterInput);
@@ -39,7 +41,7 @@ export async function runWorkerIteration(
   return (
     (await runGitSourceResolutionIteration(request, rawRequest)) ||
     (await runScheduledResourceOperationIteration(request, logger)) ||
-    (await handleClaimedDeploymentOrContinue(request, releaseArchiveRequest, artifactRegistry)) ||
+    (await handleClaimedDeploymentOrContinue(request, releaseArchiveRequest, artifactRegistry, tenantSecretsKek)) ||
     (await runGitSourceSyncIteration(request))
   );
 }
@@ -48,6 +50,7 @@ async function handleClaimedDeploymentOrContinue(
   request: CompartmentRequester,
   releaseArchiveRequest: CompartmentBinaryRequester,
   artifactRegistry: WorkerArtifactRegistryConfig,
+  tenantSecretsKek: TenantSecretsKeyring,
 ): Promise<boolean> {
   const claimed: WorkerClaimDeploymentResponse = await claimNextDeployment(request);
   if (claimed.deployment === null) {
@@ -59,6 +62,7 @@ async function handleClaimedDeploymentOrContinue(
     deployment: claimed.deployment,
     releaseArchiveRequest,
     request,
+    tenantSecretsKek,
   });
 }
 
@@ -81,6 +85,7 @@ async function attemptClaimedDeploymentCompletion(
       input.releaseArchiveRequest,
       input.deployment,
       input.artifactRegistry,
+      input.tenantSecretsKek,
     );
     await handoffBuiltDeploymentToKube(input.request, input.deployment, imageRef);
     return { imageRef };

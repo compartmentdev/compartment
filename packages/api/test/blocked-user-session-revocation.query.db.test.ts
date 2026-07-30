@@ -75,6 +75,7 @@ const apiConfig: ApiConfig = {
   systemToken: 'test-system-token',
   throttle: defaultApiAuthThrottleConfig,
   trustedOutboundHosts: [],
+  tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
   variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
 };
 const pool: Pool = createDatabasePool(databaseUrl);

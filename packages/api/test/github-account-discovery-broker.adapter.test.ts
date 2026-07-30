@@ -156,6 +156,7 @@ function createApiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
   return {
     managedDomainBrokerToken: 'broker-token',
     managedDomainBrokerUrl: 'https://broker.example/',
+    tenantSecretsKek: Buffer.from('11'.repeat(32), 'hex'),
     variablesMasterKey: Buffer.from('11'.repeat(32), 'hex'),
     ...overrides,
   } as ApiConfig;

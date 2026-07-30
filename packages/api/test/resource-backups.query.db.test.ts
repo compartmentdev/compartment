@@ -99,6 +99,7 @@ const apiConfig: ApiConfig = {
   systemApiSocketPath: '/tmp/compartment/compartment-test-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
+  tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
   variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
 };
 const pool: Pool = createDatabasePool(databaseUrl);

@@ -152,6 +152,7 @@ const apiConfig: ApiConfig = {
     },
   },
   trustedOutboundHosts: [],
+  tenantSecretsKek: Buffer.from('11'.repeat(32), 'hex'),
   variablesMasterKey: Buffer.from('11'.repeat(32), 'hex'),
   runtimeControlToken: 'test-runtime-control-token',
 };

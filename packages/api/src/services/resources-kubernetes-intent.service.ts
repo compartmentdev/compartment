@@ -4,6 +4,7 @@ import type { ResourceRuntimeEnvValue } from './resource-operation.types';
 import type { ResolvedResourceIntent } from './resources.service.helpers';
 import type { ResourceEnvironmentContext } from './resources.service.types';
 import type { KubernetesResourceVolumeSource } from './resources-kubernetes-reconcile.service.types';
+import { encryptTenantSecretEnvironment } from './tenant-secret-environment.service';
 
 export function buildKubernetesResourceIntent(
   context: ResourceEnvironmentContext,
@@ -15,7 +16,7 @@ export function buildKubernetesResourceIntent(
     command: intent.command,
     deleteData: false,
     environmentId: context.environment.id,
-    env: Object.fromEntries(intent.runtimeEnv.map(buildRuntimeEnvEntry)),
+    env: encryptTenantSecretEnvironment(Object.fromEntries(intent.runtimeEnv.map(buildRuntimeEnvEntry))),
     image: intent.image,
     namespaceId: context.project.id,
     operation: 'reconcile',

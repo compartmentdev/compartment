@@ -5,6 +5,7 @@ import {
   type ResolvedOptionalServiceReadinessConfig,
 } from './service-readiness.contract';
 import { projectNetworkPolicyPortsSchema, type ProjectNetworkPolicyPorts } from './internal-network-policy.contract';
+import { tenantSecretEnvironmentSchema, type TenantSecretEnvironment } from './internal-tenant-secret.contract';
 
 export type DeploymentReconcileState = 'desired' | 'pending' | 'active' | 'stopping' | 'stopped';
 export type DeploymentReconcileObservation = 'pending' | 'ready' | 'failed' | 'stopped';
@@ -14,7 +15,7 @@ export interface DeploymentReconcileProjection {
   deploymentId: string;
   environmentId: string;
   environmentName: string;
-  env: Record<string, string>;
+  env: TenantSecretEnvironment;
   image: string;
   imagePullSecretId: string;
   namespaceId: string;
@@ -87,7 +88,7 @@ const deploymentReconcileProjectionSchema: ContractSchema<DeploymentReconcilePro
     deploymentId: z.string().min(1),
     environmentId: z.string().min(1),
     environmentName: z.string().min(1),
-    env: z.record(z.string(), z.string()),
+    env: tenantSecretEnvironmentSchema,
     image: z.string().min(1),
     imagePullSecretId: z.string().min(1),
     namespaceId: z.string().min(1),

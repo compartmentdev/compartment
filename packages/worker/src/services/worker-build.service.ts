@@ -18,12 +18,14 @@ import { scheduleWorkerBuild } from './worker-build-scheduler.service';
 import { prepareServiceDirectory } from './worker-source.service';
 import type { PreparedWorkerSource, WorkerSourceServiceInput } from './worker-source.service.types';
 import { runTrackedDeploymentStep } from './worker-step-runner.service';
+import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
 
 interface ReleaseImageBuildContext {
   artifactRegistry: WorkerArtifactRegistryConfig;
   deployment: WorkerClaimedDeployment;
   eventContext: WorkerDeploymentEventContext;
   request: CompartmentRequester;
+  tenantSecretsKek: TenantSecretsKeyring;
 }
 
 interface PreparedBuildInput {
@@ -37,6 +39,7 @@ export async function buildReleaseImageFromSource(
   archiveRequest: CompartmentBinaryRequester,
   deployment: WorkerClaimedDeployment,
   artifactRegistry: WorkerArtifactRegistryConfig,
+  tenantSecretsKek: TenantSecretsKeyring,
 ): Promise<string> {
   const eventContext: WorkerDeploymentEventContext = buildDeploymentEventContext(request, deployment);
   await appendClaimedDeploymentEvent(eventContext);
@@ -46,7 +49,13 @@ export async function buildReleaseImageFromSource(
     return existingImageRef;
   }
 
-  return await buildFreshReleaseImage(archiveRequest, { artifactRegistry, deployment, eventContext, request });
+  return await buildFreshReleaseImage(archiveRequest, {
+    artifactRegistry,
+    deployment,
+    eventContext,
+    request,
+    tenantSecretsKek,
+  });
 }
 
 async function buildFreshReleaseImage(
@@ -110,6 +119,7 @@ async function buildPreparedSourceImage(input: ReleaseImageBuildContext, build: 
               preparedSource: build.preparedSource,
               pushImageTag: build.pushImageTag,
               request: input.request,
+              tenantSecretsKek: input.tenantSecretsKek,
             }),
           ),
       ),

@@ -1,10 +1,17 @@
-import type { DeploymentReconcileProjection, ProductJobIntent } from '@compartment/contracts';
+import type {
+  DeploymentArtifactCleanupTarget,
+  DeploymentReconcileProjection,
+  DeploymentReconcileTarget,
+  ProductJobIntent,
+  WorkerObserveDeploymentReconcileRequest,
+} from '@compartment/contracts';
 import {
-  projectApplicationManifests,
+  kubeNamespaceName,
   type KubeDeploymentManifest,
   type KubeManifest,
   type KubeRolloutStatus,
 } from '@compartment/kube-runtime';
+import { observeDeploymentReconcile, type CompartmentRequester } from '@compartment/sdk';
 
 export function releaseIntent(projection: DeploymentReconcileProjection, timeoutMs: number): ProductJobIntent | null {
   if (projection.releaseCommand === null) {
@@ -17,14 +24,10 @@ export function releaseIntent(projection: DeploymentReconcileProjection, timeout
     image: projection.image,
     imagePullSecretId: projection.imagePullSecretId,
     jobClass: 'release',
-    namespace: requiredDeploymentMetadata(deploymentManifest(projection), 'namespace'),
+    namespace: kubeNamespaceName(projection.namespaceId),
     projectId: projection.projectId,
     timeoutMs,
   };
-}
-
-export function deploymentManifest(projection: DeploymentReconcileProjection): KubeDeploymentManifest {
-  return deploymentFromObjects(projectApplicationManifests(projection));
 }
 
 export function deploymentFromObjects(objects: KubeManifest[]): KubeDeploymentManifest {
@@ -37,16 +40,24 @@ export function deploymentFromObjects(objects: KubeManifest[]): KubeDeploymentMa
   return deployment;
 }
 
-function requiredDeploymentMetadata(deployment: KubeDeploymentManifest, key: 'name' | 'namespace'): string {
-  const value: string | undefined = deployment.metadata?.[key];
-  if (value === undefined || value === '') {
-    throw new Error(`Projected Kubernetes Deployment has no ${key}.`);
-  }
-  return value;
-}
-
 export function rolloutFailureMessage(status: Exclude<KubeRolloutStatus, 'progressing' | 'ready'>): string {
   return status === 'progress-deadline-exceeded'
     ? 'Kubernetes rollout exceeded its progress deadline.'
     : 'Kubernetes rollout timed out.';
+}
+
+export async function persistDeploymentObservation(
+  request: CompartmentRequester,
+  target: DeploymentReconcileTarget,
+  observation: 'pending' | 'ready' | 'failed' | 'stopped',
+  message?: string,
+): Promise<DeploymentArtifactCleanupTarget[]> {
+  const input: WorkerObserveDeploymentReconcileRequest = {
+    deploymentId: target.candidate.deploymentId,
+    ...(message === undefined ? {} : { message }),
+    observation,
+    observedAt: new Date().toISOString(),
+    revision: target.revision,
+  };
+  return (await observeDeploymentReconcile(request, input)).cleanupArtifacts;
 }

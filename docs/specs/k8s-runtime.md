@@ -14,6 +14,11 @@ Kubernetes owns live state. API owns persistence and transactions, worker owns
 asynchronous deployment orchestration, and `kube-runtime` owns Kubernetes
 transport, observation, projections, and reconciliation decisions.
 
+Compartment encrypts tenant variable values in PostgreSQL and decrypts them only for an authorized read or Kubernetes
+Secret projection. The resulting Kubernetes Secret still resides in the cluster's etcd. BYO cluster operators should
+enable Kubernetes API server encryption at rest for Secrets; Compartment does not configure or manage the cluster's
+etcd encryption provider.
+
 ## Runtime boundary
 
 The package exposes seven Kubernetes transport primitives. Only `apply`,

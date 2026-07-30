@@ -394,7 +394,12 @@ describe('product Job persistence', (): void => {
   it('persists resource-operation PVC mounts across claim and recovery', async (): Promise<void> => {
     const intent: ProductJobIntent = {
       command: ['sh', '-c', 'pg_dump'],
-      env: { COMPARTMENT_BACKUP_DIR: '/backup' },
+      env: {
+        COMPARTMENT_BACKUP_DIR: {
+          encryptionKeyId: 'tenant-kek-sha256:test',
+          valueCiphertext: '{"version":1}',
+        },
+      },
       image: 'postgres@sha256:abc',
       jobClass: 'resource-operation',
       namespace: 'cpt-project',
@@ -604,7 +609,9 @@ function releaseIntent(): ProductJobIntent {
   return {
     command: ['bin/release'],
     deploymentId: 'dep_job',
-    env: { RELEASE: '1' },
+    env: {
+      RELEASE: { encryptionKeyId: 'tenant-kek-sha256:test', valueCiphertext: '{"version":1}' },
+    },
     image: 'registry.example/release@sha256:abc',
     imagePullSecretId: 'pull-project',
     jobClass: 'release',
@@ -678,6 +685,7 @@ function buildApiConfig(url: string): ApiConfig {
     systemToken: 'system',
     throttle: defaultApiAuthThrottleConfig,
     trustedOutboundHosts: [],
+    tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
     variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
   };
 }

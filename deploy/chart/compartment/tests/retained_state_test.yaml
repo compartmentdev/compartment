@@ -19,6 +19,13 @@ kubernetesProvider:
     - apiVersion: v1
       kind: Secret
       metadata:
+        name: compartment-compartment
+        namespace: default
+      data:
+        tenant-secrets-kek: MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMQ==
+    - apiVersion: v1
+      kind: Secret
+      metadata:
         name: compartment-install-state
         namespace: default
       data:
@@ -95,6 +102,62 @@ kubernetesProvider:
       data:
         ingress-targets-json: W10=
 tests:
+  - it: retains the legacy variables key during the first tenant KEK migration
+    set:
+      secrets:
+        productLogIngestToken: test-product-log-token
+        registryCredentialSigningKey: test-registry-signing-key-with-at-least-32-characters
+        tenantSecretsKek: '2222222222222222222222222222222222222222222222222222222222222222'
+        variablesMasterKey: '1111111111111111111111111111111111111111111111111111111111111111'
+    asserts:
+      - equal:
+          path: stringData.tenant-secrets-previous-kek
+          value: '1111111111111111111111111111111111111111111111111111111111111111'
+        template: secret.yaml
+
+  - it: preserves the previous tenant KEK while rendering the rotation migration
+    set:
+      secrets:
+        productLogIngestToken: test-product-log-token
+        registryCredentialSigningKey: test-registry-signing-key-with-at-least-32-characters
+        tenantSecretsKek: '2222222222222222222222222222222222222222222222222222222222222222'
+    asserts:
+      - equal:
+          path: stringData.tenant-secrets-kek
+          value: '2222222222222222222222222222222222222222222222222222222222222222'
+        template: secret.yaml
+      - equal:
+          path: stringData.tenant-secrets-previous-kek
+          value: '1111111111111111111111111111111111111111111111111111111111111111'
+        template: secret.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_TENANT_SECRETS_KEK
+            valueFrom:
+              secretKeyRef:
+                name: compartment-compartment
+                key: tenant-secrets-kek
+        template: api-migrate.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_TENANT_SECRETS_PREVIOUS_KEK
+            valueFrom:
+              secretKeyRef:
+                name: compartment-compartment
+                key: tenant-secrets-previous-kek
+        template: api-migrate.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_VARIABLES_MASTER_KEY
+            valueFrom:
+              secretKeyRef:
+                name: compartment-compartment
+                key: variables-master-key
+        template: api-migrate.yaml
+
   - it: resolves every consumer from the retained Secret without mutating Values
     set:
       platform:

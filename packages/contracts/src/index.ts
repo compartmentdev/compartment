@@ -62,6 +62,7 @@ export * from './index.deployments';
 export { logTailLineLimit } from './contracts/logs.contract';
 export * from './index.resources';
 export * from './contracts/internal-resource-reconcile.contract';
+export { type TenantSecretEnvelope, type TenantSecretEnvironment } from './contracts/internal-tenant-secret.contract';
 export * from './contracts/internal-custom-domain-reconcile.contract';
 export * from './contracts/internal-network-policy.contract';
 export {

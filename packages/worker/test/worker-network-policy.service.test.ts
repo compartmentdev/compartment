@@ -15,6 +15,8 @@ import {
   includeApplicationNetworkPolicyPorts,
   projectProjectNetworkPolicyManifests,
 } from '../src/services/worker-network-policy.service';
+import { decryptTenantProjection } from '../src/tenant-workload-projections';
+import { encryptTestTenantEnvironment, testTenantSecretsKek } from './tenant-secret-test.fixtures';
 
 interface NetworkPolicyRule {
   ports?: NetworkPolicyRulePort[] | undefined;
@@ -75,7 +77,9 @@ describe('worker NetworkPolicy desired state', (): void => {
 
   it('uses the descriptor default serving port for policy, Deployment, and Service', (): void => {
     const projection: DeploymentReconcileProjection = defaultApplicationProjection();
-    const applicationManifests: KubeManifest[] = projectApplicationManifests(projection);
+    const applicationManifests: KubeManifest[] = projectApplicationManifests(
+      decryptTenantProjection(projection, undefined, testTenantSecretsKek),
+    );
     const deployment: KubeManifest = requiredManifest(applicationManifests, 'Deployment');
     const service: KubeManifest = requiredManifest(applicationManifests, 'Service');
     const deploymentSpec: ApplicationDeploymentSpec = deployment.spec as ApplicationDeploymentSpec;
@@ -121,7 +125,7 @@ function defaultApplicationProjection(): DeploymentReconcileProjection {
     deploymentId: 'deployment',
     environmentId: 'environment',
     environmentName: 'production',
-    env: { PORT: servingPort.toString() },
+    env: encryptTestTenantEnvironment({ PORT: servingPort.toString() }),
     image: 'registry.example/app@sha256:default',
     imagePullSecretId: 'project',
     namespaceId: 'project',

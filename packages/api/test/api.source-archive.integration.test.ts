@@ -3,6 +3,7 @@ import {
   errorResponseSchema,
   type InstallResponse,
   type SourceUploadSummary,
+  type TenantSecretEnvelope,
   type WorkerClaimedDeployment,
   compartmentCurrentOrganizationHeaderName,
 } from '@compartment/contracts';
@@ -40,6 +41,7 @@ import {
   installCompartment,
   requireClaimedDeployment,
   requireClaimedDeploymentByServiceName,
+  requireTenantSecretEnvelope,
   setVariable,
   type RawSourceArchiveEntry,
 } from './api-integration.harness';
@@ -844,9 +846,13 @@ describe('Phase 0 API integration source archive', (): void => {
     expect(removeVariableResponse.statusCode).toBe(200);
 
     const claimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
-    expect(claimedDeployment.buildEnv).toEqual({
-      VITE_PUBLIC_GREETING: 'hello from build env',
-    });
+    const greeting: TenantSecretEnvelope = requireTenantSecretEnvelope(
+      claimedDeployment.buildEnv,
+      'VITE_PUBLIC_GREETING',
+    );
+    expect(greeting.encryptionKeyId).toMatch(/^tenant-kek-sha256:/);
+    expect(greeting.valueCiphertext).toBeTypeOf('string');
+    expect(JSON.stringify(claimedDeployment.buildEnv)).not.toContain('hello from build env');
     expect(claimedDeployment.run).toEqual(createExpectedRunConfig());
   });
 
@@ -892,7 +898,9 @@ describe('Phase 0 API integration source archive', (): void => {
     await insertPostgresResource('smoke-web');
     const claimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
 
-    expect(claimedDeployment.buildEnv).toEqual({ LOG_LEVEL: 'info' });
+    const logLevel: TenantSecretEnvelope = requireTenantSecretEnvelope(claimedDeployment.buildEnv, 'LOG_LEVEL');
+    expect(logLevel.encryptionKeyId).toMatch(/^tenant-kek-sha256:/);
+    expect(logLevel.valueCiphertext).toBeTypeOf('string');
   });
 
   it('rejects build env keys backed by runtime resource-output bindings', async (): Promise<void> => {

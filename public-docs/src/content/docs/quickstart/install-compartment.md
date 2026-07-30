@@ -196,6 +196,13 @@ tenant isolation and the configured RFC1918 egress policy.
 Kubernetes cluster administrators and anyone able to escape a container remain outside the tenant-isolation boundary.
 Namespaces and NetworkPolicies do not provide VM-level isolation.
 
+Compartment encrypts tenant variables before storing them in PostgreSQL, but projected Kubernetes Secrets are stored
+by your cluster. Enable Kubernetes API server encryption at rest for Secrets on BYO clusters, and back up the
+chart-managed tenant encryption key with the same care as the database.
+For KEK rotation, stage the new 64-hex key in `secrets.tenantSecretsPreviousKek`, wait for the rollout, then promote the
+same value to `secrets.tenantSecretsKek`. Clear the previous key only after a later migration run reports no remaining
+re-wraps.
+
 ### Recover the bundled registry
 
 With the default PVC backend, the registry is a single Pod with a retained `ReadWriteOnce` PVC. Running application

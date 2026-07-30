@@ -1,6 +1,7 @@
 import type { WorkerClaimedDeployment } from '@compartment/contracts';
 import type { CompartmentBinaryRequester, CompartmentRequester } from '@compartment/sdk';
 import type { WorkerArtifactRegistryConfig } from '../worker-artifact-registry.types';
+import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
 
 export interface AttemptedClaimedDeploymentResult {
   failureError?: Error;
@@ -17,4 +18,5 @@ export interface AttemptClaimedDeploymentCompletionInput {
   deployment: WorkerClaimedDeployment;
   releaseArchiveRequest: CompartmentBinaryRequester;
   request: CompartmentRequester;
+  tenantSecretsKek: TenantSecretsKeyring;
 }

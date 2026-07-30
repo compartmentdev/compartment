@@ -6,13 +6,15 @@ import {
   type KubeManifest,
   type KubeObservation,
   type KubeObservedManifest,
+  type KubeWorkloadScheduling,
 } from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
 import type * as CompartmentSdk from '@compartment/sdk';
 import { immutableKubeName } from '@compartment/utils';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { readCreatedClaims } from '../src/services/worker-resource-reconcile-observation.service';
-import { executeResourceReconcile } from '../src/services/worker-resource-reconcile.service';
+import { executeResourceReconcile as executeResourceReconcileWithKek } from '../src/services/worker-resource-reconcile.service';
+import { testTenantSecretsKek } from './tenant-secret-test.fixtures';
 
 const dataClaimName: string = kubeResourceVolumeName('resource', 'data');
 const backupClaimName: string = kubeResourceVolumeName('resource', 'backup-artifacts');
@@ -54,6 +56,15 @@ interface ResourceSdkMocks {
   acknowledge: Mock;
   applyNetworkPolicy: Mock;
   applyResourceNetworkPolicy: Mock;
+}
+
+async function executeResourceReconcile(
+  request: CompartmentRequester,
+  kubeRuntime: KubeRuntime,
+  claimed: WorkerClaimResourceReconcileResponse,
+  scheduling?: KubeWorkloadScheduling,
+): Promise<void> {
+  return await executeResourceReconcileWithKek(request, kubeRuntime, claimed, testTenantSecretsKek, scheduling);
 }
 
 const mocks: ResourceSdkMocks = vi.hoisted(

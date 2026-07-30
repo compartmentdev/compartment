@@ -241,6 +241,12 @@
       "properties": {
         "installToken": { "type": "string" },
         "managedDomainBrokerToken": { "type": "string" },
+        "tenantSecretsKek": {
+          "oneOf": [{ "const": "" }, { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }]
+        },
+        "tenantSecretsPreviousKek": {
+          "oneOf": [{ "type": "null" }, { "const": "" }, { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }]
+        },
         "registryCredentialSigningKey": {
           "oneOf": [{ "const": "" }, { "type": "string", "minLength": 32 }]
         }

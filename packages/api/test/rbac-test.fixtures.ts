@@ -297,6 +297,7 @@ function createRbacApiConfig(databaseUrl: string, scope: string): ApiConfig {
     systemToken: 'test-system-token',
     throttle: defaultApiAuthThrottleConfig,
     trustedOutboundHosts: ['idp.example.com'],
+    tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
     variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
   };
 }

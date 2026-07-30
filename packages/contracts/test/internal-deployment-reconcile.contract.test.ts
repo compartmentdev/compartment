@@ -13,7 +13,7 @@ describe('deployment reconcile contracts', (): void => {
       deploymentId: 'dep_candidate',
       environmentId: 'env_1',
       environmentName: 'production',
-      env: { PORT: '3000' },
+      env: { PORT: { encryptionKeyId: 'tenant-kek-sha256:test', valueCiphertext: '{"version":1}' } },
       image: 'registry/app@sha256:abc',
       imagePullSecretId: 'prj_1',
       namespaceId: 'prj_1',

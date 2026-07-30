@@ -5,6 +5,7 @@ export * from './schema-access';
 export * from './schema-platform';
 export * from './schema-source-uploads';
 export * from './schema-deploy';
+export * from './schema-data-migrations';
 export * from './schema-kube-runtime';
 export * from './schema-resources';
 export * from './schema-git-provider';

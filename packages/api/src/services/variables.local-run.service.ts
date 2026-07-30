@@ -1,7 +1,7 @@
 import { defaultCompartmentEnvironmentName, variableKeyNameSchema } from '@compartment/contracts';
 import { createInvalidVariableLocalRunError } from '../errors/api-business-error';
 import { createId } from '../lib/tokens';
-import { decryptVariableValueFromStorage } from '../lib/variables-crypto';
+import { decryptTenantVariableValueFromStorage } from '../lib/variables-crypto';
 import { insertVariableAccessEvent } from '../queries/variables.query';
 import type { InsertVariableAccessEventInput, VariableAccessEventRow } from '../queries/variables.query.types';
 import { getApiConfig } from '../runtime/runtime-access';
@@ -122,9 +122,10 @@ function decryptStoredLocalRunVariable(variable: StoredEffectiveVariable): strin
     throw createInvalidVariableLocalRunError(`Variable "${variable.keyName}" cannot be injected locally.`);
   }
 
-  return decryptVariableValueFromStorage(
+  return decryptTenantVariableValueFromStorage(
     variable.valueCiphertext,
     variable.encryptionKeyId,
-    getApiConfig().variablesMasterKey,
+    getApiConfig().tenantSecretsKek,
+    getApiConfig().tenantSecretsPreviousKek,
   );
 }

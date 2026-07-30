@@ -27,21 +27,19 @@ import type {
   ManagedResourceUpdatePlan,
 } from './worker-resource-reconcile.service.types';
 import { applyProjectNetworkPolicies, applyResourceNetworkPolicy } from './worker-network-policy.service';
-import { tenantResourceRow } from '../tenant-workload-projections';
+import { decryptTenantProjection } from '../tenant-workload-projections';
+import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
 
 export async function executeResourceReconcile(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   claimed: WorkerClaimResourceReconcileResponse,
+  tenantSecretsKek: TenantSecretsKeyring,
   scheduling?: KubeWorkloadScheduling,
 ): Promise<void> {
   const complete: CompleteResourceReconcileClaim = requireCompleteClaim(claimed);
-  const row: ResourceProjectionRow = tenantResourceRow(complete.intent, scheduling);
-  const observation: KubeObservation = await runtime.observe({
-    labels: { 'compartment.dev/resource-id': row.resourceId },
-    namespace: kubeNamespaceName(row.namespaceId),
-    resources: ['deployments', 'persistentvolumeclaims', 'pods', 'secrets', 'services'],
-  });
+  const row: ResourceProjectionRow = decryptTenantProjection(complete.intent, scheduling, tenantSecretsKek);
+  const observation: KubeObservation = await observeResource(runtime, row);
   try {
     if (row.operation !== 'delete') {
       await applyResourceNetworkPolicy(runtime, row.namespaceId, complete.networkPolicy, row.ports);
@@ -53,6 +51,14 @@ export async function executeResourceReconcile(
   } finally {
     await observation.stop();
   }
+}
+
+async function observeResource(runtime: KubeRuntime, row: ResourceProjectionRow): Promise<KubeObservation> {
+  return await runtime.observe({
+    labels: { 'compartment.dev/resource-id': row.resourceId },
+    namespace: kubeNamespaceName(row.namespaceId),
+    resources: ['deployments', 'persistentvolumeclaims', 'pods', 'secrets', 'services'],
+  });
 }
 
 async function executeClaimedResource(

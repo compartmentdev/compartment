@@ -99,6 +99,7 @@ describe('runWorker', (): void => {
       'worker-secret',
       createArtifactRegistryConfig(),
       expect.any(Object),
+      { current: Buffer.alloc(32, 1) },
     );
     expect(mocks.runKubeControllerLoop).toHaveBeenCalledTimes(3);
   });
@@ -141,6 +142,7 @@ function createWorkerConfig(): WorkerConfig {
     logLevel: 'silent',
     pollIntervalMs: 10,
     runtimeControlToken: 'worker-secret',
+    tenantSecretsKek: { current: Buffer.alloc(32, 1) },
     usageMeteringIntervalMs: 60_000,
   };
 }

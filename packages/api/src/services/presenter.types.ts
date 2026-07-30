@@ -12,8 +12,8 @@ import type {
   OperationStatus,
   ResolvedCompartmentServiceRunConfig,
   ResourceRuntimeStatus,
+  TenantSecretEnvironment,
 } from '@compartment/contracts';
-import type { BuildEnvMap } from './deployment-build.types';
 
 export interface DeployResponseInput {
   deployments: DeploymentSummaryInput[];
@@ -163,7 +163,7 @@ export interface ProjectSummaryInput {
 export type WorkerClaimDeploymentResponseInput = WorkerClaimedDeploymentInput | null;
 
 export interface WorkerClaimedDeploymentInput {
-  buildEnv: BuildEnvMap;
+  buildEnv: TenantSecretEnvironment;
   deployment: DeploymentSummaryInput;
   routeHost: string;
   run: ResolvedCompartmentServiceRunConfig;

@@ -13,7 +13,7 @@ import {
 import { readApiAuthThrottleConfig, type ApiAuthThrottleConfig } from './auth-throttle-config';
 import type { ApiConfigEnv } from './config-env.types';
 import { parseOptionalAbsoluteUrl, parseOptionalPositiveInt, readRequiredCronExpression } from './config-parsers';
-import { parseVariablesMasterKey } from './lib/variables-crypto';
+import { parseTenantSecretsKek, parseVariablesMasterKey } from './lib/variables-crypto';
 import { normalizeApiHostValue, parseSessionTtl, readOptionalConfigText } from './config-value';
 import { assertValidSystemApiSocketPath } from './system-api-socket-path';
 
@@ -55,6 +55,8 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_SESSION_TTL: z.string().min(1),
   COMPARTMENT_SYSTEM_API_SOCKET: z.string().min(1),
   COMPARTMENT_SYSTEM_TOKEN: z.string().min(1),
+  COMPARTMENT_TENANT_SECRETS_KEK: z.string().min(1),
+  COMPARTMENT_TENANT_SECRETS_PREVIOUS_KEK: z.string().optional(),
   COMPARTMENT_VARIABLES_MASTER_KEY: z.string().min(1),
   COMPARTMENT_WORKER_IMAGE: z.string().min(1).optional(),
   COMPARTMENT_RUNTIME_CONTROL_TOKEN: z.string().min(1),
@@ -90,6 +92,8 @@ export interface ApiConfig {
   throttle: ApiAuthThrottleConfig;
   systemApiSocketPath: string;
   systemToken: string;
+  tenantSecretsKek: Buffer;
+  tenantSecretsPreviousKek?: Buffer | undefined;
   variablesMasterKey: Buffer;
   runtimeControlToken: string;
   usageMeteringIntervalMs: number;
@@ -123,7 +127,13 @@ type ApiRuntimeConfig = Pick<
 >;
 type ApiSecretConfig = Pick<
   ApiConfig,
-  'productLogIngestToken' | 'systemApiSocketPath' | 'systemToken' | 'variablesMasterKey' | 'runtimeControlToken'
+  | 'productLogIngestToken'
+  | 'systemApiSocketPath'
+  | 'systemToken'
+  | 'tenantSecretsKek'
+  | 'tenantSecretsPreviousKek'
+  | 'variablesMasterKey'
+  | 'runtimeControlToken'
 >;
 
 export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -233,11 +243,18 @@ function readApiRuntimeConfig(parsed: ApiConfigEnv): ApiRuntimeConfig {
 
 function readApiSecretConfig(parsed: ApiConfigEnv): ApiSecretConfig {
   assertValidSystemApiSocketPath(parsed.COMPARTMENT_SYSTEM_API_SOCKET);
+  const previousTenantSecretsKek: string | null = readOptionalConfigText(
+    parsed.COMPARTMENT_TENANT_SECRETS_PREVIOUS_KEK,
+  );
 
   return {
     productLogIngestToken: readOptionalConfigText(parsed.COMPARTMENT_PRODUCT_LOG_INGEST_TOKEN),
     systemApiSocketPath: parsed.COMPARTMENT_SYSTEM_API_SOCKET,
     systemToken: parsed.COMPARTMENT_SYSTEM_TOKEN,
+    tenantSecretsKek: parseTenantSecretsKek(parsed.COMPARTMENT_TENANT_SECRETS_KEK),
+    ...(previousTenantSecretsKek === null
+      ? {}
+      : { tenantSecretsPreviousKek: parseTenantSecretsKek(previousTenantSecretsKek) }),
     runtimeControlToken: parsed.COMPARTMENT_RUNTIME_CONTROL_TOKEN,
     variablesMasterKey: parseVariablesMasterKey(parsed.COMPARTMENT_VARIABLES_MASTER_KEY),
   };

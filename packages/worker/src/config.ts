@@ -6,6 +6,7 @@ import {
 import type { KubeIssuerReference, KubeWorkloadScheduling } from '@compartment/kube-runtime';
 import { z } from 'zod';
 import type { WorkerArtifactRegistryConfig } from './worker-artifact-registry.types';
+import type { TenantSecretsKeyring } from './tenant-secret-environment.types';
 import { readTenantWorkloadScheduling } from './tenant-workload-scheduling';
 
 interface WorkerProcessConfigEnvironment {
@@ -33,6 +34,8 @@ interface WorkerConfigEnvironment extends WorkerBuildConfigEnvironment {
   COMPARTMENT_TLS_ISSUER_KIND: 'Issuer' | 'ClusterIssuer';
   COMPARTMENT_TLS_ISSUER_NAME: string;
   COMPARTMENT_PLATFORM_NAMESPACE: string;
+  COMPARTMENT_TENANT_SECRETS_KEK: string;
+  COMPARTMENT_TENANT_SECRETS_PREVIOUS_KEK?: string | undefined;
   COMPARTMENT_KUBE_TENANT_SCHEDULING?: string | undefined;
 }
 
@@ -68,6 +71,8 @@ const workerConfigSchema: z.ZodType<WorkerConfigEnvironment> = workerBuildConfig
     COMPARTMENT_TLS_ISSUER_KIND: z.enum(['Issuer', 'ClusterIssuer']),
     COMPARTMENT_TLS_ISSUER_NAME: z.string().min(1),
     COMPARTMENT_PLATFORM_NAMESPACE: z.string().min(1),
+    COMPARTMENT_TENANT_SECRETS_KEK: z.string().regex(/^[0-9a-fA-F]{64}$/),
+    COMPARTMENT_TENANT_SECRETS_PREVIOUS_KEK: z.union([z.literal(''), z.string().regex(/^[0-9a-fA-F]{64}$/)]).optional(),
     COMPARTMENT_KUBE_TENANT_SCHEDULING: z.string().min(1).optional(),
   }),
 );
@@ -87,6 +92,7 @@ export interface WorkerBuildConfig extends WorkerProcessConfig {
 export interface WorkerConfig extends WorkerBuildConfig {
   customDomains: WorkerCustomDomainConfig;
   tenantScheduling?: KubeWorkloadScheduling | undefined;
+  tenantSecretsKek: TenantSecretsKeyring;
   usageMeteringIntervalMs: number;
 }
 
@@ -128,7 +134,16 @@ export function readWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
       namespace: parsed.COMPARTMENT_PLATFORM_NAMESPACE,
     },
     ...(tenantScheduling === undefined ? {} : { tenantScheduling }),
+    tenantSecretsKek: readTenantSecretsKeyring(parsed),
     usageMeteringIntervalMs: parsed.COMPARTMENT_USAGE_METERING_INTERVAL_MS,
+  };
+}
+
+function readTenantSecretsKeyring(parsed: WorkerConfigEnvironment): TenantSecretsKeyring {
+  const previous: string | undefined = parsed.COMPARTMENT_TENANT_SECRETS_PREVIOUS_KEK;
+  return {
+    current: Buffer.from(parsed.COMPARTMENT_TENANT_SECRETS_KEK, 'hex'),
+    ...(previous === undefined || previous === '' ? {} : { previous: Buffer.from(previous, 'hex') }),
   };
 }
 

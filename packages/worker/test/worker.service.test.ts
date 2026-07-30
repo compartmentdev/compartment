@@ -7,9 +7,10 @@ import type {
 } from '@compartment/contracts';
 import type { CompartmentBinaryRequester, CompartmentRawRequester, CompartmentRequester } from '@compartment/sdk';
 import pino, { type Logger } from 'pino';
-import { runWorkerIteration } from '../src/services/worker.service';
+import { runWorkerIteration as runWorkerIterationWithKek } from '../src/services/worker.service';
 import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
 import type { WorkerDeploymentEventContext } from '../src/services/worker-deployment-event.types';
+import { testTenantSecretsKek } from './tenant-secret-test.fixtures';
 
 type AppendDeploymentStepEventSafely = (
   context: WorkerDeploymentEventContext,
@@ -22,7 +23,9 @@ type BuildReleaseImageFromSource = (
   archiveRequest: CompartmentBinaryRequester,
   deployment: WorkerClaimedDeployment,
   artifactRegistry: WorkerArtifactRegistryConfig,
+  tenantSecretsKek: typeof testTenantSecretsKek,
 ) => Promise<string>;
+
 type ClaimNextDeployment = (request: CompartmentRequester) => Promise<WorkerClaimDeploymentResponse>;
 type FailDeployment = (
   request: CompartmentRequester,
@@ -144,6 +147,21 @@ vi.mock(
   }),
 );
 
+async function runWorkerIteration(
+  apiUrl: string,
+  internalToken: string,
+  artifactRegistry: WorkerArtifactRegistryConfig,
+  iterationLogger: Logger<never, boolean>,
+): Promise<boolean> {
+  return await runWorkerIterationWithKek(
+    apiUrl,
+    internalToken,
+    artifactRegistry,
+    iterationLogger,
+    testTenantSecretsKek,
+  );
+}
+
 describe('runWorkerIteration', (): void => {
   beforeEach((): void => {
     mocks.runGitSourceResolutionIteration.mockResolvedValue(false);
@@ -181,6 +199,7 @@ describe('runWorkerIteration', (): void => {
       mocks.archiveRequest,
       deployment,
       artifactRegistry,
+      testTenantSecretsKek,
     );
     expect(mocks.handoffBuiltDeploymentToKube).toHaveBeenCalledWith(
       mocks.request,
@@ -259,6 +278,7 @@ describe('runWorkerIteration', (): void => {
       mocks.archiveRequest,
       deployment,
       artifactRegistry,
+      testTenantSecretsKek,
     );
   });
 
@@ -281,6 +301,7 @@ describe('runWorkerIteration', (): void => {
       mocks.archiveRequest,
       deployment,
       artifactRegistry,
+      testTenantSecretsKek,
     );
   });
 });

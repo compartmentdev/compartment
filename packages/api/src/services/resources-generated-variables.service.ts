@@ -7,8 +7,8 @@ import {
 } from '@compartment/contracts';
 import { createId } from '../lib/tokens';
 import {
-  decryptVariableValueFromStorage,
-  encryptVariableValueForStorage,
+  decryptTenantVariableValueFromStorage,
+  encryptTenantVariableValueForStorage,
   type EncryptedVariableValue,
 } from '../lib/variables-crypto';
 import {
@@ -121,7 +121,11 @@ function createGeneratedResourceVariableValue(config: CompartmentResourceGenerat
 }
 
 function encryptGeneratedVariableValue(secretValue: string): EncryptedVariableValue {
-  return encryptVariableValueForStorage(secretValue, getApiConfig().variablesMasterKey);
+  return encryptTenantVariableValueForStorage(
+    secretValue,
+    getApiConfig().tenantSecretsKek,
+    getApiConfig().variablesMasterKey,
+  );
 }
 
 async function insertGeneratedResourceVariable(
@@ -179,10 +183,11 @@ function readGeneratedVariablePlaintext(
 ): string {
   return result.created
     ? generatedSecretValue
-    : decryptVariableValueFromStorage(
+    : decryptTenantVariableValueFromStorage(
         result.row.valueCiphertext,
         result.row.encryptionKeyId,
-        getApiConfig().variablesMasterKey,
+        getApiConfig().tenantSecretsKek,
+        getApiConfig().tenantSecretsPreviousKek,
       );
 }
 
