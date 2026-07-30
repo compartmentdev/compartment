@@ -6,18 +6,19 @@ description: Install Compartment into an existing Kubernetes cluster.
 ## Install the CLI
 
 ```bash
-curl -fsSL https://compartment.dev/install.sh | sh
+curl -fsSL https://compartment.dev/k/install.sh | sh
 ```
 
 This is the supported self-hosted installation channel. The bootstrap resolves an immutable CLI artifact for the
 current Kubernetes release line and verifies its Cosign workflow identity and commit before installing it. No channel
-flag, raw repository URL, or separate bootstrap step is required.
+flag, raw repository URL, or separate bootstrap step is required. The public route returns a 307 redirect to the
+Kubernetes branch's root installer, which is the sole source of truth.
 
 The default command follows the tip of the `kubernetes` channel. To reproduce an installation with a specific
 published build, pin its full immutable tag:
 
 ```bash
-curl -fsSL https://compartment.dev/install.sh | sh -s -- \
+curl -fsSL https://compartment.dev/k/install.sh | sh -s -- \
   --channel kubernetes \
   --version sha-0123456789abcdef0123456789abcdef01234567
 ```

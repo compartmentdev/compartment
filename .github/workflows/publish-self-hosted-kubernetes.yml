@@ -325,43 +325,26 @@ jobs:
           expected_sha256="$(sha256sum install.sh | awk '{ print $1 }')"
           expected_size="$(wc -c < install.sh)"
           while [ "$attempt" -le "$max_attempts" ]; do
-            rm -f ./.compartment/public-installer.headers ./.compartment/public-install.sh
+            rm -f ./.compartment/public-install.sh
             received_sha256=""
             received_size=""
             if http_status="$(
-              curl \
-                --silent \
-                --show-error \
-                --dump-header ./.compartment/public-installer.headers \
+              curl -fsSL \
                 --output ./.compartment/public-install.sh \
                 --write-out '%{http_code}' \
-                https://compartment.dev/install.sh
+                https://compartment.dev/k/install.sh
             )"; then
               curl_succeeded=true
             else
               curl_succeeded=false
             fi
             http_status="${http_status:-000}"
-            location="$(
-              sed -n 's/^[Ll][Oo][Cc][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*//p' \
-                ./.compartment/public-installer.headers 2>/dev/null \
-                | tail -n 1 \
-                | tr -d '\r'
-            )"
             if [ "$http_status" = 200 ] && [ -f ./.compartment/public-install.sh ]; then
               received_sha256="$(sha256sum ./.compartment/public-install.sh | awk '{ print $1 }')"
               received_size="$(wc -c < ./.compartment/public-install.sh)"
             fi
 
-            if [ -n "$location" ]; then
-              last_result=redirect
-              last_location="$location"
-              if [ "$http_status" = 200 ]; then
-                echo "Public installer handoff attempt ${attempt}/${max_attempts}: HTTP 200, redirect to ${location} (expected sha256 ${expected_sha256}, ${expected_size} bytes; received sha256 ${received_sha256}, ${received_size} bytes)"
-              else
-                echo "Public installer handoff attempt ${attempt}/${max_attempts}: HTTP ${http_status}, redirect to ${location}"
-              fi
-            elif [ "$curl_succeeded" != true ] || [ "$http_status" != 200 ]; then
+            if [ "$curl_succeeded" != true ] || [ "$http_status" != 200 ]; then
               last_result=unavailable
               if [ "$http_status" = 200 ]; then
                 echo "Public installer handoff attempt ${attempt}/${max_attempts}: transfer failed after HTTP 200 (expected sha256 ${expected_sha256}, ${expected_size} bytes; received sha256 ${received_sha256}, ${received_size} bytes)"
@@ -372,8 +355,8 @@ jobs:
               if [ "$received_sha256" = "$expected_sha256" ] \
                 && [ "$received_size" = "$expected_size" ] \
                 && cmp --silent install.sh ./.compartment/public-install.sh; then
-                echo "Public installer handoff verified on attempt ${attempt}/${max_attempts}: HTTP 200, sha256 ${received_sha256}, ${received_size} bytes"
-                break
+                echo "Public installer handoff verified on attempt ${attempt}/${max_attempts}: HTTP 200 (expected sha256 ${expected_sha256}, ${expected_size} bytes; received sha256 ${received_sha256}, ${received_size} bytes)"
+                exit 0
               fi
               last_result=content-mismatch
               last_received_sha256="$received_sha256"
@@ -384,10 +367,7 @@ jobs:
             if [ "$attempt" -ge "$max_attempts" ]; then
               case "$last_result" in
                 unavailable)
-                  echo "Public installer handoff failed: the site was unavailable or returned HTTP ${http_status}." >&2
-                  ;;
-                redirect)
-                  echo "Public installer handoff failed: HTTP ${http_status} redirected to ${last_location}." >&2
+                  echo "Public installer handoff failed: the endpoint was unavailable, returned final HTTP ${http_status}, or the transfer failed." >&2
                   ;;
                 content-mismatch)
                   echo "Public installer handoff failed: HTTP 200 served different content (expected sha256 ${expected_sha256}, ${expected_size} bytes; received sha256 ${last_received_sha256}, ${last_received_size} bytes)." >&2

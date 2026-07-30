@@ -4,7 +4,7 @@ set -eu
 
 release_repository="${COMPARTMENT_RELEASES_REPOSITORY:-compartmentdev/compartment}"
 if [ "$release_repository" = "compartmentdev/compartment" ]; then
-  installer_command="curl -fsSL https://compartment.dev/install.sh | sh -s --"
+  installer_command="curl -fsSL https://compartment.dev/k/install.sh | sh -s --"
 else
   installer_command="sh install.sh"
 fi

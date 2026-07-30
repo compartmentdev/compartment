@@ -98,6 +98,7 @@ const canonicalCaddyDockerfilePath = 'packages/edge/Dockerfile.caddy.self-hosted
 const publicInstallerPath = 'install.sh';
 const publicInstallerRequiredTerms = [
   ['channel=', '"kubernetes"'].join(''),
+  ['https://compartment.dev', '/k/install.sh'].join(''),
   ['"', '$cosign_command', '" verify'].join(''),
   ['--certificate-', 'identity'].join(''),
   ['--certificate-', 'oidc-issuer'].join(''),

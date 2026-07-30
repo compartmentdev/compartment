@@ -774,8 +774,9 @@ fix-forward procedure. Product rollback compatibility is not required for this u
 - Keep additional prerequisite setup within two minutes of wall time per affected shard, reuse one prerequisite
   installation per cluster, and rebalance the E2E shard allocation when that budget is exceeded.
 - Record the final shard count, wall-time budget, and owner of each expensive cluster scenario.
-- Switch `https://compartment.dev/install.sh` to the signed Kubernetes-line installer and verify the public handoff
-  without a raw-branch URL, hidden channel flag, or separate bootstrap instructions.
+- Point `https://compartment.dev/k/install.sh` at a website-owned 307 redirect to the Kubernetes branch's root
+  `install.sh`, and verify the public handoff without requiring users to use a raw-branch URL, hidden channel flag, or
+  separate bootstrap instructions.
 - Verify concise descriptor validation output for both supported descriptor files.
 - Update engineering and public documentation.
 - Declare the channel supported only after the old architecture is absent from code, docs, release artifacts, and
@@ -794,8 +795,8 @@ exact delete list.
 - Update image publication only where registry-auth or Caddy image contents change.
 - Update k3d and cluster e2e workflows for an existing Ingress Controller and cert-manager.
 - Rebalance the E2E shard allocation and record the prerequisite setup wall-time budget.
-- Update `https://compartment.dev/install.sh` to serve the signed Kubernetes-line installer when the channel is
-  declared supported.
+- Update `https://compartment.dev/k/install.sh` to redirect with HTTP 307 to the Kubernetes branch's root `install.sh`
+  when the channel is declared supported. Do not copy or synchronize the installer into the website repository.
 
 ### CLI
 
@@ -1050,8 +1051,8 @@ of the cluster lifecycle.
 
 ### Public bootstrap
 
-- `https://compartment.dev/install.sh` serves the Kubernetes-line installer by default when the channel is declared
-  supported.
+- `https://compartment.dev/k/install.sh` redirects with HTTP 307 to the root `install.sh` on the Kubernetes branch
+  when the channel is declared supported; that branch file remains the sole source of truth.
 - The bootstrap resolves and verifies the signed release artifact.
 - A user does not need a raw GitHub branch URL, `--channel kubernetes`, or undocumented bootstrap path.
 - The public bootstrap followed by `compartment install` completes the supported existing-cluster flow.

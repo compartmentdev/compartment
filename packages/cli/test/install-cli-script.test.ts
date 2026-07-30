@@ -505,6 +505,8 @@ describe('render-cli-install-script', (): void => {
 
     expect(checkedInInstallerScript).toBe(renderedInstallerScript);
     expect(checkedInInstallerScript).toContain('compartmentdev/compartment');
+    expect(checkedInInstallerScript).toContain('curl -fsSL https://compartment.dev/k/install.sh | sh -s --');
+    expect(checkedInInstallerScript).not.toContain('curl -fsSL https://compartment.dev/install.sh | sh -s --');
     expect(checkedInInstallerScript).not.toContain('grep -o');
   });
 
