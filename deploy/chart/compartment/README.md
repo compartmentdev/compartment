@@ -104,6 +104,10 @@ The registry is a private ClusterIP workload. For an operator-owned base domain,
 `registry.<base-domain>` and uses `registry.issuerRef` when explicitly set, otherwise the platform `tls.issuerRef`.
 The hostname must resolve from every node to the retained registry Service. The chart never changes
 container-runtime configuration or node trust.
+The registry certificate must chain to a CA trusted by every node container runtime. The public platform certificate
+must also be trusted by the machine running the CLI; a cert-manager self-signed issuer does not satisfy this contract.
+Resolvers with DNS-rebinding protection must allowlist the operator base domain so the public registry name may
+resolve to the retained cluster-only Service address.
 
 Registry storage defaults to the retained PVC backend. Set `registry.storage.backend: s3` with the bucket, region,
 optional regional endpoint, and path-style setting under `registry.storage.s3` to use S3-compatible object storage.

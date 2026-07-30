@@ -5,7 +5,6 @@ import { assertApiResources } from './kubernetes-existing-cluster-preflight.clus
 import { requiredCertManagerApis } from './kubernetes-existing-cluster-preflight.requirements';
 import type { KubernetesInstallInput } from './kubernetes-install-input.service.types';
 import type { KubernetesInstallDeploymentInput } from './kubernetes-install.service.types';
-import type { KubernetesInstallRegistryIssuerReference } from './kubernetes-install-registry.service.types';
 import type {
   KubernetesDeployment,
   KubernetesObjectList,
@@ -21,6 +20,8 @@ import {
   readCommandFailure,
   readPreflightList,
 } from './kubernetes-existing-cluster-preflight.support';
+import { inspectOperatorIssuer } from './kubernetes-operator-issuer-trust.service';
+import type { KubernetesOperatorIssuerAssessment } from './kubernetes-operator-issuer-trust.service.types';
 
 export async function assertCertManager(input: KubernetesInstallInput): Promise<void> {
   await assertApiResources(input, requiredCertManagerApis, 'cert-manager');
@@ -37,22 +38,8 @@ export async function assertCertManager(input: KubernetesInstallInput): Promise<
 
 export async function assertOperatorRegistryIssuer(
   input: Pick<KubernetesInstallDeploymentInput, 'kubeconfigPath' | 'kubeContext' | 'namespace' | 'registryIssuerRef'>,
-): Promise<void> {
-  const issuer: KubernetesInstallRegistryIssuerReference = input.registryIssuerRef;
-  const resource: string =
-    issuer.kind === 'ClusterIssuer' ? 'clusterissuers.cert-manager.io' : 'issuers.cert-manager.io';
-  const command: string[] = ['get', resource, issuer.name];
-  if (issuer.kind === 'Issuer') {
-    command.push('--namespace', input.namespace);
-  }
-  command.push('-o=name');
-  const result: CommandResult = await runCommand(buildKubectlCommand(input, ['--request-timeout=5s', ...command]));
-  if (result.exitCode !== 0) {
-    throw new KubernetesExistingClusterPreflightError(
-      'cert-manager',
-      `Private registry ${issuer.kind} ${issuer.name} is not available${issuer.kind === 'Issuer' ? ` in namespace ${input.namespace}` : ''}: ${readCommandFailure(result)}. Configure registry.issuerRef or tls.issuerRef with an existing cert-manager issuer before retrying.`,
-    );
-  }
+): Promise<KubernetesOperatorIssuerAssessment> {
+  return await inspectOperatorIssuer(input, input.registryIssuerRef);
 }
 
 export async function assertOperatorTlsSecret(

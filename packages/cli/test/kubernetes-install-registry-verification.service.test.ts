@@ -9,6 +9,7 @@ interface VerificationPodManifest {
 }
 
 interface RegistryVerificationMocks {
+  runCommand: Mock<(command: readonly string[]) => Promise<CommandResult>>;
   runCommandWithInput: Mock<(command: readonly string[], input: string) => Promise<CommandResult>>;
   runCommandWithTimeout: Mock<
     (command: readonly string[], timeoutMs: number, env?: NodeJS.ProcessEnv) => Promise<CommandResult>
@@ -17,18 +18,27 @@ interface RegistryVerificationMocks {
 
 const mocks: RegistryVerificationMocks = vi.hoisted(
   (): RegistryVerificationMocks => ({
+    runCommand: vi.fn(),
     runCommandWithInput: vi.fn(),
     runCommandWithTimeout: vi.fn(),
   }),
 );
 
 vi.mock('../src/command-runner', (): object => ({
+  runCommand: mocks.runCommand,
   runCommandWithInput: mocks.runCommandWithInput,
   runCommandWithTimeout: mocks.runCommandWithTimeout,
 }));
 
 describe('install registry node-pull verification', (): void => {
   beforeEach((): void => {
+    mocks.runCommand.mockReset().mockResolvedValue(
+      ok(
+        JSON.stringify({
+          spec: { clusterIP: [10, 43, 251, 103].join('.'), clusterIPs: [[10, 43, 251, 103].join('.')] },
+        }),
+      ),
+    );
     mocks.runCommandWithInput.mockReset().mockResolvedValue(ok('applied'));
     mocks.runCommandWithTimeout.mockReset();
   });
@@ -45,10 +55,46 @@ describe('install registry node-pull verification', (): void => {
       )
       .mockResolvedValueOnce(ok(readyNodes('node-a')))
       .mockResolvedValueOnce(failed('ImagePullBackOff'))
+      .mockResolvedValueOnce(
+        ok(
+          JSON.stringify({
+            status: {
+              containerStatuses: [
+                {
+                  state: {
+                    waiting: {
+                      message:
+                        'failed to pull image: tls: failed to verify certificate: x509: certificate signed by unknown authority',
+                      reason: 'ImagePullBackOff',
+                    },
+                  },
+                },
+              ],
+            },
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        ok(
+          JSON.stringify({
+            items: [
+              {
+                message: 'Back-off pulling image because registry.example.test did not present trusted TLS',
+                reason: 'BackOff',
+              },
+            ],
+          }),
+        ),
+      )
       .mockResolvedValueOnce(ok('deleted'));
 
-    await expect(verifyKubernetesInstallRegistryNodePull(input())).rejects.toThrow(
-      'Registry node pull failed on node-a (command exited with status 1): ImagePullBackOff',
+    const failure: Promise<void> = verifyKubernetesInstallRegistryNodePull(input(), input());
+    await expect(failure).rejects.toThrow('waiting reason ImagePullBackOff');
+    await expect(failure).rejects.toThrow(
+      `required DNS record registry.example.test A ${[10, 43, 251, 103].join('.')}`,
+    );
+    await expect(failure).rejects.toThrow(
+      'TLS certificate issued by Issuer/platform-issuer must be trusted by the node container runtime',
     );
 
     expect(mocks.runCommandWithTimeout.mock.calls.at(-1)?.[0]).toEqual(
@@ -71,7 +117,7 @@ describe('install registry node-pull verification', (): void => {
       .mockResolvedValueOnce(ok('ready'))
       .mockResolvedValueOnce(ok('deleted'));
 
-    await expect(verifyKubernetesInstallRegistryNodePull(input())).resolves.toBeUndefined();
+    await expect(verifyKubernetesInstallRegistryNodePull(input(), input())).resolves.toBeUndefined();
 
     const podManifests: string[] = mocks.runCommandWithInput.mock.calls
       .slice(1)
@@ -88,7 +134,7 @@ describe('install registry node-pull verification', (): void => {
   it('reports a timed-out registry command even when kubectl emits no diagnostics', async (): Promise<void> => {
     mocks.runCommandWithTimeout.mockResolvedValue({ exitCode: 124, stderr: '', stdout: '' });
 
-    await expect(verifyKubernetesInstallRegistryNodePull(input())).rejects.toThrow(
+    await expect(verifyKubernetesInstallRegistryNodePull(input(), input())).rejects.toThrow(
       'Registry acceptance image push failed (command timed out): the command produced no diagnostics',
     );
   });

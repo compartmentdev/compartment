@@ -24,11 +24,14 @@ import {
 import type { KubernetesInstallInputValues } from './install.command.input.types';
 import { readConfiguredInstallAdminPassword } from './install.command.identity';
 import { resolveCanonicalKubernetesInstallWizard } from './install.command.kubernetes-wizard';
-import type { KubernetesInstallWizardResult } from './install.command.kubernetes-wizard.types';
+import type {
+  InspectKubernetesInstallIssuer,
+  KubernetesInstallWizardResult,
+} from './install.command.kubernetes-wizard.types';
 import { resolvePreflightKubeconfig } from './install.command.preflight';
 import { renderInstallResult } from './install.command.result';
 import { persistInstallSession } from './install.command.session';
-import type { InstallCommandOptions, InstallWizardValues } from './install.command.types';
+import type { InstallCommandOptions, InstallWizardIssuerReference, InstallWizardValues } from './install.command.types';
 import {
   materializeInstallWizardValues,
   readOperatorInstallInputValues,
@@ -39,6 +42,8 @@ import { assertManagedDomainOnboardingAvailable } from '../../services/managed-d
 import { isReservedKubernetesInstallLocalhostDomain } from '../../kubernetes-install-domain';
 import { normalizeInstallBaseDomain } from './install.command.validation';
 import { assertKubernetesInstallLocalTools } from '../../services/kubernetes-install-local-tools.service';
+import { inspectOperatorIssuer } from '../../services/kubernetes-operator-issuer-trust.service';
+import type { KubernetesOperatorIssuerAssessment } from '../../services/kubernetes-operator-issuer-trust.service.types';
 
 interface ResolvedInstallValuesPath {
   material?: MaterializedInstallWizardValues | undefined;
@@ -152,8 +157,25 @@ async function resolveValues(
     inventory,
     async (contextName: string): Promise<KubernetesInstallResourceInventory> =>
       await readKubernetesInstallResourceInventory({ resolvedKubeconfig: kubeconfig }, contextName),
+    createIssuerInspector(kubeconfig),
   );
   return { input: wizard.input, wizardValues: wizard.values };
+}
+
+function createIssuerInspector(kubeconfig: ResolvedKubernetesKubeconfig): InspectKubernetesInstallIssuer {
+  return async (
+    contextName: string,
+    namespace: string,
+    issuer: InstallWizardIssuerReference,
+  ): Promise<KubernetesOperatorIssuerAssessment> =>
+    await inspectOperatorIssuer(
+      {
+        kubeconfigPath: kubeconfig.path,
+        kubeContext: contextName,
+        namespace,
+      },
+      issuer,
+    );
 }
 
 async function runCanonicalInstall(

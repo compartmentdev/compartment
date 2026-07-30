@@ -8,7 +8,12 @@ import type {
   InstallWizardRegistryValues,
   InstallWizardTlsValues,
 } from './install.command.types';
-import type { KubernetesInstallWizardDomain } from './install.command.kubernetes-wizard.types';
+import type {
+  InspectKubernetesInstallIssuer,
+  KubernetesInstallWizardDomain,
+} from './install.command.kubernetes-wizard.types';
+import type { KubernetesOperatorIssuerAssessment } from '../../services/kubernetes-operator-issuer-trust.service.types';
+import { readPromptLine } from '../../prompts/prompt-reader';
 
 interface ExistingSecretTlsValues {
   registry: InstallWizardRegistryValues;
@@ -26,6 +31,7 @@ export interface OperatorDomainTlsPromptInput {
   namespace: string;
   releaseName: string;
   storageClass: string;
+  inspectIssuer: InspectKubernetesInstallIssuer;
 }
 
 export async function resolveOperatorDomainTls(
@@ -38,10 +44,10 @@ export async function resolveOperatorDomainTls(
   renderTlsChoices(io, input.namespace);
   const mode: string = await promptVisibleText(io, 'TLS', '1');
   if (mode === '1') {
-    return await resolveIssuerTls(io, input.baseDomain);
+    return await resolveIssuerTls(io, input);
   }
   if (mode === '2') {
-    const secretTls: ExistingSecretTlsValues = await resolveExistingSecretTls(io);
+    const secretTls: ExistingSecretTlsValues = await resolveExistingSecretTls(io, input);
     return { input: { baseDomain: input.baseDomain }, ...secretTls };
   }
   if (mode === '3') {
@@ -60,22 +66,63 @@ function renderTlsChoices(io: CliIo, namespace: string): void {
   );
 }
 
-async function resolveIssuerTls(io: CliIo, baseDomain: string): Promise<KubernetesInstallWizardDomain> {
+async function resolveIssuerTls(
+  io: CliIo,
+  input: OperatorDomainTlsPromptInput,
+): Promise<KubernetesInstallWizardDomain> {
   const issuerRef: InstallWizardIssuerReference = await promptIssuerReference(io, 'Platform TLS');
-  return { input: { baseDomain }, tls: { issuerRef }, tlsReview: `${issuerRef.kind}/${issuerRef.name}` };
+  await inspectIssuerTrust(io, input, issuerRef);
+  return {
+    input: { baseDomain: input.baseDomain },
+    tls: { issuerRef },
+    tlsReview: `${issuerRef.kind}/${issuerRef.name}`,
+  };
 }
 
-async function resolveExistingSecretTls(io: CliIo): Promise<ExistingSecretTlsValues> {
+async function resolveExistingSecretTls(
+  io: CliIo,
+  input: OperatorDomainTlsPromptInput,
+): Promise<ExistingSecretTlsValues> {
   const existingSecret: string = assertKubernetesResourceName(
     await promptRequiredValue(io, 'Existing TLS Secret'),
     'Existing TLS Secret',
   );
   const issuerRef: InstallWizardIssuerReference = await promptIssuerReference(io, 'Private registry TLS');
+  await inspectIssuerTrust(io, input, issuerRef);
   return {
     registry: { issuerRef },
     tls: { existingSecret },
     tlsReview: `Secret/${existingSecret}; registry ${issuerRef.kind}/${issuerRef.name}`,
   };
+}
+
+async function inspectIssuerTrust(
+  io: CliIo,
+  input: OperatorDomainTlsPromptInput,
+  issuerRef: InstallWizardIssuerReference,
+): Promise<void> {
+  const assessment: KubernetesOperatorIssuerAssessment = await input.inspectIssuer(
+    input.kubeContext,
+    input.namespace,
+    issuerRef,
+  );
+  if (assessment.trust === 'acme') {
+    return;
+  }
+  io.stderr(`TLS trust warning: ${assessment.detail}\n`);
+  if (assessment.trust === 'ca') {
+    await confirmIssuerTrust(io, 'Confirm that the private CA is distributed to every node and this machine');
+  }
+  if (assessment.trust === 'unknown') {
+    await confirmIssuerTrust(io, 'Confirm that the issued certificate chain is trusted by every node and this machine');
+  }
+}
+
+async function confirmIssuerTrust(io: CliIo, message: string): Promise<void> {
+  const answer: string = (await readPromptLine(io, `${message} [y/N]: `)).trim().toLowerCase();
+  if (answer !== 'y' && answer !== 'yes') {
+    throw new Error('Installation cancelled because private CA trust was not confirmed.');
+  }
 }
 
 async function promptIssuerReference(io: CliIo, label: string): Promise<InstallWizardIssuerReference> {

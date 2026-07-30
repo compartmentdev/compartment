@@ -12,9 +12,12 @@ export interface ImageTrustWriteInput {
 }
 
 export interface KubernetesInstallServiceMocks {
+  assertRegistryDns: Mock<(input: KubernetesInstallDeploymentInput, state: KubernetesInstallState) => Promise<void>>;
   runCommand: Mock<RunCommand>;
   usesOperatorTlsSecret: Mock<(valuesPath: string) => Promise<boolean>>;
-  verifyRegistryNodePull: Mock<(input: KubernetesInstallDeploymentInput) => Promise<void>>;
+  verifyRegistryNodePull: Mock<
+    (input: KubernetesInstallDeploymentInput, state: KubernetesInstallState) => Promise<void>
+  >;
   writeVerifiedImages: Mock<(input: ImageTrustWriteInput) => Promise<void>>;
 }
 

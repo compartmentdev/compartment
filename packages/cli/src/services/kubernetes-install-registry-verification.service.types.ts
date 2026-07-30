@@ -1,26 +1,29 @@
-export interface KubernetesNodeList {
-  items: KubernetesNodeListItem[];
+export interface KubernetesRegistryAcceptancePod {
+  status?: KubernetesRegistryAcceptancePodStatus | undefined;
 }
 
-export interface KubernetesNodeListItem {
-  metadata?: KubernetesNodeMetadata | undefined;
-  spec?: KubernetesNodeSpec | undefined;
-  status?: KubernetesNodeStatus | undefined;
+export interface KubernetesRegistryAcceptancePodStatus {
+  containerStatuses?: KubernetesRegistryAcceptanceContainerStatus[] | undefined;
 }
 
-export interface KubernetesNodeMetadata {
-  name?: string | undefined;
+export interface KubernetesRegistryAcceptanceContainerStatus {
+  state?: KubernetesRegistryAcceptanceContainerState | undefined;
 }
 
-export interface KubernetesNodeSpec {
-  unschedulable?: boolean | undefined;
+export interface KubernetesRegistryAcceptanceContainerState {
+  waiting?: KubernetesRegistryAcceptanceWaitingState | undefined;
 }
 
-export interface KubernetesNodeStatus {
-  conditions?: KubernetesNodeStatusCondition[] | undefined;
+export interface KubernetesRegistryAcceptanceWaitingState {
+  message?: string | undefined;
+  reason?: string | undefined;
 }
 
-export interface KubernetesNodeStatusCondition {
-  status?: string | undefined;
-  type?: string | undefined;
+export interface KubernetesRegistryAcceptanceEventList {
+  items: KubernetesRegistryAcceptanceEvent[];
+}
+
+export interface KubernetesRegistryAcceptanceEvent {
+  message?: string | undefined;
+  reason?: string | undefined;
 }

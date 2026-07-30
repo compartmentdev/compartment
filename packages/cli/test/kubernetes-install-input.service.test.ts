@@ -4,16 +4,20 @@ import { resolveCanonicalKubernetesInstallWizard } from '../src/commands/install
 import type { InstallCommandOptions } from '../src/commands/install/install.command.types';
 import type { KubernetesInstallInputValues } from '../src/commands/install/install.command.input.types';
 import type {
+  InspectKubernetesInstallIssuer,
   KubernetesInstallWizardResult,
   ReadKubernetesInstallResourceInventory,
 } from '../src/commands/install/install.command.kubernetes-wizard.types';
 import type { KubernetesInstallInput } from '../src/services/kubernetes-install-input.service.types';
 import type { KubernetesInstallResourceInventory } from '../src/services/kubernetes-install-inventory.service.types';
+import type { KubernetesOperatorIssuerAssessment } from '../src/services/kubernetes-operator-issuer-trust.service.types';
 import { createCliCapture, type CliCommandCapture } from './cli-test.harness';
 
 const kubeconfigPath: string = '/tmp/kubeconfig';
 const valuesPath: string = '/tmp/values.yaml';
 const managedDomainReservationTokenEnvironmentName: string = 'COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN';
+const inspectPublicAcme: InspectKubernetesInstallIssuer = async (): Promise<KubernetesOperatorIssuerAssessment> =>
+  await Promise.resolve({ detail: 'Public ACME issuer.', trust: 'acme' });
 
 describe('canonical Kubernetes install input', (): void => {
   beforeEach((): void => {
@@ -40,6 +44,7 @@ describe('canonical Kubernetes install input', (): void => {
           ingressClasses: ['nginx'],
           storageClasses: [{ default: true, name: 'fast' }],
         }),
+      inspectPublicAcme,
     );
     const interactive: KubernetesInstallInput = resolveCanonicalKubernetesInstallInput(
       { ...wizard.input, valuesPath },
@@ -108,6 +113,7 @@ describe('canonical Kubernetes install input', (): void => {
             ingressClasses: ['nginx'],
             storageClasses: [{ default: true, name: 'fast' }],
           }),
+        inspectPublicAcme,
       ),
     ).rejects.toThrow('--managed-domain cannot be combined with --base-domain.');
   });
@@ -131,6 +137,7 @@ describe('canonical Kubernetes install input', (): void => {
         { adminPassword: 'correct horse battery staple', output: 'text' },
         { contexts: [{ apiServer: 'https://cluster.example.test', name: 'production' }] },
         readResources,
+        inspectPublicAcme,
       ),
     ).rejects.toThrow('Managed Compartment domains require onboarding through the public installer.');
 
@@ -159,6 +166,7 @@ describe('canonical Kubernetes install input', (): void => {
           ingressClasses: ['nginx'],
           storageClasses: [{ default: true, name: 'fast' }],
         }),
+      inspectPublicAcme,
     );
 
     expect(wizard.input).toMatchObject({ baseDomain: 'apps.example.com' });
@@ -168,6 +176,67 @@ describe('canonical Kubernetes install input', (): void => {
       tls: { issuerRef: { kind: 'ClusterIssuer', name: 'letsencrypt-production' } },
     });
     expect(capture.stderr.join('')).toContain('TLS: ClusterIssuer/letsencrypt-production');
+    expect(capture.stderr.join('')).not.toContain('TLS trust warning');
+  });
+
+  it('rejects a self-signed issuer before owner prompts begin', async (): Promise<void> => {
+    const capture: CliCommandCapture = createCliCapture();
+    capture.stdin.end('1\ny\n2\napps.example.com\n1\nClusterIssuer\nself-signed\n');
+
+    await expect(
+      resolveCanonicalKubernetesInstallWizard(
+        capture.io,
+        { adminPassword: 'correct horse battery staple', output: 'text' },
+        { contexts: [{ apiServer: 'https://cluster.example.test', name: 'production' }] },
+        async (): Promise<KubernetesInstallResourceInventory> =>
+          await Promise.resolve({
+            ingressClasses: ['nginx'],
+            storageClasses: [{ default: true, name: 'fast' }],
+          }),
+        async (): Promise<never> => {
+          return await Promise.reject(
+            new Error(
+              'ClusterIssuer self-signed uses spec.selfSigned; registry node pulls and the CLI public HTTPS probe require trusted TLS.',
+            ),
+          );
+        },
+      ),
+    ).rejects.toThrow('registry node pulls and the CLI public HTTPS probe require trusted TLS');
+
+    expect(capture.stderr.join('')).not.toContain('Email');
+    expect(capture.stderr.join('')).not.toContain('Installation review:');
+  });
+
+  it('requires private CA trust confirmation before collecting owner input', async (): Promise<void> => {
+    const capture: CliCommandCapture = createCliCapture();
+    capture.stdin.end('1\ny\n2\napps.example.com\n1\nIssuer\nprivate-ca\ny\ny\n');
+
+    await expect(
+      resolveCanonicalKubernetesInstallWizard(
+        capture.io,
+        {
+          adminPassword: 'correct horse battery staple',
+          email: 'owner@example.com',
+          organization: 'Acme',
+          output: 'text',
+        },
+        { contexts: [{ apiServer: 'https://cluster.example.test', name: 'production' }] },
+        async (): Promise<KubernetesInstallResourceInventory> =>
+          await Promise.resolve({
+            ingressClasses: ['nginx'],
+            storageClasses: [{ default: true, name: 'fast' }],
+          }),
+        async (): Promise<{ detail: string; trust: 'ca' }> =>
+          await Promise.resolve({
+            detail: 'Issuer private-ca uses spec.ca and requires trust distribution.',
+            trust: 'ca',
+          }),
+      ),
+    ).resolves.toBeDefined();
+
+    const output: string = capture.stderr.join('');
+    expect(output).toContain('TLS trust warning: Issuer private-ca uses spec.ca');
+    expect(output).toContain('Confirm that the private CA is distributed');
   });
 
   it('collects both certificate sources needed when operator platform TLS uses an existing Secret', async (): Promise<void> => {
@@ -188,6 +257,7 @@ describe('canonical Kubernetes install input', (): void => {
           ingressClasses: ['nginx'],
           storageClasses: [{ default: true, name: 'fast' }],
         }),
+      inspectPublicAcme,
     );
 
     expect(wizard.values).toMatchObject({
@@ -214,6 +284,7 @@ describe('canonical Kubernetes install input', (): void => {
           ingressClasses: ['traefik'],
           storageClasses: [{ default: true, name: 'local-path' }],
         }),
+      inspectPublicAcme,
     );
 
     expect(wizard.values).not.toHaveProperty('tls');
@@ -235,6 +306,7 @@ describe('canonical Kubernetes install input', (): void => {
             ingressClasses: ['nginx'],
             storageClasses: [{ default: true, name: 'fast' }],
           }),
+        inspectPublicAcme,
       ),
     );
     expect(failure.message).toContain('Operator-owned domain installation stopped before owner setup.');
@@ -278,6 +350,7 @@ describe('canonical Kubernetes install input', (): void => {
           storageClasses: [{ default: true, name: contextName === 'second' ? 'fast' : 'wrong' }],
         });
       },
+      inspectPublicAcme,
     );
 
     expect(selectedContexts).toEqual(['second']);

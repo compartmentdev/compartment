@@ -144,7 +144,10 @@ The operator must provide:
 - kube-proxy-based Service routing on every node. Kube-proxy-less Cilium is not supported because node-side
   container runtimes cannot reliably reach a registry `ClusterIP` in the proved topology.
 
-The DNS and Service-routing requirements are recorded prerequisites, not installer detection. See the
+The Service-routing requirement remains a recorded prerequisite because the installer does not grade node networking.
+Once the retained registry-auth Service exists, the installer probes the resolver view of every eligible node and
+prints the exact required A or AAAA record when an answer differs from the retained Service addresses. The final
+per-node pull proof remains authoritative for Service-routing and container-runtime TLS behavior. See the
 [private registry node-pull proof](../proofs/registry-node-pull.md) for the evidence and rejected topology.
 
 The installer performs non-persistent preflight checks for:
@@ -162,7 +165,13 @@ The installer performs non-persistent preflight checks for:
 - StorageClass existence and ambiguity;
 - existing Ingress host collisions;
 - existing retained installation identity;
+- operator issuer trust hazards that can be inferred from the selected Issuer or ClusterIssuer;
 - published Compartment image availability and signature policy.
+
+A self-signed cert-manager issuer is rejected because both the node container runtime and the CLI public HTTPS probe
+use their normal trust stores. A CA issuer is allowed with an explicit trust-distribution warning because its
+certificate chain may be valid when that CA is installed on every node and the operator machine. Failure to read an
+issuer because of RBAC produces the same warning instead of adding an undeclared permission requirement.
 
 The required cert-manager resources are Certificates, CertificateRequests, Issuers, ClusterIssuers, ACME Orders, and
 ACME Challenges. Component discovery follows the registered webhook Service and standard application labels; it does
@@ -310,14 +319,16 @@ The endpoint must satisfy all of these constraints:
 - no external registry account;
 - no node runtime mirror configuration;
 - no insecure HTTP registry;
-- no customer-wide CA installation;
+- no installer-managed customer-wide CA installation;
 - stable across ordinary Helm upgrades;
 - reachable by kubelet/containerd on every eligible worker node;
 - protected by repository-scoped authentication.
 
-The intended mechanism is a node-resolvable registry hostname with publicly trusted TLS whose DNS target is the
-retained cluster-only registry Service address. Before implementation continues beyond the registry phase, a focused
-proof must demonstrate that this works on every initially supported cluster topology.
+The intended mechanism is a node-resolvable registry hostname whose DNS target is the retained cluster-only registry
+Service address. TLS must be publicly trusted or chain to a private CA that the operator explicitly confirms is
+distributed to every node and the CLI machine. Compartment never installs that CA. Before implementation continues
+beyond the registry phase, a focused proof must demonstrate that this works on every initially supported cluster
+topology.
 
 The proof must explicitly cover:
 

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import {
   assertMatchingKubernetesInstallDomain,
+  isReservedKubernetesInstallLocalhostDomain,
   resolveKubernetesInstallControlPlaneUrl,
 } from '../kubernetes-install-domain';
 import { waitForKubernetesPlatformCertificates } from './kubernetes-install-certificate.service';
@@ -23,6 +24,7 @@ import {
 import { mergeRetainedKubernetesInstallState } from './kubernetes-install-retained-state.service';
 import { buildResolvedInstallValues, resolveKubernetesInstallState } from './kubernetes-install-state.service';
 import { verifyKubernetesInstallRegistryNodePull } from './kubernetes-install-registry-verification.service';
+import { assertOperatorRegistryDns } from './kubernetes-install-registry-dns.service';
 import { usesOperatorOwnedKubernetesTlsSecret } from './kubernetes-install-tls.service';
 import type {
   ExistingKubernetesInstall,
@@ -52,10 +54,21 @@ export async function deployAndWaitForKubernetesInstall(
   if (matchingState !== null) {
     assertMatchingKubernetesInstallDomain(input, matchingState);
   }
-  if (existingInstall?.stage === 'full' && effectiveInstall !== null) {
+  if (canResumeOwnerBootstrap(existingInstall, effectiveInstall)) {
     return await resumeKubernetesOwnerBootstrap(input, effectiveInstall);
   }
   return await deployKubernetesInstall(input, existingInstall, effectiveInstall, retainedState);
+}
+
+function canResumeOwnerBootstrap(
+  existingInstall: ExistingKubernetesInstall | null,
+  effectiveInstall: ExistingKubernetesInstall | null,
+): effectiveInstall is ExistingKubernetesInstall {
+  return (
+    existingInstall?.stage === 'full' &&
+    effectiveInstall !== null &&
+    !requiresOperatorCertificateReconciliation(effectiveInstall)
+  );
 }
 
 async function deployKubernetesInstall(
@@ -98,6 +111,7 @@ async function deployMaterializedKubernetesInstall(
     installToken,
     installationId,
   );
+  await checkOperatorRegistryDns(input, foundationInstall);
   const state: KubernetesInstallState = await resolveKubernetesInstallState(input, foundationInstall);
   return await deployResolvedKubernetesInstall(input, material, installToken, state);
 }
@@ -121,7 +135,7 @@ async function deployResolvedKubernetesInstall(
   await runObservableInstallStep(
     input.progress,
     'Verifying private registry pull on every node',
-    async (): Promise<void> => await verifyKubernetesInstallRegistryNodePull(input),
+    async (): Promise<void> => await verifyKubernetesInstallRegistryNodePull(input, state),
   );
   return await finishKubernetesInstall(apiUrl, installToken, state.baseDomain, input.domainMode, input.progress);
 }
@@ -178,14 +192,33 @@ async function resumeKubernetesOwnerBootstrap(
   existingInstall: ExistingKubernetesInstall,
 ): Promise<KubernetesInstallDeploymentResult> {
   const baseDomain: string = requireExistingBaseDomain(existingInstall);
+  await checkOperatorRegistryDns(input, existingInstall);
   await waitForRequiredKubernetesPlatformCertificates(input, existingInstall);
-  await verifyKubernetesInstallRegistryNodePull(input);
+  await verifyKubernetesInstallRegistryNodePull(input, existingInstall);
   return await finishKubernetesInstall(
     resolveKubernetesInstallControlPlaneUrl(input.apiUrl, baseDomain, existingInstall.publicProtocol),
     requireExistingInstallToken(existingInstall),
     baseDomain,
     input.domainMode,
     input.progress,
+  );
+}
+
+function requiresOperatorCertificateReconciliation(install: ExistingKubernetesInstall): boolean {
+  return install.domainMode === 'custom' && !isReservedKubernetesInstallLocalhostDomain(install.baseDomain);
+}
+
+async function checkOperatorRegistryDns(
+  input: KubernetesInstallDeploymentInput,
+  state: KubernetesInstallState,
+): Promise<void> {
+  if (state.domainMode !== 'custom' || isReservedKubernetesInstallLocalhostDomain(state.baseDomain)) {
+    return;
+  }
+  await runObservableInstallStep(
+    input.progress,
+    'Checking private registry DNS on every node',
+    async (): Promise<void> => await assertOperatorRegistryDns(input, state),
   );
 }
 

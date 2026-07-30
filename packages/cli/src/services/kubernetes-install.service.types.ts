@@ -191,11 +191,6 @@ export interface HelmReleaseSummary {
   status: string;
 }
 
-export interface PublicControlPlaneObservation {
-  failure: string;
-  ready: boolean;
-}
-
 export type KubernetesInstallStage = 'foundation' | 'full';
 export type KubernetesInstallDomainMode = 'custom' | 'managed';
 export type KubernetesInstallTlsMode = 'broker-dns01' | 'internal' | 'issuer';
