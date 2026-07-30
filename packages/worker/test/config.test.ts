@@ -68,6 +68,18 @@ describe('readWorkerConfig', (): void => {
     ).toThrow();
   });
 
+  it('accepts build scheduling without an optional RuntimeClass', (): void => {
+    const config: WorkerBuildConfig = readWorkerBuildConfig({
+      ...validEnvironment(),
+      COMPARTMENT_KUBE_BUILD_SCHEDULING: '{"nodeSelector":{"compartment.dev/node-pool":"build"},"tolerations":[]}',
+    });
+
+    expect(config.buildSandbox.scheduling).toEqual({
+      nodeSelector: { 'compartment.dev/node-pool': 'build' },
+      tolerations: [],
+    });
+  });
+
   it('rejects unsafe worker trusted outbound host entries', (): void => {
     expect((): WorkerConfig => {
       return readWorkerConfig({

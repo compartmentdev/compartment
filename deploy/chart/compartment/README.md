@@ -11,10 +11,14 @@ existing-cluster preflight before applying it.
 - cert-manager
 - NetworkPolicy enforcement
 - persistent storage
-- `runsc` configured as the `gvisor` containerd runtime handler on every build node
 - installer access to the namespaced and cluster-scoped resources rendered by the chart
 
 The chart does not install or disable cluster infrastructure and does not mutate nodes.
+
+gVisor is an optional build-isolation enhancement. By default, ephemeral source-build Pods use each build node's
+default container runtime. To add kernel-level sandboxing, install `runsc` on the build nodes, expose it through a
+RuntimeClass, and set `buildkit.runtimeClassName` to that class name. The chart does not create a cluster-scoped
+RuntimeClass unless `buildkit.createRuntimeClass` is explicitly enabled.
 
 ## Node pools and workload priority
 

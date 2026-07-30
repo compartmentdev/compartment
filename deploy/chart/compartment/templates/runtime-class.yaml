@@ -7,7 +7,7 @@ metadata:
     {{- include "compartment.labels" . | nindent 4 }}
 handler: {{ .Values.buildkit.runtimeHandler }}
 {{- end }}
-{{- if and .Values.tenantRuntime.createRuntimeClass (ne .Values.tenantRuntime.runtimeClassName .Values.buildkit.runtimeClassName) }}
+{{- if and .Values.tenantRuntime.createRuntimeClass (not (and .Values.buildkit.createRuntimeClass (eq .Values.tenantRuntime.runtimeClassName .Values.buildkit.runtimeClassName))) }}
 ---
 apiVersion: node.k8s.io/v1
 kind: RuntimeClass

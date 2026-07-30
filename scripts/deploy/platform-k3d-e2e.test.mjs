@@ -65,6 +65,11 @@ describe('platform k3d e2e command boundary', () => {
     expect(args).toContain('10.43.250.250:registry.managed-platform-e2e.managed.compartment.localhost');
     expect(args).toContain('120s');
     expect(args.join(' ')).not.toContain('30443@server');
+    expect(args.join(' ')).not.toContain('containerd-gvisor-config.toml.tmpl');
+    expect(args.join(' ')).not.toContain('containerd-shim-runsc-v1');
+    expect(args.join(' ')).not.toContain('/usr/bin/gvisor-bin');
+    expect(args.join(' ')).not.toContain('/usr/bin/runsc');
+    expect(args.join(' ')).not.toContain('/etc/containerd/runsc.toml');
     expect(readPlatformK3dCertManagerManifestUrl()).toBe(
       'https://github.com/cert-manager/cert-manager/releases/download/v1.21.0/cert-manager.yaml',
     );
@@ -396,8 +401,12 @@ describe('platform k3d e2e command boundary', () => {
 
   it('enables the gVisor RuntimeClass only for an opted-in e2e cluster', () => {
     expect(renderPlatformK3dValues(createTestImageDigests())).not.toContain('tenantRuntime:');
+    expect(renderPlatformK3dValues(createTestImageDigests())).not.toContain('runtimeClassName: gvisor');
     expect(renderPlatformK3dValues(createTestImageDigests(), true)).toContain(
-      'tenantRuntime:\n  runtimeClassName: gvisor\n  createRuntimeClass: true\n  runtimeHandler: runsc',
+      'tenantRuntime:\n  runtimeClassName: gvisor\n  createRuntimeClass: false\n  runtimeHandler: runsc',
+    );
+    expect(renderPlatformK3dValues(createTestImageDigests(), true)).toContain(
+      'buildkit:\n  namespace: compartment-build\n  runtimeClassName: gvisor',
     );
   });
 

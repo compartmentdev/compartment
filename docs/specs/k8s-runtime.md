@@ -119,7 +119,7 @@ Platform and build scheduling remains owned by the Helm chart.
 Tenant kernel sandboxing is installation-owned and opt-in through `tenantRuntime.runtimeClassName`.
 The selected RuntimeClass is projected onto application Deployments, resource Deployments, product Jobs, and
 provisioning Jobs; an empty value omits `runtimeClassName` entirely. Platform workloads and `api-migrate` remain on
-the node default runtime. Build Jobs use their separate chart-owned gVisor RuntimeClass and build node pool.
+the node default runtime. Build Jobs use their separate chart-owned optional RuntimeClass and build node pool.
 PostgreSQL resources use the tenant RuntimeClass without a separate
 opt-out; the additional I/O cost is an accepted isolation tradeoff.
 
@@ -145,14 +145,18 @@ checksum and size. Restore verification finishes before the user restore command
 ## Build pipeline
 
 Each cluster source build runs as one deterministic worker-owned Kubernetes Job. The Job contains the build runner
-and a rootless BuildKit native sidecar, uses the `gvisor` RuntimeClass, joins an existing Job after worker recovery,
+and a rootless BuildKit native sidecar, joins an existing Job after worker recovery,
 and is deleted after its result and logs are captured. The chart owns the BuildKit image, resources, scheduling,
 namespace RBAC, and network isolation; no long-lived BuildKit Deployment or Service exists. The build
-sidecar uses BuildKit's native snapshotter because gVisor does not support the trusted overlay redirect xattr.
+sidecar uses BuildKit's native snapshotter so the same build path works with either gVisor or the node default runtime.
 The default build timeout is 30 minutes to accommodate cold native-snapshotter builds.
 namespace uses Pod Security `enforce=privileged` with
 `audit=baseline` and `warn=baseline` because the tested AppArmor Unconfined
-profile is not admitted by baseline enforcement. Isolation comes from gVisor plus pod ephemerality, not PSA.
+profile is not admitted by baseline enforcement. Per-build ephemerality gives every build a fresh Pod and `emptyDir`
+workspace, then deletes that Pod after result capture; it does not create a separate kernel boundary. When
+`buildkit.runtimeClassName` selects an operator-provided gVisor RuntimeClass, gVisor adds a userspace kernel sandbox
+between build processes and the node kernel. Without that value, builds use the node default container runtime and
+retain Pod, namespace, RBAC, NetworkPolicy, and ephemeral-storage isolation, but not gVisor's kernel boundary.
 Fresh installs and upgrades bind only the existing platform worker ServiceAccount to the namespaced Job, Secret, Pod,
 and Pod-log permissions required by `runJob`; no tenant or seeded product principal receives Kubernetes authority.
 
