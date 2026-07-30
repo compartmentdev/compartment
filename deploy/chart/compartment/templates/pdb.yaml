@@ -1,0 +1,21 @@
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- if eq $installState.effective.platform.startupStage "full" -}}
+{{- range $component := list "api" "edge" "caddy" -}}
+{{- $replicas := int (dig "replicas" 1 (get $.Values $component)) -}}
+{{- if gt $replicas 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "compartment.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "compartment.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" $ "component" $component) | nindent 6 }}
+{{- end -}}
+{{- end -}}
+{{- end -}}

@@ -20,7 +20,16 @@ import type {
 
 const edgeBootstrapRetryIntervalMs: number = 1_000;
 const edgeAccessStateSyncIntervalMs: number = 5_000;
+const edgeRouteMissRefreshCooldownMs: number = 1_000;
 type EdgeRefreshError = Error | { message?: string } | null | undefined;
+const edgeRouteMissRefreshes: WeakMap<EdgeAppAccessStateStore, Promise<void>> = new WeakMap<
+  EdgeAppAccessStateStore,
+  Promise<void>
+>();
+const edgeRouteMissRefreshCompletedAt: WeakMap<EdgeAppAccessStateStore, number> = new WeakMap<
+  EdgeAppAccessStateStore,
+  number
+>();
 
 export async function bootstrapEdgeAccessStateUntilReady(
   config: EdgeConfig,
@@ -74,6 +83,44 @@ export function startEdgeAccessStateRefreshLoop(
     stopped = true;
     clearTimeout(timer);
   };
+}
+
+export async function refreshEdgeAccessStateAfterRouteMiss(
+  config: EdgeConfig,
+  store: EdgeAppAccessStateStore,
+  metrics: EdgeSnapshotMetrics,
+  logger: Logger,
+): Promise<void> {
+  const completedAt: number | undefined = edgeRouteMissRefreshCompletedAt.get(store);
+  if (completedAt !== undefined && Date.now() - completedAt < edgeRouteMissRefreshCooldownMs) {
+    return;
+  }
+  const activeRefresh: Promise<void> | undefined = edgeRouteMissRefreshes.get(store);
+  if (activeRefresh !== undefined) {
+    await activeRefresh;
+    return;
+  }
+
+  await startEdgeRouteMissRefresh(config, store, metrics, logger);
+}
+
+async function startEdgeRouteMissRefresh(
+  config: EdgeConfig,
+  store: EdgeAppAccessStateStore,
+  metrics: EdgeSnapshotMetrics,
+  logger: Logger,
+): Promise<void> {
+  const refresh: Promise<void> = synchronizeEdgeAccessState(config, store, metrics)
+    .catch((error: EdgeRefreshError): void => {
+      metrics.recordRefreshError();
+      logger.error({ err: error }, readEdgeRefreshErrorMessage(error));
+    })
+    .finally((): void => {
+      edgeRouteMissRefreshes.delete(store);
+      edgeRouteMissRefreshCompletedAt.set(store, Date.now());
+    });
+  edgeRouteMissRefreshes.set(store, refresh);
+  await refresh;
 }
 
 function scheduleEdgeRefresh(refresh: () => Promise<void>): NodeJS.Timeout {
@@ -229,9 +276,5 @@ async function waitForEdgeBootstrapRetry(): Promise<void> {
 }
 
 function readEdgeRefreshErrorMessage(error: EdgeRefreshError): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return typeof error?.message === 'string' ? error.message : 'Failed to synchronize edge access state.';
+  return error instanceof Error ? error.message : (error?.message ?? 'Failed to synchronize edge access state.');
 }

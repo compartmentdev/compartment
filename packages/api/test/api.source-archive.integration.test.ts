@@ -625,7 +625,7 @@ describe('Phase 0 API integration source archive', (): void => {
     }
   });
 
-  it('returns not found for artifact source archives missing from source upload storage', async (): Promise<void> => {
+  it('serves artifact source archives from PostgreSQL when the local replica has no file', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
       app,
@@ -657,8 +657,8 @@ describe('Phase 0 API integration source archive', (): void => {
       url: `/internal/artifacts/${claimedDeployment.artifact.id}/source-archive`,
     });
 
-    expect(sourceArchiveResponse.statusCode).toBe(404);
-    expect(errorResponseSchema.parse(sourceArchiveResponse.json()).error.code).toBe('source_archive_not_found');
+    expect(sourceArchiveResponse.statusCode).toBe(200);
+    expect(sourceArchiveResponse.body.length).toBeGreaterThan(0);
   });
 
   it('rejects root-descriptor archives without source-package metadata', async (): Promise<void> => {

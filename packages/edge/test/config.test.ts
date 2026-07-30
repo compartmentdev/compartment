@@ -10,6 +10,7 @@ describe('readEdgeConfig', (): void => {
       COMPARTMENT_EDGE_BIND_HOST: '127.0.0.1',
       COMPARTMENT_EDGE_INTERNAL_HOST: '127.0.0.1',
       COMPARTMENT_EDGE_PORT: '39548',
+      COMPARTMENT_EDGE_REPLICA_COUNT: '2',
       COMPARTMENT_EDGE_SNAPSHOT_PATH: '/tmp/edge-snapshot.json',
       COMPARTMENT_EDGE_TOKEN: 'edge-token',
       COMPARTMENT_LOG_LEVEL: 'info',
@@ -22,6 +23,7 @@ describe('readEdgeConfig', (): void => {
     expect(config.internalHost).toBe('127.0.0.1');
     expect(config.port).toBe(39548);
     expect(config.publicProtocol).toBe('http');
+    expect(config.replicaCount).toBe(2);
     expect(config.snapshotMaxAgeMs).toBe(86_400_000);
     expect(config.snapshotPath).toBe('/tmp/edge-snapshot.json');
   });

@@ -2,11 +2,14 @@ import {
   compartmentAppSessionCookieName,
   type AppAccessExchangeRequest,
   type AppAccessExchangeResponse,
+  type AppAccessSessionState,
+  type AppAccessSessionResolveResponse,
 } from '@compartment/contracts';
 import {
   createCompartmentRequester,
   exchangeAppAccess,
   logoutAppAccess,
+  resolveAppAccessSession,
   type CompartmentRequester,
 } from '@compartment/sdk';
 import { parseHttpHostAuthority, readCookieValue, serializeCookie } from '@compartment/utils';
@@ -21,6 +24,16 @@ export async function exchangeAppAccessCodeWithApi(
 
 export async function logoutAppAccessWithApi(config: EdgeConfig, appSessionToken: string | null): Promise<void> {
   await logoutAppAccess(createEdgeRequester(config), { appSessionToken });
+}
+
+export async function resolveAppAccessSessionWithApi(
+  config: EdgeConfig,
+  appSessionToken: string,
+): Promise<AppAccessSessionState | null> {
+  const response: AppAccessSessionResolveResponse = await resolveAppAccessSession(createEdgeRequester(config), {
+    appSessionToken,
+  });
+  return response.session;
 }
 
 export function readAppSessionToken(cookieHeader: string | undefined): string | null {

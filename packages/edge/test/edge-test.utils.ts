@@ -75,6 +75,7 @@ function createEdgeConfig(overrides: Partial<EdgeConfig> | undefined = undefined
     controlPlaneHost: 'console.localhost',
     port: 9081,
     publicProtocol: 'http',
+    replicaCount: 1,
     snapshotMaxAgeMs: 86_400_000,
     snapshotPath: '/tmp/compartment-edge-test/access-state.json',
     ...overrides,

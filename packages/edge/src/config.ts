@@ -9,6 +9,7 @@ interface EdgeConfigEnvironment {
   COMPARTMENT_EDGE_BIND_HOST: string;
   COMPARTMENT_EDGE_INTERNAL_HOST: string;
   COMPARTMENT_EDGE_PORT: number;
+  COMPARTMENT_EDGE_REPLICA_COUNT: number;
   COMPARTMENT_EDGE_SNAPSHOT_PATH: string;
   COMPARTMENT_EDGE_TOKEN: string;
   COMPARTMENT_LOG_LEVEL: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
@@ -24,6 +25,7 @@ const edgeConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_EDGE_BIND_HOST: z.string().min(1),
   COMPARTMENT_EDGE_INTERNAL_HOST: z.string().min(1),
   COMPARTMENT_EDGE_PORT: z.coerce.number().int().positive(),
+  COMPARTMENT_EDGE_REPLICA_COUNT: z.coerce.number().int().positive(),
   COMPARTMENT_EDGE_SNAPSHOT_PATH: z.string().min(1),
   COMPARTMENT_EDGE_TOKEN: z.string().min(1),
   COMPARTMENT_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
@@ -37,6 +39,7 @@ export interface EdgeConfig {
   internalHost: string;
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   port: number;
+  replicaCount: number;
   controlPlaneHost: string;
   publicProtocol: 'http' | 'https';
   snapshotMaxAgeMs: number;
@@ -53,6 +56,7 @@ export function readEdgeConfig(env: NodeJS.ProcessEnv = process.env): EdgeConfig
     internalHost: parsed.COMPARTMENT_EDGE_INTERNAL_HOST,
     logLevel: parsed.COMPARTMENT_LOG_LEVEL,
     port: parsed.COMPARTMENT_EDGE_PORT,
+    replicaCount: parsed.COMPARTMENT_EDGE_REPLICA_COUNT,
     controlPlaneHost: buildControlPlaneHost(parsed.COMPARTMENT_BASE_DOMAIN.trim().toLowerCase()),
     publicProtocol: parsed.COMPARTMENT_PUBLIC_PROTOCOL,
     snapshotMaxAgeMs: edgeSnapshotMaxAgeMs,

@@ -8,6 +8,7 @@ import { registerGetArtifactSourceArchiveRoute } from './get-artifact-source-arc
 import { registerGetPodMetricNamespacesRoute } from './get-pod-metric-namespaces.route';
 import { registerPostAppAccessExchangeRoute } from './post-app-access-exchange.route';
 import { registerPostAppAccessLogoutRoute } from './post-app-access-logout.route';
+import { registerPostAppAccessSessionResolveRoute } from './post-app-access-session-resolve.route';
 import { registerPostClaimDeploymentRoute } from './post-claim-deployment.route';
 import { registerPostRecoverOrphanedBuildClaimsRoute } from './post-recover-orphaned-build-claims.route';
 import { registerPostClaimGitSourceResolutionTaskRoute } from './post-claim-git-source-resolution-task.route';
@@ -64,6 +65,7 @@ function registerEdgeInternalRoutes(
   registerGetAppAccessStateRoute(app);
   registerPostAppAccessExchangeRoute(app);
   registerPostAppAccessLogoutRoute(app);
+  registerPostAppAccessSessionResolveRoute(app);
   done();
 }
 

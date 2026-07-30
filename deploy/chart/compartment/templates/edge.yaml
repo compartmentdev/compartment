@@ -22,7 +22,11 @@ metadata:
     {{- include "compartment.labels" . | nindent 4 }}
     app.kubernetes.io/component: edge
 spec:
-  replicas: 1
+  replicas: {{ .Values.edge.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
   selector:
     matchLabels:
       {{- include "compartment.componentLabels" (dict "root" . "component" "edge") | nindent 6 }}
@@ -33,6 +37,8 @@ spec:
       annotations:
         {{- include "compartment.domainRolloutAnnotations" . | nindent 8 }}
     spec:
+      topologySpreadConstraints:
+        {{- include "compartment.topologySpreadConstraint" (dict "root" . "component" "edge") | nindent 8 }}
       priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
       {{- include "compartment.nodePool" .Values.nodePools.system | nindent 6 }}
       {{- include "compartment.waiterPodSpec" . | nindent 6 }}

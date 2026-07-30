@@ -21,6 +21,7 @@ data:
   COMPARTMENT_EDGE_BIND_HOST: "0.0.0.0"
   COMPARTMENT_EDGE_INTERNAL_HOST: {{ printf "%s-edge" (include "compartment.fullname" .) | quote }}
   COMPARTMENT_EDGE_PORT: {{ .Values.ports.edge | quote }}
+  COMPARTMENT_EDGE_REPLICA_COUNT: {{ .Values.edge.replicas | quote }}
   COMPARTMENT_ENV: self-hosted
   COMPARTMENT_INSTALLATION_ID: {{ $installState.effective.platform.installationId | quote }}
   COMPARTMENT_LOG_LEVEL: {{ .Values.platform.logLevel | quote }}

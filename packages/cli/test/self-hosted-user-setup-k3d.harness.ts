@@ -857,6 +857,14 @@ export async function enableK3dAuditFileSink(): Promise<string> {
   const kubectlBaseArgv: readonly string[] = buildK3dKubectlBaseArgv(seed);
   const patchPayload: string = JSON.stringify({ data: { COMPARTMENT_AUDIT_FILE_SINK_ENABLED: 'true' } });
   await runK3dKubectlCommands([
+    [...kubectlBaseArgv, 'scale', `deployment/${k3dPlatformResourceName}-api`, '--replicas=1'],
+    [
+      ...kubectlBaseArgv,
+      'rollout',
+      'status',
+      `deployment/${k3dPlatformResourceName}-api`,
+      `--timeout=${k3dRolloutTimeout}`,
+    ],
     [
       ...kubectlBaseArgv,
       'exec',

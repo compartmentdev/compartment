@@ -1,11 +1,16 @@
 {{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
 {{- $root := . -}}
-{{- $claims := dict "postgres" .Values.storage.postgres -}}
+{{- $claims := dict -}}
+{{- if not .Values.postgres.external.enabled -}}
+{{- $_ := set $claims "postgres" .Values.storage.postgres -}}
+{{- end -}}
 {{- if eq (include "compartment.registryStorageBackend" .) "pvc" -}}
 {{- $_ := set $claims "registry" .Values.storage.registry -}}
 {{- end -}}
 {{- if eq $installState.effective.platform.startupStage "full" -}}
+{{- if eq (int .Values.api.replicas) 1 -}}
 {{- $_ := set $claims "api" .Values.storage.api -}}
+{{- end -}}
 {{- if .Values.edge.snapshots.enabled -}}
 {{- $_ := set $claims "edge-snapshots" .Values.storage.edgeSnapshots -}}
 {{- end -}}

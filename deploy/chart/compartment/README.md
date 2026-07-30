@@ -64,6 +64,40 @@ The chart renders exact console and application host rules with no catch-all hos
 controller-specific annotation. Caddy is reachable only through a ClusterIP Service on the internal HTTP port. Its
 NetworkPolicy admits that port from cluster ingress sources.
 
+## High availability
+
+The chart runs `api`, `edge`, and `caddy` with two replicas by default. Each Deployment uses a rolling update with
+`maxUnavailable: 0`, a `minAvailable: 1` PodDisruptionBudget when more than one replica is configured, and a soft
+`kubernetes.io/hostname` topology spread constraint. The soft constraint preserves support for single-node clusters;
+multiple schedulable nodes are required for node-failure tolerance.
+
+API source archives are stored in PostgreSQL so either API replica can complete an in-flight deployment. During an
+upgrade from a chart that used the API PVC, the migration Job imports retained archives before the HA rollout.
+Authentication and app-access sessions are PostgreSQL-backed; edge resolves app-session cookies through the shared
+API contract, while each edge replica independently refreshes its route and authorization snapshot. Persistent edge
+snapshots and the optional API audit file sink are package-local recovery features and require their component to be
+set to one replica.
+
+Caddy is an internal HTTP proxy and has no persistent storage or certificate material. Ingress and cert-manager own
+platform TLS certificates and Secrets.
+
+This availability boundary does not include `worker`, `project-provisioner`, registry, or the bundled PostgreSQL
+Deployment, which remain single replicas. Worker and project-provisioner failover requires future leader election.
+For production, use an HA external PostgreSQL service:
+
+```yaml
+postgres:
+  external:
+    enabled: true
+    existingSecret: compartment-production-postgres
+    databaseUrlKey: database-url
+    passwordKey: postgres-password
+```
+
+The referenced Secret must exist in the release namespace. `databaseUrlKey` must contain the PostgreSQL DSN and
+`passwordKey` must contain the matching password. When external PostgreSQL is enabled, the chart does not render the
+bundled PostgreSQL Service, Deployment, or PVC; the API and migration Job read the configured keys directly.
+
 ## TLS
 
 Managed-domain installations use the bundled allocation-scoped DNS-01 solver. For an operator-owned domain, set

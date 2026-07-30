@@ -122,6 +122,7 @@ async function readPreparedSourceUploadArchive(
   return {
     sourceUploadId,
     storedArchive: {
+      archiveBase64: archiveBuffer.toString('base64'),
       byteSize: archiveBuffer.byteLength,
       sourceDigest: createHash('sha256').update(archiveBuffer).digest('hex'),
     },
@@ -209,6 +210,7 @@ async function persistSourceUploadRecord(
   now: Date,
 ): Promise<DeployableSourceUpload> {
   return await createSourceUpload({
+    archiveBase64: preparedArchive.storedArchive.archiveBase64,
     byteSize: preparedArchive.storedArchive.byteSize,
     createdByPrincipalId: input.actorPrincipalId,
     environmentId: input.scope.environmentId,

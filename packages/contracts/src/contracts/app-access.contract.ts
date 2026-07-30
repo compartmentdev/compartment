@@ -20,6 +20,14 @@ export interface AppAccessLogoutRequest {
   appSessionToken: string | null;
 }
 
+export interface AppAccessSessionResolveRequest {
+  appSessionToken: string;
+}
+
+export interface AppAccessSessionResolveResponse {
+  session: AppAccessSessionState | null;
+}
+
 export const appAccessExchangeRequestSchema: ContractSchema<AppAccessExchangeRequest> = z
   .object({
     code: z.string().min(1),
@@ -39,5 +47,17 @@ export const appAccessExchangeResponseSchema: ContractSchema<AppAccessExchangeRe
 export const appAccessLogoutRequestSchema: ContractSchema<AppAccessLogoutRequest> = z
   .object({
     appSessionToken: z.string().min(1).nullable(),
+  })
+  .strict();
+
+export const appAccessSessionResolveRequestSchema: ContractSchema<AppAccessSessionResolveRequest> = z
+  .object({
+    appSessionToken: z.string().min(1),
+  })
+  .strict();
+
+export const appAccessSessionResolveResponseSchema: ContractSchema<AppAccessSessionResolveResponse> = z
+  .object({
+    session: appAccessSessionStateSchema.nullable(),
   })
   .strict();

@@ -5,12 +5,14 @@ import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
 import type { AuthSessionActorRow } from '../src/queries/authentication.query.types';
 import { exchangeAppAccessCode, issueAppAccessRedirect } from '../src/services/app-access.service';
+import { resolveAppAccessSession } from '../src/services/app-access-session-resolution.service';
 import type { AppAccessCodeRow } from '../src/queries/app-access.query.types';
 import type {
   consumeAppAccessCode,
   createAppAccessCode,
   createAppAccessSession,
   findActiveAppAccessSessionByTokenHash,
+  findResolvedAppAccessSessionByTokenHash,
   findAppAccessCodeByTokenHash,
   revokeAppAccessSession,
 } from '../src/queries/app-access.query';
@@ -35,6 +37,7 @@ type CreateToken = typeof createToken;
 type FindActiveAuthenticationSessionById = typeof findActiveAuthenticationSessionById;
 type FindActiveAppAccessSessionByTokenHash = typeof findActiveAppAccessSessionByTokenHash;
 type FindAppAccessCodeByTokenHash = typeof findAppAccessCodeByTokenHash;
+type FindResolvedAppAccessSessionByTokenHash = typeof findResolvedAppAccessSessionByTokenHash;
 type GetApiConfig = typeof getApiConfig;
 type HashToken = typeof hashToken;
 type IsAuthSessionAllowedForOrganization = typeof isAuthSessionAllowedForOrganization;
@@ -53,6 +56,7 @@ interface AppAccessServiceMocks {
   findActiveAuthenticationSessionById: Mock<FindActiveAuthenticationSessionById>;
   findActiveAppAccessSessionByTokenHash: Mock<FindActiveAppAccessSessionByTokenHash>;
   findAppAccessCodeByTokenHash: Mock<FindAppAccessCodeByTokenHash>;
+  findResolvedAppAccessSessionByTokenHash: Mock<FindResolvedAppAccessSessionByTokenHash>;
   getApiConfig: Mock<GetApiConfig>;
   hashToken: Mock<HashToken>;
   isAuthSessionAllowedForOrganization: Mock<IsAuthSessionAllowedForOrganization>;
@@ -67,6 +71,7 @@ interface AppAccessQueryMockModule {
   createAppAccessSession: Mock<CreateAppAccessSession>;
   findActiveAppAccessSessionByTokenHash: Mock<FindActiveAppAccessSessionByTokenHash>;
   findAppAccessCodeByTokenHash: Mock<FindAppAccessCodeByTokenHash>;
+  findResolvedAppAccessSessionByTokenHash: Mock<FindResolvedAppAccessSessionByTokenHash>;
   revokeAppAccessSession: Mock<RevokeAppAccessSession>;
 }
 
@@ -114,6 +119,7 @@ const mocks: AppAccessServiceMocks = vi.hoisted(
     findActiveAuthenticationSessionById: vi.fn<FindActiveAuthenticationSessionById>(),
     findActiveAppAccessSessionByTokenHash: vi.fn<FindActiveAppAccessSessionByTokenHash>(),
     findAppAccessCodeByTokenHash: vi.fn<FindAppAccessCodeByTokenHash>(),
+    findResolvedAppAccessSessionByTokenHash: vi.fn<FindResolvedAppAccessSessionByTokenHash>(),
     getApiConfig: vi.fn<GetApiConfig>(),
     hashToken: vi.fn<HashToken>(),
     isAuthSessionAllowedForOrganization: vi.fn<IsAuthSessionAllowedForOrganization>(),
@@ -131,6 +137,7 @@ vi.mock(
     createAppAccessSession: mocks.createAppAccessSession,
     findActiveAppAccessSessionByTokenHash: mocks.findActiveAppAccessSessionByTokenHash,
     findAppAccessCodeByTokenHash: mocks.findAppAccessCodeByTokenHash,
+    findResolvedAppAccessSessionByTokenHash: mocks.findResolvedAppAccessSessionByTokenHash,
     revokeAppAccessSession: mocks.revokeAppAccessSession,
   }),
 );
@@ -235,6 +242,7 @@ describe('app access service', (): void => {
     mocks.findAppAccessCodeByTokenHash.mockResolvedValue(createAppAccessCodeRow());
     mocks.findActiveAuthenticationSessionById.mockResolvedValue(createAuthSessionActorRow());
     mocks.findActiveAppAccessSessionByTokenHash.mockResolvedValue(undefined);
+    mocks.findResolvedAppAccessSessionByTokenHash.mockResolvedValue(undefined);
     mocks.isAuthSessionAllowedForOrganization.mockResolvedValue(true);
     mocks.consumeAppAccessCode.mockResolvedValue(true);
     mocks.createId.mockImplementation((prefix: string): string => `${prefix}_123`);
@@ -293,6 +301,23 @@ describe('app access service', (): void => {
 
     expect(mocks.consumeAppAccessCode).not.toHaveBeenCalled();
     expect(mocks.createAppAccessSession).not.toHaveBeenCalled();
+  });
+
+  it('resolves a PostgreSQL-backed app session for another edge replica', async (): Promise<void> => {
+    mocks.findResolvedAppAccessSessionByTokenHash.mockResolvedValueOnce({
+      authSessionId: 'ses_123',
+      expiresAt: new Date('2099-03-31T00:00:00.000Z'),
+      host: 'billing.localhost',
+    });
+
+    await expect(resolveAppAccessSession('app-session-token')).resolves.toEqual({
+      authSessionId: 'ses_123',
+      expiresAt: '2099-03-31T00:00:00.000Z',
+      host: 'billing.localhost',
+      principalEmail: 'admin@example.com',
+      principalId: 'prn_123',
+      principalType: 'user',
+    });
   });
 });
 

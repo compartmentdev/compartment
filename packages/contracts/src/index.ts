@@ -40,9 +40,13 @@ export {
   type AppAccessExchangeRequest,
   type AppAccessExchangeResponse,
   type AppAccessLogoutRequest,
+  type AppAccessSessionResolveRequest,
+  type AppAccessSessionResolveResponse,
   appAccessExchangeRequestSchema,
   appAccessExchangeResponseSchema,
   appAccessLogoutRequestSchema,
+  appAccessSessionResolveRequestSchema,
+  appAccessSessionResolveResponseSchema,
 } from './contracts/app-access.contract';
 export * from './contracts/deployment-inspect.contract';
 export {

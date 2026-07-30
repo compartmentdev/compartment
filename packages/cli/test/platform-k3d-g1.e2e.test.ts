@@ -60,6 +60,7 @@ describeSelfHostedUserSetupE2e('platform k3d G1 edge gate', (): void => {
     'restores the LKG snapshot and measures live grant revocation convergence',
     async (): Promise<void> => {
       const runtime: SelfHostedUserSetupRuntime = await setup.install();
+      await enablePersistentEdgeSnapshotMode();
       const app: SelfHostedUserSetupAppFixture = await setup.createAppFixture();
       const admin: SelfHostedUserSetupCli = await setup.createFreshCli();
       const viewer: SelfHostedUserSetupCli = await setup.createFreshCli();
@@ -173,6 +174,35 @@ interface GateCommands {
   readonly relogin: string;
   readonly revoke: string;
   readonly upstream: string;
+}
+
+async function enablePersistentEdgeSnapshotMode(): Promise<void> {
+  await execFileAsync(
+    'helm',
+    [
+      'upgrade',
+      'compartment',
+      './deploy/chart/compartment',
+      '--kube-context',
+      platformKubeContext,
+      '--namespace',
+      platformNamespace,
+      '--reuse-values',
+      '--set',
+      'edge.replicas=1',
+      '--set',
+      'edge.snapshots.enabled=true',
+      '--wait',
+      '--wait-for-jobs',
+      '--timeout',
+      '6m',
+    ],
+    {
+      cwd: repositoryRoot,
+      env: process.env,
+      timeout: selfHostedUserSetupTimeoutMs,
+    },
+  );
 }
 
 async function writeGateCommands(input: GateCommandInput): Promise<GateCommands> {

@@ -1,47 +1,80 @@
 import { and, eq, isNotNull, isNull, lt, or, type SQL } from 'drizzle-orm';
+import type { SelectedFieldsFlat } from 'drizzle-orm/pg-core/query-builders/select.types';
 import { buildArtifacts, deployments, sourceUploads } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
-import type {
-  CreateSourceUploadInput,
-  PersistedSourceUploadRow,
-  SourceUploadLookupInput,
-  SourceUploadRow,
-} from './source-uploads.query.types';
+import type { CreateSourceUploadInput, SourceUploadLookupInput, SourceUploadRow } from './source-uploads.query.types';
 
 const expiredSourceUploadCleanupLimit: number = 20;
 const expiredSourceUploadCleanupGraceMs: number = 15 * 60 * 1000;
+interface SourceUploadSelection extends SelectedFieldsFlat {
+  byteSize: typeof sourceUploads.byteSize;
+  consumedAt: typeof sourceUploads.consumedAt;
+  createdAt: typeof sourceUploads.createdAt;
+  createdByPrincipalId: typeof sourceUploads.createdByPrincipalId;
+  environmentId: typeof sourceUploads.environmentId;
+  expiresAt: typeof sourceUploads.expiresAt;
+  id: typeof sourceUploads.id;
+  organizationId: typeof sourceUploads.organizationId;
+  projectId: typeof sourceUploads.projectId;
+  projectServiceId: typeof sourceUploads.projectServiceId;
+  sourceDigest: typeof sourceUploads.sourceDigest;
+}
+
+const sourceUploadSelection: SourceUploadSelection = {
+  byteSize: sourceUploads.byteSize,
+  consumedAt: sourceUploads.consumedAt,
+  createdAt: sourceUploads.createdAt,
+  createdByPrincipalId: sourceUploads.createdByPrincipalId,
+  environmentId: sourceUploads.environmentId,
+  expiresAt: sourceUploads.expiresAt,
+  id: sourceUploads.id,
+  organizationId: sourceUploads.organizationId,
+  projectId: sourceUploads.projectId,
+  projectServiceId: sourceUploads.projectServiceId,
+  sourceDigest: sourceUploads.sourceDigest,
+};
 
 export async function createSourceUpload(input: CreateSourceUploadInput): Promise<SourceUploadRow> {
-  const [row] = await getApiDatabase().insert(sourceUploads).values(input).returning();
+  const [row] = await getApiDatabase().insert(sourceUploads).values(input).returning(sourceUploadSelection);
 
-  return toSourceUploadRow(requirePersistedSourceUploadRow(row, 'create'));
+  return requireSourceUploadRow(row, 'create');
 }
 
 export async function findSourceUploadByIdForOrganization(
   input: SourceUploadLookupInput,
 ): Promise<SourceUploadRow | undefined> {
   const [row] = await getApiDatabase()
-    .select()
+    .select(sourceUploadSelection)
     .from(sourceUploads)
     .where(and(eq(sourceUploads.id, input.sourceUploadId), eq(sourceUploads.organizationId, input.organizationId)))
     .limit(1);
 
-  return row === undefined ? undefined : toSourceUploadRow(row);
+  return row;
 }
 
 export async function listExpiredUnusedSourceUploads(now: Date): Promise<SourceUploadRow[]> {
   const cleanupCutoff: Date = new Date(now.getTime() - expiredSourceUploadCleanupGraceMs);
-  const rows: PersistedSourceUploadRow[] = await getApiDatabase()
-    .select()
+  const rows: SourceUploadRow[] = await getApiDatabase()
+    .select(sourceUploadSelection)
     .from(sourceUploads)
     .where(and(isNull(sourceUploads.consumedAt), lt(sourceUploads.expiresAt, cleanupCutoff)))
     .limit(expiredSourceUploadCleanupLimit);
 
-  return rows.map(toSourceUploadRow);
+  return rows;
 }
 
 export async function deleteSourceUploadById(sourceUploadId: string): Promise<void> {
   await getApiDatabase().delete(sourceUploads).where(eq(sourceUploads.id, sourceUploadId));
+}
+
+export async function readSourceUploadArchiveBase64(sourceUploadId: string): Promise<string | null | undefined> {
+  const [row] = await getApiDatabase()
+    .select({ archiveBase64: sourceUploads.archiveBase64 })
+    .from(sourceUploads)
+    .where(eq(sourceUploads.id, sourceUploadId))
+    .limit(1);
+
+  return row?.archiveBase64;
 }
 
 export async function hasRetainedSourceUploadReferences(sourceUploadId: string): Promise<boolean> {
@@ -72,14 +105,7 @@ function requireRetainedSourceUploadReferenceFilter(): SQL {
   return filter;
 }
 
-function toSourceUploadRow(row: PersistedSourceUploadRow): SourceUploadRow {
-  return row;
-}
-
-function requirePersistedSourceUploadRow(
-  row: PersistedSourceUploadRow | undefined,
-  action: string,
-): PersistedSourceUploadRow {
+function requireSourceUploadRow(row: SourceUploadRow | undefined, action: string): SourceUploadRow {
   if (row === undefined) {
     throw new Error(`Failed to ${action} source upload.`);
   }

@@ -17,10 +17,33 @@ import type {
   CreateAppAccessCodeInput,
   CreateAppAccessSessionInput,
   RevokeBlockedOrganizationUserAppAccessSessionsInput,
+  ResolvedAppAccessSessionRow,
 } from './app-access.query.types';
 
 interface AuthSessionIdRow {
   authSessionId: string;
+}
+
+export async function findResolvedAppAccessSessionByTokenHash(
+  tokenHash: string,
+): Promise<ResolvedAppAccessSessionRow | undefined> {
+  const [row] = await getApiDatabase()
+    .select({
+      authSessionId: appAccessSessions.authSessionId,
+      expiresAt: appAccessSessions.expiresAt,
+      host: appAccessSessions.host,
+    })
+    .from(appAccessSessions)
+    .where(
+      and(
+        eq(appAccessSessions.tokenHash, tokenHash),
+        isNull(appAccessSessions.revokedAt),
+        gt(appAccessSessions.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+
+  return row;
 }
 
 export async function createAppAccessCode(input: CreateAppAccessCodeInput): Promise<void> {
