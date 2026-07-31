@@ -1,9 +1,10 @@
 import { hasText } from '@compartment/utils';
 import { Pool, type QueryResult } from 'pg';
+import { createMaintenanceDatabaseUrl, readDatabaseName } from './database-url';
 
 export async function ensureDatabaseExists(databaseUrl: string): Promise<void> {
-  const databaseName: string = parseDatabaseName(databaseUrl);
-  const maintenancePool: Pool = createPoolFromUrl(maintenanceUrlFor(databaseUrl));
+  const databaseName: string = readDatabaseName(databaseUrl);
+  const maintenancePool: Pool = createPoolFromUrl(createMaintenanceDatabaseUrl(databaseUrl));
   try {
     await createDatabaseIfMissing(maintenancePool, databaseName);
   } catch (error) {
@@ -43,7 +44,7 @@ function createEnsureDatabaseExistsError(databaseUrl: string, error: Error | nul
 
 function describeDatabaseTarget(databaseUrl: string): string {
   const url: URL = new URL(databaseUrl);
-  const databaseName: string = parseDatabaseName(databaseUrl);
+  const databaseName: string = readDatabaseName(databaseUrl);
   const socketHost: string | null = url.searchParams.get('host');
   const host: string = socketHost ?? url.host;
   const hostLabel: string = hasText(host) ? host : 'default host';
@@ -72,30 +73,11 @@ function createPoolFromUrl(databaseUrl: string): Pool {
   });
 }
 
-function maintenanceUrlFor(databaseUrl: string): string {
-  const url: URL = new URL(databaseUrl);
-  url.pathname = '/postgres';
-  return url.toString();
-}
-
-function parseDatabaseName(databaseUrl: string): string {
-  const url: URL = new URL(databaseUrl);
-  const databaseName: string = url.pathname.replace(/^\//, '');
-  if (!hasText(databaseName)) {
-    throw new Error(`Database name is missing in ${databaseUrl}`);
-  }
-  assertDatabaseName(databaseName);
-  return databaseName;
-}
-
-function assertDatabaseName(databaseName: string): void {
-  if (!/^[a-zA-Z0-9_]+$/.test(databaseName)) {
-    throw new Error(`Unsafe database name: ${databaseName}`);
-  }
-}
-
 export { readDatabaseTestMode } from './database-test-mode';
-export { deriveDatabaseUrl, deriveProcessScopedDatabaseUrl } from './database-url-variants';
+export {
+  deriveTestDatabaseUrl as deriveDatabaseUrl,
+  deriveTestDatabaseUrl as deriveProcessScopedDatabaseUrl,
+} from './database-url-variants';
 export { readFileModePermissions } from './file-mode';
 export { findFreePort } from './free-port';
 export { runCompartmentApiMigrations } from './api-migrations';
