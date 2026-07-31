@@ -54,6 +54,8 @@ const executeFileAsync: (file: string, args: readonly string[]) => Promise<{ std
 const multipartLineBreak: string = '\r\n';
 const tarBlockByteLength: number = 512;
 const concurrentDatabaseWorkWaitMs: number = 200;
+const testMaximumConcurrentBuilds: number = 100;
+const testMaximumConcurrentBuildsPerProject: number = 100;
 const defaultRootSourcePackageMetadata: CompartmentSourcePackageMetadata = {
   descriptorDirectoryRelativePath: '.',
   version: 1,
@@ -812,8 +814,8 @@ export function requireSetCookieValue(header: string | string[] | undefined, coo
 
 export async function claimNextQueuedDeployment(
   apiApp: ApiApp,
-  maximumConcurrentBuilds: number = 2,
-  maximumConcurrentBuildsPerProject: number = 1,
+  maximumConcurrentBuilds: number = testMaximumConcurrentBuilds,
+  maximumConcurrentBuildsPerProject: number = testMaximumConcurrentBuildsPerProject,
 ): Promise<WorkerClaimDeploymentResponse> {
   const claimedResponse: LightMyRequestResponse = await apiApp.inject({
     headers: {

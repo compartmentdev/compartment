@@ -155,17 +155,17 @@ describe('deployment runtime movement claim order integration', (): void => {
       const acmeProjectId: string = await findProjectIdForOrganization('smoke-web', 'acme-dev');
       const betaProjectId: string = await findProjectIdForOrganization('smoke-web', 'beta-dev');
       const firstClaimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(
-        await claimNextQueuedDeployment(app),
+        await claimNextQueuedDeployment(app, 2, 1),
       );
 
       expect(readClaimedOrganizationSlug(firstClaimedDeployment, acmeProjectId, betaProjectId)).toBe('acme-dev');
 
       const secondClaimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(
-        await claimNextQueuedDeployment(app),
+        await claimNextQueuedDeployment(app, 2, 1),
       );
 
       expect(readClaimedOrganizationSlug(secondClaimedDeployment, acmeProjectId, betaProjectId)).toBe('beta-dev');
-      const cappedClaim: WorkerClaimDeploymentResponse = await claimNextQueuedDeployment(app);
+      const cappedClaim: WorkerClaimDeploymentResponse = await claimNextQueuedDeployment(app, 2, 1);
       expect(cappedClaim.deployment).toBeNull();
       expect(cappedClaim.queue).toMatchObject({ activeBuildCount: 2, queueDepth: 9 });
     },
@@ -219,7 +219,7 @@ describe('deployment runtime movement claim order integration', (): void => {
       await deployAndClaimCurrentEnvironment(installPayload, { environmentName: 'staging' });
       const queuedDeployment: DeploymentSummary = await queuePromotion(installPayload);
       const [firstClaim, secondClaim]: [WorkerClaimDeploymentResponse, WorkerClaimDeploymentResponse] =
-        await Promise.all([claimNextQueuedDeployment(app), claimNextQueuedDeployment(app)]);
+        await Promise.all([claimNextQueuedDeployment(app, 2, 1), claimNextQueuedDeployment(app, 2, 1)]);
       const claimedDeployments: WorkerClaimedDeployment[] = [firstClaim, secondClaim]
         .map((claim: WorkerClaimDeploymentResponse): WorkerClaimedDeployment | null => claim.deployment)
         .filter(
