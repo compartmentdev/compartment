@@ -22,6 +22,7 @@ export default defineConfig({
     environment: 'node',
     exclude: dbCoverageExcludePatterns,
     fileParallelism: false,
+    globalSetup: [resolve(repoRoot, 'packages/test-support/test/database-run.global-setup.ts')],
     maxWorkers: 1,
     minWorkers: 1,
     ...mockCleanupSettings,

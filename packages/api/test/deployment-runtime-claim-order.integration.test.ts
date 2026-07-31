@@ -25,7 +25,7 @@ import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import { useApiDatabaseTestHarness } from './api-db-test.harness';
 import {
   claimNextQueuedDeployment,
@@ -55,7 +55,7 @@ vi.mock(
 );
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const runtimeMovementDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'api_runtime_claim_order');
+const runtimeMovementDatabaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'api_runtime_claim_order');
 const variablesMasterKey: Buffer = parseVariablesMasterKey('11'.repeat(32));
 const deploymentRuntimeMovementTimeoutMs: number = 20_000;
 const apiConfig: ApiConfig = {

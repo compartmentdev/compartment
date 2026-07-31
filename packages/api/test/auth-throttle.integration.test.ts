@@ -11,7 +11,7 @@ import {
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  deriveProcessScopedDatabaseUrl,
+  deriveTestDatabaseUrl,
   ensureDatabaseExists,
   readDatabaseTestMode,
   resetDatabase,
@@ -55,7 +55,7 @@ vi.mock(
 );
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const authThrottleDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'api_auth_throttle');
+const authThrottleDatabaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'api_auth_throttle');
 const apiConfig: ApiConfig = {
   bindHost: '127.0.0.1',
   baseDomain: 'localhost',

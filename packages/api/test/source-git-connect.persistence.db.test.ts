@@ -1,5 +1,5 @@
 import type { Pool } from 'pg';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
 import { describe, expect, it } from 'vitest';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
@@ -20,7 +20,7 @@ import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'git_source_connect_persistence');
+const databaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'git_source_connect_persistence');
 const apiConfig: ApiConfig = {
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',

@@ -21,7 +21,7 @@ import {
 } from '@compartment/contracts';
 import { expect, vi } from 'vitest';
 import {
-  deriveProcessScopedDatabaseUrl,
+  deriveTestDatabaseUrl,
   ensureDatabaseExists,
   readDatabaseTestMode,
   resetDatabase,
@@ -64,7 +64,7 @@ interface StoredDeploymentRuntimeStateQueryRow {
 }
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const runtimeBoundaryDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'api_runtime_boundary');
+const runtimeBoundaryDatabaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'api_runtime_boundary');
 const apiConfig: ApiConfig = {
   bindHost: '127.0.0.1',
   baseDomain: 'localhost',

@@ -21,7 +21,7 @@ import {
   variableResponseSchema,
 } from '@compartment/contracts';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
 import { createApp } from '../src/app';
 import type { ApiApp } from '../src/app.types';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
@@ -66,7 +66,7 @@ vi.mock(
 );
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const variablesDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'api_variables_routes');
+const variablesDatabaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'api_variables_routes');
 const apiConfig: ApiConfig = {
   bindHost: '127.0.0.1',
   baseDomain: 'localhost',

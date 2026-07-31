@@ -17,7 +17,7 @@ import {
   variableLocalRunResponseSchema,
   variableResponseSchema,
 } from '@compartment/contracts';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app';
 import type { ApiApp } from '../src/app.types';
@@ -68,7 +68,7 @@ vi.mock(
 );
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'api_variable_resource_output_bindings');
+const databaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'api_variable_resource_output_bindings');
 const apiConfig: ApiConfig = {
   auditFileSink: defaultAuditFileSinkConfig,
   auditRetentionCleanupBatchSize: 1000,

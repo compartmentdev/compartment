@@ -5,7 +5,7 @@ import {
   buildDisabledSsoOidcProvisioningPolicy,
 } from '@compartment/contracts';
 import { describe, expect, it } from 'vitest';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
@@ -25,7 +25,7 @@ import type { OrganizationUserRow } from '../src/queries/organization-users.quer
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const organizationUsersListQueryDatabaseUrl: string = deriveProcessScopedDatabaseUrl(
+const organizationUsersListQueryDatabaseUrl: string = deriveTestDatabaseUrl(
   testDatabaseUrl,
   'organization_users_list_query',
 );

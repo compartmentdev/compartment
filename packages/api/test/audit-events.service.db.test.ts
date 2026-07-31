@@ -2,7 +2,7 @@ import { readFile, readdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AuditEventSummary } from '@compartment/contracts';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
 import { asc } from 'drizzle-orm';
 import pino from 'pino';
 import type { Pool } from 'pg';
@@ -20,7 +20,7 @@ import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'audit_events_service');
+const databaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'audit_events_service');
 const apiConfig: ApiConfig = {
   auditFileSink: defaultAuditFileSinkConfig,
   auditRetentionDays: 90,

@@ -5,7 +5,7 @@ import {
   buildDefaultSsoOidcIdentityVerificationConfig,
   buildDisabledSsoOidcProvisioningPolicy,
 } from '@compartment/contracts';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import { authSessions, organizations, principals, ssoOidcProviders } from '../src/db/schema';
@@ -19,7 +19,7 @@ import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const authenticationQueryDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'authentication_query');
+const authenticationQueryDatabaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'authentication_query');
 const apiConfig: ApiConfig = {
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',

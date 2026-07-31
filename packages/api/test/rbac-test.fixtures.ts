@@ -8,7 +8,7 @@ import {
 } from '@compartment/contracts';
 import { and, eq } from 'drizzle-orm';
 import {
-  deriveProcessScopedDatabaseUrl,
+  deriveTestDatabaseUrl,
   ensureDatabaseExists,
   readDatabaseTestMode,
   resetDatabase,
@@ -49,7 +49,7 @@ export interface RbacTestHarness {
 }
 
 export function createRbacTestHarness(scope: string): RbacTestHarness {
-  const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, scope);
+  const databaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, scope);
   const pool: Pool = createDatabasePool(databaseUrl);
 
   return {

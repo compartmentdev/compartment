@@ -2,7 +2,7 @@ import type { ExistingProjectRemoteState } from '@compartment/contracts';
 import type { Pool } from 'pg';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it, vi, type Mock } from 'vitest';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import {
@@ -60,7 +60,7 @@ vi.mock(
 );
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'projects_service_db');
+const databaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'projects_service_db');
 const apiConfig: ApiConfig = {
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',

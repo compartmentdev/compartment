@@ -7,7 +7,7 @@ import {
   type SsoOidcProvisioningPolicy,
 } from '@compartment/contracts';
 import { describe, expect, it } from 'vitest';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../../test-support/src';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '../../../test-support/src';
 import type { ApiConfig } from '../../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../../src/db/client';
 import {
@@ -33,7 +33,7 @@ import { defaultApiAuthThrottleConfig } from '../auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from '../audit-file-sink-config.fixture';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const ssoOidcLoginResolutionDatabaseUrl: string = deriveProcessScopedDatabaseUrl(
+const ssoOidcLoginResolutionDatabaseUrl: string = deriveTestDatabaseUrl(
   testDatabaseUrl,
   'sso_oidc_login_resolution_service',
 );

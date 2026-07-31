@@ -26,7 +26,7 @@ import {
   type VariableResponse,
 } from '@compartment/contracts';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
 import { createApp } from '../src/app';
 import type { ApiApp } from '../src/app.types';
 import { type ApiConfig } from '../src/config';
@@ -58,7 +58,7 @@ vi.mock(
 );
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const variableGroupsDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'api_variable_groups_routes');
+const variableGroupsDatabaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'api_variable_groups_routes');
 const apiConfig: ApiConfig = {
   bindHost: '127.0.0.1',
   baseDomain: 'localhost',

@@ -6,7 +6,7 @@ import type {
   WorkerCompleteGitSourceSyncTaskRequest,
   WorkerFailGitSourceSyncTaskRequest,
 } from '@compartment/contracts';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
 import { describe, expect, it } from 'vitest';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
@@ -53,7 +53,7 @@ import { claimSourceSyncTaskForTest } from './source-sync-task-test.fixtures';
 import { encryptVariableValueForStorageForTests, type TestEncryptedVariableValue } from './variables-test-crypto';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'git_source_runtime_service');
+const databaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'git_source_runtime_service');
 const webhookSecretParts: readonly [string, string] = ['webhook', 'secret'];
 const webhookSecret: string = webhookSecretParts.join('-');
 const apiConfig: ApiConfig = {

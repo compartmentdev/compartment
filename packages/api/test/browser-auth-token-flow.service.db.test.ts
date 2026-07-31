@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import { browserAuthTokenFlows } from '../src/db/schema';
@@ -20,10 +20,7 @@ import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const browserAuthTokenFlowDatabaseUrl: string = deriveProcessScopedDatabaseUrl(
-  testDatabaseUrl,
-  'browser_auth_token_flow',
-);
+const browserAuthTokenFlowDatabaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'browser_auth_token_flow');
 const apiConfig: ApiConfig = {
   auditFileSink: defaultAuditFileSinkConfig,
   auditRetentionCleanupBatchSize: 1000,

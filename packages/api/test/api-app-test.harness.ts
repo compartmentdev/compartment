@@ -2,7 +2,7 @@ import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import type { Pool } from 'pg';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import { createApp, createSystemApp } from '../src/app';
 import type { ApiApp } from '../src/app.types';
 import { readApiConfig, type ApiConfig, type ApiPublicIngressConfig } from '../src/config';
@@ -52,7 +52,7 @@ export function configureApiRuntimeWithPublicIngress(
 
 export function createApiIntegrationTestContext(databaseName: string, runtimeSlug: string): ApiIntegrationTestContext {
   const { testDatabaseUrl } = readDatabaseTestMode();
-  const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, databaseName);
+  const databaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, databaseName);
   const testCustomTlsDirectory: string = resolve(tmpdir(), `compartment-${runtimeSlug}-tls`);
 
   process.env.COMPARTMENT_DATABASE_URL = databaseUrl;

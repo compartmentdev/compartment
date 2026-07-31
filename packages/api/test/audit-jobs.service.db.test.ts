@@ -1,7 +1,7 @@
 import { asc, eq } from 'drizzle-orm';
 import type { Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import { auditEvents, organizations } from '../src/db/schema';
@@ -14,7 +14,7 @@ import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'audit_jobs_service');
+const databaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'audit_jobs_service');
 const apiConfig: ApiConfig = {
   auditRetentionDays: 90,
   auditRetentionCleanupBatchSize: 1000,

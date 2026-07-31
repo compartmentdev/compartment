@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import type { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
-  deriveProcessScopedDatabaseUrl,
+  deriveTestDatabaseUrl,
   ensureDatabaseExists,
   readDatabaseTestMode,
   resetDatabase,
@@ -30,7 +30,7 @@ import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'runtime_actor_authorization_service');
+const databaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'runtime_actor_authorization_service');
 const apiConfig: ApiConfig = {
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',

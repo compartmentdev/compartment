@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import type { Pool } from 'pg';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
@@ -44,7 +44,7 @@ import type {
 import { encryptVariableValueForStorageForTests, type TestEncryptedVariableValue } from './variables-test-crypto';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const variablesDbDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'variables_db_query');
+const variablesDbDatabaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'variables_db_query');
 const variablesMasterKey: Buffer = parseVariablesMasterKey('11'.repeat(32));
 
 const apiConfig: ApiConfig = {

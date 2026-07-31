@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
-import { deriveDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
@@ -28,7 +28,7 @@ import type { SsoOidcPrincipalRow } from '../src/queries/sso-oidc.query.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const principalEmailQueryDatabaseUrl: string = deriveDatabaseUrl(testDatabaseUrl, 'principal_email_query');
+const principalEmailQueryDatabaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'principal_email_query');
 const apiConfig: ApiConfig = {
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',

@@ -1,6 +1,6 @@
 import type { Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import type { ApiConfig } from '../src/config';
@@ -12,7 +12,7 @@ import type { OrganizationSettingsRow } from '../src/queries/organization-settin
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const organizationSettingsQueryDatabaseUrl: string = deriveProcessScopedDatabaseUrl(
+const organizationSettingsQueryDatabaseUrl: string = deriveTestDatabaseUrl(
   testDatabaseUrl,
   'organization_settings_query',
 );

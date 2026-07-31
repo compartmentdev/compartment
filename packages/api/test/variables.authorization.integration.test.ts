@@ -15,7 +15,7 @@ import {
   variableResponseSchema,
 } from '@compartment/contracts';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import { createApp } from '../src/app';
 import type { ApiApp } from '../src/app.types';
 import { createOrganizationMemberSession as createOrganizationMemberSessionFixture } from './api-auth-session-test.fixtures';
@@ -42,10 +42,7 @@ vi.mock(
 );
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const variablesDatabaseUrl: string = deriveProcessScopedDatabaseUrl(
-  testDatabaseUrl,
-  'api_variables_routes_authorization',
-);
+const variablesDatabaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'api_variables_routes_authorization');
 const apiConfig: ApiConfig = {
   bindHost: '127.0.0.1',
   baseDomain: 'localhost',

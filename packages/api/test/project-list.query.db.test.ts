@@ -7,7 +7,7 @@ import {
 } from '@compartment/contracts';
 import type { Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
@@ -34,7 +34,7 @@ import type { ProjectRow } from '../src/queries/projects.query.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const projectListQueryDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'project_list_query');
+const projectListQueryDatabaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'project_list_query');
 const apiConfig: ApiConfig = {
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',

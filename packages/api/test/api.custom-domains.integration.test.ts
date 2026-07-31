@@ -33,7 +33,7 @@ import type { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
-  deriveProcessScopedDatabaseUrl,
+  deriveTestDatabaseUrl,
   ensureDatabaseExists,
   readDatabaseTestMode,
   resetDatabase,
@@ -196,10 +196,7 @@ function createManagedDualStackPublicIngressConfig(): ApiPublicIngressConfig {
 }
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const apiIntegrationDatabaseUrl: string = deriveProcessScopedDatabaseUrl(
-  testDatabaseUrl,
-  'api_integration_custom_domains',
-);
+const apiIntegrationDatabaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'api_integration_custom_domains');
 process.env.COMPARTMENT_DATABASE_URL = apiIntegrationDatabaseUrl;
 const testCustomTlsDirectory: string = resolve(tmpdir(), 'compartment-api-integration-custom-domains-tls');
 process.env.COMPARTMENT_SESSION_SECRET = process.env.COMPARTMENT_SESSION_SECRET ?? 'test-secret';

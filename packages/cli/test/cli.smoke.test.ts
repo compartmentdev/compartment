@@ -39,7 +39,7 @@ import {
 } from '@compartment/contracts';
 import { buildInternalHttpUrl } from '@compartment/utils';
 import {
-  deriveProcessScopedDatabaseUrl,
+  deriveTestDatabaseUrl,
   ensureDatabaseExists,
   findFreePort,
   readDatabaseTestMode,
@@ -80,7 +80,7 @@ const installInputText: string = 'admin@example.com\nAcme Dev\nsupersecretpasswo
 const smokeTempRootDirectory: string = readSocketSafeTempRootDirectory('ccli-', 'sys-65535.sock');
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const cliSmokeDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'cli_smoke');
+const cliSmokeDatabaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'cli_smoke');
 const cliSmokeHookTimeoutMs: number = 30_000;
 const loopbackOidcIssuerUrl: string = 'https://127.0.0.1';
 process.env.COMPARTMENT_DATABASE_URL = cliSmokeDatabaseUrl;

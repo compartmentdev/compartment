@@ -1,6 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { eq } from 'drizzle-orm';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
@@ -147,7 +147,7 @@ const gitSourceOrganizationId: string = 'org_git_sources';
 const otherGitSourceOrganizationId: string = 'org_other_git_sources';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'git_source_bootstrap_service');
+const databaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'git_source_bootstrap_service');
 const apiConfig: ApiConfig = {
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',

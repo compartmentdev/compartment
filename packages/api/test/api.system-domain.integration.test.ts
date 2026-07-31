@@ -23,7 +23,7 @@ import type { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
-  deriveProcessScopedDatabaseUrl,
+  deriveTestDatabaseUrl,
   ensureDatabaseExists,
   readDatabaseTestMode,
   resetDatabase,
@@ -301,10 +301,7 @@ DseN3Yi5o8Sy6/8VkiFu7TYK
 `;
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const apiIntegrationDatabaseUrl: string = deriveProcessScopedDatabaseUrl(
-  testDatabaseUrl,
-  'api_integration_system_domain',
-);
+const apiIntegrationDatabaseUrl: string = deriveTestDatabaseUrl(testDatabaseUrl, 'api_integration_system_domain');
 process.env.COMPARTMENT_DATABASE_URL = apiIntegrationDatabaseUrl;
 const testCustomTlsDirectory: string = resolve(tmpdir(), 'compartment-api-integration-system-domain-tls');
 process.env.COMPARTMENT_SESSION_SECRET = process.env.COMPARTMENT_SESSION_SECRET ?? 'test-secret';

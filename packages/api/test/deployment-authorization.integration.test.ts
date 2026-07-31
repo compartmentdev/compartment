@@ -27,7 +27,7 @@ import {
   type RollbackDeploymentRequest,
 } from '@compartment/contracts';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
-import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
+import { deriveTestDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import { createApp } from '../src/app';
 import type { ApiApp } from '../src/app.types';
 import { createOrganizationMemberSession as createOrganizationMemberSessionFixture } from './api-auth-session-test.fixtures';
@@ -101,7 +101,7 @@ vi.mock('@compartment/sdk', async (): Promise<typeof CompartmentSdk> => {
 });
 
 const { testDatabaseUrl } = readDatabaseTestMode();
-const deploymentAuthorizationDatabaseUrl: string = deriveProcessScopedDatabaseUrl(
+const deploymentAuthorizationDatabaseUrl: string = deriveTestDatabaseUrl(
   testDatabaseUrl,
   'api_deployment_authorization',
 );
