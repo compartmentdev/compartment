@@ -1,0 +1,140 @@
+nameOverride: ''
+fullnameOverride: ''
+
+images:
+  api:
+    repository: ghcr.io/compartmentdev/compartment-api
+    tag: latest
+    pullPolicy: IfNotPresent
+  worker:
+    repository: ghcr.io/compartmentdev/compartment-worker
+    tag: latest
+    pullPolicy: IfNotPresent
+  edge:
+    repository: ghcr.io/compartmentdev/compartment-edge
+    tag: latest
+    pullPolicy: IfNotPresent
+  caddy:
+    repository: ghcr.io/compartmentdev/compartment-caddy
+    tag: latest
+    pullPolicy: IfNotPresent
+  postgres:
+    repository: postgres
+    tag: '16'
+    pullPolicy: IfNotPresent
+  registry:
+    repository: registry
+    tag: '2'
+    pullPolicy: IfNotPresent
+  buildkit:
+    repository: moby/buildkit
+    tag: v0.30.0-rootless
+    pullPolicy: IfNotPresent
+  kubectl:
+    repository: registry.k8s.io/kubectl
+    tag: v1.36.2
+    pullPolicy: IfNotPresent
+
+ports:
+  api: 39444
+  edge: 39081
+  registry: 5000
+  buildkit: 1234
+  http: 8080
+  https: 8443
+
+service:
+  caddy:
+    type: NodePort
+    httpNodePort: 30080
+    httpsNodePort: 30443
+
+storage:
+  storageClass: ''
+  postgres: 2Gi
+  registry: 2Gi
+  buildkit: 4Gi
+  caddy: 1Gi
+  api: 1Gi
+
+platform:
+  startupStage: full
+  baseDomain: localhost
+  publicProtocol: http
+  tlsMode: custom-http
+  logLevel: info
+  trustedOutboundHosts: ''
+  workerPollIntervalMs: 1000
+  auditRetentionDays: 90
+  auditCleanupCron: '0 3 * * *'
+  auditCleanupBatchSize: 1000
+  auditCleanupMaxBatches: 100
+  auditFileSinkEnabled: false
+  auditFileSinkRotateInterval: 1d
+  auditFileSinkRotateSize: 64M
+  auditFileSinkRetentionFiles: 30
+  sourceArchiveMaxBytes: 104857600
+  sessionTtl: 7d
+  rolloutMarker: ''
+
+postgres:
+  database: compartment
+  username: postgres
+
+buildkit:
+  enabled: true
+  seccompProfile:
+    type: Unconfined
+
+registry:
+  readUsername: compartment-reader
+  writeUsername: compartment-writer
+
+secrets:
+  postgresPassword: ''
+  registryReadPassword: ''
+  registryWritePassword: ''
+  edgeToken: ''
+  runtimeControlToken: ''
+  sessionSecret: ''
+  systemToken: ''
+  variablesMasterKey: ''
+
+podSecurityContext:
+  seccompProfile:
+    type: RuntimeDefault
+
+resources:
+  api:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: '1', memory: 768Mi }
+  apiMigrate:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  worker:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: '1', memory: 1Gi }
+  edge:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 384Mi }
+  caddy:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+  caddyInit:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { cpu: 100m, memory: 128Mi }
+  postgres:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: '1', memory: 1Gi }
+  registry:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  registryAuth:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+  buildkit:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: '2', memory: 2Gi }
+  wait:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { cpu: 100m, memory: 128Mi }

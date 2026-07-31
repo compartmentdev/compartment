@@ -1,0 +1,10 @@
+# Kind validation uses the same templates under enforced Pod Security Admission.
+service:
+  caddy:
+    type: NodePort
+    httpNodePort: 30080
+    httpsNodePort: 30443
+
+# rootlesskit requires an unconfined seccomp profile. PSA restricted rejects it.
+buildkit:
+  enabled: false

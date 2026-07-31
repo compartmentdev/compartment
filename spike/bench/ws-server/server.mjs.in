@@ -1,0 +1,26 @@
+import { createServer } from 'node:http';
+import { WebSocketServer } from 'ws';
+
+const port = Number.parseInt(process.env.PORT ?? '8080', 10);
+const server = createServer((request, response) => {
+  if (request.url === '/healthz') {
+    response.writeHead(200).end('ok');
+    return;
+  }
+  response.writeHead(404).end('not found');
+});
+const webSocketServer = new WebSocketServer({ noServer: true });
+
+server.on('upgrade', (request, socket, head) => {
+  if (request.url !== '/ws') {
+    socket.destroy();
+    return;
+  }
+  webSocketServer.handleUpgrade(request, socket, head, (client) => {
+    webSocketServer.emit('connection', client, request);
+  });
+});
+webSocketServer.on('connection', (client) => {
+  client.on('message', (message) => client.send(message));
+});
+server.listen(port, '0.0.0.0');

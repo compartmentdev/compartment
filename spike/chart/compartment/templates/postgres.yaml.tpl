@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "compartment.fullname" . }}-postgres
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "compartment.componentLabels" (dict "root" . "component" "postgres") | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "compartment.fullname" . }}-postgres
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "postgres") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "compartment.componentLabels" (dict "root" . "component" "postgres") | nindent 8 }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml.tpl") . | sha256sum }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: postgres
+          image: {{ include "compartment.image" .Values.images.postgres }}
+          imagePullPolicy: {{ .Values.images.postgres.pullPolicy }}
+          securityContext:
+            {{- include "compartment.containerSecurityContext" . | nindent 12 }}
+            runAsUser: 999
+            runAsGroup: 999
+          resources:
+            {{- toYaml .Values.resources.postgres | nindent 12 }}
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "compartment.fullname" . }}
+                  key: postgres-password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.username | quote }}, "-d", {{ .Values.postgres.database | quote }}]
+            periodSeconds: 2
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.username | quote }}, "-d", {{ .Values.postgres.database | quote }}]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: run
+              mountPath: /var/run
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "compartment.fullname" . }}-postgres
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

@@ -1,0 +1,104 @@
+{{- if eq .Values.platform.startupStage "full" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "compartment.fullname" . }}-caddy
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.caddy.type }}
+  selector:
+    {{- include "compartment.componentLabels" (dict "root" . "component" "caddy") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.ports.http }}
+      targetPort: http
+      {{- if and (or (eq $.Values.service.caddy.type "NodePort") (eq $.Values.service.caddy.type "LoadBalancer")) .Values.service.caddy.httpNodePort }}
+      nodePort: {{ .Values.service.caddy.httpNodePort }}
+      {{- end }}
+    - name: https
+      port: {{ .Values.ports.https }}
+      targetPort: https
+      {{- if and (or (eq $.Values.service.caddy.type "NodePort") (eq $.Values.service.caddy.type "LoadBalancer")) .Values.service.caddy.httpsNodePort }}
+      nodePort: {{ .Values.service.caddy.httpsNodePort }}
+      {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "compartment.fullname" . }}-caddy
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: caddy
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "caddy") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "compartment.componentLabels" (dict "root" . "component" "caddy") | nindent 8 }}
+      annotations:
+        {{- include "compartment.rolloutAnnotations" . | nindent 8 }}
+    spec:
+      {{- include "compartment.waiterPodSpec" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        {{- include "compartment.waitForMigrationInit" . | nindent 8 }}
+        - name: prepare-caddy
+          image: {{ include "compartment.image" .Values.images.caddy }}
+          imagePullPolicy: {{ .Values.images.caddy.pullPolicy }}
+          command: ["/bin/sh", "-ec", "cp /usr/bin/caddy /work/caddy && chmod 0755 /work/caddy"]
+          securityContext:
+            {{- include "compartment.containerSecurityContext" . | nindent 12 }}
+            runAsUser: 1000
+            runAsGroup: 1000
+          resources:
+            {{- toYaml .Values.resources.caddyInit | nindent 12 }}
+          volumeMounts:
+            - {name: executable, mountPath: /work}
+      containers:
+        - name: caddy
+          image: {{ include "compartment.image" .Values.images.caddy }}
+          imagePullPolicy: {{ .Values.images.caddy.pullPolicy }}
+          command:
+            - /bin/sh
+            - -ec
+            - exec /work/caddy run --config "/etc/caddy/Caddyfile.${COMPARTMENT_CADDY_TLS_MODE}" --adapter caddyfile
+          securityContext:
+            {{- include "compartment.containerSecurityContext" . | nindent 12 }}
+            runAsUser: 1000
+            runAsGroup: 1000
+          resources:
+            {{- toYaml .Values.resources.caddy | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "compartment.fullname" . }}
+          ports:
+            - {name: http, containerPort: {{ .Values.ports.http }}}
+            - {name: https, containerPort: {{ .Values.ports.https }}}
+          readinessProbe:
+            tcpSocket: {port: http}
+            periodSeconds: 2
+          volumeMounts:
+            - {name: executable, mountPath: /work, readOnly: true}
+            - {name: data, mountPath: /data}
+            - {name: config, mountPath: /config}
+            - {name: tls, mountPath: /etc/compartment/tls, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
+        - {name: executable, emptyDir: {}}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "compartment.fullname" . }}-caddy
+        - {name: config, emptyDir: {}}
+        - {name: tls, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}
+{{- end }}
