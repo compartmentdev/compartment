@@ -21,7 +21,7 @@ etcd encryption provider.
 
 ## Runtime boundary
 
-The package exposes seven Kubernetes transport primitives. Only `apply`,
+The package exposes eight Kubernetes transport primitives. Only `apply`,
 `delete`, and `runJob` write Kubernetes state:
 
 - `apply(bundle)` uses server-side apply with field manager `compartment`; a
@@ -36,6 +36,7 @@ The package exposes seven Kubernetes transport primitives. Only `apply`,
 - `observePodMetrics({ labels, namespaces })` reads resource usage for label-selected pods in explicitly supplied namespaces;
 - `logs(ref)` reads workload or Job logs;
 - `runJob(spec)` applies a deterministic Job and reads its terminal result.
+- `leaderElection(config)` coordinates one active controller through a namespaced `coordination.k8s.io/v1` Lease.
 
 The implementation uses `@kubernetes/client-node`. It must not implement raw
 watching, object diffing, or a second write path. Pure naming, projection, and
@@ -49,6 +50,12 @@ the worker has durably persisted status, exit code, and logs. A timeout captures
 available logs and returns a `timed-out` capture for the worker to persist; the
 worker deletes the Job only after the database acknowledgement.
 Release Jobs use `backoffLimit: 0`; Kubernetes never retries a release command.
+
+Worker and project-provisioner each use a separate Lease in the platform namespace. Standby replicas initialize their
+API and Kubernetes clients but do not claim or reconcile work. A terminating leader stops accepting new work, renews
+through the current operation, and releases its Lease only after that operation drains. A replacement worker
+immediately requeues an unfinished build claim and joins the deterministic build Job; the database claim remains the
+single queue-ownership mechanism.
 
 ## Identity and names
 

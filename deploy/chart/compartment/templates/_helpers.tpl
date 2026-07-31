@@ -193,6 +193,12 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- if and (gt (int .Values.edge.replicas) 1) .Values.edge.snapshots.enabled -}}
 {{- fail "edge.snapshots.enabled requires edge.replicas=1 because persistent snapshots use package-local storage" -}}
 {{- end -}}
+{{- if ge (int .Values.leaderElection.renewDeadlineMs) (int .Values.leaderElection.leaseDurationMs) -}}
+{{- fail "leaderElection.renewDeadlineMs must be less than leaderElection.leaseDurationMs" -}}
+{{- end -}}
+{{- if ge (int .Values.leaderElection.retryPeriodMs) (int .Values.leaderElection.renewDeadlineMs) -}}
+{{- fail "leaderElection.retryPeriodMs must be less than leaderElection.renewDeadlineMs" -}}
+{{- end -}}
 {{- if eq $effective.platform.startupStage "full" -}}
 {{- $_ := required "platform.installationId is required for a full installation" $effective.platform.installationId -}}
 {{- $_ = required "platform.baseDomain is required for a full installation" $effective.platform.baseDomain -}}

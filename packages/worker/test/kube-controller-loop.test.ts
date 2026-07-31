@@ -23,9 +23,14 @@ describe('Kubernetes controller loop', (): void => {
     });
 
     await expect(
-      runKubeControllerLoop({ pollIntervalMs: 1 } as WorkerConfig, pino({ level: 'silent' }), {
-        reconcile,
-      }),
+      runKubeControllerLoop(
+        { pollIntervalMs: 1 } as WorkerConfig,
+        pino({ level: 'silent' }),
+        {
+          reconcile,
+        },
+        new AbortController().signal,
+      ),
     ).rejects.toBe(stop);
     expect(reconcile).toHaveBeenCalledTimes(2);
   });

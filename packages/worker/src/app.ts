@@ -1,8 +1,14 @@
 import type { WorkerRecoverOrphanedBuildClaimsResponse } from '@compartment/contracts';
-import { createKubeRuntimeFromEnvironment, type KubeRuntime } from '@compartment/kube-runtime';
+import {
+  createKubeLeaderElectionFromEnvironment,
+  createKubeRuntimeFromEnvironment,
+  type KubeLeaderElector,
+  type KubeRuntime,
+} from '@compartment/kube-runtime';
 import { createCompartmentRequester, isCompartmentRequestError, recoverOrphanedBuildClaims } from '@compartment/sdk';
+import { waitForAbortOrTimeout } from '@compartment/utils';
 import pino from 'pino';
-import { readWorkerConfig, type WorkerConfig } from './config';
+import { readWorkerConfig, workerLeaderElectionConfig, type WorkerConfig } from './config';
 import { createKubeControllerHosts, type KubeControllerHost } from './kube-controller-host';
 import { runKubeControllerLoop } from './kube-controller-loop';
 import { buildWorkerCaughtErrorLogPayload } from './logging/worker-error-log';
@@ -11,6 +17,7 @@ import { runWorkerIteration } from './services/worker.service';
 
 interface WorkerState {
   hasReachedApi: boolean;
+  hasRecoveredLeadership: boolean;
   nextBuildClaimRecoveryAt: number;
   recoveryPromise?: Promise<WorkerRecoverOrphanedBuildClaimsResponse> | undefined;
 }
@@ -26,18 +33,40 @@ const buildClaimRecoveryIntervalMs: number = 60_000;
 
 export async function runWorker(config: WorkerConfig = readWorkerConfig()): Promise<void> {
   const logger: pino.Logger<never, boolean> = createWorkerLogger(config);
-  const state: WorkerState = { hasReachedApi: false, nextBuildClaimRecoveryAt: 0 };
   const runtime: KubeRuntime = createKubeRuntimeFromEnvironment();
+  const election: KubeLeaderElector = createKubeLeaderElectionFromEnvironment(
+    workerLeaderElectionConfig(config, 'compartment-worker', config.customDomains.namespace),
+    {
+      onError: (error: Error): void => logger.warn({ err: error }, 'Worker leader election retrying.'),
+      onLeader: (): void => logger.info('Worker acquired leadership.'),
+      onStandby: (): void => logger.info('Worker is standing by.'),
+    },
+  );
+  const shutdown: AbortController = createShutdownController();
+  await election.run(
+    async (signal: AbortSignal): Promise<void> => await runActiveWorker(config, runtime, logger, signal),
+    shutdown.signal,
+  );
+}
+
+async function runActiveWorker(
+  config: WorkerConfig,
+  runtime: KubeRuntime,
+  logger: pino.Logger<never, boolean>,
+  signal: AbortSignal,
+): Promise<void> {
+  const state: WorkerState = { hasReachedApi: false, hasRecoveredLeadership: false, nextBuildClaimRecoveryAt: 0 };
   const kubeControllers: KubeControllerHost[] = createKubeControllerHosts(config, logger, runtime);
 
-  for (const kubeController of kubeControllers) {
-    void runKubeControllerLoop(config, logger, kubeController);
-  }
+  const controllerLoops: Promise<void>[] = kubeControllers.map(
+    async (kubeController: KubeControllerHost): Promise<void> =>
+      await runKubeControllerLoop(config, logger, kubeController, signal),
+  );
   const workerLoops: Promise<void>[] = Array.from(
     { length: config.buildQueue.maximumConcurrentBuilds },
-    async (): Promise<void> => await runWorkerLoop(config, runtime, logger, state),
+    async (): Promise<void> => await runWorkerLoop(config, runtime, logger, state, signal),
   );
-  await Promise.all(workerLoops);
+  await Promise.all([...controllerLoops, ...workerLoops]);
 }
 
 function createWorkerLogger(config: WorkerConfig): pino.Logger<never, boolean> {
@@ -54,9 +83,10 @@ async function runWorkerLoop(
   runtime: KubeRuntime,
   logger: pino.Logger<never, boolean>,
   state: WorkerState,
+  signal: AbortSignal,
 ): Promise<void> {
-  for (;;) {
-    await runWorkerCycle(config, runtime, logger, state);
+  while (!signal.aborted) {
+    await runWorkerCycle(config, runtime, logger, state, signal);
   }
 }
 
@@ -65,6 +95,7 @@ async function runWorkerCycle(
   runtime: KubeRuntime,
   logger: pino.Logger<never, boolean>,
   state: WorkerState,
+  signal: AbortSignal,
 ): Promise<void> {
   try {
     if (await recoverWorkerBuildClaimsIfNeeded(config, logger, state)) {
@@ -73,10 +104,10 @@ async function runWorkerCycle(
     const claimedWork: boolean = await runWorkerIteration(config, runtime, logger);
     state.hasReachedApi = true;
     if (!claimedWork) {
-      await waitForNextPoll(config.pollIntervalMs);
+      await waitForAbortOrTimeout(config.pollIntervalMs, signal);
     }
   } catch (error) {
-    await handleWorkerIterationError(config, logger, state, error as WorkerCaughtError);
+    await handleWorkerIterationError(config, logger, state, error as WorkerCaughtError, signal);
   }
 }
 
@@ -90,6 +121,7 @@ async function recoverWorkerBuildClaimsIfNeeded(
   }
   const recovery: WorkerRecoverOrphanedBuildClaimsResponse = await recoverWorkerBuildClaims(config, state);
   state.hasReachedApi = true;
+  state.hasRecoveredLeadership = true;
   state.nextBuildClaimRecoveryAt = Date.now() + buildClaimRecoveryIntervalMs;
   state.recoveryPromise = undefined;
   if (recovery.requeuedDeploymentCount > 0) {
@@ -104,7 +136,9 @@ async function recoverWorkerBuildClaims(
 ): Promise<WorkerRecoverOrphanedBuildClaimsResponse> {
   state.recoveryPromise ??= recoverOrphanedBuildClaims(
     createCompartmentRequester({ apiUrl: config.apiUrl, internalToken: config.runtimeControlToken }),
-    { claimTimeoutMs: config.buildSandbox.timeoutMs + buildClaimRecoveryGraceMs },
+    {
+      claimTimeoutMs: state.hasRecoveredLeadership ? config.buildSandbox.timeoutMs + buildClaimRecoveryGraceMs : 1,
+    },
   );
   try {
     return await state.recoveryPromise;
@@ -119,6 +153,7 @@ async function handleWorkerIterationError(
   logger: pino.Logger<never, boolean>,
   state: WorkerState,
   error: WorkerCaughtError,
+  signal: AbortSignal,
 ): Promise<void> {
   state.hasReachedApi = state.hasReachedApi || (error instanceof Error && isCompartmentRequestError(error));
   if (shouldWarnOnWorkerStartupRetry(error, state.hasReachedApi)) {
@@ -126,7 +161,7 @@ async function handleWorkerIterationError(
   } else {
     logger.error(buildWorkerCaughtErrorLogPayload(error), 'Worker iteration failed.');
   }
-  await waitForNextPoll(config.pollIntervalMs);
+  await waitForAbortOrTimeout(config.pollIntervalMs, signal);
 }
 
 function shouldWarnOnWorkerStartupRetry(error: WorkerCaughtError, hasReachedApi: boolean): boolean {
@@ -142,8 +177,10 @@ function readWorkerErrorCauseCode(error: Error): string | null {
   return typeof fetchError.cause?.code === 'string' ? fetchError.cause.code : null;
 }
 
-async function waitForNextPoll(pollIntervalMs: number): Promise<void> {
-  await new Promise<void>((resolve: () => void): void => {
-    setTimeout(resolve, pollIntervalMs);
-  });
+function createShutdownController(): AbortController {
+  const controller: AbortController = new AbortController();
+  const stop: () => void = (): void => controller.abort();
+  process.once('SIGINT', stop);
+  process.once('SIGTERM', stop);
+  return controller;
 }

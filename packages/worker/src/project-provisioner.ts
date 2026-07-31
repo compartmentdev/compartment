@@ -1,12 +1,17 @@
-import { setTimeout as delay } from 'node:timers/promises';
 import type { ProjectProvisioningTargetV2, WorkerCompleteProjectProvisioningV2Request } from '@compartment/contracts';
-import { createSelfCleaningKubeRuntimeFromEnvironment, type KubeRuntime } from '@compartment/kube-runtime';
+import {
+  createKubeLeaderElectionFromEnvironment,
+  createSelfCleaningKubeRuntimeFromEnvironment,
+  type KubeLeaderElector,
+  type KubeRuntime,
+} from '@compartment/kube-runtime';
 import {
   claimProjectProvisioningV2,
   completeProjectProvisioningV2,
   createCompartmentRequester,
   type CompartmentRequester,
 } from '@compartment/sdk';
+import { waitForAbortOrTimeout } from '@compartment/utils';
 import pino, { type Logger } from 'pino';
 import { readProjectProvisionerConfig } from './project-provisioner-config';
 import type { ProjectProvisionerConfig } from './project-provisioner.types';
@@ -20,7 +25,17 @@ export async function runProjectProvisioner(): Promise<void> {
     internalToken: config.runtimeControlToken,
   });
   const runtime: KubeRuntime = createSelfCleaningKubeRuntimeFromEnvironment();
-  await runProjectProvisioningLoop(config, logger, request, runtime);
+  const election: KubeLeaderElector = createKubeLeaderElectionFromEnvironment(config.leaderElection, {
+    onError: (error: Error): void => logger.warn({ err: error }, 'Project provisioner leader election retrying.'),
+    onLeader: (): void => logger.info('Project provisioner acquired leadership.'),
+    onStandby: (): void => logger.info('Project provisioner is standing by.'),
+  });
+  const shutdown: AbortController = createShutdownController();
+  await election.run(
+    async (signal: AbortSignal): Promise<void> =>
+      await runProjectProvisioningLoop(config, logger, request, runtime, signal),
+    shutdown.signal,
+  );
 }
 
 async function runProjectProvisioningLoop(
@@ -28,20 +43,29 @@ async function runProjectProvisioningLoop(
   logger: Logger,
   request: CompartmentRequester,
   runtime: KubeRuntime,
+  signal: AbortSignal,
 ): Promise<void> {
-  for (;;) {
+  while (!signal.aborted) {
     try {
       const claimed: ProjectProvisioningTargetV2 | null = (await claimProjectProvisioningV2(request)).target;
       if (claimed === null) {
-        await delay(config.pollIntervalMs);
+        await waitForAbortOrTimeout(config.pollIntervalMs, signal);
         continue;
       }
       await provisionClaimedProject(request, runtime, config, claimed, logger);
     } catch (error) {
       logger.error({ err: error }, 'Project provisioner iteration failed.');
-      await delay(config.pollIntervalMs);
+      await waitForAbortOrTimeout(config.pollIntervalMs, signal);
     }
   }
+}
+
+function createShutdownController(): AbortController {
+  const controller: AbortController = new AbortController();
+  const stop: () => void = (): void => controller.abort();
+  process.once('SIGINT', stop);
+  process.once('SIGTERM', stop);
+  return controller;
 }
 
 async function provisionClaimedProject(

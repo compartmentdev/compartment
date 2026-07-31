@@ -62,6 +62,30 @@ tests:
           value: 1
         template: caddy.yaml
         documentIndex: 1
+      - equal:
+          path: spec.replicas
+          value: 2
+        template: worker.yaml
+      - equal:
+          path: spec.strategy.rollingUpdate.maxUnavailable
+          value: 0
+        template: worker.yaml
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].topologyKey
+          value: kubernetes.io/hostname
+        template: worker.yaml
+      - equal:
+          path: spec.replicas
+          value: 2
+        template: project-provisioner.yaml
+      - equal:
+          path: spec.strategy.rollingUpdate.maxUnavailable
+          value: 0
+        template: project-provisioner.yaml
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].whenUnsatisfiable
+          value: ScheduleAnyway
+        template: project-provisioner.yaml
       - contains:
           path: spec.template.spec.containers[0].env
           content:
@@ -80,7 +104,7 @@ tests:
         template: caddy.yaml
         documentIndex: 1
       - hasDocuments:
-          count: 3
+          count: 5
         template: pdb.yaml
       - equal:
           path: spec.minAvailable
@@ -98,10 +122,56 @@ tests:
         replicas: 1
       caddy:
         replicas: 1
+      worker:
+        replicas: 1
+      projectProvisioner:
+        replicas: 1
     asserts:
       - hasDocuments:
           count: 0
         template: pdb.yaml
+
+  - it: grants only namespaced Lease coordination to worker controllers
+    set:
+      platform:
+        <<: *fullPlatform
+    asserts:
+      - equal:
+          path: rules[0]
+          value:
+            apiGroups: [coordination.k8s.io]
+            resources: [leases]
+            verbs: [get, create, update]
+        template: leader-election-rbac.yaml
+        documentIndex: 0
+      - contains:
+          path: subjects
+          content:
+            kind: ServiceAccount
+            name: compartment-compartment-worker
+            namespace: default
+        template: leader-election-rbac.yaml
+        documentIndex: 1
+      - contains:
+          path: subjects
+          content:
+            kind: ServiceAccount
+            name: compartment-compartment-project-provisioner
+            namespace: default
+        template: leader-election-rbac.yaml
+        documentIndex: 1
+
+  - it: rejects an unsafe leader election timing order
+    set:
+      platform:
+        <<: *fullPlatform
+      leaderElection:
+        leaseDurationMs: 10000
+        renewDeadlineMs: 10000
+        retryPeriodMs: 2000
+    asserts:
+      - failedTemplate:
+          errorMessage: leaderElection.renewDeadlineMs must be less than leaderElection.leaseDurationMs
 
   - it: uses an existing external database secret and omits bundled PostgreSQL
     set:

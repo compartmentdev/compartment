@@ -109,6 +109,18 @@
       }
     },
     "api": { "$ref": "#/definitions/haComponent" },
+    "worker": { "$ref": "#/definitions/haComponent" },
+    "projectProvisioner": { "$ref": "#/definitions/haComponent" },
+    "leaderElection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["leaseDurationMs", "renewDeadlineMs", "retryPeriodMs"],
+      "properties": {
+        "leaseDurationMs": { "type": "integer", "minimum": 1 },
+        "renewDeadlineMs": { "type": "integer", "minimum": 1 },
+        "retryPeriodMs": { "type": "integer", "minimum": 1 }
+      }
+    },
     "caddy": { "$ref": "#/definitions/haComponent" },
     "postgres": {
       "type": "object",

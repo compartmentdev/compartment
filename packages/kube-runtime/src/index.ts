@@ -1,4 +1,9 @@
-export { createKubeRuntimeFromEnvironment, createSelfCleaningKubeRuntimeFromEnvironment } from './kube-runtime-factory';
+export {
+  createKubeLeaderElectionFromEnvironment,
+  createKubeRuntimeFromEnvironment,
+  createSelfCleaningKubeRuntimeFromEnvironment,
+} from './kube-runtime-factory';
+export type { KubeLeaderElectionConfig, KubeLeaderElector } from './kube-leader-election.types';
 export { KubeRuntime } from './kube-runtime';
 export { kubeApplicationIdentityName, kubeNamespaceName, kubeResourceVolumeName } from './kube-naming';
 export { observeCustomDomainProjection, projectCustomDomainManifests } from './kube-custom-domain-projection';

@@ -37,10 +37,15 @@ interface ActiveProbe {
   finish(): Promise<AvailabilityWindow>;
 }
 
+interface BuildJobIdentityMonitor {
+  finish(): Promise<readonly string[]>;
+}
+
 const execFileAsync: (file: string, args: readonly string[], options: { timeout: number }) => Promise<ExecResult> =
   promisify(execFile);
 const kubeContext: string = process.env.COMPARTMENT_E2E_KUBE_CONTEXT ?? 'k3d-compartment-e2e';
 const platformNamespace: string = process.env.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? 'compartment';
+const buildNamespace: string = `${platformNamespace}-build`;
 const platformName: string = 'compartment-compartment';
 const probeIntervalMs: number = 100;
 const probeRequestTimeoutMs: number = 1_000;
@@ -110,6 +115,42 @@ describeSelfHostedUserSetupE2e('platform k3d minimal HA gate', (): void => {
       const deploy: SelfHostedDeployCommandResponse = await deployPromise;
       expect(requireSingleActiveDeployment(deploy, appFixture.serviceName).status).toBe('succeeded');
       process.stdout.write(`ha_deploy_kill pod=${apiPod} status=succeeded\n`);
+    },
+    selfHostedUserSetupTimeoutMs,
+  );
+
+  it(
+    'finishes an in-flight deployment once after the worker leader is killed',
+    async (): Promise<void> => {
+      const runtime: SelfHostedUserSetupRuntime = await setup.install();
+      const appFixture: SelfHostedUserSetupAppFixture = await setup.createAppFixture({
+        projectName: 'worker-leader-failover-gate',
+      });
+      const admin: SelfHostedUserSetupCli = await loginAdmin(setup, runtime);
+      await admin.run(`variable set E2E_BUILD_MESSAGE worker-leader-kill --env ${appFixture.environmentName}`, {
+        cwd: appFixture.directory,
+      });
+      const leaderPod: string = await readLeaseHolder('compartment-worker');
+      const deployPromise: Promise<SelfHostedDeployCommandResponse> = admin.runJson(
+        'deploy',
+        deployCommandResponseParser,
+        { cwd: appFixture.directory },
+      );
+      await waitForRunningDeployment();
+      await waitForBuildJob();
+      const jobMonitor: BuildJobIdentityMonitor = startBuildJobIdentityMonitor();
+      const killedAt: number = Date.now();
+      await kubectl(['delete', `pod/${leaderPod}`, '--wait=false']);
+      const replacementLeader: string = await waitForLeaseTakeover('compartment-worker', leaderPod);
+      const takeoverMs: number = Date.now() - killedAt;
+      const deploy: SelfHostedDeployCommandResponse = await deployPromise;
+      const observedBuildJobUids: readonly string[] = await jobMonitor.finish();
+
+      expect(requireSingleActiveDeployment(deploy, appFixture.serviceName).status).toBe('succeeded');
+      expect(observedBuildJobUids).toHaveLength(1);
+      process.stdout.write(
+        `ha_worker_leader_kill pod=${leaderPod} replacement=${replacementLeader} takeover_ms=${takeoverMs.toString()} duplicate_build_jobs=0 losses=0 status=succeeded\n`,
+      );
     },
     selfHostedUserSetupTimeoutMs,
   );
@@ -259,10 +300,84 @@ async function waitForRunningDeployment(): Promise<void> {
   throw new Error('Deployment did not enter running state before the API kill.');
 }
 
+async function readLeaseHolder(leaseName: string): Promise<string> {
+  const holder: string = await kubectl(['get', `lease/${leaseName}`, '--output=jsonpath={.spec.holderIdentity}']);
+  if (holder.trim() === '') {
+    throw new Error(`Lease ${leaseName} does not have a leader.`);
+  }
+  return holder.trim();
+}
+
+async function waitForLeaseTakeover(leaseName: string, previousHolder: string): Promise<string> {
+  for (let attempt: number = 0; attempt < 600; attempt += 1) {
+    const holder: string = await readLeaseHolder(leaseName);
+    if (holder !== previousHolder) {
+      return holder;
+    }
+    await delay(100);
+  }
+  throw new Error(`Lease ${leaseName} did not move away from ${previousHolder}.`);
+}
+
+async function waitForBuildJob(): Promise<void> {
+  for (let attempt: number = 0; attempt < 600; attempt += 1) {
+    if ((await listBuildJobUids()).length > 0) {
+      return;
+    }
+    await delay(100);
+  }
+  throw new Error('Build Job did not start before the worker leader kill.');
+}
+
+function startBuildJobIdentityMonitor(): BuildJobIdentityMonitor {
+  return new RunningBuildJobIdentityMonitor().start();
+}
+
+class RunningBuildJobIdentityMonitor implements BuildJobIdentityMonitor {
+  readonly #observed: Set<string> = new Set<string>();
+  #loop: Promise<void> = Promise.resolve();
+  #stopped: boolean = false;
+
+  public start(): BuildJobIdentityMonitor {
+    this.#loop = this.run();
+    return this;
+  }
+
+  public async finish(): Promise<readonly string[]> {
+    this.#stopped = true;
+    await this.#loop;
+    return [...this.#observed];
+  }
+
+  private async run(): Promise<void> {
+    while (!this.#stopped) {
+      for (const uid of await listBuildJobUids()) {
+        this.#observed.add(uid);
+      }
+      await delay(50);
+    }
+  }
+}
+
+async function listBuildJobUids(): Promise<readonly string[]> {
+  const output: string = await kubectlInNamespace(buildNamespace, [
+    'get',
+    'jobs',
+    '--selector',
+    'compartment.dev/job-class=build',
+    '--output=jsonpath={.items[*].metadata.uid}',
+  ]);
+  return output.trim().split(/\s+/u).filter(Boolean);
+}
+
 async function kubectl(args: readonly string[]): Promise<string> {
+  return await kubectlInNamespace(platformNamespace, args);
+}
+
+async function kubectlInNamespace(namespace: string, args: readonly string[]): Promise<string> {
   const result: ExecResult = await execFileAsync(
     'kubectl',
-    ['--context', kubeContext, '--namespace', platformNamespace, ...args],
+    ['--context', kubeContext, '--namespace', namespace, ...args],
     { timeout: 5 * 60_000 },
   );
   return result.stdout;

@@ -95,6 +95,17 @@ storage:
 api:
   replicas: 2
 
+worker:
+  replicas: 2
+
+projectProvisioner:
+  replicas: 2
+
+leaderElection:
+  leaseDurationMs: 15000
+  renewDeadlineMs: 10000
+  retryPeriodMs: 2000
+
 platform:
   startupStage: foundation
   domainGeneration: 0

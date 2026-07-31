@@ -72,7 +72,7 @@ NetworkPolicy admits that port from cluster ingress sources.
 
 ## High availability
 
-The chart runs `api`, `edge`, and `caddy` with two replicas by default. Each Deployment uses a rolling update with
+The chart runs `api`, `edge`, `caddy`, `worker`, and `project-provisioner` with two replicas by default. Each Deployment uses a rolling update with
 `maxUnavailable: 0`, a `minAvailable: 1` PodDisruptionBudget when more than one replica is configured, and a soft
 `kubernetes.io/hostname` topology spread constraint. The soft constraint preserves support for single-node clusters;
 multiple schedulable nodes are required for node-failure tolerance.
@@ -87,8 +87,11 @@ set to one replica.
 Caddy is an internal HTTP proxy and has no persistent storage or certificate material. Ingress and cert-manager own
 platform TLS certificates and Secrets.
 
-This availability boundary does not include `worker`, `project-provisioner`, registry, or the bundled PostgreSQL
-Deployment, which remain single replicas. Worker and project-provisioner failover requires future leader election.
+Worker and project-provisioner use separate namespaced Kubernetes Leases so only one replica claims or reconciles
+work. Lease duration, renew deadline, and retry period default to 15 seconds, 10 seconds, and 2 seconds respectively;
+the renew deadline must remain shorter than the lease duration. Standby replicas remain warm without running build,
+provisioning, reconcile, metering, or cleanup work. The registry and bundled PostgreSQL Deployment remain single
+replicas.
 For production, use an HA external PostgreSQL service:
 
 ```yaml

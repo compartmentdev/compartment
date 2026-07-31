@@ -3,11 +3,26 @@ import {
   buildInternalHttpUrl,
   parseOptionalTrustedOutboundHostList,
 } from '@compartment/utils';
-import type { KubeIssuerReference, KubeWorkloadScheduling } from '@compartment/kube-runtime';
+import type { KubeLeaderElectionConfig, KubeWorkloadScheduling } from '@compartment/kube-runtime';
 import { z } from 'zod';
 import type { WorkerArtifactRegistryConfig } from './worker-artifact-registry.types';
 import type { TenantSecretsKeyring } from './tenant-secret-environment.types';
+import type {
+  WorkerBuildConfig,
+  WorkerBuildQueueConfig,
+  WorkerConfig,
+  WorkerCustomDomainConfig,
+  WorkerProcessConfig,
+} from './config.types';
 import { readRequiredWorkloadScheduling, readTenantWorkloadScheduling } from './tenant-workload-scheduling';
+
+export type {
+  WorkerBuildConfig,
+  WorkerBuildSandboxConfig,
+  WorkerConfig,
+  WorkerCustomDomainConfig,
+  WorkerProcessConfig,
+} from './config.types';
 
 interface WorkerProcessConfigEnvironment {
   COMPARTMENT_API_INTERNAL_HOST: string;
@@ -18,6 +33,10 @@ interface WorkerProcessConfigEnvironment {
   COMPARTMENT_ARTIFACT_REGISTRY_PORT: number;
   COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY: string;
   COMPARTMENT_LOG_LEVEL: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
+  COMPARTMENT_LEADER_ELECTION_IDENTITY: string;
+  COMPARTMENT_LEADER_ELECTION_LEASE_DURATION_MS: number;
+  COMPARTMENT_LEADER_ELECTION_RENEW_DEADLINE_MS: number;
+  COMPARTMENT_LEADER_ELECTION_RETRY_PERIOD_MS: number;
   COMPARTMENT_WORKER_POLL_INTERVAL_MS: number;
   COMPARTMENT_USAGE_METERING_INTERVAL_MS: number;
   COMPARTMENT_RUNTIME_CONTROL_TOKEN: string;
@@ -61,6 +80,10 @@ const workerProcessConfigSchema: z.ZodType<WorkerProcessConfigEnvironment> = z.o
   COMPARTMENT_ARTIFACT_REGISTRY_PORT: z.coerce.number().int().positive(),
   COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY: z.string().min(32),
   COMPARTMENT_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
+  COMPARTMENT_LEADER_ELECTION_IDENTITY: z.string().min(1),
+  COMPARTMENT_LEADER_ELECTION_LEASE_DURATION_MS: z.coerce.number().int().positive(),
+  COMPARTMENT_LEADER_ELECTION_RENEW_DEADLINE_MS: z.coerce.number().int().positive(),
+  COMPARTMENT_LEADER_ELECTION_RETRY_PERIOD_MS: z.coerce.number().int().positive(),
   COMPARTMENT_WORKER_POLL_INTERVAL_MS: z.coerce.number().int().positive(),
   COMPARTMENT_USAGE_METERING_INTERVAL_MS: z.coerce.number().int().positive(),
   COMPARTMENT_RUNTIME_CONTROL_TOKEN: z.string().min(1),
@@ -95,47 +118,12 @@ const workerConfigSchema: z.ZodType<WorkerConfigEnvironment> = workerBuildConfig
   }),
 );
 
-export interface WorkerProcessConfig {
-  apiUrl: string;
-  artifactRegistry: WorkerArtifactRegistryConfig;
-  logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
-  pollIntervalMs: number;
-  runtimeControlToken: string;
-}
-
-export interface WorkerBuildConfig extends WorkerProcessConfig {
-  buildSandbox: WorkerBuildSandboxConfig;
-}
-
-export interface WorkerBuildSandboxConfig {
-  buildKitImage: string;
-  gcKeepStorageMb: number;
-  buildKitResources: object;
-  namespace: string;
-  runnerImage: string;
-  runnerResources: object;
-  scheduling: KubeWorkloadScheduling;
-  timeoutMs: number;
-}
-
-export interface WorkerConfig extends WorkerBuildConfig {
-  buildQueue: WorkerBuildQueueConfig;
-  customDomains: WorkerCustomDomainConfig;
-  tenantScheduling?: KubeWorkloadScheduling | undefined;
-  tenantSecretsKek: TenantSecretsKeyring;
-  usageMeteringIntervalMs: number;
-}
-
-export interface WorkerBuildQueueConfig {
-  maximumConcurrentBuilds: number;
-  maximumConcurrentBuildsPerProject: number;
-}
-
-export interface WorkerCustomDomainConfig {
-  caddyServiceName: string;
-  ingressClassName: string;
-  issuerRef: KubeIssuerReference;
-  namespace: string;
+export function workerLeaderElectionConfig(
+  processConfig: WorkerProcessConfig,
+  leaseName: string,
+  namespace: string,
+): KubeLeaderElectionConfig {
+  return { ...processConfig.leaderElection, leaseName, namespace };
 }
 
 export function readWorkerProcessConfig(env: NodeJS.ProcessEnv = process.env): WorkerProcessConfig {
@@ -230,6 +218,12 @@ function buildWorkerProcessConfig(parsed: WorkerProcessConfigEnvironment): Worke
     apiUrl: buildInternalHttpUrl(parsed.COMPARTMENT_API_INTERNAL_HOST, parsed.COMPARTMENT_API_PORT),
     artifactRegistry: readWorkerArtifactRegistryConfig(parsed),
     logLevel: parsed.COMPARTMENT_LOG_LEVEL,
+    leaderElection: {
+      identity: parsed.COMPARTMENT_LEADER_ELECTION_IDENTITY,
+      leaseDurationMs: parsed.COMPARTMENT_LEADER_ELECTION_LEASE_DURATION_MS,
+      renewDeadlineMs: parsed.COMPARTMENT_LEADER_ELECTION_RENEW_DEADLINE_MS,
+      retryPeriodMs: parsed.COMPARTMENT_LEADER_ELECTION_RETRY_PERIOD_MS,
+    },
     pollIntervalMs: parsed.COMPARTMENT_WORKER_POLL_INTERVAL_MS,
     runtimeControlToken: parsed.COMPARTMENT_RUNTIME_CONTROL_TOKEN,
   };
