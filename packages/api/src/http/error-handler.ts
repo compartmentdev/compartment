@@ -5,10 +5,12 @@ import { isApiBoundaryError } from '../errors/api-boundary-error';
 import { isApiBusinessError, mapApiBusinessError } from '../errors/api-business-error';
 import type { ApiErrorResponsePayload } from './error-handler.types';
 import type { ApiStatusCodeCarrier } from './http.types';
+import { auditFailedPrivilegedRequest } from './failed-request-audit';
 
 export function registerApiErrorHandler(app: ApiApp): void {
   app.setErrorHandler(async (error: Error, request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
     const mappedError: ApiErrorResponsePayload = mapApiError(error);
+    await auditFailedPrivilegedRequest(request, mappedError.code);
 
     if (mappedError.statusCode >= 500) {
       request.log.error({ err: error }, 'Unhandled API error.');

@@ -1,5 +1,6 @@
 import type { SelectedFields } from 'drizzle-orm/pg-core/query-builders/select.types';
 import type { VariableSensitivity } from '@compartment/contracts';
+import type { AuditEventRow } from './audit-events.query.types';
 import type {
   environmentVariableValues,
   environmentVariableSetBindings,
@@ -160,6 +161,7 @@ export interface UpsertEnvironmentResourceOutputVariableBindingInput {
 
 export interface InsertVariableChangeEventInput {
   actorPrincipalId: string;
+  auditEvents?: InsertVariableAuditEventInput[] | undefined;
   fingerprintsJson?: string | null | undefined;
   keyNamesJson: string;
   operation: 'bind' | 'capture' | 'import' | 'remove' | 'replace' | 'set' | 'unbind';
@@ -167,6 +169,45 @@ export interface InsertVariableChangeEventInput {
   sensitivityJson?: string | null | undefined;
   targetId: string;
   targetType: 'binding' | 'environment' | 'resource' | 'service' | 'variable_set';
+}
+
+export type VariableAuditAction = 'bind' | 'delete' | 'import' | 'replace' | 'set' | 'unbind';
+
+export interface InsertVariableAuditEventInput {
+  action: VariableAuditAction;
+  environmentId: string;
+  keyName: string;
+  organizationId: string;
+  projectId: string;
+  projectServiceId: string | null;
+  resourceName: string | null;
+  sensitivity?: VariableSensitivity | undefined;
+  serviceName: string | null;
+}
+
+export interface EnvironmentVariableWriteAuditResult {
+  auditEvents: AuditEventRow[];
+  value: EnvironmentVariableValueRow;
+}
+
+export interface EnvironmentVariableImportAuditResult {
+  auditEvents: AuditEventRow[];
+  values: EnvironmentVariableValueRow[];
+}
+
+export interface EnvironmentVariableDeleteAuditResult {
+  auditEvents: AuditEventRow[];
+  deleted: boolean;
+}
+
+export interface ResourceOutputBindingWriteAuditResult {
+  auditEvents: AuditEventRow[];
+  binding: EnvironmentResourceOutputVariableBindingRow;
+}
+
+export interface ResourceOutputBindingDeleteAuditResult {
+  auditEvents: AuditEventRow[];
+  deleted: boolean;
 }
 
 export interface InsertVariableAccessEventInput {

@@ -74,7 +74,7 @@ describe('resource service', (): void => {
         organizationSlug: 'organization',
         query: { projectName: 'project', resourceName: 'postgres' },
       }),
-    ).resolves.toEqual([]);
+    ).resolves.toMatchObject({ retainedVolumes: [] });
   });
 
   it('reports an already bootstrapped resource as a conflict', async (): Promise<void> => {

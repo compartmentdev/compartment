@@ -30,6 +30,8 @@ export interface InstallResult {
   organizationId: string;
   organizationName: string;
   organizationSlug: string;
+  principalId: string;
+  sessionId: string;
   compartmentUrl: string;
   sessionToken: string;
 }

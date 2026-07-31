@@ -45,6 +45,7 @@ import { createDatabase, createDatabasePool, type Database } from '../src/db/cli
 import {
   accessAssignments,
   accessRoles,
+  auditEvents,
   authSessions,
   ssoOidcIdentities,
   operations,
@@ -602,6 +603,64 @@ describe('Phase 0 API integration install auth', (): void => {
         'organization.user.credentials.reset',
       ]),
     );
+  });
+  it('audits owner activation and successful and failed password login without credentials', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    const successfulLoginResponse: LightMyRequestResponse = await app.inject({
+      method: 'POST',
+      payload: {
+        email: 'admin@example.com',
+        organizationSlug: installPayload.organization.slug,
+        password: 'supersecretpassword',
+      },
+      url: authApiLoginPathname,
+    });
+    const failedPassword: string = 'audit-must-not-store-this-password';
+    const failedLoginResponse: LightMyRequestResponse = await app.inject({
+      method: 'POST',
+      payload: {
+        email: 'admin@example.com',
+        organizationSlug: installPayload.organization.slug,
+        password: failedPassword,
+      },
+      url: authApiLoginPathname,
+    });
+
+    expect(successfulLoginResponse.statusCode).toBe(200);
+    expect(failedLoginResponse.statusCode).toBe(401);
+    const storedAuditEvents: (typeof auditEvents.$inferSelect)[] = await db
+      .select()
+      .from(auditEvents)
+      .orderBy(auditEvents.occurredAt);
+    expect(storedAuditEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actorEmail: 'admin@example.com',
+          eventType: 'installation.owner.activated',
+          organizationId: installPayload.organization.id,
+          status: 'succeeded',
+          targetType: 'principal',
+        }),
+        expect.objectContaining({
+          actorEmail: 'admin@example.com',
+          eventType: 'authentication.login',
+          organizationId: installPayload.organization.id,
+          status: 'succeeded',
+          targetId: installPayload.organization.id,
+          targetType: 'organization',
+        }),
+        expect.objectContaining({
+          actorEmail: 'admin@example.com',
+          eventType: 'authentication.login',
+          organizationId: installPayload.organization.id,
+          status: 'failed',
+          targetId: installPayload.organization.id,
+          targetType: 'organization',
+        }),
+      ]),
+    );
+    expect(JSON.stringify(storedAuditEvents)).not.toContain(failedPassword);
+    expect(JSON.stringify(storedAuditEvents)).not.toContain(installPayload.sessionToken);
   });
   it('returns deployment-scope permissions from whoami when a project environment is requested', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);

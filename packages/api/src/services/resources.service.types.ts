@@ -27,6 +27,10 @@ export interface ResourceLookupResult extends ResourceEnvironmentContext {
   resource: ProjectResourceRow;
 }
 
+export interface ResourceDeleteResult extends ResourceLookupResult {
+  retainedVolumes: string[];
+}
+
 export interface ResourceListResult extends ResourceEnvironmentContext {
   resources: ProjectResourceRow[];
 }

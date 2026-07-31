@@ -2,14 +2,18 @@ import {
   buildFastifyResponseSchemas,
   type FastifyResponseContractSchemas,
   type FastifyResponseSchemas,
+  type AuditEventType,
   type PermissionKey,
 } from '@compartment/contracts';
 import type { FastifyRequest, RouteOptions } from 'fastify';
 import type { ApiApp } from '../../app.types';
+import { isApiBusinessError } from '../../errors/api-business-error';
 import type { CurrentOrganizationAccess } from '../../http/request.types';
 import { createApiRateLimitRouteOptions } from '../../http/rate-limit';
 import { apiRouteRateLimitPolicies } from '../../http/rate-limit-policies';
 import type { ApiRateLimitRouteConfig, ApiRateLimitRouteSettings } from '../../http/rate-limit.types';
+import { recordAuditEvent } from '../../services/audit-events.service';
+import { buildAuditEventForRequest } from '../audit/audit-event-route-context';
 import { requireCurrentOrganizationAccess } from './authorize-request';
 
 const currentOrganizationRateLimitRouteConfig: ApiRateLimitRouteConfig = createApiRateLimitRouteOptions(
@@ -28,6 +32,7 @@ interface CurrentOrganizationResponseRouteOptions extends CurrentOrganizationRou
 interface CurrentOrganizationRouteConfig {
   currentOrganizationAccessMode: 'membership' | 'permission';
   currentOrganizationPermission?: PermissionKey;
+  failedAuditEventType?: AuditEventType;
   rateLimit: ApiRateLimitRouteSettings;
 }
 
@@ -40,9 +45,10 @@ type CurrentOrganizationRoutePreHandler = (request: FastifyRequest) => Promise<v
 export function createCurrentOrganizationRouteResponseOptions(
   currentOrganizationPermission: PermissionKey | undefined,
   responseSchemas: FastifyResponseContractSchemas,
+  failedAuditEventType?: AuditEventType,
 ): CurrentOrganizationResponseRouteOptions {
   return {
-    ...createCurrentOrganizationRouteOptions(currentOrganizationPermission),
+    ...createCurrentOrganizationRouteOptions(currentOrganizationPermission, failedAuditEventType),
     schema: {
       response: buildFastifyResponseSchemas(responseSchemas),
     },
@@ -51,8 +57,9 @@ export function createCurrentOrganizationRouteResponseOptions(
 
 export function createCurrentOrganizationRouteOptions(
   currentOrganizationPermission?: PermissionKey,
+  failedAuditEventType?: AuditEventType,
 ): CurrentOrganizationRouteOptions {
-  return new CurrentOrganizationRouteOptionsRecord(currentOrganizationPermission);
+  return new CurrentOrganizationRouteOptionsRecord(currentOrganizationPermission, failedAuditEventType);
 }
 
 export function registerCurrentOrganizationAccessHooks(app: ApiApp): void {
@@ -60,11 +67,48 @@ export function registerCurrentOrganizationAccessHooks(app: ApiApp): void {
 }
 
 async function authorizeCurrentOrganizationRequest(request: FastifyRequest): Promise<void> {
-  const currentOrganization: CurrentOrganizationAccess = await requireCurrentOrganizationAccess(
-    request,
-    request.routeOptions.config.currentOrganizationPermission,
+  try {
+    const currentOrganization: CurrentOrganizationAccess = await requireCurrentOrganizationAccess(
+      request,
+      request.routeOptions.config.currentOrganizationPermission,
+    );
+    request.currentOrganization = currentOrganization;
+  } catch (error) {
+    await auditPermissionDenial(request, error instanceof Error ? error : null);
+    throw error;
+  }
+}
+
+async function auditPermissionDenial(request: FastifyRequest, error: Error | null): Promise<void> {
+  const permission: PermissionKey | undefined = request.routeOptions.config.currentOrganizationPermission;
+  if (permission === undefined || !shouldAuditPermissionDenial(request, error)) {
+    return;
+  }
+  const routeUrl: string = request.routeOptions.url ?? request.url;
+  try {
+    await recordAuditEvent(
+      buildAuditEventForRequest(request, {
+        eventType: 'authorization.denied',
+        metadata: { method: request.method, permission },
+        status: 'failed',
+        target: {
+          displayName: routeUrl,
+          id: routeUrl,
+          type: 'route',
+        },
+      }),
+    );
+  } catch (auditError) {
+    request.log.error({ err: auditError }, 'Failed to record permission denial audit event.');
+  }
+}
+
+function shouldAuditPermissionDenial(request: FastifyRequest, error: Error | null): boolean {
+  return (
+    request.routeOptions.config.failedAuditEventType === undefined &&
+    isApiBusinessError(error) &&
+    error.code === 'forbidden'
   );
-  request.currentOrganization = currentOrganization;
 }
 
 function assertCurrentOrganizationRouteConfig(routeOptions: RouteOptions): void {
@@ -84,10 +128,11 @@ class CurrentOrganizationRouteOptionsRecord implements CurrentOrganizationRouteO
   readonly config: CurrentOrganizationRouteConfig;
   readonly preHandler: CurrentOrganizationRoutePreHandler = authorizeCurrentOrganizationRequest;
 
-  constructor(currentOrganizationPermission?: PermissionKey) {
+  constructor(currentOrganizationPermission?: PermissionKey, failedAuditEventType?: AuditEventType) {
     this.config = {
       currentOrganizationAccessMode: currentOrganizationPermission === undefined ? 'membership' : 'permission',
       ...(currentOrganizationPermission === undefined ? {} : { currentOrganizationPermission }),
+      ...(failedAuditEventType === undefined ? {} : { failedAuditEventType }),
       rateLimit: currentOrganizationRateLimitRouteConfig.rateLimit,
     };
   }

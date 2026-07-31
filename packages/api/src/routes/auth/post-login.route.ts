@@ -6,6 +6,7 @@ import {
   type LoginResponse,
 } from '@compartment/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { readHeaderValue } from '@compartment/utils';
 import type { ApiApp } from '../../app.types';
 import { isApiBusinessError } from '../../errors/api-business-error';
 import { assertValidBrowserMutationRequest } from '../../http/browser-mutation-request';
@@ -29,6 +30,11 @@ import {
   recordFailedLoginAttempt,
 } from '../../services/login-throttle.service';
 import { login, loginForOrganization } from '../../services/login.service';
+import {
+  recordFailedLoginAuditEvent,
+  recordSuccessfulLoginAuditEvents,
+} from '../../services/authentication-audit.service';
+import type { LoginAuditRequestContext } from '../../services/authentication-audit.service.types';
 import type { LoginServiceResult } from '../../services/login.service.types';
 import { readFlowTarget } from '../browser/browser-flow.helpers';
 import type { BrowserFlowTargetOrNull } from '../browser/browser-flow.types';
@@ -74,22 +80,71 @@ async function handlePostLogin(request: FastifyRequest, reply: FastifyReply): Pr
   }
   const flowTarget: BrowserFlowTargetOrNull = readFlowTarget(requestBody);
 
-  assertAuthThrottleAllowed(await readLoginThrottleBlock(requestBody, request.ip), createLoginThrottleExceededError);
-
-  const result: LoginServiceResult = await runWithAuthThrottleTracking(request, {
-    clearSuccess: async (): Promise<void> => await clearSuccessfulLoginThrottle(requestBody, request.ip),
-    clearSuccessFailureMessage: 'Failed to clear login throttle state after successful authentication.',
-    isCountedFailure: isInvalidCredentialsError,
-    recordCountedFailure: async (): Promise<void> => await recordFailedLoginAttempt(requestBody, request.ip),
-    recordCountedFailureMessage: 'Failed to record login throttle state after invalid credentials.',
-    run: async (): Promise<LoginServiceResult> =>
-      await loginWithRequestOrganization(requestBody, flowTarget, sessionDelivery),
-  });
+  const result: LoginServiceResult = await runAuditedLogin(request, requestBody, flowTarget, sessionDelivery);
+  await auditSuccessfulLogin(request, result);
   const cliLoginCompletion: CliLoginCompletionResult = usesSessionCookie(sessionDelivery)
     ? await maybeCompleteCliLoginAttempt(request, result)
     : {};
 
   return await sendPostLoginResponse(reply, flowTarget, result, sessionDelivery, cliLoginCompletion);
+}
+
+async function auditSuccessfulLogin(request: FastifyRequest, result: LoginServiceResult): Promise<void> {
+  try {
+    await recordSuccessfulLoginAuditEvents({ context: buildLoginAuditRequestContext(request), result });
+  } catch (error) {
+    request.log.error({ err: error }, 'Failed to record successful login audit event.');
+  }
+}
+
+async function runAuditedLogin(
+  request: FastifyRequest,
+  requestBody: LoginRequest,
+  flowTarget: BrowserFlowTargetOrNull,
+  sessionDelivery: ResolvedAuthSessionDelivery,
+): Promise<LoginServiceResult> {
+  try {
+    assertAuthThrottleAllowed(await readLoginThrottleBlock(requestBody, request.ip), createLoginThrottleExceededError);
+    return await runWithAuthThrottleTracking(request, {
+      clearSuccess: async (): Promise<void> => await clearSuccessfulLoginThrottle(requestBody, request.ip),
+      clearSuccessFailureMessage: 'Failed to clear login throttle state after successful authentication.',
+      isCountedFailure: isInvalidCredentialsError,
+      recordCountedFailure: async (): Promise<void> => await recordFailedLoginAttempt(requestBody, request.ip),
+      recordCountedFailureMessage: 'Failed to record login throttle state after invalid credentials.',
+      run: async (): Promise<LoginServiceResult> =>
+        await loginWithRequestOrganization(requestBody, flowTarget, sessionDelivery),
+    });
+  } catch (error) {
+    await auditFailedLoginIfScoped(request, requestBody, error instanceof Error ? error : null);
+    throw error;
+  }
+}
+
+async function auditFailedLoginIfScoped(
+  request: FastifyRequest,
+  requestBody: LoginRequest,
+  error: Error | null,
+): Promise<void> {
+  if (error === null) {
+    return;
+  }
+  try {
+    await recordFailedLoginAuditEvent({
+      context: buildLoginAuditRequestContext(request),
+      email: requestBody.email,
+      organizationSlug: requestBody.organizationSlug,
+    });
+  } catch (auditError) {
+    request.log.error({ err: auditError }, 'Failed to record rejected login audit event.');
+  }
+}
+
+function buildLoginAuditRequestContext(request: FastifyRequest): LoginAuditRequestContext {
+  return {
+    sourceIp: request.ip,
+    transport: 'password',
+    userAgent: readHeaderValue(request.headers['user-agent']) ?? null,
+  };
 }
 
 async function loginWithRequestOrganization(

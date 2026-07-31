@@ -10,9 +10,8 @@ import type {
   ListSortDirection,
 } from '@compartment/contracts';
 import type { Database } from '../db/client';
-import type { ApiDatabaseTransaction } from '../db/client.types';
 
-export type AuditEventWriteExecutor = Database | ApiDatabaseTransaction;
+export type AuditEventWriteExecutor = Pick<Database, 'insert'>;
 
 export interface AuditEventRow {
   actorEmail: string | null;

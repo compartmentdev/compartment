@@ -12,6 +12,7 @@ import type { ApiApp } from '../../app.types';
 import { requireExpectedBearerToken } from '../../http/headers';
 import { parseRequestValue } from '../../http/validation';
 import { install } from '../../services/install.service';
+import { recordAuditEvent } from '../../services/audit-events.service';
 import type { InstallResult, InstallServiceInput } from '../../services/install.service.types';
 import { buildOperationSummary } from '../presenters/operation.presenter';
 
@@ -46,9 +47,32 @@ async function handlePostInstall(
     installAuthenticationErrorMessage,
   );
   const result: InstallResult = await install(readInstallServiceInput(request));
+  await recordOwnerActivationAudit(request, result);
   const response: InstallResponse = buildInstallResponse(result);
 
   return await reply.send(response);
+}
+
+async function recordOwnerActivationAudit(request: FastifyRequest, result: InstallResult): Promise<void> {
+  await recordAuditEvent({
+    actor: {
+      email: result.adminEmail,
+      principalId: result.principalId,
+      sessionId: result.sessionId,
+      sourceIp: request.ip,
+      transport: 'install_token',
+      type: 'user',
+      userAgent: readHeaderValue(request.headers['user-agent']) ?? null,
+    },
+    eventType: 'installation.owner.activated',
+    metadata: {},
+    organizationId: result.organizationId,
+    target: {
+      displayName: result.adminEmail,
+      id: result.principalId,
+      type: 'principal',
+    },
+  });
 }
 
 function readInstallServiceInput(request: FastifyRequest): InstallServiceInput {

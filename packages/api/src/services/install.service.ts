@@ -99,6 +99,8 @@ function buildInstallResult(input: InstallServiceInput, plan: InstallPlan, opera
     organizationId: plan.organizationId,
     organizationName: input.organizationName,
     organizationSlug: plan.organizationSlug,
+    principalId: plan.principalId,
+    sessionId: plan.session.sessionId,
     compartmentUrl: plan.compartmentUrl,
     sessionToken: plan.session.sessionToken,
   };

@@ -9,6 +9,7 @@ import { type ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import type { ApiDatabaseTransaction } from '../src/db/client.types';
 import {
+  auditEvents,
   environmentVariableSetBindings,
   environmentVariableValues,
   environments,
@@ -54,10 +55,29 @@ import type {
 } from '../src/queries/variables.query.types';
 import { encryptVariableValueForStorageForTests, type TestEncryptedVariableValue } from './variables-test-crypto';
 import { migrateTenantSecretEnvelopes } from '../src/services/tenant-secret-migration.service';
+import {
+  buildRemoveVariableChangeEventInput,
+  buildImportVariableChangeEventInput,
+  buildSetVariableChangeEventInput,
+} from '../src/services/variables.service.write.helpers';
+import type {
+  RemoveVariableInput,
+  ImportVariablesInput,
+  SetVariableInput,
+  VariableTargetContext,
+} from '../src/services/variables.service.types';
 import type {
   TenantSecretMigrationKeys,
   TenantSecretMigrationResult,
 } from '../src/services/tenant-secret-migration.service.types';
+
+interface VariableAuditTestMetadata {
+  action: string;
+  keyName: string;
+  resourceName: string | null;
+  sensitivity?: string | undefined;
+  serviceName: string | null;
+}
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const variablesDbDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'variables_db_query');
@@ -350,6 +370,110 @@ describe('variables db queries', (): void => {
     expect(serviceValue?.valueCiphertext).not.toContain('queue-secret');
   });
 
+  it('writes scoped audit events for variable changes without secret values', async (): Promise<void> => {
+    const scope: QueryTestScope = await createQueryTestScope();
+    const secretValue: string = 'never-store-this-secret';
+    const setInput: UpsertEnvironmentVariableValueInput = buildUpsertVariableValueInput(
+      scope,
+      'API_TOKEN',
+      secretValue,
+      'sensitive',
+    );
+    const target: VariableTargetContext = await buildQueryVariableTarget(scope);
+    const serviceSetInput: SetVariableInput = {
+      keyName: setInput.keyName,
+      organizationSlug: 'variables-org',
+      principalId: scope.principalId,
+      projectName: 'billing',
+      sensitivity: 'sensitive',
+      value: secretValue,
+    };
+
+    await upsertEnvironmentVariableValueWithAudit(
+      setInput,
+      buildSetVariableChangeEventInput(serviceSetInput, target, 'sensitive', {
+        encryptionKeyId: setInput.encryptionKeyId,
+        valueCiphertext: setInput.valueCiphertext,
+        valueFingerprint: setInput.valueFingerprint,
+      }),
+    );
+    const removeInput: RemoveVariableInput = {
+      keyName: setInput.keyName,
+      organizationSlug: 'variables-org',
+      principalId: scope.principalId,
+      projectName: 'billing',
+    };
+    await deleteEnvironmentVariableValueWithAudit(
+      {
+        environmentId: scope.environmentId,
+        keyName: setInput.keyName,
+        projectServiceId: null,
+        targetResourceName: null,
+      },
+      buildRemoveVariableChangeEventInput(removeInput, target),
+    );
+    const importedValue: UpsertEnvironmentVariableValueInput = buildUpsertVariableValueInput(
+      scope,
+      'LOG_LEVEL',
+      'info',
+      'plain',
+    );
+    const importInput: ImportVariablesInput = {
+      entries: [{ keyName: importedValue.keyName, value: 'info' }],
+      organizationSlug: 'variables-org',
+      principalId: scope.principalId,
+      projectName: 'billing',
+      replace: true,
+      sensitivity: 'plain',
+    };
+    await importEnvironmentVariableValues({
+      changeEvent: buildImportVariableChangeEventInput(importInput, target, 'plain', [importedValue.valueFingerprint]),
+      values: [importedValue],
+    });
+
+    const rows: (typeof auditEvents.$inferSelect)[] = await db.select().from(auditEvents);
+    expect(rows).toHaveLength(3);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actorEmail: 'variables@example.com',
+          actorPrincipalId: scope.principalId,
+          environmentId: scope.environmentId,
+          eventType: 'variable.changed',
+          organizationId: scope.organizationId,
+          projectId: 'prj_variables',
+          status: 'succeeded',
+          targetId: 'API_TOKEN',
+          targetType: 'variable',
+        }),
+      ]),
+    );
+    const metadata: VariableAuditTestMetadata[] = rows.map(
+      (row: typeof auditEvents.$inferSelect): VariableAuditTestMetadata =>
+        JSON.parse(row.metadataJson) as VariableAuditTestMetadata,
+    );
+    expect(metadata).toEqual(
+      expect.arrayContaining([
+        {
+          action: 'set',
+          keyName: 'API_TOKEN',
+          resourceName: null,
+          sensitivity: 'sensitive',
+          serviceName: null,
+        },
+        { action: 'delete', keyName: 'API_TOKEN', resourceName: null, serviceName: null },
+        {
+          action: 'replace',
+          keyName: 'LOG_LEVEL',
+          resourceName: null,
+          sensitivity: 'plain',
+          serviceName: null,
+        },
+      ]),
+    );
+    expect(JSON.stringify(rows)).not.toContain(secretValue);
+  });
+
   it('rolls back a set when the audit event insert fails', async (): Promise<void> => {
     const scope: QueryTestScope = await createQueryTestScope();
     const input: UpsertEnvironmentVariableValueInput = buildUpsertVariableValueInput(
@@ -524,6 +648,23 @@ async function createQueryTestScope(): Promise<QueryTestScope> {
     organizationId,
     principalId,
     serviceId,
+  };
+}
+
+async function buildQueryVariableTarget(scope: QueryTestScope): Promise<VariableTargetContext> {
+  const [organization] = await db.select().from(organizations).where(eq(organizations.id, scope.organizationId));
+  const [project] = await db.select().from(projects).where(eq(projects.id, 'prj_variables'));
+  const [environment] = await db.select().from(environments).where(eq(environments.id, scope.environmentId));
+  if (organization === undefined || project === undefined || environment === undefined) {
+    throw new Error('Expected variable audit target scope.');
+  }
+  return {
+    environment,
+    organization,
+    project,
+    resourceName: null,
+    service: null,
+    serviceName: null,
   };
 }
 

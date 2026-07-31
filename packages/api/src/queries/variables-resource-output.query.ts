@@ -1,6 +1,10 @@
 import { and, asc, eq, type SQL } from 'drizzle-orm';
 import { environmentResourceOutputVariableBindings } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
+import {
+  insertVariableAuditEventsWithExecutor,
+  insertVariableChangeAuditEventsWithExecutor,
+} from './variables-audit.query';
 import { insertVariableChangeEventWithExecutor, type VariablesWriteExecutor } from './variables.query.write.helpers';
 import type {
   DeleteEnvironmentResourceOutputVariableBindingBySourceInput,
@@ -9,6 +13,8 @@ import type {
   EnvironmentResourceOutputVariableBindingSource,
   InsertVariableChangeEventInput,
   PersistedEnvironmentResourceOutputVariableBindingRow,
+  ResourceOutputBindingDeleteAuditResult,
+  ResourceOutputBindingWriteAuditResult,
   UpsertEnvironmentResourceOutputVariableBindingInput,
 } from './variables.query.types';
 
@@ -27,7 +33,7 @@ export async function listEnvironmentResourceOutputVariableBindings(
 export async function deleteEnvironmentResourceOutputVariableBindingWithAudit(
   input: DeleteEnvironmentResourceOutputVariableBindingInput,
   changeEvent: InsertVariableChangeEventInput,
-): Promise<boolean> {
+): Promise<ResourceOutputBindingDeleteAuditResult> {
   return await deleteEnvironmentResourceOutputVariableBindingWhereWithAudit(
     [
       eq(environmentResourceOutputVariableBindings.environmentId, input.environmentId),
@@ -41,7 +47,7 @@ export async function deleteEnvironmentResourceOutputVariableBindingWithAudit(
 export async function deleteEnvironmentResourceOutputVariableBindingBySourceWithAudit(
   input: DeleteEnvironmentResourceOutputVariableBindingBySourceInput,
   changeEvent: InsertVariableChangeEventInput,
-): Promise<boolean> {
+): Promise<ResourceOutputBindingDeleteAuditResult> {
   return await deleteEnvironmentResourceOutputVariableBindingWhereWithAudit(
     [
       eq(environmentResourceOutputVariableBindings.environmentId, input.environmentId),
@@ -56,32 +62,42 @@ export async function deleteEnvironmentResourceOutputVariableBindingBySourceWith
 async function deleteEnvironmentResourceOutputVariableBindingWhereWithAudit(
   predicates: SQL[],
   changeEvent: InsertVariableChangeEventInput,
-): Promise<boolean> {
-  return await getApiDatabase().transaction(async (tx: VariablesWriteExecutor): Promise<boolean> => {
-    const rows: PersistedEnvironmentResourceOutputVariableBindingRow[] = await tx
-      .delete(environmentResourceOutputVariableBindings)
-      .where(and(...predicates))
-      .returning();
-    if (rows.length === 0) {
-      return false;
-    }
+): Promise<ResourceOutputBindingDeleteAuditResult> {
+  return await getApiDatabase().transaction(
+    async (tx: VariablesWriteExecutor): Promise<ResourceOutputBindingDeleteAuditResult> => {
+      const rows: PersistedEnvironmentResourceOutputVariableBindingRow[] = await tx
+        .delete(environmentResourceOutputVariableBindings)
+        .where(and(...predicates))
+        .returning();
+      if (rows.length === 0) {
+        return { auditEvents: [], deleted: false };
+      }
 
-    await insertVariableChangeEventWithExecutor(tx, changeEvent);
-    return true;
-  });
+      return {
+        auditEvents: await insertVariableChangeAuditEventsWithExecutor(tx, changeEvent),
+        deleted: true,
+      };
+    },
+  );
 }
 
 export async function upsertEnvironmentResourceOutputVariableBindingWithAudit(
   input: UpsertEnvironmentResourceOutputVariableBindingInput,
   changeEvent: InsertVariableChangeEventInput,
-): Promise<EnvironmentResourceOutputVariableBindingRow> {
+): Promise<ResourceOutputBindingWriteAuditResult> {
   return await getApiDatabase().transaction(
-    async (tx: VariablesWriteExecutor): Promise<EnvironmentResourceOutputVariableBindingRow> => {
+    async (tx: VariablesWriteExecutor): Promise<ResourceOutputBindingWriteAuditResult> => {
       const rows: PersistedEnvironmentResourceOutputVariableBindingRow[] =
         await upsertEnvironmentResourceOutputVariableBinding(input, tx);
       await insertVariableChangeEventWithExecutor(tx, changeEvent);
-
-      return toEnvironmentResourceOutputVariableBindingRow(requirePersistedResourceOutputBindingRow(rows[0]));
+      return {
+        auditEvents: await insertVariableAuditEventsWithExecutor(
+          tx,
+          changeEvent.actorPrincipalId,
+          changeEvent.auditEvents ?? [],
+        ),
+        binding: toEnvironmentResourceOutputVariableBindingRow(requirePersistedResourceOutputBindingRow(rows[0])),
+      };
     },
   );
 }

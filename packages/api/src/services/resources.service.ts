@@ -18,6 +18,7 @@ import { parseResourceVolumes } from './resources.service.storage';
 import type {
   ResourceActionInput,
   ResourceDeleteInput,
+  ResourceDeleteResult,
   ResourceEnvironmentContext,
   ResourceListInput,
   ResourceListResult,
@@ -113,12 +114,16 @@ export async function stopResourceForPrincipal(input: ResourceActionInput): Prom
   return { ...context, resource: stopped };
 }
 
-export async function deleteResourceForPrincipal(input: ResourceDeleteInput): Promise<string[]> {
+export async function deleteResourceForPrincipal(input: ResourceDeleteInput): Promise<ResourceDeleteResult> {
   const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
   const volumes: ResourceVolumeSummary[] = parseResourceVolumes(resource);
   const deletedData: boolean = await deleteKubernetesResource(context, resource, input.body.deleteData === true);
-  return deletedData ? [] : volumes.map((volume: ResourceVolumeSummary): string => volume.name);
+  return {
+    ...context,
+    resource,
+    retainedVolumes: deletedData ? [] : volumes.map((volume: ResourceVolumeSummary): string => volume.name),
+  };
 }
 
 async function resolveRequiredResource(environmentId: string, resourceName: string): Promise<ProjectResourceRow> {

@@ -1,14 +1,17 @@
 import type { VariableImportEntry, VariableSensitivity } from '@compartment/contracts';
 import type { EncryptedVariableValue } from '../lib/variables-crypto';
 import type {
+  InsertVariableAuditEventInput,
   InsertVariableChangeEventInput,
   UpsertEnvironmentVariableValueInput,
+  VariableAuditAction,
 } from '../queries/variables.query.types';
 import type {
   ImportVariablesInput,
   RemoveVariableInput,
   SetVariableInput,
   ShowVariableInput,
+  VariableTargetInput,
   VariableTargetContext,
 } from './variables.service.types';
 
@@ -19,6 +22,7 @@ interface VariableChangeEventTargetInput {
 
 interface SetVariableChangeEventRecordInput extends VariableChangeEventTargetInput {
   actorPrincipalId: string;
+  auditEvents?: InsertVariableAuditEventInput[] | undefined;
   encryptedValue: EncryptedVariableValue;
   keyName: string;
   organizationId: string;
@@ -53,6 +57,7 @@ export function buildSetVariableChangeEventInput(
     organizationId: target.organization.id,
     sensitivity,
     ...buildVariableChangeEventTargetInput(target),
+    auditEvents: [buildVariableAuditEventInput(input, target, input.keyName, 'set', sensitivity)],
   });
 }
 
@@ -61,6 +66,7 @@ export function buildSetVariableChangeEventRecord(
 ): InsertVariableChangeEventInput {
   return {
     actorPrincipalId: input.actorPrincipalId,
+    auditEvents: input.auditEvents,
     fingerprintsJson: JSON.stringify([input.encryptedValue.valueFingerprint]),
     keyNamesJson: JSON.stringify([input.keyName]),
     operation: 'set',
@@ -81,6 +87,7 @@ export function buildRemoveVariableChangeEventInput(
     operation: 'remove',
     organizationId: target.organization.id,
     ...buildVariableChangeEventTargetInput(target),
+    auditEvents: [buildVariableAuditEventInput(input, target, input.keyName, 'delete')],
   };
 }
 
@@ -90,6 +97,7 @@ export function buildImportVariableChangeEventInput(
   sensitivity: VariableSensitivity,
   fingerprints: readonly string[],
 ): InsertVariableChangeEventInput {
+  const action: VariableAuditAction = input.replace === true ? 'replace' : 'import';
   return {
     actorPrincipalId: input.principalId,
     fingerprintsJson: JSON.stringify(fingerprints),
@@ -98,6 +106,30 @@ export function buildImportVariableChangeEventInput(
     organizationId: target.organization.id,
     sensitivityJson: JSON.stringify(input.entries.map((): VariableSensitivity => sensitivity)),
     ...buildVariableChangeEventTargetInput(target),
+    auditEvents: input.entries.map(
+      (entry: VariableImportEntry): InsertVariableAuditEventInput =>
+        buildVariableAuditEventInput(input, target, entry.keyName, action, sensitivity),
+    ),
+  };
+}
+
+export function buildVariableAuditEventInput(
+  input: VariableTargetInput,
+  target: VariableTargetContext,
+  keyName: string,
+  action: VariableAuditAction,
+  sensitivity?: VariableSensitivity,
+): InsertVariableAuditEventInput {
+  return {
+    action,
+    environmentId: target.environment.id,
+    keyName,
+    organizationId: target.organization.id,
+    projectId: target.project.id,
+    projectServiceId: target.service?.id ?? null,
+    resourceName: target.resourceName,
+    sensitivity,
+    serviceName: target.serviceName,
   };
 }
 

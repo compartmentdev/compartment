@@ -9,7 +9,12 @@ export type AuditEventMetadata = Record<string, AuditEventMetadataValue>;
 export type AuditEventListOrderBy = 'eventType' | 'occurredAt' | 'status';
 export type AuditEventType =
   | 'audit.export.created'
+  | 'authentication.login'
+  | 'authorization.denied'
+  | 'deployment.created'
   | 'deployment.kubernetes.drift_detected'
+  | 'deployment.rolled_back'
+  | 'installation.owner.activated'
   | 'organization.assignment.created'
   | 'organization.assignment.deleted'
   | 'organization.auth_settings.updated'
@@ -30,6 +35,13 @@ export type AuditEventType =
   | 'organization.user.password_reset_issued'
   | 'organization.user.removed'
   | 'organization.user.unblocked'
+  | 'resource.backup.created'
+  | 'resource.backup.restored'
+  | 'resource.bootstrapped'
+  | 'resource.deleted'
+  | 'resource.started'
+  | 'resource.stopped'
+  | 'service.access_mode.changed'
   | 'source.auto_deploy.queued'
   | 'source.auto_deploy.skipped'
   | 'source.binding.created'
@@ -42,7 +54,8 @@ export type AuditEventType =
   | 'source.settings.updated'
   | 'source.sync.failed'
   | 'source.sync.requested'
-  | 'source.sync.succeeded';
+  | 'source.sync.succeeded'
+  | 'variable.changed';
 
 export interface AuditEventActorSummary {
   email: string | null;

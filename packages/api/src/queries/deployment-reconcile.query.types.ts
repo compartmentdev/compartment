@@ -1,4 +1,5 @@
 import type { DeploymentReconcileState } from '@compartment/contracts';
+import type { AuditEventRow } from './audit-events.query.types';
 
 export interface DeploymentReconcileRow {
   deploymentId: string;
@@ -32,6 +33,13 @@ export interface PersistDeploymentReconcileObservationInput {
   observedAt: Date;
   revision: number;
 }
+
+export interface PersistDeploymentReconcileObservationResult {
+  applied: boolean;
+  auditEvents: AuditEventRow[];
+}
+
+export type HandleCommittedDeploymentAuditEvents = (events: readonly AuditEventRow[]) => void;
 
 export interface PrepareDeploymentReconcileInput {
   deploymentId: string;

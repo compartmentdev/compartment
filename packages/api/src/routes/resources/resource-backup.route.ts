@@ -26,6 +26,10 @@ import {
 import { restoreResourceBackupAsForPrincipal } from '../../services/resource-backups.restore-as.service';
 import { createCurrentOrganizationRouteOptions } from '../protected/current-organization-route';
 import {
+  recordResourceBackupCreatedAuditEvent,
+  recordResourceBackupRestoredAuditEvent,
+} from '../audit/privileged-operation-audit';
+import {
   buildResourceBackupCreateResponse,
   buildResourceBackupListResponse,
   buildResourceBackupShowResponse,
@@ -52,7 +56,7 @@ const resourceBackupRouteParamsSchema: ZodType<ResourceBackupRouteParams> = z
 export function registerResourceBackupRoutes(app: ApiApp): void {
   app.post(
     compartmentResourceBackupCollectionPathnameTemplate,
-    createCurrentOrganizationRouteOptions('deployment.create'),
+    createCurrentOrganizationRouteOptions('deployment.create', 'resource.backup.created'),
     handlePostResourceBackupRequest,
   );
   app.get(
@@ -67,7 +71,7 @@ export function registerResourceBackupRoutes(app: ApiApp): void {
   );
   app.post(
     compartmentResourceBackupRestorePathnameTemplate,
-    createCurrentOrganizationRouteOptions('deployment.create'),
+    createCurrentOrganizationRouteOptions('deployment.create', 'resource.backup.restored'),
     handlePostResourceBackupRestoreRequest,
   );
 }
@@ -82,6 +86,7 @@ async function handlePostResourceBackupRequest(request: FastifyRequest, reply: F
       }),
     ),
   );
+  await recordResourceBackupCreatedAuditEvent(request, response);
 
   return await reply.send(response);
 }
@@ -96,7 +101,6 @@ async function handleGetResourceBackupListRequest(request: FastifyRequest, reply
       }),
     ),
   );
-
   return await reply.send(response);
 }
 
@@ -110,7 +114,6 @@ async function handleGetResourceBackupRequest(request: FastifyRequest, reply: Fa
       }),
     ),
   );
-
   return await reply.send(response);
 }
 
@@ -133,6 +136,7 @@ async function handlePostResourceBackupRestoreRequest(
       }),
     ),
   );
+  await recordResourceBackupRestoredAuditEvent(request, response);
 
   return await reply.send(response);
 }

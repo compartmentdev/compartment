@@ -53,6 +53,10 @@ export async function recordAuditEvent(input: RecordAuditEventInput): Promise<Au
   return event;
 }
 
+export function writeCommittedAuditEventRowsToLocalFileSink(rows: readonly AuditEventRow[]): void {
+  writeCommittedAuditEventsToLocalFileSink(rows.map(toAuditEventSummary));
+}
+
 export function writeCommittedAuditEventsToLocalFileSink(events: readonly AuditEventResult[]): void {
   for (const event of events) {
     writeAuditEventToLocalFileSink(event);

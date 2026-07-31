@@ -26,6 +26,7 @@ import type { DeploymentSummaryInput, DeployResponseInput } from '../presenter.t
 import { createSourceUploadFromArchivePath } from '../source-uploads.service';
 import type { CreatedSourceUpload } from '../source-uploads.service.types';
 import { mintGitHubInstallationToken } from './github-app-http.adapter';
+import { recordSourceDeploymentAuditEvents } from './git-source-deployment-audit.service';
 import { ensureSourceAutomationPrincipal } from './git-source-automation-principal.service';
 import {
   completeSourceEventIfTerminal,
@@ -176,6 +177,7 @@ async function createSourceDrivenDeployments(
     sourceProvenance: buildSourceProvenance(state, task, automationPrincipalId),
     sourceUploadId: sourceUpload.id,
   });
+  await recordSourceDeploymentAuditEvents(deploymentInput.deployments, state.organization.id, automationPrincipalId);
 
   return deploymentInput.deployments.map((deployment: DeploymentSummaryInput): DeploymentRow => deployment.deployment);
 }
