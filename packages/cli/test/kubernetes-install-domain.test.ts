@@ -53,8 +53,7 @@ function install(stage: KubernetesInstallStage): ExistingKubernetesInstall {
     ingressEndpoint: null,
     ingressTargets: [],
     installToken: 'install-token',
-    managedDomainAllocationId: '',
-    managedDomainBrokerToken: '',
+    managedDomainAcmeDnsToken: '',
     publicProtocol: 'https',
     registryHostname: '',
     registryIssuerRef: {
