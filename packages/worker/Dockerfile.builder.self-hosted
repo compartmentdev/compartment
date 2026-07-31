@@ -1,0 +1,99 @@
+# syntax=docker/dockerfile:1.7
+
+ARG COMPARTMENT_BUILDKIT_BASE_IMAGE=moby/buildkit:v0.31.1
+ARG COMPARTMENT_GO_ALPINE_BUILD_IMAGE=golang:1.26.5-alpine3.23
+ARG COMPARTMENT_BUILDKIT_VERSION=v0.31.1
+ARG COMPARTMENT_BUILDKIT_X_CRYPTO_VERSION=v0.53.0
+ARG COMPARTMENT_CONTAINERD_VERSION=v2.2.6
+ARG COMPARTMENT_CNI_VERSION=v1.9.1
+ARG COMPARTMENT_CNI_X_SYS_VERSION=v0.47.0
+ARG COMPARTMENT_RUNC_VERSION=v1.5.0
+ARG COMPARTMENT_RUNC_X_NET_VERSION=v0.55.0
+
+FROM ${COMPARTMENT_GO_ALPINE_BUILD_IMAGE} AS go-build-base
+
+ENV GOTOOLCHAIN=local
+
+RUN apk add --no-cache ca-certificates git
+
+WORKDIR /workspace
+
+FROM go-build-base AS buildkit-build
+
+ARG COMPARTMENT_BUILDKIT_VERSION
+ARG COMPARTMENT_BUILDKIT_X_CRYPTO_VERSION
+ARG COMPARTMENT_CONTAINERD_VERSION
+ARG TARGETARCH
+ARG TARGETOS
+
+ENV COMPARTMENT_BUILDKIT_TARGET=builder
+
+COPY --chmod=755 packages/worker/scripts/build-buildkit.sh /usr/local/bin/build-buildkit
+
+RUN build-buildkit
+
+FROM go-build-base AS cni-build
+
+ARG COMPARTMENT_CNI_VERSION
+ARG COMPARTMENT_CNI_X_SYS_VERSION
+ARG TARGETARCH
+ARG TARGETOS
+
+COPY --chmod=755 packages/worker/scripts/build-buildkit-cni.sh /usr/local/bin/build-buildkit-cni
+
+RUN build-buildkit-cni
+
+FROM go-build-base AS runc-build
+
+ARG COMPARTMENT_RUNC_VERSION
+ARG COMPARTMENT_RUNC_X_NET_VERSION
+ARG TARGETARCH
+ARG TARGETOS
+
+RUN apk add --no-cache gcc libseccomp-dev libseccomp-static musl-dev
+
+COPY --chmod=755 packages/worker/scripts/build-buildkit-runc.sh /usr/local/bin/build-buildkit-runc
+
+RUN build-buildkit-runc
+
+FROM ${COMPARTMENT_BUILDKIT_BASE_IMAGE} AS buildkit-runtime-assets
+
+FROM go-build-base AS runtime-root
+
+RUN apk upgrade --no-cache \
+  && apk add --no-cache fuse3 ip6tables iptables openssh openssl pigz util-linux-misc xz \
+  && ln -s fusermount3 /usr/bin/fusermount \
+  && mkdir -p /etc/buildkit/cdi /etc/cdi /var/run/cdi \
+  && rm -rf /go /usr/local/go /workspace
+
+FROM scratch
+
+LABEL org.opencontainers.image.source="https://github.com/compartmentdev/compartment"
+
+COPY --from=runtime-root / /
+COPY --from=buildkit-runtime-assets \
+  /usr/bin/buildctl-daemonless.sh \
+  /usr/bin/buildkit-qemu-* \
+  /usr/bin/buildkitd-entrypoint \
+  /usr/bin/with-cgroupfs-remount \
+  /usr/bin/
+
+COPY --from=buildkit-build /out/buildctl /usr/bin/buildctl
+COPY --from=buildkit-build /out/buildkitd /usr/bin/buildkitd
+COPY --from=cni-build /out/buildkit-cni-bridge /usr/bin/buildkit-cni-bridge
+COPY --from=cni-build /out/buildkit-cni-firewall /usr/bin/buildkit-cni-firewall
+COPY --from=cni-build /out/buildkit-cni-host-local /usr/bin/buildkit-cni-host-local
+COPY --from=cni-build /out/buildkit-cni-loopback /usr/bin/buildkit-cni-loopback
+COPY --from=runc-build /out/buildkit-runc /usr/bin/buildkit-runc
+
+RUN buildctl --version \
+  && buildkitd --version \
+  && buildkit-runc --version
+
+ENV BUILDKIT_SETUP_CGROUPV2_ROOT=1
+
+VOLUME /var/lib/buildkit
+
+WORKDIR /
+
+ENTRYPOINT ["/usr/bin/buildkitd-entrypoint"]

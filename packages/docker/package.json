@@ -23,7 +23,7 @@
     "test": "vitest run --config ../../vitest.config.mts"
   },
   "dependencies": {
-    "dockerode": "^5.0.0"
+    "dockerode": "^5.0.1"
   },
   "devDependencies": {
     "@compartment/eslint-config": "workspace:*",

@@ -37,6 +37,7 @@ interface RuntimeComposeService {
   image?: string;
   networks?: RuntimeComposeServiceNetworks;
   privileged?: boolean;
+  pull_policy?: string;
   read_only?: boolean;
   security_opt?: readonly string[];
   tmpfs?: readonly string[];
@@ -132,7 +133,6 @@ describe.sequential('runtime assets', (): void => {
     const composeFile: RuntimeComposeFile = parse(
       await readFile(stagedAssetPaths.composePath, 'utf8'),
     ) as RuntimeComposeFile;
-
     expect(composeFile.networks).toHaveProperty('db_internal');
     expect(composeFile.networks).toHaveProperty('build_internal');
     expect(readServiceNetworks(composeFile, 'api-migrate')).toEqual(['db_internal', 'system_internal']);
@@ -162,15 +162,20 @@ describe.sequential('runtime assets', (): void => {
     const composeFile: RuntimeComposeFile = parse(
       await readFile(stagedAssetPaths.composePath, 'utf8'),
     ) as RuntimeComposeFile;
+    const localComposeFile: RuntimeComposeFile = parse(
+      await readFile(stagedAssetPaths.localComposePath, 'utf8'),
+    ) as RuntimeComposeFile;
     const builderService: RuntimeComposeService = readService(composeFile, 'builder');
     const composeText: string = await readFile(stagedAssetPaths.composePath, 'utf8');
 
-    expect(builderService.image).toBe('moby/buildkit:v0.30.0');
+    expect(builderService.image).toBe('${COMPARTMENT_BUILDER_IMAGE}');
     expect(builderService.command).toEqual([
       '--addr',
       'unix:///run/buildkit/buildkitd.sock',
       '--group',
       '${COMPARTMENT_RUNTIME_GID}',
+      '--oci-worker-net',
+      'bridge',
     ]);
     expect(builderService.healthcheck?.test).toEqual([
       'CMD',
@@ -181,6 +186,7 @@ describe.sequential('runtime assets', (): void => {
       'workers',
     ]);
     expect(builderService.privileged).toBe(true);
+    expect(readService(localComposeFile, 'builder').pull_policy).toBe('never');
     expect(builderService.security_opt).toBeUndefined();
     expect(builderService.volumes).toEqual([
       'compartment-buildkit-socket:/run/buildkit',

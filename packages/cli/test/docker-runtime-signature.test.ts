@@ -75,7 +75,7 @@ afterEach((): void => {
 });
 
 describe('runtime image signature verification', (): void => {
-  it('verifies the remote digest signature before Docker pulls an image', async (): Promise<void> => {
+  it('verifies the remote builder digest signature before Docker pulls the image', async (): Promise<void> => {
     process.env.COMPARTMENT_SYSTEM_TOKEN = 'secret-token';
     process.env.NON_COMPARTMENT_ENV = 'kept';
     mocks.runQuietDockerCommand.mockResolvedValueOnce(createSuccessfulCommandResult(`sha256:${'a'.repeat(64)}`));
@@ -88,7 +88,7 @@ describe('runtime image signature verification', (): void => {
       pullVerifiedRemoteSelfHostedRuntimeImages({
         context: createDockerExecutionContext(),
         imageRefs: createImageRefs('0.2.0'),
-        services: ['api'],
+        services: ['builder'],
       }),
     ).resolves.toBeNull();
 
@@ -101,7 +101,7 @@ describe('runtime image signature verification', (): void => {
         selfHostedRuntimeImageSignaturePolicy.certificateOidcIssuer,
         '--certificate-identity-regexp',
         selfHostedRuntimeImageSignaturePolicy.certificateIdentityRegexp,
-        `ghcr.io/compartmentdev/compartment-api@sha256:${'a'.repeat(64)}`,
+        `ghcr.io/compartmentdev/compartment-builder@sha256:${'a'.repeat(64)}`,
       ],
       expect.objectContaining({
         NON_COMPARTMENT_ENV: 'kept',
@@ -111,6 +111,21 @@ describe('runtime image signature verification', (): void => {
     expect(mocks.runCommand.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.runDockerCommand.mock.invocationCallOrder[0] ?? 0,
     );
+  });
+
+  it('does not apply the Compartment signature policy to the legacy third-party builder image', async (): Promise<void> => {
+    const imageRefs: SelfHostedImageRefs = createImageRefs('0.2.0');
+    imageRefs.builderImage = 'moby/buildkit:v0.30.0';
+
+    await expect(
+      verifyLocalSelfHostedRuntimeImageSignatures({
+        context: createDockerExecutionContext(),
+        imageRefs,
+        services: ['builder'],
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(mocks.runCommand).not.toHaveBeenCalled();
   });
 
   it('does not pull a remote image when signature verification fails', async (): Promise<void> => {
@@ -265,6 +280,7 @@ function createSuccessfulCommandResult(stdout: string = ''): CommandResult {
 function createImageRefs(tag: string): SelfHostedImageRefs {
   return {
     apiImage: `ghcr.io/compartmentdev/compartment-api:${tag}`,
+    builderImage: `ghcr.io/compartmentdev/compartment-builder:${tag}`,
     caddyImage: `ghcr.io/compartmentdev/compartment-caddy:${tag}`,
     edgeImage: `ghcr.io/compartmentdev/compartment-edge:${tag}`,
     runtimeProbeImage: `ghcr.io/compartmentdev/compartment-runtime-probe:${tag}`,
@@ -275,6 +291,7 @@ function createImageRefs(tag: string): SelfHostedImageRefs {
 function createDockerHubImageRefs(tag: string): SelfHostedImageRefs {
   return {
     apiImage: `docker.io/compartmentdev/compartment-api:${tag}`,
+    builderImage: `docker.io/compartmentdev/compartment-builder:${tag}`,
     caddyImage: `docker.io/compartmentdev/compartment-caddy:${tag}`,
     edgeImage: `docker.io/compartmentdev/compartment-edge:${tag}`,
     runtimeProbeImage: `docker.io/compartmentdev/compartment-runtime-probe:${tag}`,

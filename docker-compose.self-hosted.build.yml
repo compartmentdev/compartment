@@ -26,13 +26,23 @@ services:
         COMPARTMENT_CADDY_BUILDER_IMAGE: ${COMPARTMENT_CADDY_BUILDER_IMAGE:-caddy:2.11.4-builder}
         COMPARTMENT_CADDY_RUNTIME_IMAGE: ${COMPARTMENT_CADDY_RUNTIME_IMAGE:-alpine:3.22}
 
+  builder:
+    build:
+      context: .
+      dockerfile: packages/worker/Dockerfile.builder.self-hosted
+      args:
+        BUILDKIT_SYNTAX: ${COMPARTMENT_DOCKERFILE_SYNTAX_IMAGE:-docker/dockerfile:1.7}
+        COMPARTMENT_BUILDKIT_BASE_IMAGE: ${COMPARTMENT_BUILDKIT_BASE_IMAGE:-moby/buildkit:v0.31.1}
+        COMPARTMENT_BUILDKIT_VERSION: ${COMPARTMENT_BUILDKIT_VERSION:-v0.31.1}
+        COMPARTMENT_GO_ALPINE_BUILD_IMAGE: ${COMPARTMENT_GO_ALPINE_BUILD_IMAGE:-golang:1.26.5-alpine3.23}
+
   worker:
     build:
       context: .
       dockerfile: packages/worker/Dockerfile.self-hosted
       args:
         BUILDKIT_SYNTAX: ${COMPARTMENT_DOCKERFILE_SYNTAX_IMAGE:-docker/dockerfile:1.7}
-        COMPARTMENT_BUILDKIT_VERSION: ${COMPARTMENT_BUILDKIT_VERSION:-v0.30.0}
+        COMPARTMENT_BUILDKIT_VERSION: ${COMPARTMENT_BUILDKIT_VERSION:-v0.31.1}
         COMPARTMENT_GO_BUILD_IMAGE: ${COMPARTMENT_GO_BUILD_IMAGE:-golang:1.26.5-bookworm}
         COMPARTMENT_NODE_BUILD_IMAGE: ${COMPARTMENT_NODE_BUILD_IMAGE:-node:24.15.0-bookworm}
         COMPARTMENT_NODE_RUNTIME_IMAGE: ${COMPARTMENT_NODE_RUNTIME_IMAGE:-node:24.15.0-bookworm-slim}

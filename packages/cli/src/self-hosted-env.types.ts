@@ -4,6 +4,7 @@ export type { SelfHostedRuntimeImageRegistry } from '@compartment/contracts';
 
 export interface SelfHostedImageRefs {
   apiImage: string;
+  builderImage: string;
   caddyImage: string;
   edgeImage: string;
   runtimeProbeImage: string;

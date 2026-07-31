@@ -62,7 +62,7 @@ jobs:
 
       - name: Load self-hosted images from cache
         run: |
-          for service in api caddy edge worker runtime-probe; do
+          for service in api builder caddy edge worker runtime-probe; do
             docker load --input "./.compartment/self-hosted-image-cache/${service}.tar"
           done
 
@@ -75,6 +75,7 @@ jobs:
 
           docker image inspect \
             "$COMPARTMENT_API_IMAGE" \
+            "$COMPARTMENT_BUILDER_IMAGE" \
             "$COMPARTMENT_CADDY_IMAGE" \
             "$COMPARTMENT_EDGE_IMAGE" \
             "$COMPARTMENT_RUNTIME_PROBE_IMAGE" \

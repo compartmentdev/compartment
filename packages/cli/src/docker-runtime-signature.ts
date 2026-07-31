@@ -15,6 +15,7 @@ import type {
 } from './docker-runtime-signature.types';
 import type { DockerExecutionContext } from './docker-runtime.types';
 import { readJsonValue } from './json.helpers';
+import { legacySelfHostedBuilderImageRef } from './self-hosted-runtime-selection';
 import type { SelfHostedImageRefs } from './self-hosted-env.types';
 
 const imageDigestPattern: RegExp = /^sha256:[a-f0-9]{64}$/u;
@@ -195,6 +196,8 @@ function readSignedSelfHostedRuntimeServiceImageRef(
   switch (serviceName) {
     case 'api':
       return imageRefs.apiImage;
+    case 'builder':
+      return imageRefs.builderImage === legacySelfHostedBuilderImageRef ? null : imageRefs.builderImage;
     case 'caddy':
       return imageRefs.caddyImage;
     case 'edge':
@@ -202,7 +205,6 @@ function readSignedSelfHostedRuntimeServiceImageRef(
     case 'registry-auth':
     case 'worker':
       return imageRefs.workerImage;
-    case 'builder':
     case 'node':
     case 'postgres':
     case 'registry':

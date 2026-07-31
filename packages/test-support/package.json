@@ -20,7 +20,7 @@
   "dependencies": {
     "@compartment/docker": "workspace:*",
     "@compartment/utils": "workspace:*",
-    "dockerode": "^5.0.0",
+    "dockerode": "^5.0.1",
     "drizzle-orm": "^0.45.2",
     "pg": "^8.13.3"
   },

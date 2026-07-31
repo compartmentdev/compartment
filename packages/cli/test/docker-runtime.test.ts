@@ -35,7 +35,7 @@ interface DockerRuntimeTestMocks {
   runInheritedCommand: Mock<RunInheritedCommand>;
 }
 
-type RuntimeImageServiceName = 'api' | 'caddy' | 'edge' | 'runtimeProbe' | 'worker';
+type RuntimeImageServiceName = 'api' | 'builder' | 'caddy' | 'edge' | 'runtimeProbe' | 'worker';
 
 interface ComposePsTestServiceEntry {
   Health: string;
@@ -48,6 +48,7 @@ interface ComposePsTestServiceEntry {
 
 const imageRefKeyByServiceName: Readonly<Record<RuntimeImageServiceName, keyof SelfHostedImageRefs>> = {
   api: 'apiImage',
+  builder: 'builderImage',
   caddy: 'caddyImage',
   edge: 'edgeImage',
   runtimeProbe: 'runtimeProbeImage',
@@ -431,6 +432,8 @@ describe('prepareSelfHostedRuntimeImages', (): void => {
         createSuccessfulCommandResult(JSON.stringify([readImageDigestRef(imageRefs, 'runtimeProbe')])),
       )
       .mockResolvedValueOnce(createSuccessfulCommandResult(`sha256:${'a'.repeat(64)}`))
+      .mockResolvedValueOnce(createSuccessfulCommandResult(`sha256:${'a'.repeat(64)}`))
+      .mockResolvedValueOnce(createSuccessfulCommandResult(JSON.stringify([readImageDigestRef(imageRefs, 'builder')])))
       .mockResolvedValueOnce(createSuccessfulCommandResult(JSON.stringify([readImageDigestRef(imageRefs, 'worker')])));
     mocks.runInheritedCommand
       .mockResolvedValueOnce(createFailedCommandResult('pull failed', 1))
@@ -441,9 +444,10 @@ describe('prepareSelfHostedRuntimeImages', (): void => {
       .mockResolvedValueOnce(createSuccessfulCommandResult('worker image present'))
       .mockResolvedValueOnce(createSuccessfulCommandResult('registry image present'))
       .mockResolvedValueOnce(createSuccessfulCommandResult('postgres image present'))
+      .mockResolvedValueOnce(createSuccessfulCommandResult('builder image pulled'))
+      .mockResolvedValueOnce(createSuccessfulCommandResult('builder image tagged'))
       .mockResolvedValueOnce(createSuccessfulCommandResult('worker image pulled'))
-      .mockResolvedValueOnce(createSuccessfulCommandResult('worker image tagged'))
-      .mockResolvedValueOnce(createSuccessfulCommandResult('builder image pulled'));
+      .mockResolvedValueOnce(createSuccessfulCommandResult('worker image tagged'));
 
     await expect(
       prepareSelfHostedRuntimeImages(createDockerExecutionContext('sudo'), {
@@ -695,7 +699,6 @@ describe('restartSelfHostedRuntime', (): void => {
       .mockResolvedValueOnce(createSuccessfulCommandResult('registry image present'))
       .mockResolvedValueOnce(createSuccessfulCommandResult('postgres image present'))
       .mockResolvedValueOnce(createSuccessfulCommandResult())
-      .mockResolvedValueOnce(createSuccessfulCommandResult('builder image present'))
       .mockResolvedValueOnce(createSuccessfulCommandResult());
     mockCoreAndBuildLocalImageSignatureVerifications(createImageRefs());
 
@@ -746,20 +749,30 @@ describe('restartSelfHostedRuntime', (): void => {
     ]);
   });
 
-  it('pulls missing fixed dependency images before registry restart', async (): Promise<void> => {
+  it('pulls missing third-party images before registry restart', async (): Promise<void> => {
+    const imageRefs: SelfHostedImageRefs = createImageRefs();
+    imageRefs.builderImage = 'moby/buildkit:v0.30.0';
     mocks.runInheritedCommand
       .mockResolvedValueOnce(createSuccessfulCommandResult('registry image present'))
       .mockResolvedValueOnce(createFailedCommandResult('postgres missing', 1))
       .mockResolvedValueOnce(createSuccessfulCommandResult('postgres image pulled'))
       .mockResolvedValueOnce(createSuccessfulCommandResult())
-      .mockResolvedValueOnce(createSuccessfulCommandResult('builder image present'))
+      .mockResolvedValueOnce(createFailedCommandResult('legacy builder missing', 1))
+      .mockResolvedValueOnce(createSuccessfulCommandResult('legacy builder pulled'))
       .mockResolvedValueOnce(createSuccessfulCommandResult());
-    mockCoreAndBuildLocalImageSignatureVerifications(createImageRefs());
+    mockLocalImageSignatureVerifications(imageRefs, coreSignedRuntimeServices);
+    mockLocalImageSignatureVerifications(imageRefs, ['worker']);
 
-    await restartSelfHostedRuntime(createDockerExecutionContext('sudo'), createRuntimeInput('registry'));
+    await expect(
+      restartSelfHostedRuntime(createDockerExecutionContext('sudo'), {
+        ...createRuntimeInput('registry'),
+        imageRefs,
+      }),
+    ).resolves.toBeUndefined();
 
     expectCommandCall(mocks.runInheritedCommand, ['sudo', 'docker', 'image', 'inspect', 'postgres:16']);
     expectCommandCall(mocks.runInheritedCommand, ['sudo', 'docker', 'pull', 'postgres:16']);
+    expectCommandCall(mocks.runInheritedCommand, ['sudo', 'docker', 'pull', 'moby/buildkit:v0.30.0']);
   });
 
   it('keeps the control plane restart successful when builder services fail', async (): Promise<void> => {
@@ -768,7 +781,6 @@ describe('restartSelfHostedRuntime', (): void => {
       .mockResolvedValueOnce(createSuccessfulCommandResult('registry image present'))
       .mockResolvedValueOnce(createSuccessfulCommandResult('postgres image present'))
       .mockResolvedValueOnce(createSuccessfulCommandResult())
-      .mockResolvedValueOnce(createSuccessfulCommandResult('builder image present'))
       .mockResolvedValueOnce(createFailedCommandResult('builder unhealthy', 1));
     mockCoreAndBuildLocalImageSignatureVerifications(createImageRefs());
     mockHealthyCoreRuntimeInspection();
@@ -924,6 +936,7 @@ function isDockerPullCommand(command: readonly string[]): boolean {
 function createImageRefs(tag: string = 'latest'): SelfHostedImageRefs {
   return {
     apiImage: `ghcr.io/compartmentdev/compartment-api:${tag}`,
+    builderImage: `ghcr.io/compartmentdev/compartment-builder:${tag}`,
     caddyImage: `ghcr.io/compartmentdev/compartment-caddy:${tag}`,
     edgeImage: `ghcr.io/compartmentdev/compartment-edge:${tag}`,
     runtimeProbeImage: `ghcr.io/compartmentdev/compartment-runtime-probe:${tag}`,
@@ -957,7 +970,7 @@ function mockLocalImageSignatureVerifications(
 
 function mockCoreAndBuildLocalImageSignatureVerifications(imageRefs: SelfHostedImageRefs): void {
   mockLocalImageSignatureVerifications(imageRefs, coreSignedRuntimeServices);
-  mockLocalImageSignatureVerifications(imageRefs, ['worker']);
+  mockLocalImageSignatureVerifications(imageRefs, ['builder', 'worker']);
 }
 
 function readImageDigestRef(imageRefs: SelfHostedImageRefs, serviceName: RuntimeImageServiceName): string {

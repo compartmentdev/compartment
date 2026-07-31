@@ -40,10 +40,6 @@ export const coverageSettings = {
   exclude: [...coverageConfigDefaults.exclude],
 };
 export const nodeVitestConfigBase = {
-  esbuild: {
-    jsx: 'automatic' as const,
-    jsxImportSource: 'react' as const,
-  },
   root: process.cwd(),
   resolve: {
     alias: workspaceAliases,

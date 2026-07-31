@@ -8,6 +8,7 @@ describe('renderSelfHostedEnv', () => {
       renderSelfHostedEnv({
         primaryTag: 'sha-123',
         templateText: `COMPARTMENT_API_IMAGE=old-api
+COMPARTMENT_BUILDER_IMAGE=old-builder
 COMPARTMENT_CADDY_IMAGE=old-caddy
 COMPARTMENT_EDGE_IMAGE=old-edge
 COMPARTMENT_NODE_VERSION=old-version
@@ -18,6 +19,7 @@ COMPARTMENT_PUBLIC_PORT=443
 `,
       }),
     ).toBe(`COMPARTMENT_API_IMAGE=ghcr.io/compartmentdev/compartment-api:sha-123
+COMPARTMENT_BUILDER_IMAGE=ghcr.io/compartmentdev/compartment-builder:sha-123
 COMPARTMENT_CADDY_IMAGE=ghcr.io/compartmentdev/compartment-caddy:sha-123
 COMPARTMENT_EDGE_IMAGE=ghcr.io/compartmentdev/compartment-edge:sha-123
 COMPARTMENT_NODE_VERSION=sha-123

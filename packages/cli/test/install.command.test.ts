@@ -19,7 +19,6 @@ import { createInstallCommandResultFixture as createInstallResult } from './inst
 import type { ManagedDomainAllocationMetadata, ManagedDomainAllocationResponse } from '@compartment/contracts';
 import { readCliVersion } from '../src/cli-build-info';
 import type { CliIo } from '../src/app.types';
-import type { CommandResult } from '../src/command-runner.types';
 import type {
   SelfHostedInstallInput,
   SelfHostedInstallPreflightInput,
@@ -52,7 +51,7 @@ type PromptRegisterOrganization = (
 type ImportOriginalCliBuildInfo = () => Promise<typeof CliBuildInfoModule>;
 type ReadCliBuildInfo = () => CliBuildInfo;
 type ReadPublicIpAddress = () => Promise<string>;
-type RerunSelfHostedCommandWithSudoIfNeeded = () => Promise<CommandResult | undefined>;
+type RerunSelfHostedCommandWithSudoIfNeeded = typeof SelfHostedSudoRerunModule.rerunSelfHostedCommandWithSudoIfNeeded;
 type AssertNodeAgentHostServiceInstallable = () => void;
 
 const originalCompartmentCliConfigDir: string | undefined = process.env.COMPARTMENT_CLI_CONFIG_DIR;

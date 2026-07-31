@@ -12,6 +12,7 @@ export const legacySelfHostedRuntimeImageRegistry: SelfHostedRuntimeImageRegistr
 const githubSelfHostedImageRepositoryPrefix: string = 'ghcr.io/compartmentdev';
 const dockerHubSelfHostedImageRepositoryPrefix: string = 'docker.io/compartmentdev';
 const runtimeProbeImageVariableName: string = 'COMPARTMENT_RUNTIME_PROBE_IMAGE';
+export const legacySelfHostedBuilderImageRef: string = 'moby/buildkit:v0.30.0';
 
 export function buildPublishedSelfHostedRuntimeSelection(
   releaseVersion: string,
@@ -58,11 +59,20 @@ export function readSelfHostedImageRefsFromEnvironmentText(environmentText: stri
 
   return {
     apiImage: readRequiredSelfHostedEnvironmentValue(values, 'COMPARTMENT_API_IMAGE'),
+    builderImage: readInstalledBuilderImageRef(values),
     caddyImage: readRequiredSelfHostedEnvironmentValue(values, 'COMPARTMENT_CADDY_IMAGE'),
     edgeImage: readRequiredSelfHostedEnvironmentValue(values, 'COMPARTMENT_EDGE_IMAGE'),
     runtimeProbeImage: readRequiredSelfHostedEnvironmentValue(values, runtimeProbeImageVariableName),
     workerImage: readRequiredSelfHostedEnvironmentValue(values, 'COMPARTMENT_WORKER_IMAGE'),
   };
+}
+
+function readInstalledBuilderImageRef(values: Record<string, string>): string {
+  if (values.COMPARTMENT_BUILDER_IMAGE === undefined) {
+    return legacySelfHostedBuilderImageRef;
+  }
+
+  return readRequiredSelfHostedEnvironmentValue(values, 'COMPARTMENT_BUILDER_IMAGE');
 }
 
 function buildSelfHostedImageRefs(
@@ -71,6 +81,7 @@ function buildSelfHostedImageRefs(
 ): SelfHostedImageRefs {
   return {
     apiImage: buildSelfHostedImageRef('api', releaseVersion, imageRegistry),
+    builderImage: buildSelfHostedImageRef('builder', releaseVersion, imageRegistry),
     caddyImage: buildSelfHostedImageRef('caddy', releaseVersion, imageRegistry),
     edgeImage: buildSelfHostedImageRef('edge', releaseVersion, imageRegistry),
     runtimeProbeImage: buildSelfHostedImageRef('runtime-probe', releaseVersion, imageRegistry),
