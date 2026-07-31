@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { CommandResult } from '../src/command-runner.types';
+import { RegistryNodePullDnsError } from '../src/services/kubernetes-install-registry-verification-error';
 import { verifyKubernetesInstallRegistryNodePull } from '../src/services/kubernetes-install-registry-verification.service';
 import type { KubernetesInstallDeploymentInput } from '../src/services/kubernetes-install.service.types';
 
@@ -129,6 +130,39 @@ describe('install registry node-pull verification', (): void => {
     expect(
       podManifests.map((manifest: string): string => (JSON.parse(manifest) as VerificationPodManifest).spec.nodeName),
     ).toEqual(['node-a', 'node-b']);
+  });
+
+  it('classifies node resolver failures without softening TLS failures', async (): Promise<void> => {
+    mocks.runCommandWithTimeout
+      .mockResolvedValueOnce(
+        ok(
+          JSON.stringify({
+            dockerConfigJson: '{"auths":{"registry.example":{"auth":"signed"}}}',
+            imageRef: `registry.example/projects/install_1/services/registry-acceptance@sha256:${'a'.repeat(64)}`,
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(ok(readyNodes('node-a')))
+      .mockResolvedValueOnce(failed('ImagePullBackOff'))
+      .mockResolvedValueOnce(ok(JSON.stringify({ status: { containerStatuses: [] } })))
+      .mockResolvedValueOnce(
+        ok(
+          JSON.stringify({
+            items: [
+              {
+                message:
+                  'failed to resolve reference: Head https://registry.example.test/v2/: dial tcp: lookup registry.example.test: no such host',
+                reason: 'Failed',
+              },
+            ],
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(ok('deleted'));
+
+    await expect(verifyKubernetesInstallRegistryNodePull(input(), input())).rejects.toBeInstanceOf(
+      RegistryNodePullDnsError,
+    );
   });
 
   it('reports a timed-out registry command even when kubectl emits no diagnostics', async (): Promise<void> => {
