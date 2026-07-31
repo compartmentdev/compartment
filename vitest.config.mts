@@ -2,9 +2,14 @@ import { readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { config as loadEnvFile } from 'dotenv';
 import { configDefaults, coverageConfigDefaults, defineConfig } from 'vitest/config';
 
 export const repoRoot: string = dirname(fileURLToPath(import.meta.url));
+loadEnvFile({
+  override: false,
+  path: resolve(repoRoot, '.env.example'),
+});
 const packagesRoot: string = resolve(repoRoot, 'packages');
 const defaultTestExcludes: string[] = [
   '**/*.db.test.ts',

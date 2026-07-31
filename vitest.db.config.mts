@@ -27,6 +27,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     exclude: dbTestExcludePatterns,
+    globalSetup: [resolve(repoRoot, 'packages/test-support/test/database-run.global-setup.ts')],
     include: dbTestIncludePatterns,
     fileParallelism: false,
     maxWorkers: 1,

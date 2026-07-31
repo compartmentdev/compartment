@@ -1,16 +1,8 @@
-import { config as loadEnvFile } from 'dotenv';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
-const repoRoot: string = dirname(fileURLToPath(import.meta.url));
 const cliConfigSandboxStateKey: string = '__platformVitestCliConfigSandbox';
-
-loadEnvFile({
-  override: false,
-  path: resolve(repoRoot, '.env.example'),
-});
 
 applyCliConfigSandbox();
 
