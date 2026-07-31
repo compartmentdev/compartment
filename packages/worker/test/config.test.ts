@@ -143,6 +143,8 @@ function validEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_BUILD_TIMEOUT_MS: '900000',
     COMPARTMENT_KUBE_BUILD_SCHEDULING:
       '{"nodeSelector":{"compartment.dev/node-pool":"build"},"runtimeClassName":"gvisor","tolerations":[]}',
+    COMPARTMENT_MAX_CONCURRENT_BUILDS: '2',
+    COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_PROJECT: '1',
     COMPARTMENT_API_INTERNAL_HOST: '127.0.0.1',
     COMPARTMENT_API_PORT: '9443',
     COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY: 'registry-signing-key-with-at-least-32-characters',

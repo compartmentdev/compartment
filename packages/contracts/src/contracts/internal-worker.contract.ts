@@ -56,6 +56,22 @@ export interface WorkerClaimedDeployment {
 
 export interface WorkerClaimDeploymentResponse {
   deployment: WorkerClaimedDeployment | null;
+  queue: WorkerBuildQueueObservation;
+}
+
+export interface WorkerBuildQueueObservation {
+  activeBuildCount: number;
+  queueDepth: number;
+  waitTimeMs: number | null;
+}
+
+export interface WorkerClaimDeploymentRequest {
+  maximumConcurrentBuilds: number;
+  maximumConcurrentBuildsPerProject: number;
+}
+
+export interface WorkerRecoverOrphanedBuildClaimsRequest {
+  claimTimeoutMs: number;
 }
 
 export interface WorkerRecoverOrphanedBuildClaimsResponse {
@@ -83,6 +99,13 @@ export const workerAppendDeploymentEventPathname: string = '/internal/deployment
 export const workerClaimNextDeploymentPathname: string = '/internal/deployments/claim-next';
 export const workerFailDeploymentPathname: string = '/internal/deployments/fail';
 export const workerRecoverOrphanedBuildClaimsPathname: string = '/internal/deployments/requeue-orphaned-builds';
+
+export const workerClaimDeploymentRequestSchema: ContractSchema<WorkerClaimDeploymentRequest> = z
+  .object({
+    maximumConcurrentBuilds: z.number().int().positive(),
+    maximumConcurrentBuildsPerProject: z.number().int().positive(),
+  })
+  .strict();
 
 const workerProjectServiceSummarySchema: ContractSchema<WorkerProjectServiceSummary> = z
   .object({
@@ -122,7 +145,18 @@ const workerClaimedDeploymentSchema: ContractSchema<WorkerClaimedDeployment> = z
 export const workerClaimDeploymentResponseSchema: ContractSchema<WorkerClaimDeploymentResponse> = z
   .object({
     deployment: workerClaimedDeploymentSchema.nullable(),
+    queue: z
+      .object({
+        activeBuildCount: z.number().int().nonnegative(),
+        queueDepth: z.number().int().nonnegative(),
+        waitTimeMs: z.number().int().nonnegative().nullable(),
+      })
+      .strict(),
   })
+  .strict();
+
+export const workerRecoverOrphanedBuildClaimsRequestSchema: ContractSchema<WorkerRecoverOrphanedBuildClaimsRequest> = z
+  .object({ claimTimeoutMs: z.number().int().positive() })
   .strict();
 
 export const workerRecoverOrphanedBuildClaimsResponseSchema: ContractSchema<WorkerRecoverOrphanedBuildClaimsResponse> =

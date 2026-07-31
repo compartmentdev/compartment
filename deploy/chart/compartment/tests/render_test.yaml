@@ -44,6 +44,14 @@ tests:
       - isKind:
           of: ConfigMap
         template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_MAX_CONCURRENT_BUILDS
+          value: '2'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_PROJECT
+          value: '1'
+        template: configmap.yaml
       - hasDocuments:
           count: 2
         template: pvc.yaml

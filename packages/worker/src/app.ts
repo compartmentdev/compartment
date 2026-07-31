@@ -11,7 +11,8 @@ import { runWorkerIteration } from './services/worker.service';
 
 interface WorkerState {
   hasReachedApi: boolean;
-  recoveredOrphanedBuildClaims: boolean;
+  nextBuildClaimRecoveryAt: number;
+  recoveryPromise?: Promise<WorkerRecoverOrphanedBuildClaimsResponse> | undefined;
 }
 
 interface WorkerFetchError extends Error {
@@ -20,16 +21,23 @@ interface WorkerFetchError extends Error {
   };
 }
 
+const buildClaimRecoveryGraceMs: number = 60_000;
+const buildClaimRecoveryIntervalMs: number = 60_000;
+
 export async function runWorker(config: WorkerConfig = readWorkerConfig()): Promise<void> {
   const logger: pino.Logger<never, boolean> = createWorkerLogger(config);
-  const state: WorkerState = { hasReachedApi: false, recoveredOrphanedBuildClaims: false };
+  const state: WorkerState = { hasReachedApi: false, nextBuildClaimRecoveryAt: 0 };
   const runtime: KubeRuntime = createKubeRuntimeFromEnvironment();
   const kubeControllers: KubeControllerHost[] = createKubeControllerHosts(config, logger, runtime);
 
   for (const kubeController of kubeControllers) {
     void runKubeControllerLoop(config, logger, kubeController);
   }
-  await runWorkerLoop(config, runtime, logger, state);
+  const workerLoops: Promise<void>[] = Array.from(
+    { length: config.buildQueue.maximumConcurrentBuilds },
+    async (): Promise<void> => await runWorkerLoop(config, runtime, logger, state),
+  );
+  await Promise.all(workerLoops);
 }
 
 function createWorkerLogger(config: WorkerConfig): pino.Logger<never, boolean> {
@@ -77,18 +85,33 @@ async function recoverWorkerBuildClaimsIfNeeded(
   logger: pino.Logger<never, boolean>,
   state: WorkerState,
 ): Promise<boolean> {
-  if (state.recoveredOrphanedBuildClaims) {
+  if (Date.now() < state.nextBuildClaimRecoveryAt) {
     return false;
   }
-  const recovery: WorkerRecoverOrphanedBuildClaimsResponse = await recoverOrphanedBuildClaims(
-    createCompartmentRequester({ apiUrl: config.apiUrl, internalToken: config.runtimeControlToken }),
-  );
+  const recovery: WorkerRecoverOrphanedBuildClaimsResponse = await recoverWorkerBuildClaims(config, state);
   state.hasReachedApi = true;
-  state.recoveredOrphanedBuildClaims = true;
+  state.nextBuildClaimRecoveryAt = Date.now() + buildClaimRecoveryIntervalMs;
+  state.recoveryPromise = undefined;
   if (recovery.requeuedDeploymentCount > 0) {
     logger.warn(recovery, 'Requeued orphaned deployment build claims before polling.');
   }
-  return true;
+  return recovery.requeuedDeploymentCount > 0;
+}
+
+async function recoverWorkerBuildClaims(
+  config: WorkerConfig,
+  state: WorkerState,
+): Promise<WorkerRecoverOrphanedBuildClaimsResponse> {
+  state.recoveryPromise ??= recoverOrphanedBuildClaims(
+    createCompartmentRequester({ apiUrl: config.apiUrl, internalToken: config.runtimeControlToken }),
+    { claimTimeoutMs: config.buildSandbox.timeoutMs + buildClaimRecoveryGraceMs },
+  );
+  try {
+    return await state.recoveryPromise;
+  } catch (error) {
+    state.recoveryPromise = undefined;
+    throw error;
+  }
 }
 
 async function handleWorkerIterationError(

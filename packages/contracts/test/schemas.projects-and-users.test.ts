@@ -154,6 +154,7 @@ describe('contract schemas projects and users', (): void => {
           path: '.',
         },
       },
+      queue: { activeBuildCount: 1, queueDepth: 4, waitTimeMs: 125 },
     });
 
     const deployment: WorkerClaimedDeployment = expectPresent(result.deployment, 'deployment');

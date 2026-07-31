@@ -810,15 +810,23 @@ export function requireSetCookieValue(header: string | string[] | undefined, coo
   return cookieValue;
 }
 
-export async function claimNextQueuedDeployment(apiApp: ApiApp): Promise<WorkerClaimDeploymentResponse> {
+export async function claimNextQueuedDeployment(
+  apiApp: ApiApp,
+  maximumConcurrentBuilds: number = 2,
+  maximumConcurrentBuildsPerProject: number = 1,
+): Promise<WorkerClaimDeploymentResponse> {
   const claimedResponse: LightMyRequestResponse = await apiApp.inject({
     headers: {
       authorization: 'Bearer test-runtime-control-token',
     },
     method: 'POST',
+    payload: {
+      maximumConcurrentBuilds,
+      maximumConcurrentBuildsPerProject,
+    },
     url: workerClaimNextDeploymentPathname,
   });
-  expect(claimedResponse.statusCode).toBe(200);
+  expect(claimedResponse.statusCode, claimedResponse.body).toBe(200);
 
   return workerClaimDeploymentResponseSchema.parse(claimedResponse.json());
 }

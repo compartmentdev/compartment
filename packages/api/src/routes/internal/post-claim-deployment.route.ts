@@ -1,16 +1,19 @@
 import {
   buildFastifyResponseSchemas,
   type FastifyResponseSchemas,
+  workerClaimDeploymentRequestSchema,
   workerClaimDeploymentResponseSchema,
   workerClaimNextDeploymentPathname,
+  type WorkerClaimDeploymentRequest,
   type WorkerClaimDeploymentResponse,
 } from '@compartment/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiApp } from '../../app.types';
+import { parseRequestValue } from '../../http/validation';
 import { claimQueuedDeploymentForWorker } from '../../services/deployment-worker.service';
 import { buildWorkerClaimDeploymentResponse } from './worker-claim.presenter';
 
-const workerClaimSchedulerPolicy: string = 'org_round_robin_v1';
+const workerClaimSchedulerPolicy: string = 'project_least_active_fifo_v1';
 
 interface ClaimDeploymentRouteOptions {
   schema: {
@@ -31,8 +34,13 @@ const claimDeploymentRouteOptions: ClaimDeploymentRouteOptions = {
 };
 
 async function handlePostClaimDeployment(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
+  const input: WorkerClaimDeploymentRequest = parseRequestValue(
+    workerClaimDeploymentRequestSchema,
+    request.body,
+    'invalid_worker_claim_deployment_request',
+  );
   const response: WorkerClaimDeploymentResponse = workerClaimDeploymentResponseSchema.parse(
-    buildWorkerClaimDeploymentResponse(await claimQueuedDeploymentForWorker()),
+    buildWorkerClaimDeploymentResponse(await claimQueuedDeploymentForWorker(input)),
   );
   if (response.deployment !== null) {
     request.log.info(

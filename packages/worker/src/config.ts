@@ -44,6 +44,8 @@ interface WorkerConfigEnvironment extends WorkerBuildConfigEnvironment {
   COMPARTMENT_TENANT_SECRETS_KEK: string;
   COMPARTMENT_TENANT_SECRETS_PREVIOUS_KEK?: string | undefined;
   COMPARTMENT_KUBE_TENANT_SCHEDULING?: string | undefined;
+  COMPARTMENT_MAX_CONCURRENT_BUILDS: number;
+  COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_PROJECT: number;
 }
 
 interface WorkerTrustedOutboundHostsEnvironment {
@@ -88,6 +90,8 @@ const workerConfigSchema: z.ZodType<WorkerConfigEnvironment> = workerBuildConfig
     COMPARTMENT_TENANT_SECRETS_KEK: z.string().regex(/^[0-9a-fA-F]{64}$/),
     COMPARTMENT_TENANT_SECRETS_PREVIOUS_KEK: z.union([z.literal(''), z.string().regex(/^[0-9a-fA-F]{64}$/)]).optional(),
     COMPARTMENT_KUBE_TENANT_SCHEDULING: z.string().min(1).optional(),
+    COMPARTMENT_MAX_CONCURRENT_BUILDS: z.coerce.number().int().positive(),
+    COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_PROJECT: z.coerce.number().int().positive(),
   }),
 );
 
@@ -115,10 +119,16 @@ export interface WorkerBuildSandboxConfig {
 }
 
 export interface WorkerConfig extends WorkerBuildConfig {
+  buildQueue: WorkerBuildQueueConfig;
   customDomains: WorkerCustomDomainConfig;
   tenantScheduling?: KubeWorkloadScheduling | undefined;
   tenantSecretsKek: TenantSecretsKeyring;
   usageMeteringIntervalMs: number;
+}
+
+export interface WorkerBuildQueueConfig {
+  maximumConcurrentBuilds: number;
+  maximumConcurrentBuildsPerProject: number;
 }
 
 export interface WorkerCustomDomainConfig {
@@ -149,18 +159,30 @@ export function readWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
 
   return {
     ...buildWorkerBuildConfig(parsed),
-    customDomains: {
-      caddyServiceName: parsed.COMPARTMENT_CADDY_SERVICE_NAME,
-      ingressClassName: parsed.COMPARTMENT_INGRESS_CLASS_NAME,
-      issuerRef: {
-        kind: parsed.COMPARTMENT_TLS_ISSUER_KIND,
-        name: parsed.COMPARTMENT_TLS_ISSUER_NAME,
-      },
-      namespace: parsed.COMPARTMENT_PLATFORM_NAMESPACE,
-    },
+    buildQueue: buildWorkerBuildQueueConfig(parsed),
+    customDomains: buildWorkerCustomDomainConfig(parsed),
     ...(tenantScheduling === undefined ? {} : { tenantScheduling }),
     tenantSecretsKek: readTenantSecretsKeyring(parsed),
     usageMeteringIntervalMs: parsed.COMPARTMENT_USAGE_METERING_INTERVAL_MS,
+  };
+}
+
+function buildWorkerBuildQueueConfig(parsed: WorkerConfigEnvironment): WorkerBuildQueueConfig {
+  return {
+    maximumConcurrentBuilds: parsed.COMPARTMENT_MAX_CONCURRENT_BUILDS,
+    maximumConcurrentBuildsPerProject: parsed.COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_PROJECT,
+  };
+}
+
+function buildWorkerCustomDomainConfig(parsed: WorkerConfigEnvironment): WorkerCustomDomainConfig {
+  return {
+    caddyServiceName: parsed.COMPARTMENT_CADDY_SERVICE_NAME,
+    ingressClassName: parsed.COMPARTMENT_INGRESS_CLASS_NAME,
+    issuerRef: {
+      kind: parsed.COMPARTMENT_TLS_ISSUER_KIND,
+      name: parsed.COMPARTMENT_TLS_ISSUER_NAME,
+    },
+    namespace: parsed.COMPARTMENT_PLATFORM_NAMESPACE,
   };
 }
 

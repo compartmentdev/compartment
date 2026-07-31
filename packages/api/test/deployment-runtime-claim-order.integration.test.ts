@@ -117,8 +117,12 @@ describe('deployment runtime movement claim order integration', (): void => {
       );
       expect(deployResponse.statusCode).toBe(200);
       const firstClaim: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
+      await db
+        .update(deployments)
+        .set({ updatedAt: new Date(Date.now() - 2_000) })
+        .where(eq(deployments.id, firstClaim.deploymentId));
 
-      await expect(recoverOrphanedDeploymentBuildClaims()).resolves.toBe(1);
+      await expect(recoverOrphanedDeploymentBuildClaims(1_000)).resolves.toBe(1);
 
       const recoveredClaim: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
       expect(recoveredClaim.deploymentId).toBe(firstClaim.deploymentId);
@@ -127,23 +131,25 @@ describe('deployment runtime movement claim order integration', (): void => {
   );
 
   it(
-    'gives another organization the next serial claim after one organization was just served',
+    'does not let ten queued builds from one project block another project',
     async (): Promise<void> => {
       const installPayload: InstallResponse = await installCompartment(app);
       await createOrganization(installPayload, 'Beta Dev', 'beta-dev');
 
       await deployAndClaimCurrentEnvironment(installPayload);
       await deployAndClaimCurrentEnvironment(installPayload, { environmentName: 'staging' });
+      await deployAndClaimCurrentEnvironment(installPayload, { organizationSlug: 'beta-dev' });
       await deployAndClaimCurrentEnvironment(installPayload, {
         environmentName: 'staging',
         organizationSlug: 'beta-dev',
       });
 
-      await queuePromotion(installPayload);
-      await queuePromotion(installPayload, {
-        sourceEnvironmentName: 'production',
-        targetEnvironmentName: 'preview',
-      });
+      for (let index: number = 0; index < 10; index += 1) {
+        await queuePromotion(installPayload, {
+          sourceEnvironmentName: 'staging',
+          targetEnvironmentName: `preview-${index.toString()}`,
+        });
+      }
       await queuePromotion(installPayload, { organizationSlug: 'beta-dev' });
 
       const acmeProjectId: string = await findProjectIdForOrganization('smoke-web', 'acme-dev');
@@ -153,13 +159,15 @@ describe('deployment runtime movement claim order integration', (): void => {
       );
 
       expect(readClaimedOrganizationSlug(firstClaimedDeployment, acmeProjectId, betaProjectId)).toBe('acme-dev');
-      await completeClaimedDeployment(app, firstClaimedDeployment.deploymentId, firstClaimedDeployment.routeHost);
 
       const secondClaimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(
         await claimNextQueuedDeployment(app),
       );
 
       expect(readClaimedOrganizationSlug(secondClaimedDeployment, acmeProjectId, betaProjectId)).toBe('beta-dev');
+      const cappedClaim: WorkerClaimDeploymentResponse = await claimNextQueuedDeployment(app);
+      expect(cappedClaim.deployment).toBeNull();
+      expect(cappedClaim.queue).toMatchObject({ activeBuildCount: 2, queueDepth: 9 });
     },
     deploymentRuntimeMovementTimeoutMs,
   );
@@ -191,8 +199,8 @@ describe('deployment runtime movement claim order integration', (): void => {
         .where(inArray(deployments.id, queuedDeploymentIds));
 
       const claimedDeploymentIds: string[] = [
-        requireClaimedDeployment(await claimNextQueuedDeployment(app)).deploymentId,
-        requireClaimedDeployment(await claimNextQueuedDeployment(app)).deploymentId,
+        requireClaimedDeployment(await claimNextQueuedDeployment(app, 2, 2)).deploymentId,
+        requireClaimedDeployment(await claimNextQueuedDeployment(app, 2, 2)).deploymentId,
       ];
 
       expect(claimedDeploymentIds).toEqual(
@@ -203,30 +211,23 @@ describe('deployment runtime movement claim order integration', (): void => {
   );
 
   it(
-    'skips locked queued promotions when concurrent worker claims race',
+    'does not launch one queued build twice when worker claims race',
     async (): Promise<void> => {
       const installPayload: InstallResponse = await installCompartment(app);
 
       await deployAndClaimCurrentEnvironment(installPayload);
       await deployAndClaimCurrentEnvironment(installPayload, { environmentName: 'staging' });
-      const firstQueuedDeployment: DeploymentSummary = await queuePromotion(installPayload);
-      const secondQueuedDeployment: DeploymentSummary = await queuePromotion(installPayload, {
-        sourceEnvironmentName: 'production',
-        targetEnvironmentName: 'preview',
-      });
-
-      const queuedDeploymentIds: string[] = [firstQueuedDeployment.id, secondQueuedDeployment.id];
+      const queuedDeployment: DeploymentSummary = await queuePromotion(installPayload);
       const [firstClaim, secondClaim]: [WorkerClaimDeploymentResponse, WorkerClaimDeploymentResponse] =
         await Promise.all([claimNextQueuedDeployment(app), claimNextQueuedDeployment(app)]);
-      const claimedDeploymentIds: string[] = [
-        requireClaimedDeployment(firstClaim).deploymentId,
-        requireClaimedDeployment(secondClaim).deploymentId,
-      ];
+      const claimedDeployments: WorkerClaimedDeployment[] = [firstClaim, secondClaim]
+        .map((claim: WorkerClaimDeploymentResponse): WorkerClaimedDeployment | null => claim.deployment)
+        .filter(
+          (deployment: WorkerClaimedDeployment | null): deployment is WorkerClaimedDeployment => deployment !== null,
+        );
 
-      expect(new Set(claimedDeploymentIds).size).toBe(2);
-      expect(
-        [...claimedDeploymentIds].sort((left: string, right: string): number => left.localeCompare(right)),
-      ).toEqual([...queuedDeploymentIds].sort((left: string, right: string): number => left.localeCompare(right)));
+      expect(claimedDeployments).toHaveLength(1);
+      expect(claimedDeployments[0]?.deploymentId).toBe(queuedDeployment.id);
     },
     deploymentRuntimeMovementTimeoutMs,
   );

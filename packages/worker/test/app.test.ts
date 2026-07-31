@@ -7,6 +7,10 @@ import type { CompartmentRequester } from '@compartment/sdk';
 import type { KubeRuntime } from '@compartment/kube-runtime';
 
 type RunWorkerIteration = (config: WorkerConfig, runtime: KubeRuntime) => Promise<boolean>;
+type RecoverOrphanedBuildClaims = (
+  request: CompartmentRequester,
+  input: { claimTimeoutMs: number },
+) => Promise<{ requeuedDeploymentCount: number }>;
 type WorkerTimeoutHandle = NodeJS.Timeout;
 type WorkerTimerHandler = string | (() => void);
 
@@ -14,7 +18,7 @@ interface WorkerAppMocks {
   reconcileKube: Mock<() => Promise<boolean>>;
   runWorkerIteration: Mock<RunWorkerIteration>;
   runKubeControllerLoop: Mock<() => Promise<void>>;
-  recoverOrphanedBuildClaims: Mock<() => Promise<{ requeuedDeploymentCount: number }>>;
+  recoverOrphanedBuildClaims: Mock<RecoverOrphanedBuildClaims>;
   request: CompartmentRequester;
 }
 
@@ -25,7 +29,7 @@ interface KubeControllerHostModuleMock {
 const mocks: WorkerAppMocks = vi.hoisted(
   (): WorkerAppMocks => ({
     reconcileKube: vi.fn<() => Promise<boolean>>(),
-    recoverOrphanedBuildClaims: vi.fn<() => Promise<{ requeuedDeploymentCount: number }>>(),
+    recoverOrphanedBuildClaims: vi.fn<RecoverOrphanedBuildClaims>(),
     request: vi.fn() as CompartmentRequester,
     runKubeControllerLoop: vi.fn<() => Promise<void>>(),
     runWorkerIteration: vi.fn<RunWorkerIteration>(),
@@ -53,7 +57,7 @@ vi.mock(
   (): {
     createCompartmentRequester: () => CompartmentRequester;
     isCompartmentRequestError: () => boolean;
-    recoverOrphanedBuildClaims: Mock<() => Promise<{ requeuedDeploymentCount: number }>>;
+    recoverOrphanedBuildClaims: Mock<RecoverOrphanedBuildClaims>;
   } => ({
     createCompartmentRequester: (): CompartmentRequester => mocks.request,
     isCompartmentRequestError: (): boolean => false,
@@ -115,6 +119,7 @@ function createWorkerConfig(): WorkerConfig {
       scheduling: { nodeSelector: {}, runtimeClassName: 'gvisor', tolerations: [] },
       timeoutMs: 900000,
     },
+    buildQueue: { maximumConcurrentBuilds: 1, maximumConcurrentBuildsPerProject: 1 },
     customDomains: {
       caddyServiceName: 'compartment-caddy',
       ingressClassName: 'traefik',

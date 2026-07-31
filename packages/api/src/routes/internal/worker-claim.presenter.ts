@@ -4,15 +4,17 @@ import type {
   WorkerClaimedDeployment,
   WorkerProjectServiceSummary,
 } from '@compartment/contracts';
-import type { WorkerClaimDeploymentResponseInput, WorkerClaimedDeploymentInput } from '../../services/presenter.types';
+import type { WorkerClaimedDeploymentInput } from '../../services/presenter.types';
+import type { ClaimedDeploymentBuildQueueResult } from '../../services/deployment-worker-claim.service.types';
 import { parseSerializedCompartmentRoutes } from '../../services/compartment-routes.service';
 import { parseResolvedBuild } from '../../services/deployment-build.service';
 
 export function buildWorkerClaimDeploymentResponse(
-  claimed: WorkerClaimDeploymentResponseInput,
+  claimed: ClaimedDeploymentBuildQueueResult,
 ): WorkerClaimDeploymentResponse {
   return {
-    deployment: claimed === null ? null : buildWorkerClaimedDeployment(claimed),
+    deployment: claimed.deployment === null ? null : buildWorkerClaimedDeployment(claimed.deployment),
+    queue: claimed.queue,
   };
 }
 

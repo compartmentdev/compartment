@@ -160,8 +160,6 @@ export interface ProjectSummaryInput {
   updatedAt: Date;
 }
 
-export type WorkerClaimDeploymentResponseInput = WorkerClaimedDeploymentInput | null;
-
 export interface WorkerClaimedDeploymentInput {
   buildEnv: TenantSecretEnvironment;
   deployment: DeploymentSummaryInput;
