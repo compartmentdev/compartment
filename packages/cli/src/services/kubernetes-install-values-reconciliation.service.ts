@@ -70,7 +70,8 @@ async function buildDesiredEffectiveValues(
       readYamlFile(material.imageTrustValuesPath, 'image trust values file'),
       Promise.resolve({ platform: { startupStage: 'full' } }),
     ]);
-    return values.map(requireValuesObject).reduce(mergeValues, {});
+    const [chartValues, ...overlays]: YamlFileObject[] = values.map(requireValuesObject);
+    return overlays.reduce(mergeValues, chartValues!);
   } finally {
     await rm(directory, { force: true, recursive: true });
   }
