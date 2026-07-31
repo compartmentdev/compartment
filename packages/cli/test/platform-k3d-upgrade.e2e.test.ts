@@ -165,8 +165,16 @@ describe.sequential('production Kubernetes upgrade', (): void => {
         backup.backup.id,
       );
 
-      await cli.runJson(`${installCommand} --values ${currentValuesPath}`, installResponseSchema);
-      expect(await readHelmRevision()).toBe(upgradedRevision);
+      const repeatedInstall: SelfHostedUserSetupCommandResult = await cli.run(
+        `${installCommand} --values ${currentValuesPath} --output json`,
+      );
+      installResponseSchema.parse(JSON.parse(repeatedInstall.stdout) as JsonValue);
+      const repeatedRevision: number = await readHelmRevision();
+      if (repeatedRevision !== upgradedRevision) {
+        throw new Error(
+          `Expected repeated install to keep Helm revision ${upgradedRevision.toString()}, received ${repeatedRevision.toString()}. Installer diagnostics:\n${repeatedInstall.stderr}`,
+        );
+      }
     },
     upgradeTimeoutMs,
   );
