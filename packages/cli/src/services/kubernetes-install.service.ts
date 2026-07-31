@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import {
   assertMatchingKubernetesInstallDomain,
-  isReservedKubernetesInstallLocalhostDomain,
   resolveKubernetesInstallControlPlaneUrl,
 } from '../kubernetes-install-domain';
 import { waitForKubernetesPlatformCertificates } from './kubernetes-install-certificate.service';
@@ -23,8 +22,11 @@ import {
 } from './kubernetes-install-runtime.support';
 import { mergeRetainedKubernetesInstallState } from './kubernetes-install-retained-state.service';
 import { buildResolvedInstallValues, resolveKubernetesInstallState } from './kubernetes-install-state.service';
-import { verifyKubernetesInstallRegistryNodePull } from './kubernetes-install-registry-verification.service';
-import { waitForKubernetesInstallRegistryDns } from './kubernetes-install-registry-dns-wait.service';
+import {
+  checkKubernetesInstallRegistryDns,
+  reportKubernetesInstallWarning,
+  verifyKubernetesInstallRegistryNodePullWithManagedDnsGrace,
+} from './kubernetes-install-registry-warning.service';
 import { usesOperatorOwnedKubernetesTlsSecret } from './kubernetes-install-tls.service';
 import {
   inspectKubernetesInstallResumeValues,
@@ -135,9 +137,9 @@ async function deployMaterializedKubernetesInstall(
     installToken,
     installationId,
   );
-  await checkRegistryDns(input, foundationInstall, 'custom');
+  await checkKubernetesInstallRegistryDns(input, foundationInstall, 'custom');
   const state: KubernetesInstallState = await resolveKubernetesInstallState(input, foundationInstall);
-  await checkRegistryDns(input, state, 'managed');
+  await checkKubernetesInstallRegistryDns(input, state, 'managed');
   return await deployResolvedKubernetesInstall(input, material, installToken, state);
 }
 
@@ -157,11 +159,12 @@ async function deployResolvedKubernetesInstall(
     'Waiting for platform pods (api, worker, caddy)',
     async (): Promise<string> => await deployFullKubernetesInstall(input, material, state),
   );
-  await runObservableInstallStep(
+  const registryWarning: string | null = await runObservableInstallStep(
     input.progress,
     'Verifying private registry pull on every node',
-    async (): Promise<void> => await verifyKubernetesInstallRegistryNodePull(input, state),
+    async (): Promise<string | null> => await verifyKubernetesInstallRegistryNodePullWithManagedDnsGrace(input, state),
   );
+  reportKubernetesInstallWarning(input, registryWarning);
   return await finishKubernetesInstall(apiUrl, installToken, state.baseDomain, input.domainMode, input.progress);
 }
 
@@ -217,30 +220,18 @@ async function resumeKubernetesOwnerBootstrap(
   existingInstall: ExistingKubernetesInstall,
 ): Promise<KubernetesInstallDeploymentResult> {
   const baseDomain: string = requireExistingBaseDomain(existingInstall);
-  await checkRegistryDns(input, existingInstall, existingInstall.domainMode);
+  await checkKubernetesInstallRegistryDns(input, existingInstall, existingInstall.domainMode);
   await waitForRequiredKubernetesPlatformCertificates(input, existingInstall);
-  await verifyKubernetesInstallRegistryNodePull(input, existingInstall);
+  reportKubernetesInstallWarning(
+    input,
+    await verifyKubernetesInstallRegistryNodePullWithManagedDnsGrace(input, existingInstall),
+  );
   return await finishKubernetesInstall(
     resolveKubernetesInstallControlPlaneUrl(input.apiUrl, baseDomain, existingInstall.publicProtocol),
     requireExistingInstallToken(existingInstall),
     baseDomain,
     input.domainMode,
     input.progress,
-  );
-}
-
-async function checkRegistryDns(
-  input: KubernetesInstallDeploymentInput,
-  state: KubernetesInstallState,
-  domainMode: 'custom' | 'managed',
-): Promise<void> {
-  if (state.domainMode !== domainMode || isReservedKubernetesInstallLocalhostDomain(state.baseDomain)) {
-    return;
-  }
-  await runObservableInstallStep(
-    input.progress,
-    'Checking private registry DNS on every node',
-    async (): Promise<void> => await waitForKubernetesInstallRegistryDns(input, state),
   );
 }
 

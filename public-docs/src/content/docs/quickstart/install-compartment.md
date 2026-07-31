@@ -234,6 +234,12 @@ The registry hostname must resolve on every eligible node to the retained regist
 certificate chain must be trusted by each node container runtime. The platform certificate must also be trusted by
 the machine running the CLI. A self-signed issuer does not satisfy either requirement.
 
+For a newly allocated managed domain, the initial node DNS check reports the hostname and resolver result as a warning
+while public DNS is still propagating or negatively cached. The installer still pushes a unique acceptance image and
+asks every Ready node to pull it through the public registry hostname. DNS-specific pull failures are reported as a
+warning so propagation cannot strand a new managed installation; rerun the same install command after DNS resolves to
+repeat the check. Authentication, TLS, image-push, and other node-pull failures remain blocking.
+
 Dockerfile and Railpack builds use an ephemeral rootless BuildKit sidecar under gVisor and produce OCI images. Build
 cache is stored in the project/service registry repository; no persistent cache volume is shared between tenants.
 Project NetworkPolicies preserve tenant isolation and the configured RFC1918 egress policy.

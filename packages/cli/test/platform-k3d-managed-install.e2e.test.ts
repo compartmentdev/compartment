@@ -81,7 +81,11 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       expect(result.compartmentUrl).toBe(`https://console.${managedInstallBaseDomain}`);
       expect(result.organization.slug).toBe(organizationSlug);
       const brokerState: ManagedInstallBrokerState = await readManagedInstallBrokerState();
-      expect(brokerState).toEqual({ chartUrl: managedInstallBrokerUrl, retainedUrl: managedInstallBrokerUrl });
+      expect(brokerState).toEqual({
+        chartUrl: managedInstallBrokerUrl,
+        registryHostname: `registry.${managedInstallBaseDomain}`,
+        retainedUrl: managedInstallBrokerUrl,
+      });
 
       const installedIdentity: WhoAmICommandResponse = await installerCli.runJson(
         'whoami',

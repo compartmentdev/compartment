@@ -46,15 +46,21 @@ interface ManagedDomainObservation {
 
 export interface ManagedInstallBrokerState {
   chartUrl: string;
+  registryHostname: string;
   retainedUrl: string;
 }
 
 interface ManagedInstallHelmValues {
   platform?: ManagedInstallHelmPlatformValues | undefined;
+  registry?: ManagedInstallHelmRegistryValues | undefined;
 }
 
 interface ManagedInstallHelmPlatformValues {
   managedDomainBrokerUrl?: string | undefined;
+}
+
+interface ManagedInstallHelmRegistryValues {
+  hostname?: string | undefined;
 }
 
 export interface ManagedDomainBrokerObservation {
@@ -103,8 +109,53 @@ export async function prepareManagedInstallFixture(): Promise<void> {
     ],
     'wait for managed install fixtures',
   );
-  await startManagedBrokerPortForward();
   await writeManagedInstallCertificateAuthority();
+  await installManagedInstallNodeCertificateTrust();
+  await startManagedBrokerPortForward();
+}
+
+async function installManagedInstallNodeCertificateTrust(): Promise<void> {
+  const nodes: SelfHostedUserSetupCommandResult = await runKubectl([
+    'get',
+    'nodes',
+    '--output',
+    'jsonpath={range .items[*]}{.metadata.name}{"\\n"}{end}',
+  ]);
+  expectSuccessfulCommand(nodes, 'read managed install node names');
+  const nodeNames: string[] = nodes.stdout
+    .split('\n')
+    .map((name: string): string => name.trim())
+    .filter((name: string): boolean => name !== '');
+  if (nodeNames.length === 0) {
+    throw new Error('Managed install fixture requires at least one Kubernetes node.');
+  }
+  for (const nodeName of nodeNames) {
+    const registryServer: string = `https://registry.${managedInstallBaseDomain}:443`;
+    const containerdRegistryDirectory: string = `/var/lib/rancher/k3s/agent/etc/containerd/certs.d/registry.${managedInstallBaseDomain}:443`;
+    const nodeCertificateAuthorityPath: string = `${containerdRegistryDirectory}/ca.crt`;
+    const createRegistryDirectory: SelfHostedUserSetupCommandResult = await runCommand({
+      argv: ['docker', 'exec', nodeName, 'mkdir', '-p', containerdRegistryDirectory],
+      timeoutMs: kubernetesTimeoutMs,
+    });
+    expectSuccessfulCommand(createRegistryDirectory, `create the managed registry trust directory on ${nodeName}`);
+    const installCertificateAuthority: SelfHostedUserSetupCommandResult = await runCommand({
+      argv: ['docker', 'cp', managedInstallCertificateAuthorityPath, `${nodeName}:${nodeCertificateAuthorityPath}`],
+      timeoutMs: kubernetesTimeoutMs,
+    });
+    expectSuccessfulCommand(installCertificateAuthority, `install the managed certificate authority on ${nodeName}`);
+    const installRegistryTrustConfiguration: SelfHostedUserSetupCommandResult = await runCommand({
+      argv: [
+        'docker',
+        'exec',
+        nodeName,
+        'sh',
+        '-c',
+        `printf '%s\\n' 'server = "${registryServer}"' '[host."${registryServer}"]' '  capabilities = ["pull", "resolve"]' '  ca = "${nodeCertificateAuthorityPath}"' > ${containerdRegistryDirectory}/hosts.toml`,
+      ],
+      timeoutMs: kubernetesTimeoutMs,
+    });
+    expectSuccessfulCommand(installRegistryTrustConfiguration, `configure managed registry trust on ${nodeName}`);
+  }
 }
 
 async function configureCertManagerRecursiveDns(): Promise<void> {
@@ -317,6 +368,7 @@ export async function readManagedInstallBrokerState(): Promise<ManagedInstallBro
   const values: ManagedInstallHelmValues = JSON.parse(helmValues.stdout) as ManagedInstallHelmValues;
   return {
     chartUrl: values.platform?.managedDomainBrokerUrl ?? '',
+    registryHostname: values.registry?.hostname ?? '',
     retainedUrl: Buffer.from(retainedUrl.stdout, 'base64').toString('utf8'),
   };
 }

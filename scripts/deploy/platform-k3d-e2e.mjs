@@ -52,8 +52,8 @@ const contextName = `k3d-${clusterName}`;
 const registryClusterHost = `k3d-${registryName}:${registryHostPort}`;
 const registryPushHost = `localhost:${registryHostPort}`;
 const bundledRegistryClusterIp = '10.43.250.250';
-const bundledRegistryHostname = '10-43-250-250.sslip.io';
 const platformBaseDomain = 'compartment.localhost';
+const managedPlatformBaseDomain = 'managed-platform-e2e.managed.compartment.localhost';
 const publicOperatorBaseDomain = 'apps.example.test';
 const consoleHost = `console.${platformBaseDomain}`;
 const builderName = `${clusterName}-builder`;
@@ -263,7 +263,7 @@ export function renderManagedPlatformK3dValues(
   imageDigestsByServiceName,
   gvisorEnabled = platformEnvironment.gvisorEnabled,
 ) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderTenantRuntimeValues(gvisorEnabled)}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\n  targetsJson: '[{"type":"A","value":"8.8.4.4"}]'\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  hostname: ${bundledRegistryHostname}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\ntls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nbuildkit:\n  namespace: ${managedNamespace}-build\n`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderTenantRuntimeValues(gvisorEnabled)}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\n  targetsJson: '[{"type":"A","value":"8.8.4.4"}]'\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\ntls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nbuildkit:\n  namespace: ${managedNamespace}-build\n`;
 }
 
 export function renderPublicOperatorPlatformK3dValues(
@@ -712,6 +712,8 @@ export function buildPlatformK3dClusterCreateArgs() {
     `${bundledRegistryClusterIp}:registry.${platformBaseDomain}`,
     '--host-alias',
     `${bundledRegistryClusterIp}:registry.${publicOperatorBaseDomain}`,
+    '--host-alias',
+    `${bundledRegistryClusterIp}:registry.${managedPlatformBaseDomain}`,
     '--timeout',
     `${String(Math.floor(prerequisiteSetupBudgetMs / 1_000))}s`,
     '--wait',

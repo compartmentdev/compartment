@@ -43,7 +43,7 @@ type RunCommand = (command: readonly string[]) => Promise<CommandResult>;
 type ReadChartValues = (chartPath: string) => Promise<JsonValue>;
 const mocks: KubernetesInstallServiceMocks = vi.hoisted(
   (): KubernetesInstallServiceMocks => ({
-    assertRegistryDns: vi.fn(async (): Promise<void> => await Promise.resolve()),
+    assertRegistryDns: vi.fn(async (): Promise<string | null> => await Promise.resolve(null)),
     readChartValues: vi.fn<ReadChartValues>().mockResolvedValue({}),
     runCommand: vi.fn<RunCommand>(),
     verifyRegistryNodePull: vi.fn(async (): Promise<void> => await Promise.resolve()),
@@ -106,7 +106,7 @@ describe('Kubernetes install deployment', (): void => {
 
   beforeEach((): void => {
     mocks.runCommand.mockReset();
-    mocks.assertRegistryDns.mockReset().mockResolvedValue(undefined);
+    mocks.assertRegistryDns.mockReset().mockResolvedValue(null);
     mocks.readChartValues.mockReset().mockResolvedValue({});
     mocks.verifyRegistryNodePull.mockReset().mockResolvedValue(undefined);
     mocks.usesOperatorTlsSecret.mockReset().mockResolvedValue(false);
@@ -336,7 +336,7 @@ describe('Kubernetes install deployment', (): void => {
       expect.stringMatching(/^Installing foundation \(postgres, registry\).* \u2713 /u),
       expect.stringMatching(/^Waiting for Ingress endpoint.* \u2713 .*8\.8\.8\.8/u),
       expect.stringMatching(/^Requesting managed domain.* \u2713 /u),
-      expect.stringMatching(/^Checking private registry DNS on every node.* \u2713 /u),
+      expect.stringMatching(/^Checking private registry DNS from cluster nodes.* \u2713 /u),
       expect.stringMatching(/^Saving installation configuration.* \u2713 /u),
       expect.stringMatching(/^Waiting for platform Certificates.* \u2713 /u),
       expect.stringMatching(/^Waiting for platform pods \(api, worker, caddy\).* \u2713 /u),

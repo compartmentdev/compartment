@@ -62,6 +62,7 @@ describe('platform k3d e2e command boundary', () => {
     ).toBe(true);
     expect(args).toContain('10.43.250.250:registry.compartment.localhost');
     expect(args).toContain('10.43.250.250:registry.apps.example.test');
+    expect(args).toContain('10.43.250.250:registry.managed-platform-e2e.managed.compartment.localhost');
     expect(args).toContain('120s');
     expect(args.join(' ')).not.toContain('30443@server');
     expect(readPlatformK3dCertManagerManifestUrl()).toBe(
@@ -410,6 +411,7 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).toContain('stagingUrl: https://pebble.compartment-managed-e2e.svc.cluster.local:14000/dir');
     expect(values).toContain('namespace: compartment-managed-e2e-build');
     expect(values).toContain(`digest: sha256:${'d'.repeat(64)}`);
+    expect(values).not.toContain('hostname:');
     expect(values).not.toContain('compartment.localhost');
   });
 

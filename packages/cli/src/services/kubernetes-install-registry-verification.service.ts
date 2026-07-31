@@ -12,6 +12,7 @@ import type {
 import { readReadyKubernetesNodeNames } from './kubernetes-ready-nodes.service';
 import { formatRegistryDnsRecords, readRegistryServiceAddresses } from './kubernetes-install-registry-dns.service';
 import { boundRegistryDiagnostic, readRegistryDiagnosticFailure } from './kubernetes-install-registry-diagnostics';
+import { createRegistryNodePullError } from './kubernetes-install-registry-verification-error';
 
 const verificationTimeoutMs: number = 5 * 60_000;
 const verificationSecretName: string = 'compartment-registry-acceptance';
@@ -145,9 +146,11 @@ async function waitForVerificationPod(
   if (result.exitCode !== 0) {
     const diagnostics: string = await readVerificationPodDiagnostics(input, podName);
     const records: string = formatRegistryDnsRecords(registry.registryHostname, serviceAddresses);
-    throw new Error(
-      `${formatKubernetesCommandFailure(`Registry node pull failed on ${nodeName}`, result)}\n${diagnostics}\nRegistry prerequisites: required DNS record ${records}; the TLS certificate issued by ${registry.registryIssuerRef.kind}/${registry.registryIssuerRef.name} must be trusted by the node container runtime.`,
-    );
+    const message: string = `${formatKubernetesCommandFailure(
+      `Registry node pull failed on ${nodeName}`,
+      result,
+    )}\n${diagnostics}\nRegistry prerequisites: required DNS record ${records}; the TLS certificate issued by ${registry.registryIssuerRef.kind}/${registry.registryIssuerRef.name} must be trusted by the node container runtime.`;
+    throw createRegistryNodePullError(message, diagnostics);
   }
 }
 
