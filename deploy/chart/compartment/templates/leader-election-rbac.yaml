@@ -1,0 +1,31 @@
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- if eq $installState.effective.platform.startupStage "full" }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "compartment.fullname" . }}-leader-election
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "compartment.fullname" . }}-leader-election
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "compartment.fullname" . }}-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "compartment.fullname" . }}-worker
+    namespace: {{ .Release.Namespace }}
+  - kind: ServiceAccount
+    name: {{ include "compartment.fullname" . }}-project-provisioner
+    namespace: {{ .Release.Namespace }}
+{{- end }}

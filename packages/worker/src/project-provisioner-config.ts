@@ -1,6 +1,6 @@
-import type { KubeWorkloadScheduling } from '@compartment/kube-runtime';
+import type { KubeLeaderElectionConfig, KubeWorkloadScheduling } from '@compartment/kube-runtime';
 import { z } from 'zod';
-import { readWorkerProcessConfig, type WorkerProcessConfig } from './config';
+import { readWorkerProcessConfig, workerLeaderElectionConfig, type WorkerProcessConfig } from './config';
 import {
   projectProvisioningEnvironmentSchema,
   type ProjectProvisioningEnvironment,
@@ -24,14 +24,14 @@ const projectProvisionerEnvironmentSchema: z.ZodType<ProjectProvisionerEnvironme
 export function readProjectProvisionerConfig(env: NodeJS.ProcessEnv = process.env): ProjectProvisionerConfig {
   const worker: WorkerProcessConfig = readWorkerProcessConfig(env);
   const parsed: ProjectProvisionerEnvironment = projectProvisionerEnvironmentSchema.parse(env);
-  const tenantScheduling: KubeWorkloadScheduling | undefined = readTenantWorkloadScheduling(
-    parsed.COMPARTMENT_KUBE_TENANT_SCHEDULING,
-  );
+  const tenantScheduling: KubeWorkloadScheduling | undefined = readProjectTenantScheduling(parsed);
+  const leaderElection: KubeLeaderElectionConfig = readProjectLeaderElection(worker, parsed);
   return {
     apiUrl: worker.apiUrl,
     artifactRegistry: worker.artifactRegistry,
     edgeNamespace: parsed.COMPARTMENT_EDGE_NAMESPACE,
     image: parsed.COMPARTMENT_PROJECT_PROVISIONER_IMAGE,
+    leaderElection,
     logLevel: worker.logLevel,
     platformNamespace: parsed.COMPARTMENT_PLATFORM_NAMESPACE,
     provisioningNamespace: parsed.COMPARTMENT_PROVISIONING_NAMESPACE,
@@ -42,4 +42,15 @@ export function readProjectProvisionerConfig(env: NodeJS.ProcessEnv = process.en
     ...(tenantScheduling === undefined ? {} : { tenantScheduling }),
     workerServiceAccountName: parsed.COMPARTMENT_WORKER_SERVICE_ACCOUNT_NAME,
   };
+}
+
+function readProjectTenantScheduling(parsed: ProjectProvisionerEnvironment): KubeWorkloadScheduling | undefined {
+  return readTenantWorkloadScheduling(parsed.COMPARTMENT_KUBE_TENANT_SCHEDULING);
+}
+
+function readProjectLeaderElection(
+  worker: WorkerProcessConfig,
+  parsed: ProjectProvisionerEnvironment,
+): KubeLeaderElectionConfig {
+  return workerLeaderElectionConfig(worker, 'compartment-project-provisioner', parsed.COMPARTMENT_PLATFORM_NAMESPACE);
 }

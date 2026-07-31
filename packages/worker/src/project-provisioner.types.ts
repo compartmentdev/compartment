@@ -1,11 +1,12 @@
 import type { WorkerArtifactRegistryConfig } from './worker-artifact-registry.types';
-import type { KubeWorkloadScheduling } from '@compartment/kube-runtime';
+import type { KubeLeaderElectionConfig, KubeWorkloadScheduling } from '@compartment/kube-runtime';
 
 export interface ProjectProvisionerConfig {
   apiUrl: string;
   artifactRegistry: WorkerArtifactRegistryConfig;
   edgeNamespace: string;
   image: string;
+  leaderElection: KubeLeaderElectionConfig;
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   platformNamespace: string;
   podCidr: string;

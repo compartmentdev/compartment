@@ -1,3 +1,4 @@
+import { waitForAbortOrTimeout } from '@compartment/utils';
 import type pino from 'pino';
 import type { WorkerConfig } from './config';
 import type { KubeControllerHost } from './kube-controller-host';
@@ -8,24 +9,19 @@ export async function runKubeControllerLoop(
   config: WorkerConfig,
   logger: pino.Logger<never, boolean>,
   kubeController: KubeControllerHost,
+  signal: AbortSignal,
 ): Promise<void> {
-  for (;;) {
+  while (!signal.aborted) {
     try {
       if (!(await kubeController.reconcile())) {
-        await waitForNextPoll(config.pollIntervalMs);
+        await waitForAbortOrTimeout(config.pollIntervalMs, signal);
       }
     } catch (error) {
       logger.error(
         buildWorkerCaughtErrorLogPayload(error as WorkerCaughtError),
         'Kubernetes controller iteration failed.',
       );
-      await waitForNextPoll(config.pollIntervalMs);
+      await waitForAbortOrTimeout(config.pollIntervalMs, signal);
     }
   }
-}
-
-async function waitForNextPoll(pollIntervalMs: number): Promise<void> {
-  await new Promise<void>((resolve: () => void): void => {
-    setTimeout(resolve, pollIntervalMs);
-  });
 }

@@ -360,6 +360,12 @@ function createWorkerConfig(
       namespace: 'compartment',
     },
     logLevel: 'silent',
+    leaderElection: {
+      identity: 'worker-1',
+      leaseDurationMs: 15_000,
+      renewDeadlineMs: 10_000,
+      retryPeriodMs: 2_000,
+    },
     pollIntervalMs: 1000,
     runtimeControlToken,
     tenantSecretsKek: testTenantSecretsKek,

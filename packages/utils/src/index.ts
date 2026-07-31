@@ -1,4 +1,5 @@
 export { hasText, readCookieValue } from './browser';
+export { waitForAbortOrTimeout } from './abort-aware-delay';
 export {
   buildCliInstallLoginCommand,
   readCliInstallLoginApiUrl,

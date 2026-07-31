@@ -30,6 +30,9 @@ data:
   COMPARTMENT_PUBLIC_HTTPS_PORT: "443"
   COMPARTMENT_TRUSTED_OUTBOUND_HOSTS: {{ .Values.platform.trustedOutboundHosts | quote }}
   COMPARTMENT_WORKER_POLL_INTERVAL_MS: {{ .Values.platform.workerPollIntervalMs | quote }}
+  COMPARTMENT_LEADER_ELECTION_LEASE_DURATION_MS: {{ .Values.leaderElection.leaseDurationMs | quote }}
+  COMPARTMENT_LEADER_ELECTION_RENEW_DEADLINE_MS: {{ .Values.leaderElection.renewDeadlineMs | quote }}
+  COMPARTMENT_LEADER_ELECTION_RETRY_PERIOD_MS: {{ .Values.leaderElection.retryPeriodMs | quote }}
   COMPARTMENT_USAGE_METERING_INTERVAL_MS: {{ .Values.platform.usageMeteringIntervalMs | quote }}
   COMPARTMENT_BUILDKIT_IMAGE: {{ include "compartment.image" .Values.images.buildkit | quote }}
   COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: {{ .Values.buildkit.gcKeepStorageMb | quote }}

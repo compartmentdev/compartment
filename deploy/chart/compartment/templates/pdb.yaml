@@ -1,21 +1,22 @@
 {{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
 {{- if eq $installState.effective.platform.startupStage "full" -}}
-{{- range $component := list "api" "edge" "caddy" -}}
+{{- range $component := list "api" "edge" "caddy" "worker" "projectProvisioner" -}}
 {{- $replicas := int (dig "replicas" 1 (get $.Values $component)) -}}
 {{- if gt $replicas 1 }}
+{{ $labelComponent := ternary "project-provisioner" $component (eq $component "projectProvisioner") }}
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ include "compartment.fullname" $ }}-{{ $component }}
+  name: {{ include "compartment.fullname" $ }}-{{ $labelComponent }}
   labels:
     {{- include "compartment.labels" $ | nindent 4 }}
-    app.kubernetes.io/component: {{ $component }}
+    app.kubernetes.io/component: {{ $labelComponent }}
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      {{- include "compartment.componentLabels" (dict "root" $ "component" $component) | nindent 6 }}
+      {{- include "compartment.componentLabels" (dict "root" $ "component" $labelComponent) | nindent 6 }}
 {{- end -}}
 {{- end -}}
 {{- end -}}

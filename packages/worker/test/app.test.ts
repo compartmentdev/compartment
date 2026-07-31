@@ -4,7 +4,7 @@ import type { KubeControllerHost } from '../src/kube-controller-host';
 import { runWorker } from '../src/app';
 import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
 import type { CompartmentRequester } from '@compartment/sdk';
-import type { KubeRuntime } from '@compartment/kube-runtime';
+import type { KubeLeaderElector, KubeRuntime } from '@compartment/kube-runtime';
 
 type RunWorkerIteration = (config: WorkerConfig, runtime: KubeRuntime) => Promise<boolean>;
 type RecoverOrphanedBuildClaims = (
@@ -48,9 +48,19 @@ vi.mock('../src/kube-controller-loop', (): { runKubeControllerLoop: Mock<() => P
   runKubeControllerLoop: mocks.runKubeControllerLoop,
 }));
 
-vi.mock('@compartment/kube-runtime', (): { createKubeRuntimeFromEnvironment: () => KubeRuntime } => ({
-  createKubeRuntimeFromEnvironment: (): KubeRuntime => ({}) as KubeRuntime,
-}));
+vi.mock(
+  '@compartment/kube-runtime',
+  (): {
+    createKubeLeaderElectionFromEnvironment: () => KubeLeaderElector;
+    createKubeRuntimeFromEnvironment: () => KubeRuntime;
+  } => ({
+    createKubeLeaderElectionFromEnvironment: (): KubeLeaderElector => ({
+      run: async (work: (signal: AbortSignal) => Promise<void>): Promise<void> =>
+        await work(new AbortController().signal),
+    }),
+    createKubeRuntimeFromEnvironment: (): KubeRuntime => ({}) as KubeRuntime,
+  }),
+);
 
 vi.mock(
   '@compartment/sdk',
@@ -92,6 +102,7 @@ describe('runWorker', (): void => {
     expect(mocks.recoverOrphanedBuildClaims).toHaveBeenCalledTimes(1);
     expect(mocks.runWorkerIteration).toHaveBeenCalledWith(createWorkerConfig(), expect.any(Object), expect.any(Object));
     expect(mocks.runKubeControllerLoop).toHaveBeenCalledTimes(3);
+    expect(mocks.recoverOrphanedBuildClaims).toHaveBeenCalledWith(mocks.request, { claimTimeoutMs: 1 });
   });
 
   it('retries after a transient worker iteration failure', async (): Promise<void> => {
@@ -127,6 +138,12 @@ function createWorkerConfig(): WorkerConfig {
       namespace: 'compartment',
     },
     logLevel: 'silent',
+    leaderElection: {
+      identity: 'worker-1',
+      leaseDurationMs: 15_000,
+      renewDeadlineMs: 10_000,
+      retryPeriodMs: 2_000,
+    },
     pollIntervalMs: 10,
     runtimeControlToken: 'worker-secret',
     tenantSecretsKek: { current: Buffer.alloc(32, 1) },
