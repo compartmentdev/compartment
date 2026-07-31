@@ -6,25 +6,19 @@ import {
 } from '../../errors/api-business-error';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
 import { requireGitProviderRegistration } from './git-source-bootstrap.read';
-import { readGitHubRegistrationPrivateKey } from './git-source-provider-access.service';
+import { buildGitProviderAccess } from './git-source-provider-access.service';
+import type { GitProviderAccess } from './git-source-provider.types';
 import type { GitSourceContextInput } from './git-source.service.types';
-import { requireGitProviderField } from './git-source-view.service';
-import type { GitHubInstallationOctokitInput } from './github-app-http.adapter';
 
-export interface GitHubRegistrationAccess {
-  privateKeyPem: string;
-  registration: GitProviderRegistrationRow;
-}
-
-interface GitHubRegistrationAccessInput extends GitSourceContextInput {
+interface GitProviderRegistrationAccessInput extends GitSourceContextInput {
   providerHost: string;
   registrationId: string;
   repositoryOwner: string;
 }
 
-export async function requireGitHubRegistrationAccess(
-  input: GitHubRegistrationAccessInput,
-): Promise<GitHubRegistrationAccess> {
+export async function requireGitProviderRegistrationAccess(
+  input: GitProviderRegistrationAccessInput,
+): Promise<GitProviderAccess> {
   const registration: GitProviderRegistrationRow = await requireGitProviderRegistration({
     organizationId: input.organizationId,
     registrationId: input.registrationId,
@@ -32,19 +26,7 @@ export async function requireGitHubRegistrationAccess(
   validateRegistrationRequest(registration, input.providerHost, input.repositoryOwner);
   validateActiveRegistrationMaterial(registration);
 
-  return {
-    privateKeyPem: readGitHubRegistrationPrivateKey(registration),
-    registration,
-  };
-}
-
-export function buildGitHubRegistrationClientAuth(access: GitHubRegistrationAccess): GitHubInstallationOctokitInput {
-  return {
-    appId: requireGitProviderField(access.registration.appId, 'app_id'),
-    installationId: requireGitProviderField(access.registration.installationId, 'installation_id'),
-    privateKeyPem: access.privateKeyPem,
-    providerHost: access.registration.providerHost,
-  };
+  return buildGitProviderAccess(registration);
 }
 
 function validateRegistrationRequest(
@@ -52,10 +34,16 @@ function validateRegistrationRequest(
   providerHost: string,
   repositoryOwner: string,
 ): void {
-  if (
-    registration.providerHost === providerHost &&
-    registration.repositoryOwner.toLowerCase() === repositoryOwner.toLowerCase()
-  ) {
+  if (registration.providerHost !== providerHost) {
+    throw createGitSourceRequestInvalidError('Git provider registration does not match the selected provider host.');
+  }
+  // A GitLab registration's repository_owner is the token holder, while requests
+  // carry the project namespace; token access to the project is enforced by the
+  // provider API itself, so the owner match only applies to GitHub registrations.
+  if (registration.providerType === 'gitlab') {
+    return;
+  }
+  if (registration.repositoryOwner.toLowerCase() === repositoryOwner.toLowerCase()) {
     return;
   }
 
@@ -67,18 +55,32 @@ function validateActiveRegistrationMaterial(registration: GitProviderRegistratio
     throw createGitSourceRegistrationPendingError();
   }
   if (registration.status !== 'active') {
-    throw createGitSourceRegistrationFailedError('GitHub App registration is not active.');
+    throw createGitSourceRegistrationFailedError('Git provider registration is not active.');
   }
 
-  const requiredFields: readonly (readonly [string, string | null])[] = [
+  for (const field of listRequiredRegistrationMaterialFields(registration)) {
+    assertActiveRegistrationField(field[1], field[0]);
+  }
+}
+
+function listRequiredRegistrationMaterialFields(
+  registration: GitProviderRegistrationRow,
+): readonly (readonly [string, string | null])[] {
+  if (registration.providerType === 'gitlab') {
+    return [
+      ['access_token_ciphertext', registration.accessTokenCiphertext],
+      ['access_token_encryption_key_id', registration.accessTokenEncryptionKeyId],
+      ['webhook_secret_ciphertext', registration.webhookSecretCiphertext],
+      ['webhook_secret_encryption_key_id', registration.webhookSecretEncryptionKeyId],
+    ];
+  }
+
+  return [
     ['app_id', registration.appId],
     ['installation_id', registration.installationId],
     ['private_key_pem_ciphertext', registration.privateKeyPemCiphertext],
     ['private_key_pem_encryption_key_id', registration.privateKeyPemEncryptionKeyId],
   ];
-  for (const field of requiredFields) {
-    assertActiveRegistrationField(field[1], field[0]);
-  }
 }
 
 function assertActiveRegistrationField(value: string | null, label: string): void {
@@ -86,5 +88,7 @@ function assertActiveRegistrationField(value: string | null, label: string): voi
     return;
   }
 
-  throw createGitSourceRegistrationFailedError(`GitHub App registration is missing ${label} and must be reconnected.`);
+  throw createGitSourceRegistrationFailedError(
+    `Git provider registration is missing ${label} and must be reconnected.`,
+  );
 }

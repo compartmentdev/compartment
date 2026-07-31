@@ -6,29 +6,28 @@ import {
   type GitDescriptorPullRequestStatusRequest,
   type GitDescriptorPullRequestStatusResponse,
 } from '@compartment/contracts';
-import { readGitHubRepositoryContent, readGitHubRepositoryTree } from './github-app-client.adapter';
-import type {
-  GitHubRepositoryContent,
-  GitHubRepositoryPullRequest,
-  GitHubRepositoryPullRequestStatus,
-  GitHubRepositoryTreeEntry,
-} from './github-app-client.adapter.types';
 import { buildDescriptorCandidates, readFirstDescriptorPath } from './git-source-descriptor-candidate.service';
 import {
   createDescriptorPullRequest,
   readDescriptorPullRequestStatus,
   throwGitDescriptorAccessFailure,
-} from './git-source-descriptor-github-operation.service';
+} from './git-source-descriptor-operation.service';
 import { assertDescriptorPullRequestMatchesPlan } from './git-source-descriptor-plan-validation.service';
 import {
   assertGitDescriptorPullRequestStatusToken,
   withGitDescriptorPullRequestStatusToken,
 } from './git-source-descriptor-pr-token.service';
-import {
-  buildGitHubRegistrationClientAuth,
-  requireGitHubRegistrationAccess,
-  type GitHubRegistrationAccess,
-} from './git-source-descriptor-registration-access.service';
+import { requireGitProviderRegistrationAccess } from './git-source-descriptor-registration-access.service';
+import { getGitProviderAdapter } from './git-source-provider.registry';
+import type {
+  GitProviderAccess,
+  GitProviderAdapter,
+  GitPullRequestRef,
+  GitPullRequestStatus,
+  GitRepositoryFile,
+  GitRepositoryRef,
+  GitRepositoryTreeEntry,
+} from './git-source-provider.types';
 import type { GitSourceContextInput } from './git-source.service.types';
 
 interface ReadGitDescriptorPlanInput extends GitSourceContextInput {
@@ -43,21 +42,21 @@ interface ReadGitDescriptorPullRequestStatusInput extends GitSourceContextInput 
   request: GitDescriptorPullRequestStatusRequest;
 }
 
-interface ReadGitHubRepositoryTreeInput {
-  access: GitHubRegistrationAccess;
+interface ReadDescriptorTreeInput {
+  access: GitProviderAccess;
   branchName: string;
   repositoryName: string;
   repositoryOwner: string;
 }
 
 export async function readGitDescriptorPlan(input: ReadGitDescriptorPlanInput): Promise<GitDescriptorPlanResponse> {
-  const access: GitHubRegistrationAccess = await requireGitHubRegistrationAccess({
+  const access: GitProviderAccess = await requireGitProviderRegistrationAccess({
     ...input,
     providerHost: input.request.providerHost,
     registrationId: input.request.registrationId,
     repositoryOwner: input.request.repositoryOwner,
   });
-  const tree: GitHubRepositoryTreeEntry[] = await readDescriptorPlanTree({
+  const tree: GitRepositoryTreeEntry[] = await readDescriptorPlanTree({
     access,
     branchName: input.request.branchName,
     repositoryName: input.request.repositoryName,
@@ -73,7 +72,7 @@ export async function readGitDescriptorPlan(input: ReadGitDescriptorPlanInput): 
 
 function buildMissingDescriptorPlan(
   input: GitDescriptorPlanRequest,
-  tree: GitHubRepositoryTreeEntry[],
+  tree: GitRepositoryTreeEntry[],
 ): GitDescriptorPlanResponse {
   return {
     branchName: input.branchName,
@@ -89,7 +88,7 @@ function buildMissingDescriptorPlan(
 export async function createGitDescriptorPullRequest(
   input: CreateGitDescriptorPullRequestInput,
 ): Promise<GitDescriptorPullRequestResponse> {
-  const access: GitHubRegistrationAccess = await requireGitHubRegistrationAccess({
+  const access: GitProviderAccess = await requireGitProviderRegistrationAccess({
     ...input,
     providerHost: input.request.providerHost,
     registrationId: input.request.registrationId,
@@ -104,7 +103,7 @@ export async function createGitDescriptorPullRequest(
       repositoryOwner: input.request.repositoryOwner,
     }),
   );
-  const pullRequest: GitHubRepositoryPullRequest = await createDescriptorPullRequest({
+  const pullRequest: GitPullRequestRef = await createDescriptorPullRequest({
     access,
     request: input.request,
   });
@@ -114,7 +113,7 @@ export async function createGitDescriptorPullRequest(
 
 function toGitDescriptorPullRequestResponse(
   input: CreateGitDescriptorPullRequestRequest,
-  pullRequest: GitHubRepositoryPullRequest,
+  pullRequest: GitPullRequestRef,
 ): GitDescriptorPullRequestResponse {
   return withGitDescriptorPullRequestStatusToken(
     {
@@ -133,16 +132,17 @@ function toGitDescriptorPullRequestResponse(
   );
 }
 
-async function readDescriptorPlanTree(input: ReadGitHubRepositoryTreeInput): Promise<GitHubRepositoryTreeEntry[]> {
+async function readDescriptorPlanTree(input: ReadDescriptorTreeInput): Promise<GitRepositoryTreeEntry[]> {
+  const adapter: GitProviderAdapter = getGitProviderAdapter(input.access.registration.providerType);
   try {
-    return await readGitHubRepositoryTree({
-      ...buildGitHubRegistrationClientAuth(input.access),
-      branchName: input.branchName,
-      owner: input.repositoryOwner,
-      repositoryName: input.repositoryName,
-    });
+    return await adapter.readRepositoryTree(
+      input.access,
+      buildDescriptorRepositoryRef(input.access, input.repositoryOwner, input.repositoryName),
+      input.branchName,
+    );
   } catch (error) {
     throwGitDescriptorAccessFailure(
+      adapter,
       error instanceof Error ? error : undefined,
       'The selected repository branch could not be read.',
     );
@@ -153,13 +153,13 @@ export async function readGitDescriptorPullRequestStatus(
   input: ReadGitDescriptorPullRequestStatusInput,
 ): Promise<GitDescriptorPullRequestStatusResponse> {
   assertGitDescriptorPullRequestStatusToken(input.request);
-  const access: GitHubRegistrationAccess = await requireGitHubRegistrationAccess({
+  const access: GitProviderAccess = await requireGitProviderRegistrationAccess({
     ...input,
     providerHost: input.request.providerHost,
     registrationId: input.request.registrationId,
     repositoryOwner: input.request.repositoryOwner,
   });
-  const pullRequest: GitHubRepositoryPullRequestStatus = await readDescriptorPullRequestStatus({
+  const pullRequest: GitPullRequestStatus = await readDescriptorPullRequestStatus({
     access,
     request: input.request,
   });
@@ -173,10 +173,10 @@ export async function readGitDescriptorPullRequestStatus(
 
 async function buildExistingDescriptorPlan(
   input: GitDescriptorPlanRequest,
-  access: GitHubRegistrationAccess,
+  access: GitProviderAccess,
   descriptorPath: string,
 ): Promise<GitDescriptorPlanResponse> {
-  const content: GitHubRepositoryContent = await readExistingDescriptorContent(input, access, descriptorPath);
+  const content: GitRepositoryFile = await readExistingDescriptorContent(input, access, descriptorPath);
 
   return {
     branchName: input.branchName,
@@ -191,21 +191,34 @@ async function buildExistingDescriptorPlan(
 
 async function readExistingDescriptorContent(
   input: GitDescriptorPlanRequest,
-  access: GitHubRegistrationAccess,
+  access: GitProviderAccess,
   descriptorPath: string,
-): Promise<GitHubRepositoryContent> {
+): Promise<GitRepositoryFile> {
+  const adapter: GitProviderAdapter = getGitProviderAdapter(access.registration.providerType);
   try {
-    return await readGitHubRepositoryContent({
-      ...buildGitHubRegistrationClientAuth(access),
-      branchName: input.branchName,
-      owner: input.repositoryOwner,
-      path: descriptorPath,
-      repositoryName: input.repositoryName,
-    });
+    return await adapter.readRepositoryFile(
+      access,
+      buildDescriptorRepositoryRef(access, input.repositoryOwner, input.repositoryName),
+      input.branchName,
+      descriptorPath,
+    );
   } catch (error) {
     throwGitDescriptorAccessFailure(
+      adapter,
       error instanceof Error ? error : undefined,
       'The selected repository branch could not be read.',
     );
   }
+}
+
+function buildDescriptorRepositoryRef(
+  access: GitProviderAccess,
+  repositoryOwner: string,
+  repositoryName: string,
+): GitRepositoryRef {
+  return {
+    name: repositoryName,
+    owner: repositoryOwner,
+    providerHost: access.registration.providerHost,
+  };
 }

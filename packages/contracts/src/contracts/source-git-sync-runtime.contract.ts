@@ -1,12 +1,15 @@
 import { z } from 'zod';
 import { compartmentProjectNameSchema } from './compartment-descriptor.contract';
 import type { ContractSchema } from './schema.types';
+import { gitProviderTypeSchema, type GitProviderType } from './source-git-provider.contract';
 import { gitSourceDescriptorPathSchema, gitSourceRepositoryPathSchema } from './source-git-sync-path.contract';
 
 export interface WorkerClaimedGitSourceSyncTask {
   claimToken: string;
   installationToken: string;
   providerHost: string;
+  providerType?: GitProviderType | undefined;
+  repositoryExternalId?: string | undefined;
   repositoryName: string;
   repositoryOwner: string;
   requestedBranchName: string;
@@ -49,6 +52,8 @@ const workerClaimedGitSourceSyncTaskSchema: ContractSchema<WorkerClaimedGitSourc
     claimToken: z.string().min(1),
     installationToken: z.string().min(1),
     providerHost: z.string().min(1),
+    providerType: gitProviderTypeSchema.optional(),
+    repositoryExternalId: z.string().min(1).optional(),
     repositoryName: z.string().min(1),
     repositoryOwner: z.string().min(1),
     requestedBranchName: z.string().min(1),

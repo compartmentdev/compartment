@@ -30,6 +30,8 @@ interface GitProviderRegistrationsColumnBuilders {
   installationId: OptionalTextBuilder<'installation_id'>;
   privateKeyPemCiphertext: OptionalTextBuilder<'private_key_pem_ciphertext'>;
   privateKeyPemEncryptionKeyId: OptionalTextBuilder<'private_key_pem_encryption_key_id'>;
+  accessTokenCiphertext: OptionalTextBuilder<'access_token_ciphertext'>;
+  accessTokenEncryptionKeyId: OptionalTextBuilder<'access_token_encryption_key_id'>;
   webhookSecretCiphertext: OptionalTextBuilder<'webhook_secret_ciphertext'>;
   webhookSecretEncryptionKeyId: OptionalTextBuilder<'webhook_secret_encryption_key_id'>;
   webhookUrl: RequiredTextBuilder<'webhook_url'>;
@@ -59,7 +61,8 @@ interface SourcesColumnBuilders {
   type: RequiredEnumTextBuilder<'type', ['git']>;
   providerHost: RequiredTextBuilder<'provider_host'>;
   providerRegistrationId: RequiredTextBuilder<'provider_registration_id'>;
-  providerInstallationId: RequiredTextBuilder<'provider_installation_id'>;
+  providerInstallationId: OptionalTextBuilder<'provider_installation_id'>;
+  providerWebhookId: OptionalTextBuilder<'provider_webhook_id'>;
   repositoryExternalId: RequiredTextBuilder<'repository_external_id'>;
   repositoryOwner: RequiredTextBuilder<'repository_owner'>;
   repositoryName: RequiredTextBuilder<'repository_name'>;

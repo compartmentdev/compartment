@@ -55,6 +55,7 @@ export async function readActiveGitHubBootstrapView(
   const registration: GitProviderRegistrationRow | undefined = await findActiveGitProviderRegistration({
     organizationId: options.input.organizationId,
     providerHost: options.input.providerHost,
+    providerType: 'github_app',
     repositoryOwner: options.input.repositoryOwner,
   });
   if (registration === undefined) {

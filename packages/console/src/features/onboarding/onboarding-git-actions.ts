@@ -3,7 +3,6 @@ import type {
   GitDescriptorPullRequestStatusResponse,
 } from '@compartment/contracts/browser';
 import { createBrowserGitDescriptorPullRequest, readBrowserGitDescriptorPullRequestStatus } from './onboarding-git-api';
-import { gitOnboardingProviderHost } from './onboarding-git-constants';
 import { connectOrAdoptGitSource, type GitSourceConnectionResult } from './onboarding-git-source-connection';
 import type { GitDescriptorLoadResult, GitOnboardingState } from './onboarding-git-state';
 import type { GitConnectFormInput, GitDescriptorTargetOption } from './onboarding-page.types';
@@ -57,7 +56,7 @@ export async function handleCreatePullRequest(
     descriptorPath: target.descriptorPath,
     files: target.files,
     projectName: target.projectName,
-    providerHost: gitOnboardingProviderHost,
+    providerHost: formInput.repository.providerHost,
     registrationId: formInput.repository.registrationId,
     repositoryName: formInput.repository.name,
     repositoryOwner: formInput.repository.owner,
@@ -70,7 +69,7 @@ export async function handlePullRequestRefresh(
   context: GitPullRequestRefreshContext,
 ): Promise<GitDescriptorPullRequestStatusResponse> {
   return await readBrowserGitDescriptorPullRequestStatus(selectedOrganizationSlug, {
-    providerHost: gitOnboardingProviderHost,
+    providerHost: formInput.repository.providerHost,
     pullRequestNumber: context.pullRequestNumber,
     registrationId: formInput.repository.registrationId,
     repositoryName: formInput.repository.name,

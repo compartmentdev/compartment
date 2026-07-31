@@ -22,6 +22,8 @@ export const gitProviderRegistrations: GitSchemaTypes.GitProviderRegistrationsTa
     installationId: text('installation_id'),
     privateKeyPemCiphertext: text('private_key_pem_ciphertext'),
     privateKeyPemEncryptionKeyId: text('private_key_pem_encryption_key_id'),
+    accessTokenCiphertext: text('access_token_ciphertext'),
+    accessTokenEncryptionKeyId: text('access_token_encryption_key_id'),
     webhookSecretCiphertext: text('webhook_secret_ciphertext'),
     webhookSecretEncryptionKeyId: text('webhook_secret_encryption_key_id'),
     webhookUrl: text('webhook_url').notNull(),
@@ -35,7 +37,18 @@ export const gitProviderRegistrations: GitSchemaTypes.GitProviderRegistrationsTa
   (table: GitSchemaTypes.GitProviderRegistrationsExtraConfigColumns): PgTableExtraConfig => ({
     activeOwnerUnique: uniqueIndex('git_provider_registrations_active_owner_unique')
       .on(table.providerType, table.providerHost, table.repositoryOwner)
-      .where(sql`${table.status} = 'active'`),
+      .where(sql`${table.status} = 'active' AND ${table.providerType} = 'github_app'`),
+    // This organization extractor depends on the buildWebhookUrl path format and must change with it.
+    activeGitLabOrganizationOwnerUnique: uniqueIndex(
+      'git_provider_registrations_active_gitlab_organization_owner_unique',
+    )
+      .on(
+        table.providerType,
+        table.providerHost,
+        table.repositoryOwner,
+        sql`substring(${table.webhookUrl} from '/organizations/([^/]+)/registrations/')`,
+      )
+      .where(sql`${table.status} = 'active' AND ${table.providerType} = 'gitlab'`),
     pendingOwnerUnique: uniqueIndex('git_provider_registrations_pending_owner_unique')
       .on(table.providerType, table.providerHost, table.repositoryOwner)
       .where(sql`${table.status} = 'pending'`),

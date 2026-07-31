@@ -29,11 +29,15 @@ interface GitProviderRegistrationManifestExchangeUpdate {
 }
 
 export async function findActiveGitProviderRegistration(
-  input: Pick<FindGitProviderRegistrationByStatusInput, 'organizationId' | 'providerHost' | 'repositoryOwner'>,
+  input: Pick<
+    FindGitProviderRegistrationByStatusInput,
+    'organizationId' | 'providerHost' | 'providerType' | 'repositoryOwner'
+  >,
 ): Promise<GitProviderRegistrationRow | undefined> {
   return await findGitProviderRegistrationByStatusWithExecutor(getApiDatabase(), {
     organizationId: input.organizationId,
     providerHost: input.providerHost,
+    providerType: input.providerType,
     repositoryOwner: input.repositoryOwner,
     status: 'active',
   });
@@ -49,6 +53,20 @@ export async function findGitProviderRegistrationByWebhookTarget(
   input: FindGitProviderRegistrationByIdInput,
 ): Promise<GitProviderRegistrationRow | undefined> {
   return await findGitProviderRegistrationByIdWithExecutor(getApiDatabase(), input);
+}
+
+export async function listActiveGitHubProviderHosts(organizationId: string): Promise<string[]> {
+  const rows: { providerHost: string }[] = await getApiDatabase()
+    .select({ providerHost: gitProviderRegistrations.providerHost })
+    .from(gitProviderRegistrations)
+    .where(
+      and(
+        eq(gitProviderRegistrations.providerType, 'github_app'),
+        eq(gitProviderRegistrations.status, 'active'),
+        buildGitProviderRegistrationOrganizationFilter(organizationId),
+      ),
+    );
+  return [...new Set(rows.map((row: { providerHost: string }): string => row.providerHost))];
 }
 
 export async function findGitProviderRegistrationByIdWithExecutor(
@@ -208,6 +226,7 @@ export async function findGitProviderRegistrationByStatusWithExecutor(
         buildGitProviderRegistrationOrganizationFilter(input.organizationId),
         eq(sql`lower(${gitProviderRegistrations.repositoryOwner})`, input.repositoryOwner.toLowerCase()),
         eq(gitProviderRegistrations.status, input.status),
+        ...(input.providerType === undefined ? [] : [eq(gitProviderRegistrations.providerType, input.providerType)]),
         ...(input.expiresAfter === undefined
           ? []
           : [gt(gitProviderRegistrations.pendingExpiresAt, input.expiresAfter)]),

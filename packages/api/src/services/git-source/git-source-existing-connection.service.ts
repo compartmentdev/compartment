@@ -1,8 +1,9 @@
 import { createGitSourceConflictError } from '../../errors/api-business-error';
 import { updateSourceToActive } from '../../queries/source.query';
-import type { SourceMutationTransaction, SourceRow } from '../../queries/source.query.types';
+import type { SourceMutationTransaction, SourceRow, UpdateSourceToActiveInput } from '../../queries/source.query.types';
 import { getApiDatabase } from '../../runtime/runtime-access';
-import type { GitHubRepositoryMetadata } from './github-app-client.adapter.types';
+import type { GitRepositoryMetadata } from './git-source-provider.types';
+import { cleanupProviderHook, type ResolvedConnectRepository } from './git-source-lifecycle.support';
 import { buildUpdateSourceInput } from './git-source-connect.persistence.support';
 import { type ResolvedRepositoryAccess } from './git-source-connect.validation';
 import { includeGitSourceDescriptorWithinTransaction } from './git-source-exclusion.service';
@@ -23,11 +24,35 @@ interface ExistingSourceConnectMutationResult {
   syncRequest: GitSourceConnectSyncRequestView;
 }
 
-export async function connectExistingGitSource(
+export async function connectExistingGitSourceWithProviderHook(
+  input: ConnectGitSourceInput,
+  source: SourceRow,
+  connected: ResolvedConnectRepository,
+): Promise<ConnectGitSourceResult> {
+  try {
+    const result: ConnectGitSourceResult = await connectExistingGitSource(
+      input,
+      source,
+      connected.repositoryAccess,
+      connected.repository,
+    );
+    // Reconnect cleanup is post-commit; delivery-id dedup makes the brief two-hook overlap harmless.
+    await cleanupProviderHook(connected.adapter, connected.providerAccess, {
+      providerWebhookId: source.providerWebhookId,
+      repositoryExternalId: source.repositoryExternalId,
+    });
+    return result;
+  } catch (error) {
+    await cleanupProviderHook(connected.adapter, connected.providerAccess, connected.hookTarget);
+    throw error;
+  }
+}
+
+async function connectExistingGitSource(
   input: ConnectGitSourceInput,
   source: SourceRow,
   repositoryAccess: ResolvedRepositoryAccess,
-  repository: GitHubRepositoryMetadata,
+  repository: GitRepositoryMetadata,
 ): Promise<ConnectGitSourceResult> {
   assertExistingSourceMatchesConnectRequest(input, source);
   const mutationResult: ExistingSourceConnectMutationResult = await mutateExistingSourceConnection(
@@ -52,7 +77,7 @@ async function mutateExistingSourceConnection(
   input: ConnectGitSourceInput,
   source: SourceRow,
   repositoryAccess: ResolvedRepositoryAccess,
-  repository: GitHubRepositoryMetadata,
+  repository: GitRepositoryMetadata,
 ): Promise<ExistingSourceConnectMutationResult> {
   let refreshedSource: SourceRow = source;
   const syncRequest: GitSourceConnectSyncRequestView = await getApiDatabase().transaction(
@@ -130,24 +155,34 @@ async function refreshExistingSourceProviderMetadata(
   transaction: SourceMutationTransaction,
   source: SourceRow,
   repositoryAccess: ResolvedRepositoryAccess,
-  repository: GitHubRepositoryMetadata,
+  repository: GitRepositoryMetadata,
   now: Date,
 ): Promise<SourceRow> {
   return await updateSourceToActive(
     transaction,
-    buildUpdateSourceInput(
-      {
-        autoAdoptNewApps: source.autoAdoptNewApps,
-        defaultAutoDeployEnabled: source.defaultAutoDeployEnabled,
-        defaultEnvironmentName: source.defaultEnvironmentName,
-        installationId: repositoryAccess.installation.installationId,
-        providerHost: source.providerHost,
-        providerRegistrationId: repositoryAccess.registration.id,
-        repository,
-        syncBranchName: source.syncBranchName,
-      },
-      source.id,
-      now,
-    ),
+    buildExistingSourceUpdateInput(source, repositoryAccess, repository, now),
+  );
+}
+
+function buildExistingSourceUpdateInput(
+  source: SourceRow,
+  repositoryAccess: ResolvedRepositoryAccess,
+  repository: GitRepositoryMetadata,
+  now: Date,
+): UpdateSourceToActiveInput {
+  return buildUpdateSourceInput(
+    {
+      autoAdoptNewApps: source.autoAdoptNewApps,
+      defaultAutoDeployEnabled: source.defaultAutoDeployEnabled,
+      defaultEnvironmentName: source.defaultEnvironmentName,
+      installationId: repositoryAccess.providerInstallationId,
+      providerHost: source.providerHost,
+      providerRegistrationId: repositoryAccess.registration.id,
+      providerWebhookId: repositoryAccess.providerWebhookId,
+      repository,
+      syncBranchName: source.syncBranchName,
+    },
+    source.id,
+    now,
   );
 }

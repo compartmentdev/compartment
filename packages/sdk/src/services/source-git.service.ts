@@ -1,9 +1,11 @@
 import {
   buildCompartmentGitHubProviderRegistrationRepositoriesPathname,
+  buildCompartmentGitLabProviderRegistrationRepositoriesPathname,
   buildCompartmentGitSourceExcludePathname,
   buildCompartmentGitSourceIncludePathname,
   buildCompartmentGitSourceSettingsPathname,
   compartmentGitHubProviderBootstrapPathname,
+  compartmentGitLabProviderRegistrationsPathname,
   compartmentGitSourceConnectPathname,
   compartmentSourcesPathname,
   disconnectGitSourceResponseSchema,
@@ -11,17 +13,24 @@ import {
   gitSourceExclusionMutationResponseSchema,
   gitHubInstallationRepositoryListResponseSchema,
   gitHubProviderBootstrapResponseSchema,
+  createGitLabProviderRegistrationResponseSchema,
+  gitLabProviderRegistrationListResponseSchema,
+  gitLabRegistrationRepositoryListResponseSchema,
   gitSourceListResponseSchema,
   gitSourceResponseSchema,
   gitSourceSettingsResponseSchema,
   gitSourceSyncTaskResponseSchema,
   type ConnectGitSourceRequest,
+  type CreateGitLabProviderRegistrationRequest,
+  type CreateGitLabProviderRegistrationResponse,
   type DisconnectGitSourceResponse,
   type GitSourceExclusionMutationResponse,
   type GitHubInstallationRepositoryListRequest,
   type GitHubInstallationRepositoryListResponse,
   type GitHubProviderBootstrapRequest,
   type GitHubProviderBootstrapResponse,
+  type GitLabProviderRegistrationListResponse,
+  type GitLabRegistrationRepositoryListResponse,
   type GitSourceListResponse,
   type GitSourceResponse,
   type GitSourceSettingsResponse,
@@ -64,6 +73,39 @@ export async function listGitHubInstallationRepositories(
     method: 'GET',
     path: buildCompartmentGitHubProviderRegistrationRepositoriesPathname(registrationId, query),
     schema: gitHubInstallationRepositoryListResponseSchema,
+  });
+}
+
+export async function createGitLabProviderRegistration(
+  request: CompartmentRequester,
+  input: CreateGitLabProviderRegistrationRequest,
+): Promise<CreateGitLabProviderRegistrationResponse> {
+  return await request<CreateGitLabProviderRegistrationResponse, CreateGitLabProviderRegistrationRequest>({
+    body: input,
+    method: 'POST',
+    path: compartmentGitLabProviderRegistrationsPathname,
+    schema: createGitLabProviderRegistrationResponseSchema,
+  });
+}
+
+export async function listGitLabProviderRegistrations(
+  request: CompartmentRequester,
+): Promise<GitLabProviderRegistrationListResponse> {
+  return await request<GitLabProviderRegistrationListResponse, undefined>({
+    method: 'GET',
+    path: compartmentGitLabProviderRegistrationsPathname,
+    schema: gitLabProviderRegistrationListResponseSchema,
+  });
+}
+
+export async function listGitLabRegistrationRepositories(
+  request: CompartmentRequester,
+  registrationId: string,
+): Promise<GitLabRegistrationRepositoryListResponse> {
+  return await request<GitLabRegistrationRepositoryListResponse, undefined>({
+    method: 'GET',
+    path: buildCompartmentGitLabProviderRegistrationRepositoriesPathname(registrationId),
+    schema: gitLabRegistrationRepositoryListResponseSchema,
   });
 }
 

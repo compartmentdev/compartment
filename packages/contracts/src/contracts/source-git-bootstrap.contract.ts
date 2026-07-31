@@ -77,6 +77,16 @@ const gitHubInstallationRepositorySummarySchema: ContractSchema<GitHubInstallati
   })
   .strict();
 
+/**
+ * Provider-neutral repository summary. Structurally identical to the GitHub
+ * installation summary; reused by other providers (GitLab) so the connect-time
+ * repository shape stays single-sourced. `owner` is opaque (GitLab namespaces
+ * may contain slashes).
+ */
+export type GitProviderRepositorySummary = GitHubInstallationRepositorySummary;
+export const gitProviderRepositorySummarySchema: ContractSchema<GitProviderRepositorySummary> =
+  gitHubInstallationRepositorySummarySchema;
+
 const gitHubInstallationRepositoryListStatusSchema: ContractSchema<GitHubInstallationRepositoryListStatus> = z.enum([
   'ready',
   'provider_bootstrap_required',

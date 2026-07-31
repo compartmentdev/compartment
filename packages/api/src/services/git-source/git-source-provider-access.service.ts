@@ -1,44 +1,52 @@
-import { decryptVariableValueFromStorage } from '../../lib/variables-crypto';
 import {
   createGitSourceRegistrationFailedError,
   createGitSourceRegistrationPendingError,
 } from '../../errors/api-business-error';
-import { findActiveGitProviderRegistration } from '../../queries/git-provider-registration.query';
+import {
+  findActiveGitProviderRegistration,
+  findGitProviderRegistrationById,
+} from '../../queries/git-provider-registration.query';
 import { findPendingGitProviderRegistration } from '../../queries/git-provider-registration-bootstrap.query';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
-import { getApiConfig } from '../../runtime/runtime-access';
-import { requireGitProviderField } from './git-source-view.service';
-
-export interface GitHubProviderAccess {
-  privateKeyPem: string;
-  registration: GitProviderRegistrationRow;
-}
+import { getGitProviderAdapter } from './git-source-provider.registry';
+import type { GitProviderAccess } from './git-source-provider.types';
 
 export async function requireActiveGitHubProviderAccess(
   organizationId: string,
   providerHost: string,
   repositoryOwner: string,
-): Promise<GitHubProviderAccess> {
-  const registration: GitProviderRegistrationRow = await requireActiveGitProviderRegistration(
-    organizationId,
-    providerHost,
-    repositoryOwner,
+): Promise<GitProviderAccess> {
+  return buildGitProviderAccess(
+    await requireActiveGitHubProviderRegistration(organizationId, providerHost, repositoryOwner),
   );
+}
+
+export async function requireGitProviderAccessByRegistrationId(
+  organizationId: string,
+  registrationId: string,
+  providerHost: string,
+): Promise<GitProviderAccess> {
+  const registration: GitProviderRegistrationRow | undefined = await findGitProviderRegistrationById({
+    organizationId,
+    registrationId,
+  });
+  if (registration?.status === 'pending' && registration.providerHost === providerHost) {
+    throw createGitSourceRegistrationPendingError();
+  }
+  if (registration?.status !== 'active' || registration.providerHost !== providerHost) {
+    throw createGitSourceRegistrationFailedError('The selected git provider registration is not active.');
+  }
+  return buildGitProviderAccess(registration);
+}
+
+export function buildGitProviderAccess(registration: GitProviderRegistrationRow): GitProviderAccess {
   return {
-    privateKeyPem: readGitHubRegistrationPrivateKey(registration),
+    credential: getGitProviderAdapter(registration.providerType).readRegistrationCredential(registration),
     registration,
   };
 }
 
-export function readGitHubRegistrationPrivateKey(registration: GitProviderRegistrationRow): string {
-  return decryptVariableValueFromStorage(
-    requireGitProviderField(registration.privateKeyPemCiphertext, 'private_key_pem_ciphertext'),
-    requireGitProviderField(registration.privateKeyPemEncryptionKeyId, 'private_key_pem_encryption_key_id'),
-    getApiConfig().variablesMasterKey,
-  );
-}
-
-async function requireActiveGitProviderRegistration(
+async function requireActiveGitHubProviderRegistration(
   organizationId: string,
   providerHost: string,
   repositoryOwner: string,
@@ -47,6 +55,7 @@ async function requireActiveGitProviderRegistration(
     organizationId,
     providerHost,
     repositoryOwner,
+    providerType: 'github_app',
   });
   if (activeRegistration !== undefined) {
     return activeRegistration;

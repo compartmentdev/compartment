@@ -9,17 +9,14 @@ export function buildGitProviderRegistrationOrganizationFilter(organizationId: s
 }
 
 export function readGitProviderRegistrationOrganizationId(webhookUrl: string): string | undefined {
-  let pathname: string;
-  try {
-    pathname = new URL(webhookUrl).pathname;
-  } catch {
-    return undefined;
-  }
+  const pathname: string | undefined = readWebhookPathname(webhookUrl);
+  if (pathname === undefined) return undefined;
 
-  if (!pathname.startsWith(gitHubProviderRegistrationOrganizationPathPrefix)) {
+  const prefixMatch: RegExpMatchArray | null = gitProviderRegistrationOrganizationPathPrefixPattern.exec(pathname);
+  if (prefixMatch === null) {
     return undefined;
   }
-  const pathParts: string[] = pathname.slice(gitHubProviderRegistrationOrganizationPathPrefix.length).split('/');
+  const pathParts: string[] = pathname.slice(prefixMatch[0].length).split('/');
   const [organizationId, registrationsSegment, registrationId, webhookSegment, ...extraParts] = pathParts;
   if (
     organizationId === undefined ||
@@ -36,9 +33,18 @@ export function readGitProviderRegistrationOrganizationId(webhookUrl: string): s
   return organizationId;
 }
 
-function buildGitProviderRegistrationOrganizationPathFragment(organizationId: string, registrationId?: string): string {
-  const registrationPath: string = registrationId === undefined ? '' : `${registrationId}/webhook`;
-  return `${gitHubProviderRegistrationOrganizationPathPrefix}${organizationId}/registrations/${registrationPath}`;
+function readWebhookPathname(webhookUrl: string): string | undefined {
+  try {
+    return new URL(webhookUrl).pathname;
+  } catch {
+    return undefined;
+  }
 }
 
-const gitHubProviderRegistrationOrganizationPathPrefix: string = '/v1/sources/git/providers/github/organizations/';
+function buildGitProviderRegistrationOrganizationPathFragment(organizationId: string, registrationId?: string): string {
+  const registrationPath: string = registrationId === undefined ? '' : `${registrationId}/webhook`;
+  return `/organizations/${organizationId}/registrations/${registrationPath}`;
+}
+
+const gitProviderRegistrationOrganizationPathPrefixPattern: RegExp =
+  /^\/v1\/sources\/git\/providers\/[^/]+\/organizations\//;

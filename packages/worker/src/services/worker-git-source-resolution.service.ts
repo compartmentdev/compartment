@@ -15,7 +15,7 @@ import {
   resolveGitSourceSnapshot,
   type ResolvedGitSourceSnapshot,
 } from './worker-git-source-resolution-archive.service';
-import { isRetryableGitSourceResolutionFailure } from './worker-git-source-resolution-failure.support';
+import { isRetryableGitSourceTaskError } from './worker-git-source-resolution-failure.support';
 
 export async function runGitSourceResolutionIteration(
   request: CompartmentRequester,
@@ -55,7 +55,7 @@ async function reportGitSourceResolutionFailure(
 ): Promise<void> {
   const body: WorkerFailGitSourceResolutionTaskRequest = {
     failureReason: failure?.message ?? 'Unknown git source resolution failure.',
-    retryable: isRetryableGitSourceResolutionFailure(failure),
+    retryable: isRetryableGitSourceTaskError(failure),
     taskId,
   };
   await failGitSourceResolutionTask(request, body);

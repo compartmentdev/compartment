@@ -1,10 +1,7 @@
 export interface ResolvedRepositoryAccess {
-  installation: {
-    installationId: string;
-  };
-  privateKeyPem: string;
+  providerInstallationId: string | null;
+  providerWebhookId: string | null;
   registration: {
-    appId: string | null;
     id: string;
   };
 }

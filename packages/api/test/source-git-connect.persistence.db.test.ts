@@ -15,6 +15,10 @@ import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { disconnectSource, updateSourceToDisabled } from '../src/queries/source.query';
 import type { SourceMutationTransaction } from '../src/queries/source.query.types';
 import { persistConnectedGitSource } from '../src/services/git-source/git-source-connect.persistence';
+import {
+  createGitLabProviderRegistration,
+  rotateGitLabProviderRegistrationToken,
+} from '../src/queries/gitlab-provider-registration.query';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
@@ -87,6 +91,106 @@ describe('git source connect persistence', (): void => {
     });
     expect(await db.select().from(sourceBindings)).toEqual([]);
     expect(await db.select().from(sourceBindingBranchMappings)).toEqual([]);
+  });
+
+  it('persists and replaces the GitLab project hook without an installation id', async (): Promise<void> => {
+    await db.transaction(async (transaction: SourceMutationTransaction): Promise<void> => {
+      await persistConnectedGitSource(
+        transaction,
+        buildPersistInput('42', {
+          installationId: null,
+          providerHost: 'gitlab.com',
+          providerRegistrationId: 'gpr_gitlab_sources',
+          providerWebhookId: 'hook_1',
+        }),
+        new Date('2026-04-28T10:00:00.000Z'),
+      );
+    });
+    expect(await readStoredSource()).toMatchObject({
+      providerInstallationId: null,
+      providerWebhookId: 'hook_1',
+    });
+    const source: SourceRowRecord = requireFirst(await db.select().from(sources), 'source');
+    await db.transaction(async (transaction: SourceMutationTransaction): Promise<void> => {
+      await disconnectSource(transaction, source.id, new Date('2026-04-28T11:00:00.000Z'));
+      await persistConnectedGitSource(
+        transaction,
+        buildPersistInput('42', {
+          installationId: null,
+          providerHost: 'gitlab.com',
+          providerRegistrationId: 'gpr_gitlab_sources',
+          providerWebhookId: 'hook_2',
+        }),
+        new Date('2026-04-28T12:00:00.000Z'),
+      );
+    });
+    expect(await readStoredSource()).toMatchObject({ providerInstallationId: null, providerWebhookId: 'hook_2' });
+  });
+
+  it('isolates GitLab registrations by organization and preserves webhook secrets on rotation', async (): Promise<void> => {
+    await rotateGitLabProviderRegistrationToken(db, {
+      accessTokenCiphertext: 'rotated-token',
+      accessTokenEncryptionKeyId: 'rotated-key',
+      organizationId: 'org_git_sources',
+      registrationId: 'gpr_gitlab_sources',
+      updatedAt: new Date('2026-04-28T12:00:00.000Z'),
+    });
+    await createGitLabProviderRegistration(db, {
+      accessTokenCiphertext: 'other-token',
+      accessTokenEncryptionKeyId: 'other-key',
+      callbackUrl: 'https://console.example',
+      createdByPrincipalId: 'prn_git_sources',
+      id: 'gpr_gitlab_other_org',
+      installationAccountLogin: 'alice',
+      installationAccountType: 'User',
+      organizationId: 'org_other',
+      providerHost: 'gitlab.com',
+      repositoryOwner: 'alice',
+      updatedAt: new Date('2026-04-28T12:00:00.000Z'),
+      webhookSecretCiphertext: 'other-secret',
+      webhookSecretEncryptionKeyId: 'other-secret-key',
+      webhookUrl:
+        'https://console.example/v1/sources/git/providers/gitlab/organizations/org_other/registrations/gpr_gitlab_other_org/webhook',
+    });
+    const registrations: (typeof gitProviderRegistrations.$inferSelect)[] = await db
+      .select()
+      .from(gitProviderRegistrations);
+    expect(registrations).toHaveLength(3);
+    expect(
+      registrations.find(
+        (row: typeof gitProviderRegistrations.$inferSelect): boolean => row.id === 'gpr_gitlab_sources',
+      ),
+    ).toMatchObject({
+      accessTokenCiphertext: 'rotated-token',
+      webhookSecretCiphertext: 'secret',
+    });
+  });
+
+  it('rejects a duplicate active GitLab registration in the same organization', async (): Promise<void> => {
+    await expect(
+      createGitLabProviderRegistration(db, {
+        accessTokenCiphertext: 'duplicate-token',
+        accessTokenEncryptionKeyId: 'duplicate-key',
+        callbackUrl: 'https://console.example',
+        createdByPrincipalId: 'prn_git_sources',
+        id: 'gpr_gitlab_duplicate',
+        installationAccountLogin: 'alice',
+        installationAccountType: 'User',
+        organizationId: 'org_git_sources',
+        providerHost: 'gitlab.com',
+        repositoryOwner: 'alice',
+        updatedAt: new Date('2026-04-28T12:00:00.000Z'),
+        webhookSecretCiphertext: 'duplicate-secret',
+        webhookSecretEncryptionKeyId: 'duplicate-secret-key',
+        webhookUrl:
+          'https://console.example/v1/sources/git/providers/gitlab/organizations/org_git_sources/registrations/gpr_gitlab_duplicate/webhook',
+      }),
+    ).rejects.toMatchObject({
+      cause: {
+        code: '23505',
+        constraint: 'git_provider_registrations_active_gitlab_organization_owner_uni',
+      },
+    });
   });
 
   it('reactivates a disconnected source and updates source defaults on reconnect', async (): Promise<void> => {
@@ -192,6 +296,21 @@ async function createPersistScope(): Promise<void> {
     webhookUrl:
       'https://console.example/v1/sources/git/providers/github/organizations/org_git_sources/registrations/gpr_git_sources/webhook',
   });
+  await db.insert(gitProviderRegistrations).values({
+    accessTokenCiphertext: 'token',
+    accessTokenEncryptionKeyId: 'key',
+    callbackUrl: 'https://console.example',
+    createdByPrincipalId: 'prn_git_sources',
+    id: 'gpr_gitlab_sources',
+    providerHost: 'gitlab.com',
+    providerType: 'gitlab',
+    repositoryOwner: 'alice',
+    status: 'active',
+    webhookSecretCiphertext: 'secret',
+    webhookSecretEncryptionKeyId: 'key',
+    webhookUrl:
+      'https://console.example/v1/sources/git/providers/gitlab/organizations/org_git_sources/registrations/gpr_gitlab_sources/webhook',
+  });
 }
 
 function buildPersistInput(
@@ -201,14 +320,19 @@ function buildPersistInput(
     defaultAutoDeployEnabled?: boolean | undefined;
     defaultEnvironmentName?: string | undefined;
     repositoryCloneUrl?: string | undefined;
+    installationId?: string | null | undefined;
+    providerHost?: string | undefined;
+    providerRegistrationId?: string | undefined;
+    providerWebhookId?: string | undefined;
     syncBranchName?: string | undefined;
   } = {},
 ): {
   actorPrincipalId: string;
-  installationId: string;
+  installationId: string | null;
   organizationId: string;
   providerHost: string;
   providerRegistrationId: string;
+  providerWebhookId?: string | undefined;
   repository: {
     defaultBranchName: string;
     repositoryCloneUrl: string;
@@ -231,10 +355,11 @@ function buildPersistInput(
 
   return {
     actorPrincipalId: 'prn_git_sources',
-    installationId: 'inst_123',
+    installationId: overrides.installationId === undefined ? 'inst_123' : overrides.installationId,
     organizationId: 'org_git_sources',
-    providerHost: 'github.com',
-    providerRegistrationId: 'gpr_git_sources',
+    providerHost: overrides.providerHost ?? 'github.com',
+    providerRegistrationId: overrides.providerRegistrationId ?? 'gpr_git_sources',
+    providerWebhookId: overrides.providerWebhookId,
     repository: {
       defaultBranchName: 'main',
       repositoryCloneUrl: overrides.repositoryCloneUrl ?? 'https://github.com/acme/mono.git',
@@ -246,7 +371,7 @@ function buildPersistInput(
       autoAdoptNewApps: overrides.autoAdoptNewApps ?? true,
       defaultAutoDeployEnabled: overrides.defaultAutoDeployEnabled ?? true,
       defaultEnvironmentName: overrides.defaultEnvironmentName ?? 'production',
-      providerHost: 'github.com',
+      providerHost: overrides.providerHost ?? 'github.com',
       repositoryName: 'mono',
       repositoryOwner: 'acme',
       syncBranchName,

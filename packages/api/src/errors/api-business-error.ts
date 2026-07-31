@@ -1,3 +1,4 @@
+import { compartmentGitLabTokenInvalidErrorCode } from '@compartment/contracts';
 import { ApiBusinessError, isApiBusinessError } from './api-business-error.shared';
 
 export { isApiBusinessError, mapApiBusinessError } from './api-business-error.shared';
@@ -92,6 +93,10 @@ export function createGitSourceRegistrationFailedError(message?: string): ApiBus
 
 export function createGitSourceRegistrationPendingError(): ApiBusinessError {
   return new ApiBusinessError('git_source_registration_pending');
+}
+
+export function createGitLabTokenInvalidError(message?: string): ApiBusinessError {
+  return new ApiBusinessError(compartmentGitLabTokenInvalidErrorCode, message);
 }
 
 export function createGitSourceRepositoryAccessDeniedError(message?: string): ApiBusinessError {

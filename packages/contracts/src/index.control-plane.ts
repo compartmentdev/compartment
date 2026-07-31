@@ -125,6 +125,7 @@ export {
   compartmentVariablePathnameTemplate,
 } from './contracts/control-plane-protocol.contract';
 export {
+  compartmentGitLabTokenInvalidErrorCode,
   compartmentConsoleSsoFailedLoginErrorCode,
   compartmentConsoleSsoFailedLoginErrorMessage,
 } from './contracts/control-plane-browser-errors.contract';

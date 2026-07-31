@@ -8,6 +8,7 @@ export { assertHttpHeaderName, assertHttpHeaderValue, readBearerToken, readHeade
 export { parseHttpHostAuthority } from './http-host-authority';
 export { serializeCookie } from './http-cookie';
 export { buildGitHubApiBaseUrl } from './github';
+export { buildGitLabApiBaseUrl } from './gitlab';
 export { buildInternalHttpUrl } from './internal-http-url';
 export { normalizeNanosecondZuluTimestamp } from './log-timestamp';
 export { normalizeDnsHostname } from './dns-hostname';

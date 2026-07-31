@@ -11,9 +11,9 @@ import { buildDescriptorCandidates } from '../src/services/git-source/git-source
 import type { Actor } from '../src/services/auth-actor.types';
 import type { GitProviderRegistrationRow } from '../src/queries/git-provider-registration.query.types';
 import type * as GithubAppClientAdapter from '../src/services/git-source/github-app-client.adapter';
-import type * as GitSourceDescriptorGithubOperation from '../src/services/git-source/git-source-descriptor-github-operation.service';
+import type * as GitSourceDescriptorOperation from '../src/services/git-source/git-source-descriptor-operation.service';
 import type * as GitSourceDescriptorRegistrationAccess from '../src/services/git-source/git-source-descriptor-registration-access.service';
-import type { GitHubRepositoryTreeEntry } from '../src/services/git-source/github-app-client.adapter.types';
+import type { GitProviderAccess, GitRepositoryTreeEntry } from '../src/services/git-source/git-source-provider.types';
 import {
   createGitDescriptorPullRequest,
   readGitDescriptorPlan,
@@ -22,57 +22,48 @@ import {
 
 type ReadGitHubRepositoryTree = typeof GithubAppClientAdapter.readGitHubRepositoryTree;
 type ReadGitHubRepositoryContent = typeof GithubAppClientAdapter.readGitHubRepositoryContent;
-type ListGitHubInstallationRepositories = typeof GithubAppClientAdapter.listGitHubInstallationRepositories;
-type CreateDescriptorPullRequest = typeof GitSourceDescriptorGithubOperation.createDescriptorPullRequest;
-type ReadDescriptorPullRequestStatus = typeof GitSourceDescriptorGithubOperation.readDescriptorPullRequestStatus;
-type RequireGitHubRegistrationAccess = typeof GitSourceDescriptorRegistrationAccess.requireGitHubRegistrationAccess;
-type BuildGitHubRegistrationClientAuth = typeof GitSourceDescriptorRegistrationAccess.buildGitHubRegistrationClientAuth;
+type CreateDescriptorPullRequest = typeof GitSourceDescriptorOperation.createDescriptorPullRequest;
+type ReadDescriptorPullRequestStatus = typeof GitSourceDescriptorOperation.readDescriptorPullRequestStatus;
+type RequireGitProviderRegistrationAccess =
+  typeof GitSourceDescriptorRegistrationAccess.requireGitProviderRegistrationAccess;
 
 interface RuntimeAccessModule {
   getApiConfig: () => Pick<ApiConfig, 'sessionSecret'>;
 }
 
 interface GithubAppClientAdapterModule {
-  listGitHubInstallationRepositories: Mock<ListGitHubInstallationRepositories>;
   readGitHubRepositoryContent: Mock<ReadGitHubRepositoryContent>;
   readGitHubRepositoryTree: Mock<ReadGitHubRepositoryTree>;
 }
 
-interface GitSourceDescriptorGithubOperationModule {
+interface GitSourceDescriptorOperationModule {
   createDescriptorPullRequest: Mock<CreateDescriptorPullRequest>;
   readDescriptorPullRequestStatus: Mock<ReadDescriptorPullRequestStatus>;
 }
 
 interface GitSourceDescriptorRegistrationAccessModule {
-  buildGitHubRegistrationClientAuth: Mock<BuildGitHubRegistrationClientAuth>;
-  requireGitHubRegistrationAccess: Mock<RequireGitHubRegistrationAccess>;
+  requireGitProviderRegistrationAccess: Mock<RequireGitProviderRegistrationAccess>;
 }
 
 const mocks: {
-  buildGitHubRegistrationClientAuth: Mock<BuildGitHubRegistrationClientAuth>;
   createDescriptorPullRequest: Mock<CreateDescriptorPullRequest>;
-  listGitHubInstallationRepositories: Mock<ListGitHubInstallationRepositories>;
   readGitHubRepositoryContent: Mock<ReadGitHubRepositoryContent>;
   readDescriptorPullRequestStatus: Mock<ReadDescriptorPullRequestStatus>;
   readGitHubRepositoryTree: Mock<ReadGitHubRepositoryTree>;
-  requireGitHubRegistrationAccess: Mock<RequireGitHubRegistrationAccess>;
+  requireGitProviderRegistrationAccess: Mock<RequireGitProviderRegistrationAccess>;
 } = vi.hoisted(
   (): {
-    buildGitHubRegistrationClientAuth: Mock<BuildGitHubRegistrationClientAuth>;
     createDescriptorPullRequest: Mock<CreateDescriptorPullRequest>;
-    listGitHubInstallationRepositories: Mock<ListGitHubInstallationRepositories>;
     readGitHubRepositoryContent: Mock<ReadGitHubRepositoryContent>;
     readDescriptorPullRequestStatus: Mock<ReadDescriptorPullRequestStatus>;
     readGitHubRepositoryTree: Mock<ReadGitHubRepositoryTree>;
-    requireGitHubRegistrationAccess: Mock<RequireGitHubRegistrationAccess>;
+    requireGitProviderRegistrationAccess: Mock<RequireGitProviderRegistrationAccess>;
   } => ({
-    buildGitHubRegistrationClientAuth: vi.fn<BuildGitHubRegistrationClientAuth>(),
     createDescriptorPullRequest: vi.fn<CreateDescriptorPullRequest>(),
-    listGitHubInstallationRepositories: vi.fn<ListGitHubInstallationRepositories>(),
     readGitHubRepositoryContent: vi.fn<ReadGitHubRepositoryContent>(),
     readDescriptorPullRequestStatus: vi.fn<ReadDescriptorPullRequestStatus>(),
     readGitHubRepositoryTree: vi.fn<ReadGitHubRepositoryTree>(),
-    requireGitHubRegistrationAccess: vi.fn<RequireGitHubRegistrationAccess>(),
+    requireGitProviderRegistrationAccess: vi.fn<RequireGitProviderRegistrationAccess>(),
   }),
 );
 
@@ -88,17 +79,16 @@ vi.mock(
 vi.mock(
   '../src/services/git-source/github-app-client.adapter',
   (): GithubAppClientAdapterModule => ({
-    listGitHubInstallationRepositories: mocks.listGitHubInstallationRepositories,
     readGitHubRepositoryContent: mocks.readGitHubRepositoryContent,
     readGitHubRepositoryTree: mocks.readGitHubRepositoryTree,
   }),
 );
 
 vi.mock(
-  '../src/services/git-source/git-source-descriptor-github-operation.service',
-  async (): Promise<GitSourceDescriptorGithubOperationModule> => {
-    const actual: typeof GitSourceDescriptorGithubOperation = await vi.importActual(
-      '../src/services/git-source/git-source-descriptor-github-operation.service',
+  '../src/services/git-source/git-source-descriptor-operation.service',
+  async (): Promise<GitSourceDescriptorOperationModule> => {
+    const actual: typeof GitSourceDescriptorOperation = await vi.importActual(
+      '../src/services/git-source/git-source-descriptor-operation.service',
     );
 
     return {
@@ -112,8 +102,7 @@ vi.mock(
 vi.mock(
   '../src/services/git-source/git-source-descriptor-registration-access.service',
   (): GitSourceDescriptorRegistrationAccessModule => ({
-    buildGitHubRegistrationClientAuth: mocks.buildGitHubRegistrationClientAuth,
-    requireGitHubRegistrationAccess: mocks.requireGitHubRegistrationAccess,
+    requireGitProviderRegistrationAccess: mocks.requireGitProviderRegistrationAccess,
   }),
 );
 
@@ -239,24 +228,25 @@ describe('git source descriptor service', (): void => {
   });
 });
 
-function prepareDescriptorServiceMocks(tree: GitHubRepositoryTreeEntry[]): void {
+function prepareDescriptorServiceMocks(tree: GitRepositoryTreeEntry[]): void {
   vi.resetAllMocks();
-  mocks.requireGitHubRegistrationAccess.mockResolvedValue({
-    privateKeyPem: 'private-key',
-    registration: createRegistration(),
-  });
-  mocks.buildGitHubRegistrationClientAuth.mockReturnValue({
-    appId: '12345',
-    installationId: '98765',
-    privateKeyPem: 'private-key',
-    providerHost: 'github.enterprise.example',
-  });
+  mocks.requireGitProviderRegistrationAccess.mockResolvedValue(createProviderAccess());
   mocks.readGitHubRepositoryTree.mockResolvedValue(tree);
   mocks.createDescriptorPullRequest.mockResolvedValue({
     htmlUrl: 'https://github.enterprise.example/acme/mono/pull/17',
     number: 17,
     state: 'open',
   });
+}
+
+function createProviderAccess(): GitProviderAccess {
+  return {
+    credential: {
+      kind: 'github_app',
+      privateKeyPem: 'private-key',
+    },
+    registration: createRegistration(),
+  };
 }
 
 function createPullRequestRequest(candidate: GitDescriptorCandidate): CreateGitDescriptorPullRequestRequest {
@@ -283,7 +273,7 @@ function createPlanRequest(): GitDescriptorPlanRequest {
   };
 }
 
-function blob(path: string): GitHubRepositoryTreeEntry {
+function blob(path: string): GitRepositoryTreeEntry {
   return {
     path,
     type: 'blob',
@@ -319,6 +309,8 @@ function createActor(): Actor {
 
 function createRegistration(): GitProviderRegistrationRow {
   return {
+    accessTokenCiphertext: null,
+    accessTokenEncryptionKeyId: null,
     appId: '12345',
     appName: 'Compartment',
     appSlug: 'compartment',

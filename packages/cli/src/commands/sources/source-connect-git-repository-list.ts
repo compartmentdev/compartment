@@ -7,6 +7,23 @@ import { listGitHubInstallationRepositoriesForSource } from '../../services/sour
 import type { AuthenticatedContext } from '../../services/context.types';
 import type { CliCommandDependencies } from '../command.types';
 import { waitForGitHubSourceBootstrap } from './source-connect-git-bootstrap.command';
+import type { LocalGitSourcePlan } from '../../services/source-git-local.service.types';
+import { promptVisibleText } from '../../prompts/prompt';
+
+export function formatGitRepositoryListItem(repository: GitHubInstallationRepositorySummary): string {
+  return `- ${repository.fullName}\tdefault branch: ${repository.defaultBranchName}`;
+}
+
+export function readDefaultGitRepositoryFullName(repositoryOwner: string, plan: LocalGitSourcePlan): string {
+  return `${repositoryOwner}/${plan.repositoryName}`;
+}
+
+export async function resolveGitRepositoryOwner(
+  dependencies: CliCommandDependencies,
+  plan: LocalGitSourcePlan,
+): Promise<string> {
+  return await promptVisibleText(dependencies.io, 'GitHub account or organization', plan.repositoryOwner);
+}
 
 export async function readGitHubInstallationRepositoriesForSelection(
   dependencies: CliCommandDependencies,

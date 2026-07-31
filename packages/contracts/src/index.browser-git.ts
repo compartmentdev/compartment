@@ -8,7 +8,10 @@ export {
   compartmentGitHubProviderAccountDiscoveryResultPathname,
   compartmentGitHubProviderBootstrapPathname,
   compartmentGitSourceConnectPathname,
+  compartmentGitLabProviderRegistrationsPathname,
+  buildCompartmentGitLabProviderRegistrationRepositoriesPathname,
 } from './contracts/control-plane-protocol.contract';
+export { compartmentGitLabTokenInvalidErrorCode } from './contracts/control-plane-browser-errors.contract';
 export {
   type DeploymentStatusQuery,
   type DeploymentStatusResponse,
@@ -58,7 +61,16 @@ export {
   gitHubProviderBootstrapResponseSchema,
   gitSourceResponseSchema,
   readGitSourceDescriptorDirectory,
+  type GitProviderRepositorySummary,
 } from './contracts/source-git.contract';
+export {
+  type CreateGitLabProviderRegistrationRequest,
+  type CreateGitLabProviderRegistrationResponse,
+  type GitLabRegistrationRepositoryListResponse,
+  createGitLabProviderRegistrationRequestSchema,
+  createGitLabProviderRegistrationResponseSchema,
+  gitLabRegistrationRepositoryListResponseSchema,
+} from './contracts/source-gitlab.contract';
 export {
   type GitSourceSyncCandidate,
   type GitSourceSyncTask,

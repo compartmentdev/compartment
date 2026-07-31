@@ -15,7 +15,7 @@ import type { SourceBindingBranchMappingRow, SourceBindingRow, SourceRow } from 
 import type { BuildGitSourcePushAuditEventInputsInput } from './git-source-audit.service.types';
 import type {
   CreateBindingResolutionTasksInput,
-  HandleGitHubSourceWebhookInput,
+  ProviderPushDeliveryInput,
   PersistSourcePushEventInput,
   PushChangedFilesState,
 } from './git-source-runtime.service.types';
@@ -36,7 +36,7 @@ interface PersistSourcePushEventsForAuditInput {
 
 export async function persistSourcePushEventsForAudit(
   tx: SourceResolutionMutationTransaction,
-  input: HandleGitHubSourceWebhookInput,
+  input: ProviderPushDeliveryInput,
   eventInput: PersistSourcePushEventsForAuditInput,
 ): Promise<BuildGitSourcePushAuditEventInputsInput[]> {
   const auditEvents: BuildGitSourcePushAuditEventInputsInput[] = [];
@@ -54,7 +54,7 @@ export async function persistSourcePushEventsForAudit(
 
 async function persistSourcePushEvent(
   tx: SourceResolutionMutationTransaction,
-  input: HandleGitHubSourceWebhookInput,
+  input: ProviderPushDeliveryInput,
   eventInput: PersistSourcePushEventInput,
 ): Promise<BuildGitSourcePushAuditEventInputsInput | null> {
   const event: SourceEventRow | null = await createSourcePushEventIfMissing(

@@ -506,6 +506,8 @@ function createApiConfig(): ApiConfig {
 
 function createActiveRegistration(): GitProviderRegistrationRow {
   return {
+    accessTokenCiphertext: null,
+    accessTokenEncryptionKeyId: null,
     appId: 'app_123',
     appName: 'Compartment GitHub App',
     appSlug: 'compartment',
@@ -549,6 +551,7 @@ function createSourceRow(status: TestSourceStatus, overrides: SourceRowOverrides
     organizationId: 'org_123',
     providerHost: 'github.com',
     providerInstallationId: 'inst_123',
+    providerWebhookId: null,
     providerRegistrationId: 'gpr_123',
     repositoryCloneUrl: 'https://github.com/acme/mono.git',
     repositoryExternalId: 'repo_123',

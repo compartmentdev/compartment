@@ -56,6 +56,8 @@ export const compartmentGitHubProviderBootstrapStartPathnameTemplate: string = `
 export const compartmentGitHubProviderRegistrationRepositoriesPathnameTemplate: string = `${compartmentSourcesPathname}/git/providers/github/registrations/:registrationId/repositories`;
 export const compartmentGitHubProviderCallbackPathname: string = `${compartmentSourcesPathname}/git/providers/github/callback`;
 export const compartmentGitHubProviderSetupPathname: string = `${compartmentSourcesPathname}/git/providers/github/setup`;
+export const compartmentGitLabProviderRegistrationsPathname: string = `${compartmentSourcesPathname}/git/providers/gitlab/registrations`;
+export const compartmentGitLabProviderRegistrationRepositoriesPathnameTemplate: string = `${compartmentGitLabProviderRegistrationsPathname}/:registrationId/repositories`;
 export const compartmentGitSourceConnectPathname: string = `${compartmentSourcesPathname}/git/connect`;
 export const compartmentGitDescriptorPlanPathname: string = `${compartmentSourcesPathname}/git/descriptor-plan`;
 export const compartmentGitDescriptorPullRequestPathname: string = `${compartmentSourcesPathname}/git/descriptor-pr`;
@@ -106,6 +108,13 @@ export function buildCompartmentGitHubProviderRegistrationRepositoriesPathname(
     repositoryOwner: request.repositoryOwner,
   });
   return `${pathname}?${searchParams.toString()}`;
+}
+
+export function buildCompartmentGitLabProviderRegistrationRepositoriesPathname(registrationId: string): string {
+  return compartmentGitLabProviderRegistrationRepositoriesPathnameTemplate.replace(
+    ':registrationId',
+    encodeURIComponent(registrationId),
+  );
 }
 
 export function buildCompartmentFirstDeployOnboardingStatusPathname(sessionId: string): string {

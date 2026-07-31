@@ -1,6 +1,5 @@
 import type { GitSourceResponse } from '@compartment/contracts/browser';
 import { connectBrowserGitSource } from './onboarding-git-api';
-import { gitOnboardingProviderHost } from './onboarding-git-constants';
 import type { GitConnectFormInput } from './onboarding-page.types';
 
 export interface GitSourceConnectionResult {
@@ -18,7 +17,8 @@ export async function connectOrAdoptGitSource(
     defaultAutoDeployEnabled: true,
     defaultEnvironmentName: formInput.environmentName,
     ...(descriptorPath !== undefined ? { descriptorPathToInclude: descriptorPath } : {}),
-    providerHost: gitOnboardingProviderHost,
+    providerHost: formInput.repository.providerHost,
+    registrationId: formInput.repository.registrationId,
     repositoryName: formInput.repository.name,
     repositoryOwner: formInput.repository.owner,
     syncBranchName: formInput.branchName,

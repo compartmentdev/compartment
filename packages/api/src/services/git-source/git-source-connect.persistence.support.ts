@@ -11,18 +11,19 @@ import type {
   SourceMutationTransaction,
   UpdateSourceToActiveInput,
 } from '../../queries/source.query.types';
-import type { GitHubRepositoryMetadata } from './github-app-client.adapter.types';
+import type { GitRepositoryMetadata } from './git-source-provider.types';
 
-interface GitSourceUpsertInput {
+export interface GitSourceUpsertInput {
   actorPrincipalId: string;
   autoAdoptNewApps: boolean;
   defaultAutoDeployEnabled: boolean;
   defaultEnvironmentName: string;
-  installationId: string;
+  installationId: string | null;
   organizationId: string;
   providerHost: string;
   providerRegistrationId: string;
-  repository: GitHubRepositoryMetadata;
+  providerWebhookId: string | null;
+  repository: GitRepositoryMetadata;
   syncBranchName: string;
 }
 
@@ -38,6 +39,7 @@ export function buildCreateSourceInput(input: GitSourceUpsertInput, now: Date): 
     organizationId: input.organizationId,
     providerHost: input.providerHost,
     providerInstallationId: input.installationId,
+    providerWebhookId: input.providerWebhookId,
     providerRegistrationId: input.providerRegistrationId,
     repositoryCloneUrl: input.repository.repositoryCloneUrl,
     repositoryExternalId: input.repository.repositoryExternalId,
@@ -62,6 +64,7 @@ export function buildUpdateSourceInput(
     defaultEnvironmentName: input.defaultEnvironmentName,
     displayName: readGitSourceDisplayName(input.repository.repositoryOwner, input.repository.repositoryName),
     providerInstallationId: input.installationId,
+    providerWebhookId: input.providerWebhookId,
     providerRegistrationId: input.providerRegistrationId,
     repositoryCloneUrl: input.repository.repositoryCloneUrl,
     repositoryName: input.repository.repositoryName,

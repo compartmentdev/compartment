@@ -1,16 +1,21 @@
 import type { ConnectGitSourceRequest } from '@compartment/contracts';
 import { createSource, findReconnectableSourceByRepository, updateSourceToActive } from '../../queries/source.query';
 import type { SourceMutationTransaction, SourceRow } from '../../queries/source.query.types';
-import type { GitHubRepositoryMetadata } from './github-app-client.adapter.types';
-import { buildCreateSourceInput, buildUpdateSourceInput } from './git-source-connect.persistence.support';
+import type { GitRepositoryMetadata } from './git-source-provider.types';
+import {
+  buildCreateSourceInput,
+  buildUpdateSourceInput,
+  type GitSourceUpsertInput,
+} from './git-source-connect.persistence.support';
 
 export interface PersistConnectedGitSourceInput {
   actorPrincipalId: string;
-  installationId: string;
+  installationId: string | null;
+  providerWebhookId?: string | null | undefined;
   organizationId: string;
   providerHost: string;
   providerRegistrationId: string;
-  repository: GitHubRepositoryMetadata;
+  repository: GitRepositoryMetadata;
   request: ConnectGitSourceRequest;
   syncBranchName: string;
 }
@@ -36,18 +41,7 @@ export async function persistConnectedGitSource(
   );
 }
 
-function buildSourceUpsertInput(input: PersistConnectedGitSourceInput): {
-  actorPrincipalId: string;
-  autoAdoptNewApps: boolean;
-  defaultAutoDeployEnabled: boolean;
-  defaultEnvironmentName: string;
-  installationId: string;
-  organizationId: string;
-  providerHost: string;
-  providerRegistrationId: string;
-  repository: GitHubRepositoryMetadata;
-  syncBranchName: string;
-} {
+function buildSourceUpsertInput(input: PersistConnectedGitSourceInput): GitSourceUpsertInput {
   return {
     actorPrincipalId: input.actorPrincipalId,
     autoAdoptNewApps: input.request.autoAdoptNewApps,
@@ -57,6 +51,7 @@ function buildSourceUpsertInput(input: PersistConnectedGitSourceInput): {
     organizationId: input.organizationId,
     providerHost: input.providerHost,
     providerRegistrationId: input.providerRegistrationId,
+    providerWebhookId: input.providerWebhookId ?? null,
     repository: input.repository,
     syncBranchName: input.syncBranchName,
   };

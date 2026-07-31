@@ -1,5 +1,6 @@
 import {
   buildGitHubApiBaseUrl,
+  buildGitLabApiBaseUrl,
   createOutboundHttpFetch,
   fetchOutboundHttp,
   normalizeOutboundTrustedHost,
@@ -9,6 +10,7 @@ import { getApiConfig } from '../runtime/runtime-access';
 
 const builtInTrustedPublicOutboundHosts: readonly string[] = [
   'api.github.com',
+  'gitlab.com',
   'accounts.google.com',
   'graph.microsoft.com',
   'login.microsoftonline.com',
@@ -16,14 +18,17 @@ const builtInTrustedPublicOutboundHosts: readonly string[] = [
   'openidconnect.googleapis.com',
   'www.googleapis.com',
 ];
-const gitHubTrustedOutboundMaxRedirects: number = 5;
+const gitProviderTrustedOutboundMaxRedirects: number = 5;
 const oidcTrustedOutboundMaxRedirects: number = 5;
 
-export function createGitHubTrustedOutboundFetch(): typeof fetch {
+export const createGitHubTrustedOutboundFetch: () => typeof fetch = createGitProviderTrustedOutboundFetch;
+export const createGitLabTrustedOutboundFetch: () => typeof fetch = createGitProviderTrustedOutboundFetch;
+
+function createGitProviderTrustedOutboundFetch(): typeof fetch {
   return createOutboundHttpFetch({
     addressPolicy: 'public',
     allowedProtocols: ['https:'],
-    maxRedirects: gitHubTrustedOutboundMaxRedirects,
+    maxRedirects: gitProviderTrustedOutboundMaxRedirects,
     trustedHosts: readTrustedPublicOutboundHosts(),
   });
 }
@@ -62,6 +67,10 @@ export async function fetchGitHubAccountDiscoveryBrokerHttp(path: string, init?:
 
 export function isTrustedGitHubProviderHost(providerHost: string): boolean {
   return isTrustedPublicOutboundHost(new URL(buildGitHubApiBaseUrl(providerHost)).host);
+}
+
+export function isTrustedGitLabProviderHost(providerHost: string): boolean {
+  return isTrustedPublicOutboundHost(new URL(buildGitLabApiBaseUrl(providerHost)).host);
 }
 
 export function isTrustedPublicOutboundHost(host: string): boolean {

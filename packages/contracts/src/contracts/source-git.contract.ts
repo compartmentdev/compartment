@@ -6,13 +6,14 @@ import { gitSourceExclusionSummarySchema, type GitSourceExclusionSummary } from 
 import { gitSourceDescriptorPathSchema, gitSourceRepositoryPathSchema } from './source-git-sync-path.contract';
 import { gitProviderHostSchema } from './source-git-provider.contract';
 
-export { type GitHubProviderRegistrationStatus } from './source-git-provider.contract';
+export { type GitHubProviderRegistrationStatus, type GitProviderType } from './source-git-provider.contract';
 export {
   type GitHubInstallationRepositoryListResponse,
   type GitHubInstallationRepositoryListRequest,
   type GitHubInstallationRepositorySummary,
   type GitHubProviderBootstrapRequest,
   type GitHubProviderBootstrapResponse,
+  type GitProviderRepositorySummary,
   gitHubInstallationRepositoryListRequestSchema,
   gitHubInstallationRepositoryListResponseSchema,
   gitHubProviderBootstrapRequestSchema,
@@ -59,6 +60,7 @@ export interface ConnectGitSourceRequest {
   defaultEnvironmentName: string;
   descriptorPathToInclude?: string | undefined;
   providerHost: string;
+  registrationId?: string | undefined;
   repositoryName: string;
   repositoryOwner: string;
   syncBranchName: string;
@@ -149,6 +151,7 @@ export const connectGitSourceRequestSchema: ContractSchema<ConnectGitSourceReque
     defaultEnvironmentName: environmentNameSchema,
     descriptorPathToInclude: gitSourceDescriptorPathSchema.optional(),
     providerHost: gitProviderHostSchema,
+    registrationId: z.string().min(1).optional(),
     repositoryName: z.string().min(1),
     repositoryOwner: z.string().min(1),
     syncBranchName: z.string().min(1),

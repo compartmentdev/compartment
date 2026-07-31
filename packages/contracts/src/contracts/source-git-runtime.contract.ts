@@ -8,6 +8,7 @@ import {
 import { type CompartmentRoutesFile, compartmentRoutesFileSchema } from './compartment-routes.contract';
 import { environmentNameSchema } from './deployments.contract';
 import type { ContractSchema } from './schema.types';
+import { gitProviderTypeSchema, type GitProviderType } from './source-git-provider.contract';
 import { gitSourceDescriptorPathSchema } from './source-git-sync-path.contract';
 
 export interface WorkerClaimedGitSourceResolutionTask {
@@ -17,6 +18,8 @@ export interface WorkerClaimedGitSourceResolutionTask {
   installationToken: string;
   projectName: string;
   providerHost: string;
+  providerType?: GitProviderType | undefined;
+  repositoryExternalId?: string | undefined;
   repositoryName: string;
   repositoryOwner: string;
   sourceBindingId: string;
@@ -54,6 +57,8 @@ export interface WorkerUploadGitSourceResolutionTaskArchiveResponse {
 
 export const compartmentGitHubSourceWebhookPathnameTemplate: string =
   '/v1/sources/git/providers/github/organizations/:organizationId/registrations/:registrationId/webhook';
+export const compartmentGitLabSourceWebhookPathnameTemplate: string =
+  '/v1/sources/git/providers/gitlab/organizations/:organizationId/registrations/:registrationId/webhook';
 export const workerClaimNextGitSourceResolutionTaskPathname: string =
   '/internal/git-source-resolution-tasks/claim-next';
 export const workerCompleteGitSourceResolutionTaskPathname: string = '/internal/git-source-resolution-tasks/complete';
@@ -69,6 +74,8 @@ const workerClaimedGitSourceResolutionTaskSchema: ContractSchema<WorkerClaimedGi
     installationToken: z.string().min(1),
     projectName: compartmentProjectNameSchema,
     providerHost: z.string().min(1),
+    providerType: gitProviderTypeSchema.optional(),
+    repositoryExternalId: z.string().min(1).optional(),
     repositoryName: z.string().min(1),
     repositoryOwner: z.string().min(1),
     sourceBindingId: z.string().min(1),

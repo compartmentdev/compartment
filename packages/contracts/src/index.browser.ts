@@ -95,6 +95,7 @@ export {
   compartmentConsoleOrganizationUsersPathnameTemplate,
 } from './contracts/control-plane-browser-routes.contract';
 export {
+  compartmentGitLabTokenInvalidErrorCode,
   compartmentConsoleSsoFailedLoginErrorCode,
   compartmentConsoleSsoFailedLoginErrorMessage,
 } from './contracts/control-plane-browser-errors.contract';
