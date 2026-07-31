@@ -14,7 +14,11 @@ import {
 
 describe('self-hosted build matrix partitions', (): void => {
   it('assigns every fixture exactly once', (): void => {
-    const assignedFixtureNames: string[] = Object.values(selfHostedBuildMatrixPartitions).flatMap(
+    const coveragePartitions: readonly SelfHostedBuildMatrixPartitionDefinition[] = [
+      selfHostedBuildMatrixPartitions.a!,
+      selfHostedBuildMatrixPartitions.b!,
+    ];
+    const assignedFixtureNames: string[] = coveragePartitions.flatMap(
       (partition: SelfHostedBuildMatrixPartitionDefinition): readonly string[] => [
         ...partition.singleServiceFixtureNames,
         ...partition.multiServiceFixtureNames,
@@ -32,6 +36,13 @@ describe('self-hosted build matrix partitions', (): void => {
     expect(assignedFixtureNames.toSorted(compareFixtureNames)).toEqual(
       expectedFixtureNames.toSorted(compareFixtureNames),
     );
+  });
+
+  it('keeps the gVisor smoke partition to one source build', (): void => {
+    expect(selfHostedBuildMatrixPartitions.gvisor).toEqual({
+      multiServiceFixtureNames: [],
+      singleServiceFixtureNames: ['dockerfile'],
+    });
   });
 
   it('rejects unknown partitions without changing the unpartitioned local default', (): void => {

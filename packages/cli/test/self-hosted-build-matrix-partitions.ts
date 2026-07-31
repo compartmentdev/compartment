@@ -25,6 +25,10 @@ export const selfHostedBuildMatrixPartitions: Readonly<Record<string, SelfHosted
         'static-poison',
       ]),
     }),
+    gvisor: Object.freeze({
+      multiServiceFixtureNames: Object.freeze([]),
+      singleServiceFixtureNames: Object.freeze(['dockerfile']),
+    }),
   });
 
 export function readSelfHostedBuildMatrixPartition(
