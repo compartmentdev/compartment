@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type {
   WorkerClaimDeploymentResponse,
+  WorkerClaimDeploymentRequest,
   WorkerClaimedDeployment,
   WorkerFailDeploymentRequest,
   WorkerRunNextScheduledResourceOperationResponse,
@@ -27,7 +28,10 @@ type BuildReleaseImageFromSource = (
   runtime: KubeRuntime,
 ) => Promise<string>;
 
-type ClaimNextDeployment = (request: CompartmentRequester) => Promise<WorkerClaimDeploymentResponse>;
+type ClaimNextDeployment = (
+  request: CompartmentRequester,
+  input: WorkerClaimDeploymentRequest,
+) => Promise<WorkerClaimDeploymentResponse>;
 type FailDeployment = (
   request: CompartmentRequester,
   body: WorkerFailDeploymentRequest,
@@ -169,7 +173,10 @@ describe('runWorkerIteration', (): void => {
       resourceName: null,
     });
     mocks.runGitSourceSyncIteration.mockResolvedValue(false);
-    mocks.claimNextDeployment.mockResolvedValue({ deployment: null });
+    mocks.claimNextDeployment.mockResolvedValue({
+      deployment: null,
+      queue: { activeBuildCount: 0, queueDepth: 0, waitTimeMs: null },
+    });
     mocks.buildReleaseImageFromSource.mockResolvedValue(`registry.example/app@sha256:${'a'.repeat(64)}`);
     mocks.handoffBuiltDeploymentToKube.mockResolvedValue(undefined);
     mocks.appendDeploymentStepEventSafely.mockResolvedValue(undefined);
@@ -185,7 +192,10 @@ describe('runWorkerIteration', (): void => {
 
   it('builds a claimed deployment and hands the digest-pinned image to Kubernetes', async (): Promise<void> => {
     const deployment: WorkerClaimedDeployment = createClaimedDeployment();
-    mocks.claimNextDeployment.mockResolvedValueOnce({ deployment });
+    mocks.claimNextDeployment.mockResolvedValueOnce({
+      deployment,
+      queue: { activeBuildCount: 1, queueDepth: 0, waitTimeMs: 25 },
+    });
 
     await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
 
@@ -204,7 +214,10 @@ describe('runWorkerIteration', (): void => {
   });
 
   it('reports a post-build Kubernetes handoff failure with the durable image ref', async (): Promise<void> => {
-    mocks.claimNextDeployment.mockResolvedValueOnce({ deployment: createClaimedDeployment() });
+    mocks.claimNextDeployment.mockResolvedValueOnce({
+      deployment: createClaimedDeployment(),
+      queue: { activeBuildCount: 1, queueDepth: 0, waitTimeMs: 25 },
+    });
     mocks.handoffBuiltDeploymentToKube.mockRejectedValueOnce(new Error('namespace provisioning failed'));
 
     await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
@@ -219,7 +232,10 @@ describe('runWorkerIteration', (): void => {
   it.each(['project_archived', 'edge_state_update_failed'])(
     'does not overwrite the terminal API result for %s',
     async (code: string): Promise<void> => {
-      mocks.claimNextDeployment.mockResolvedValueOnce({ deployment: createClaimedDeployment() });
+      mocks.claimNextDeployment.mockResolvedValueOnce({
+        deployment: createClaimedDeployment(),
+        queue: { activeBuildCount: 1, queueDepth: 0, waitTimeMs: 25 },
+      });
       mocks.handoffBuiltDeploymentToKube.mockRejectedValueOnce(createCompartmentRequestError(code));
 
       await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
@@ -230,7 +246,10 @@ describe('runWorkerIteration', (): void => {
   );
 
   it('reports an unknown failure when a dependency rejects with a non-Error value', async (): Promise<void> => {
-    mocks.claimNextDeployment.mockResolvedValueOnce({ deployment: createClaimedDeployment() });
+    mocks.claimNextDeployment.mockResolvedValueOnce({
+      deployment: createClaimedDeployment(),
+      queue: { activeBuildCount: 1, queueDepth: 0, waitTimeMs: 25 },
+    });
     mocks.buildReleaseImageFromSource.mockRejectedValueOnce('build failed');
 
     await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
@@ -246,7 +265,10 @@ describe('runWorkerIteration', (): void => {
 
     await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
 
-    expect(mocks.claimNextDeployment).toHaveBeenCalledWith(mocks.request);
+    expect(mocks.claimNextDeployment).toHaveBeenCalledWith(mocks.request, {
+      maximumConcurrentBuilds: 2,
+      maximumConcurrentBuildsPerProject: 1,
+    });
     expect(mocks.runGitSourceSyncIteration).toHaveBeenCalledWith(mocks.request);
   });
 
@@ -262,7 +284,10 @@ describe('runWorkerIteration', (): void => {
     const deployment: WorkerClaimedDeployment = createClaimedDeployment();
     vi.spyOn(logger, 'error');
     mocks.runNextScheduledResourceOperation.mockRejectedValueOnce(new Error('retention delete failed'));
-    mocks.claimNextDeployment.mockResolvedValueOnce({ deployment });
+    mocks.claimNextDeployment.mockResolvedValueOnce({
+      deployment,
+      queue: { activeBuildCount: 1, queueDepth: 0, waitTimeMs: 25 },
+    });
 
     await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
 
@@ -285,7 +310,10 @@ describe('runWorkerIteration', (): void => {
       recordedFailure: true,
       resourceName: 'postgres',
     });
-    mocks.claimNextDeployment.mockResolvedValueOnce({ deployment });
+    mocks.claimNextDeployment.mockResolvedValueOnce({
+      deployment,
+      queue: { activeBuildCount: 1, queueDepth: 0, waitTimeMs: 25 },
+    });
 
     await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
 
@@ -324,6 +352,7 @@ function createWorkerConfig(
       scheduling: { nodeSelector: {}, runtimeClassName: 'gvisor', tolerations: [] },
       timeoutMs: 900000,
     },
+    buildQueue: { maximumConcurrentBuilds: 2, maximumConcurrentBuildsPerProject: 1 },
     customDomains: {
       caddyServiceName: 'compartment-caddy',
       ingressClassName: 'traefik',

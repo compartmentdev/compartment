@@ -1,9 +1,9 @@
 import {
   findFirstFairQueuedDeploymentCandidateForUpdate,
   markQueuedDeploymentRunningWithExecutor,
-  recordDeploymentMovementOrganizationClaim,
+  readBuildQueueCounts,
 } from '../queries/deployment-claim.query';
-import type { QueuedDeploymentClaimCandidateRow } from '../queries/deployment-claim.query.types';
+import type { BuildQueueCountsRow, QueuedDeploymentClaimCandidateRow } from '../queries/deployment-claim.query.types';
 import type { DeploymentRow, DeploymentTransaction } from '../queries/deployments.query.types';
 import { updateOperationRecordWithExecutor } from '../queries/operations.query';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -11,33 +11,45 @@ import { reserveDeploymentPublicRouteWithExecutor } from './deployment-route.ser
 import type { DeploymentPublicRouteReservationContext } from './deployment-route.service.types';
 import { buildClaimedDeploymentContext } from './deployment-worker-state.service';
 import type { ClaimedDeploymentContext } from './deployments.service.types';
+import type {
+  BuildQueueClaimInput,
+  BuildQueueObservation,
+  ClaimedDeploymentBuildQueueResult,
+  ClaimedDeploymentReservation,
+} from './deployment-worker-claim.service.types';
 
-interface ClaimedDeploymentReservation {
-  deploymentId: string;
-}
-
-export async function claimQueuedDeploymentForWorker(): Promise<ClaimedDeploymentContext | null> {
-  const claimed: ClaimedDeploymentReservation | null = await claimQueuedDeploymentReservation();
+export async function claimQueuedDeploymentForWorker(
+  input: BuildQueueClaimInput,
+): Promise<ClaimedDeploymentBuildQueueResult> {
+  const claimed: ClaimedDeploymentReservation | null = await claimQueuedDeploymentReservation(input);
   if (claimed === null) {
-    return null;
+    return await readUnclaimedBuildQueueResult();
   }
 
-  return await buildClaimedDeploymentContext(claimed.deploymentId);
+  const deployment: ClaimedDeploymentContext = await buildClaimedDeploymentContext(claimed.deploymentId);
+  return { deployment, queue: claimed.queue };
 }
 
-async function claimQueuedDeploymentReservation(): Promise<ClaimedDeploymentReservation | null> {
+async function claimQueuedDeploymentReservation(
+  input: BuildQueueClaimInput,
+): Promise<ClaimedDeploymentReservation | null> {
   return await getApiDatabase().transaction(
     async (tx: DeploymentTransaction): Promise<ClaimedDeploymentReservation | null> =>
-      await claimQueuedDeploymentWithReservation(tx, new Date()),
+      await claimQueuedDeploymentWithReservation(tx, input, new Date()),
   );
 }
 
 async function claimQueuedDeploymentWithReservation(
   tx: DeploymentTransaction,
+  input: BuildQueueClaimInput,
   now: Date,
 ): Promise<ClaimedDeploymentReservation | null> {
   const candidate: QueuedDeploymentClaimCandidateRow | undefined =
-    await findFirstFairQueuedDeploymentCandidateForUpdate(tx);
+    await findFirstFairQueuedDeploymentCandidateForUpdate(
+      tx,
+      input.maximumConcurrentBuilds,
+      input.maximumConcurrentBuildsPerProject,
+    );
   if (candidate === undefined) {
     return null;
   }
@@ -59,28 +71,41 @@ async function reserveClaimedDeploymentRoute(
     return null;
   }
 
-  await markClaimedDeploymentOperationRunning(tx, candidate.organizationId, deployment.operationId, now);
+  await markClaimedDeploymentOperationRunning(tx, deployment.operationId);
   await reserveDeploymentPublicRouteWithExecutor(
     tx,
     buildDeploymentPublicRouteReservationContext(candidate, deployment.id, now),
   );
 
+  const counts: BuildQueueCountsRow = await readBuildQueueCounts(tx);
   return {
+    createdAt: candidate.createdAt,
     deploymentId: deployment.id,
+    queue: buildQueueObservation(counts, Math.max(0, now.getTime() - new Date(candidate.createdAt).getTime())),
   };
 }
 
-async function markClaimedDeploymentOperationRunning(
-  tx: DeploymentTransaction,
-  organizationId: string,
-  operationId: string,
-  claimedAt: Date,
-): Promise<void> {
-  await recordDeploymentMovementOrganizationClaim(tx, organizationId, claimedAt);
+async function markClaimedDeploymentOperationRunning(tx: DeploymentTransaction, operationId: string): Promise<void> {
   await updateOperationRecordWithExecutor(tx, {
     operationId,
     status: 'running',
   });
+}
+
+async function readUnclaimedBuildQueueResult(): Promise<ClaimedDeploymentBuildQueueResult> {
+  const queue: BuildQueueObservation = await getApiDatabase().transaction(
+    async (tx: DeploymentTransaction): Promise<BuildQueueObservation> =>
+      buildQueueObservation(await readBuildQueueCounts(tx), null),
+  );
+  return { deployment: null, queue };
+}
+
+function buildQueueObservation(counts: BuildQueueCountsRow, waitTimeMs: number | null): BuildQueueObservation {
+  return {
+    activeBuildCount: counts.activeBuildCount,
+    queueDepth: counts.queueDepth,
+    waitTimeMs,
+  };
 }
 
 function buildDeploymentPublicRouteReservationContext(

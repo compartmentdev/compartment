@@ -20,7 +20,6 @@ import type { RegistryCredential } from '../registry-credentials.types';
 import { decryptTenantSecretEnvironment } from '../tenant-secret-environment';
 import { runWorkerBuildJob } from './worker-build-job.service';
 import type { WorkerBuildJobDockerInput, WorkerSourceBuildJobInput } from './worker-build-job.types';
-import { scheduleWorkerBuild } from './worker-build-scheduler.service';
 import { runTrackedDeploymentStep } from './worker-step-runner.service';
 
 interface ReleaseImageBuildContext {
@@ -77,15 +76,12 @@ async function buildPreparedSourceImage(input: ReleaseImageBuildContext, build: 
     eventContext: input.eventContext,
     failureSummary: 'image build failed',
     run: async (): Promise<DockerBuildImageResult> =>
-      await scheduleWorkerBuild(
-        async (): Promise<DockerBuildImageResult> =>
-          await runWorkerBuildJob(input.runtime, input.config.buildSandbox, {
-            build: buildSourceJobInput(input, build),
-            id: input.deployment.artifact.id,
-            internalToken: input.config.runtimeControlToken,
-            onProgressLine: createBuildProgressReporter(input.eventContext),
-          }),
-      ),
+      await runWorkerBuildJob(input.runtime, input.config.buildSandbox, {
+        build: buildSourceJobInput(input, build),
+        id: input.deployment.artifact.id,
+        internalToken: input.config.runtimeControlToken,
+        onProgressLine: createBuildProgressReporter(input.eventContext),
+      }),
     startMessage: 'image build started',
     stepKey: 'building_image',
     successMessage: 'image build completed',

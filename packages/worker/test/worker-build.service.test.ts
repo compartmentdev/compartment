@@ -4,7 +4,6 @@ import type {
   WorkerBuildArtifactSummary,
   WorkerClaimedDeployment,
 } from '@compartment/contracts';
-import type { DockerBuildImageResult } from '@compartment/docker';
 import type { KubeRuntime } from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
 import type { WorkerConfig } from '../src/config';
@@ -20,29 +19,19 @@ type RunWorkerBuildJob = (
   imageRef: string;
   pushed: boolean;
 }>;
-type ScheduleWorkerBuild = (run: () => Promise<DockerBuildImageResult>) => Promise<DockerBuildImageResult>;
 
 const mocks: {
   runWorkerBuildJob: Mock<RunWorkerBuildJob>;
-  scheduleWorkerBuild: Mock<ScheduleWorkerBuild>;
 } = vi.hoisted(
   (): {
     runWorkerBuildJob: Mock<RunWorkerBuildJob>;
-    scheduleWorkerBuild: Mock<ScheduleWorkerBuild>;
   } => ({
     runWorkerBuildJob: vi.fn<RunWorkerBuildJob>(),
-    scheduleWorkerBuild: vi.fn<ScheduleWorkerBuild>(
-      async (run: () => Promise<DockerBuildImageResult>): Promise<DockerBuildImageResult> => await run(),
-    ),
   }),
 );
 
 vi.mock('../src/services/worker-build-job.service', (): { runWorkerBuildJob: Mock<RunWorkerBuildJob> } => ({
   runWorkerBuildJob: mocks.runWorkerBuildJob,
-}));
-
-vi.mock('../src/services/worker-build-scheduler.service', (): { scheduleWorkerBuild: Mock<ScheduleWorkerBuild> } => ({
-  scheduleWorkerBuild: mocks.scheduleWorkerBuild,
 }));
 
 afterEach((): void => {
@@ -136,6 +125,7 @@ function createWorkerConfig(): WorkerConfig {
       scheduling: { nodeSelector: {}, runtimeClassName: 'gvisor', tolerations: [] },
       timeoutMs: 900000,
     },
+    buildQueue: { maximumConcurrentBuilds: 2, maximumConcurrentBuildsPerProject: 1 },
     customDomains: {
       caddyServiceName: 'compartment-caddy',
       ingressClassName: 'traefik',

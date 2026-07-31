@@ -213,9 +213,11 @@ export { variableLocalRunCommandNameSchema } from './contracts/variable-local-ru
 export {
   type WorkerAppendDeploymentEventRequest,
   type WorkerClaimDeploymentResponse,
+  type WorkerClaimDeploymentRequest,
   type WorkerClaimedDeployment,
   type WorkerFailDeploymentRequest,
   type WorkerRecoverOrphanedBuildClaimsResponse,
+  type WorkerRecoverOrphanedBuildClaimsRequest,
   type WorkerProjectServiceSummary,
   type WorkerBuildArtifactSummary,
   workerAppendDeploymentEventPathname,
@@ -224,8 +226,10 @@ export {
   workerRecoverOrphanedBuildClaimsPathname,
   workerAppendDeploymentEventRequestSchema,
   workerClaimDeploymentResponseSchema,
+  workerClaimDeploymentRequestSchema,
   workerFailDeploymentRequestSchema,
   workerRecoverOrphanedBuildClaimsResponseSchema,
+  workerRecoverOrphanedBuildClaimsRequestSchema,
 } from './contracts/internal-worker.contract';
 export * from './contracts/internal-product-job.contract';
 export * from './contracts/internal-deployment-reconcile.contract';

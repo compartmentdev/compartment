@@ -60,9 +60,15 @@ describe('internal request logging', (): void => {
   it('keeps successful polling access requests out of the API logs', async (): Promise<void> => {
     applyApiRouteTestEnv({ logLevel: 'info' });
     mocks.buildWorkerClaimDeploymentResponse.mockReturnValue(
-      workerClaimDeploymentResponseSchema.parse({ deployment: null }),
+      workerClaimDeploymentResponseSchema.parse({
+        deployment: null,
+        queue: { activeBuildCount: 0, queueDepth: 0, waitTimeMs: null },
+      }),
     );
-    mocks.claimQueuedDeploymentForWorker.mockResolvedValueOnce(null);
+    mocks.claimQueuedDeploymentForWorker.mockResolvedValueOnce({
+      deployment: null,
+      queue: { activeBuildCount: 0, queueDepth: 0, waitTimeMs: null },
+    });
     mocks.readAppAccessState.mockResolvedValueOnce(null);
 
     const output: string = await captureStdout(async (): Promise<void> => {
@@ -95,6 +101,7 @@ describe('internal request logging', (): void => {
             authorization: 'Bearer wrong-token',
           },
           method: 'POST',
+          payload: { maximumConcurrentBuilds: 2, maximumConcurrentBuildsPerProject: 1 },
           timeoutMs: 1000,
           url: workerClaimNextDeploymentPathname,
         });
@@ -130,7 +137,10 @@ describe('internal request logging', (): void => {
   it('preserves the claimed-deployment event log while polling access logs stay quiet', async (): Promise<void> => {
     applyApiRouteTestEnv({ logLevel: 'info' });
     mocks.buildWorkerClaimDeploymentResponse.mockReturnValue(createClaimedDeploymentResponse());
-    mocks.claimQueuedDeploymentForWorker.mockResolvedValueOnce(null);
+    mocks.claimQueuedDeploymentForWorker.mockResolvedValueOnce({
+      deployment: null,
+      queue: { activeBuildCount: 0, queueDepth: 0, waitTimeMs: null },
+    });
 
     const output: string = await captureStdout(async (): Promise<void> => {
       await withApiRouteApp(async (app: ApiApp): Promise<void> => {
@@ -140,11 +150,12 @@ describe('internal request logging', (): void => {
             authorization: 'Bearer test-runtime-control-token',
           },
           method: 'POST',
+          payload: { maximumConcurrentBuilds: 2, maximumConcurrentBuildsPerProject: 1 },
           timeoutMs: 1000,
           url: workerClaimNextDeploymentPathname,
         });
 
-        expect(response.statusCode).toBe(200);
+        expect(response.statusCode, response.body).toBe(200);
         expect(workerClaimDeploymentResponseSchema.parse(response.json())).toEqual(createClaimedDeploymentResponse());
       });
     });
@@ -195,6 +206,7 @@ function createClaimedDeploymentResponse(): WorkerClaimDeploymentResponse {
         path: 'services/web',
       },
     },
+    queue: { activeBuildCount: 1, queueDepth: 0, waitTimeMs: 12 },
   });
 }
 
@@ -205,6 +217,9 @@ async function injectPollingRequest(app: ApiApp, input: PollingRouteRequest): Pr
       authorization: input.authorization,
     },
     method: input.method,
+    ...(input.method === 'POST'
+      ? { payload: { maximumConcurrentBuilds: 2, maximumConcurrentBuildsPerProject: 1 } }
+      : {}),
     timeoutMs: 1000,
     url: input.url,
   });

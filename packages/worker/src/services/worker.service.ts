@@ -39,7 +39,7 @@ export async function runWorkerIteration(
   return (
     (await runGitSourceResolutionIteration(request, rawRequest)) ||
     (await runScheduledResourceOperationIteration(request, logger)) ||
-    (await handleClaimedDeploymentOrContinue(request, config, runtime)) ||
+    (await handleClaimedDeploymentOrContinue(request, config, runtime, logger)) ||
     (await runGitSourceSyncIteration(request))
   );
 }
@@ -48,8 +48,10 @@ async function handleClaimedDeploymentOrContinue(
   request: CompartmentRequester,
   config: WorkerConfig,
   runtime: KubeRuntime,
+  logger: Logger<never, boolean>,
 ): Promise<boolean> {
-  const claimed: WorkerClaimDeploymentResponse = await claimNextDeployment(request);
+  const claimed: WorkerClaimDeploymentResponse = await claimNextDeployment(request, config.buildQueue);
+  logBuildQueueObservation(logger, claimed);
   if (claimed.deployment === null) {
     return false;
   }
@@ -60,6 +62,18 @@ async function handleClaimedDeploymentOrContinue(
     request,
     runtime,
   });
+}
+
+function logBuildQueueObservation(logger: Logger<never, boolean>, claimed: WorkerClaimDeploymentResponse): void {
+  logger.info(
+    {
+      activeBuildCount: claimed.queue.activeBuildCount,
+      kind: 'build-queue',
+      queueDepth: claimed.queue.queueDepth,
+      waitTimeMs: claimed.queue.waitTimeMs,
+    },
+    'Build queue observed.',
+  );
 }
 
 async function completeAndPersistClaimedDeployment(input: AttemptClaimedDeploymentCompletionInput): Promise<boolean> {
