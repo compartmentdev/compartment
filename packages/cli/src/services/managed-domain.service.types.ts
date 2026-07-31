@@ -1,14 +1,7 @@
-import type { ManagedDomainReservationRequest, ManagedDomainTargetBindingRequest } from '@compartment/contracts';
+import type { ManagedDomainAllocationRequest } from '@compartment/contracts';
 
-export interface ManagedDomainReservationInput extends ManagedDomainReservationRequest {
+export interface ManagedDomainAllocationInput extends ManagedDomainAllocationRequest {
   brokerUrl: string;
-  reservationToken?: string;
-}
-
-export interface ManagedDomainBindingInput extends ManagedDomainTargetBindingRequest {
-  allocationId: string;
-  brokerUrl: string;
-  scopedToken: string;
 }
 
 export interface ManagedDomainRequestFailure extends Error {

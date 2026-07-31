@@ -3,6 +3,7 @@ import { resolveKubernetesPublicIngress } from './kubernetes-install-ingress.ser
 import { runObservableInstallStep } from './kubernetes-install-progress.service';
 import type {
   KubernetesInstallDeploymentInput,
+  KubernetesIngressEndpoint,
   KubernetesInstallState,
   KubernetesPublicIngress,
 } from './kubernetes-install.service.types';
@@ -24,6 +25,23 @@ export async function resolveInstallPublicIngress(
     async (): Promise<KubernetesPublicIngress> => await discoverPublicIngress(input, foundationInstall),
     (ingress: KubernetesPublicIngress): string | undefined => ingress.ingressEndpoint?.value,
   );
+}
+
+export function assertConfiguredManagedDomainEndpoint(input: KubernetesInstallDeploymentInput): void {
+  if (input.domainMode === 'managed' && input.configuredIngressEndpoint !== null) {
+    assertManagedDomainIngressEndpoint(input.configuredIngressEndpoint);
+  }
+}
+
+export function assertManagedDomainIngressEndpoint(endpoint: KubernetesIngressEndpoint | null): void {
+  if (endpoint?.type === 'hostname') {
+    throw new Error(
+      'Managed domains are unavailable for a hostname Ingress endpoint because the broker can publish only A/AAAA records to an IP address. Use your own domain with --base-domain instead; do not resolve a cloud load-balancer hostname to an IP.',
+    );
+  }
+  if (endpoint === null) {
+    throw new Error('Managed domain install requires a public IPv4 or IPv6 Ingress endpoint.');
+  }
 }
 
 export function applyKubernetesConfiguredIngressState(

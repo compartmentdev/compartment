@@ -1,4 +1,4 @@
-import type { ManagedDomainTarget } from '@compartment/contracts';
+import type { ApiPublicIngressTarget } from '../api-public-ingress-config';
 import type { ApiPublicIngressConfig } from '../config';
 import { resolveAddressRecords, resolveCnameRecords } from './domain-dns-resolution.service';
 
@@ -34,10 +34,10 @@ export function matchesPublicIngressAddressBinding(
   );
 }
 
-function readAddressTargets(targets: ManagedDomainTarget[], type: 'A' | 'AAAA'): string[] {
+function readAddressTargets(targets: ApiPublicIngressTarget[], type: 'A' | 'AAAA'): string[] {
   return targets
-    .filter((target: ManagedDomainTarget): boolean => target.type === type)
-    .map((target: ManagedDomainTarget): string => target.value);
+    .filter((target: ApiPublicIngressTarget): boolean => target.type === type)
+    .map((target: ApiPublicIngressTarget): string => target.value);
 }
 
 function matchesExpectedAddressSet(expectedAddresses: string[], records: string[]): boolean {

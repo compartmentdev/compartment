@@ -257,15 +257,11 @@ No hostless or catch-all Ingress may be created.
 
 No cluster state is changed before this stage succeeds.
 
-### Stage 2: reserve installation identity
+### Stage 2: retain installation identity
 
 1. Create or resume the retained installation identity.
-2. For managed-domain installation, reserve a broker-owned base domain without requiring a public IP first.
-3. Persist the installation ID, install token, domain allocation, selected ingress class, and selected storage class.
-4. Do not allocate a second domain when retrying the same release identity.
-
-The broker allocation contract must separate domain reservation from DNS target binding. The current single-step
-IP-based allocation contract is replaced.
+2. Persist the installation ID, install token, selected ingress class, and selected storage class.
+3. Do not create a second retained identity when retrying the same release.
 
 ### Stage 3: install the foundation chart
 
@@ -284,18 +280,20 @@ The foundation stage creates:
 Caddy is a ClusterIP Service with one internal HTTP port. It has no public Service type, HTTPS listener, ACME storage,
 or certificate mount.
 
-### Stage 4: bind DNS and issue platform TLS
+### Stage 4: allocate managed DNS and issue platform TLS
 
 1. Read all addresses from the Compartment Ingress status.
-2. Preserve address types:
-   - IPv4 becomes an A target;
-   - IPv6 becomes an AAAA target;
-   - a load-balancer hostname remains a hostname target and is not resolved once into unstable IP records.
+2. For a managed domain, require an IPv4 or IPv6 endpoint. Reject a hostname endpoint with guidance to use an
+   operator-owned domain; never resolve a cloud load-balancer hostname into unstable IP records.
 3. If the controller does not publish status, require the explicitly supplied endpoint.
-4. Bind the managed console and default application DNS records to the shared ingress endpoint.
-5. Create the platform Certificate resources.
-6. Wait for `Certificate Ready=True`.
-7. Fail without marking the installation ready when DNS or certificate issuance does not converge.
+4. Allocate the managed domain with one unauthenticated `POST /v1/managed-domains` containing `installationId`,
+   `publicIp`, `requestedLabelSource`, and optional CLI/runtime metadata.
+5. Retain the returned `baseDomain` and `acmeDnsToken`.
+6. Create the platform Certificate resources. The cert-manager webhook presents and cleans TXT records through
+   `PUT` and `DELETE /v1/managed-domains/acme-dns/txt`, sending `{name,value}` with
+   `Authorization: Bearer <acmeDnsToken>` and requiring HTTP 204.
+7. Wait for `Certificate Ready=True`.
+8. Fail without marking the installation ready when DNS or certificate issuance does not converge.
 
 Managed wildcard issuance requires a cert-manager DNS-01 integration with the managed-domain broker. That integration
 is a hard implementation dependency. The existing Caddy DNS module is not reused as an implicit second certificate
@@ -419,11 +417,9 @@ Caddy does not:
 
 The broker remains authoritative for:
 
-- allocation identity;
-- broker-owned DNS names;
-- typed DNS target binding;
-- scoped DNS-01 challenge authorization;
-- replay after provider drift.
+- allocating a broker-owned base domain from an installation identity and public IPv4 or IPv6 address;
+- publishing the corresponding A or AAAA records;
+- issuing the ACME DNS token used to create and remove DNS-01 TXT records.
 
 The customer cluster remains authoritative for Certificate resources, TLS Secrets, Ingress resources, and private
 keys.
@@ -595,7 +591,7 @@ Owns:
 - staged Helm orchestration;
 - image trust verification;
 - typed ingress endpoint observation;
-- managed-domain reservation and DNS binding orchestration;
+- managed-domain IP allocation and acme-dns token retention;
 - TLS and registry readiness waits;
 - first-owner bootstrap;
 - retained install retry behavior.
@@ -621,7 +617,7 @@ The chart must not own dynamic project workloads or dynamic custom-domain lifecy
 
 Own:
 
-- typed managed-domain reservation and typed endpoint binding;
+- the managed-domain allocation request and response used by the production broker;
 - explicit installation and certificate status DTOs where public contracts require them;
 - internal custom-domain reconciliation contracts;
 - registry authorization contracts only when they cross a process boundary.
@@ -667,12 +663,16 @@ transport profile and keeps the explicit route allowlist.
 
 ### Managed-domain broker
 
-The broker contract changes from one IP-only allocation call to:
+The client uses the production broker contract without extending it:
 
-1. reserve allocation;
-2. bind typed public ingress targets;
-3. authorize scoped DNS-01 challenge records;
-4. replay desired DNS state.
+1. allocate the domain with one unauthenticated `POST /v1/managed-domains` containing `installationId`, `publicIp`,
+   `requestedLabelSource`, and optional client metadata;
+2. create DNS-01 records with `PUT /v1/managed-domains/acme-dns/txt`;
+3. remove DNS-01 records with `DELETE /v1/managed-domains/acme-dns/txt`.
+
+The TXT requests contain `name` and `value`, authenticate with the allocation response's `acmeDnsToken`, and succeed
+with an empty `204` response. The broker publishes only A or AAAA records for `publicIp`; a hostname ingress endpoint
+is therefore not eligible for a managed domain.
 
 The broker never receives certificate private keys.
 
@@ -698,7 +698,7 @@ fix-forward procedure. Product rollback compatibility is not required for this u
   address.
 - Prove host-to-ClusterIP node pulls on a kube-proxy-less Cilium eBPF cluster.
 - Prove cert-manager DNS-01 through the managed-domain broker.
-- Confirm typed A, AAAA, and hostname target behavior.
+- Confirm IPv4 and IPv6 allocation behavior and early managed-domain rejection for hostname ingress endpoints.
 - Stop implementation if either registry reachability or broker DNS-01 has no canonical solution.
 - Do not delete the current registry mirror or registry-auth topology until the replacement proof is recorded.
 
@@ -722,10 +722,11 @@ fix-forward procedure. Product rollback compatibility is not required for this u
 - Preserve public path allowlists and Edge authorization.
 - Persist typed ingress endpoint state.
 
-### Phase 3: split domain reservation, DNS binding, and TLS
+### Phase 3: move managed DNS-01 and TLS to cert-manager
 
-- Split broker reservation from target binding.
-- Preserve IPv4, IPv6, and hostname targets.
+- Keep the production single-request managed-domain allocation contract.
+- Pass the resolved IPv4 or IPv6 ingress endpoint as `publicIp` and reject hostname endpoints before heavy install
+  phases.
 - Add the cert-manager DNS-01 broker integration.
 - Move platform TLS to Certificate and Ingress Secret references.
 - Rewrite system-domain activation around Ingress and Certificate readiness.
@@ -802,7 +803,7 @@ exact delete list.
 
 - Rewrite install command input, wizard, validation, result, URL, values, and progress output.
 - Rewrite Kubernetes install orchestration, foundation, ingress observation, retained state, and release values.
-- Rewrite managed-domain orchestration to reserve then bind typed targets.
+- Keep managed-domain orchestration on the production broker's single IP allocation contract.
 - Rewrite system-domain release and lifecycle services around Ingress and Certificate state.
 - Add registry endpoint and kubelet pull readiness orchestration.
 - Format descriptor schema failures at the canonical CLI parsing boundary. Both `compartment.yml` and
@@ -812,8 +813,7 @@ exact delete list.
 
 ### Contracts and SDK
 
-- Change managed-domain allocation contracts from `publicIp` to reservation plus typed targets.
-- Add named IPv4, IPv6, and hostname target types.
+- Keep `publicIp` in the managed-domain allocation contract and reject hostname endpoints for managed installs.
 - Add dynamic custom-domain reconcile contracts.
 - Add TLS readiness and failure state to the applicable public domain contracts.
 - Add registry authorization process contracts only where a real process boundary requires them.
@@ -863,10 +863,9 @@ exact delete list.
 
 ### Managed-domain broker
 
-- Split allocation reservation from DNS target binding.
-- Accept typed A, AAAA, and hostname targets.
-- Support scoped DNS-01 challenge authorization for cert-manager.
-- Preserve replay and ownership guarantees.
+- Keep the existing single `POST /v1/managed-domains` allocation with `publicIp`.
+- Use the existing ACME DNS token endpoints for cert-manager TXT record creation and deletion.
+- Reject hostname ingress endpoints in the client because the broker publishes only A and AAAA records.
 - Update the managed-install test broker and contract fixtures.
 
 ### Documentation
@@ -888,7 +887,7 @@ exact delete list.
 ### Acceptance and security tests
 
 - Add shared-ingress coexistence tests.
-- Add managed DNS tests for IP and hostname targets.
+- Add managed DNS tests for IPv4 and IPv6 endpoints and early hostname-endpoint rejection.
 - Add Certificate readiness and failure tests.
 - Add registry push, node pull, authorization, retention, and recovery tests.
 - Add cross-organization API, routing, network, Secret, storage, and image negative tests.
@@ -962,13 +961,15 @@ The public `system domain attach-cert` command is not automatically deleted. Pha
 outcome. If retained, its implementation produces an Ingress-consumed TLS Secret; if deleted, its command, contract,
 tests, and documentation are removed in that phase. Phase 3 cannot complete with the choice unresolved.
 
-### IP-only DNS and allocation
+### Superseded managed-domain allocation model
 
-- broker inputs named `publicIp`.
-- retained state that cannot represent IPv6 or load-balancer hostnames.
-- one-time resolution of a load-balancer hostname into permanent A records.
-- allocation APIs that require the ingress target before reserving the install identity.
-- the assumption that an ingress IP belongs exclusively to Compartment.
+- reservation, target-binding, challenge, and replay endpoints;
+- allocation IDs and scoped tokens in retained state;
+- one-time resolution of a load-balancer hostname into permanent A records;
+- claims that the production broker accepts or tracks hostname targets.
+
+The surviving production contract intentionally requires `publicIp`. Retained ingress state may describe hostname
+endpoints for operator-owned domains, but managed-domain installation rejects them rather than resolving them.
 
 ### Install-time NetworkPolicy checks
 
@@ -1068,7 +1069,8 @@ of the cluster lifecycle.
 
 ### DNS and TLS
 
-- Managed installation supports IPv4, IPv6, and hostname ingress targets.
+- Managed installation supports IPv4 and IPv6 ingress endpoints; hostname endpoints fail early with
+  operator-owned-domain guidance.
 - Console and default application hosts resolve to the shared ingress endpoint.
 - Platform Certificate readiness gates successful installation.
 - Custom-domain readiness gates Edge activation.
@@ -1188,8 +1190,9 @@ Implementation does not begin beyond focused proofs until these are resolved:
 
 1. A portable, private, TLS-protected, node-reachable bundled-registry endpoint must work without external registry
    credentials or node runtime modification.
-2. cert-manager must complete managed wildcard DNS-01 through the broker with allocation-scoped authority.
-3. The broker must preserve IP and hostname targets without treating a shared ingress endpoint as installation-owned.
+2. cert-manager must complete managed wildcard DNS-01 through the broker with the allocation's ACME DNS token.
+3. Managed-domain installation must reject hostname ingress endpoints before heavy phases and direct the operator to
+   `--base-domain`; it must never freeze a cloud load-balancer hostname to a resolved IP.
 4. The exact supported Ingress Controller, Kubernetes, and cert-manager version matrix must be published.
 
 NetworkPolicy enforcement detection is intentionally not a blocker because it is explicitly excluded from installer

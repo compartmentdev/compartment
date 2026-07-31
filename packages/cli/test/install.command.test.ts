@@ -58,7 +58,6 @@ vi.mock('../src/commands/install/install.command.session', (): object => ({
 
 describe('install command boundary', (): void => {
   beforeEach((): void => {
-    delete process.env.COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN;
     mocks.assertLocalTools.mockReset().mockResolvedValue(undefined);
     mocks.deployInstall.mockReset().mockResolvedValue(createDeploymentResult());
     mocks.installOwner.mockReset().mockResolvedValue(createInstallResult());
@@ -119,7 +118,6 @@ describe('install command boundary', (): void => {
     expect(exitCode).toBe(1);
     expect(readCliStderr(capture)).toContain('Missing required install input: --email.');
     expect(readCliStderr(capture)).not.toContain('--init-install');
-    expect(readCliStderr(capture)).not.toContain('COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN');
     expect(mocks.deployInstall).not.toHaveBeenCalled();
   });
 

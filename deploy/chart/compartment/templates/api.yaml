@@ -77,7 +77,7 @@ spec:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: install-token}
             - name: COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN
               valueFrom:
-                secretKeyRef: {name: {{ include "compartment.installStateSecretName" . }}, key: managed-domain-broker-token}
+                secretKeyRef: {name: {{ include "compartment.installStateSecretName" . }}, key: managed-domain-acme-dns-token}
             - name: COMPARTMENT_PRODUCT_LOG_INGEST_TOKEN
               valueFrom:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: product-log-ingest-token}

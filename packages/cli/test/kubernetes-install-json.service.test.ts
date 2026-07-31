@@ -85,17 +85,17 @@ describe('retained Kubernetes install state JSON', (): void => {
   );
 
   it('does not expose a partial retained Secret payload in failures', async (): Promise<void> => {
-    const encodedSecret: string = Buffer.from('managed-domain-broker-token').toString('base64');
+    const encodedSecret: string = Buffer.from('managed-domain-acme-dns-token').toString('base64');
     runCommandWithTimeout.mockResolvedValue({
       exitCode: 1,
       stderr: 'Error from server (Forbidden)',
-      stdout: JSON.stringify({ items: [{ data: { 'managed-domain-broker-token': encodedSecret } }] }),
+      stdout: JSON.stringify({ items: [{ data: { 'managed-domain-acme-dns-token': encodedSecret } }] }),
     });
 
     const inspection: Promise<RetainedKubernetesInstallState | null> = readRetainedKubernetesInstallState(input);
     await expect(inspection).rejects.toThrow('Error from server (Forbidden)');
     await expect(inspection).rejects.not.toThrow(encodedSecret);
-    await expect(inspection).rejects.not.toThrow('managed-domain-broker-token');
+    await expect(inspection).rejects.not.toThrow('managed-domain-acme-dns-token');
   });
 });
 

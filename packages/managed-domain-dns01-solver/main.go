@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,9 +21,15 @@ import (
 )
 
 const solverName = "managed-domain-broker"
+const acmeDnsTxtPath = "/v1/managed-domains/acme-dns/txt"
+
+var brokerRetryDelays = []time.Duration{
+	250 * time.Millisecond,
+	500 * time.Millisecond,
+	1 * time.Second,
+}
 
 type solverConfig struct {
-	AllocationID   string
 	BrokerURL      string
 	TokenSecretRef secretKeyRef
 }
@@ -36,6 +43,33 @@ type secretKeyRef struct {
 type challengeBody struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
+}
+
+type brokerRequestError struct {
+	err error
+}
+
+func (e *brokerRequestError) Error() string {
+	return fmt.Sprintf("call managed-domain broker: %v", e.err)
+}
+
+func (e *brokerRequestError) Unwrap() error {
+	return e.err
+}
+
+type brokerStatusError struct {
+	body       string
+	method     string
+	statusCode int
+}
+
+func (e *brokerStatusError) Error() string {
+	return fmt.Sprintf(
+		"managed-domain broker %s returned %d: %s",
+		e.method,
+		e.statusCode,
+		e.body,
+	)
 }
 
 type brokerSolver struct {
@@ -63,7 +97,7 @@ func (s *brokerSolver) Name() string {
 }
 
 func (s *brokerSolver) Present(ch *acme.ChallengeRequest) error {
-	return s.request(http.MethodPost, ch)
+	return s.request(http.MethodPut, ch)
 }
 
 func (s *brokerSolver) CleanUp(ch *acme.ChallengeRequest) error {
@@ -76,7 +110,7 @@ func (s *brokerSolver) Initialize(config *rest.Config, _ <-chan struct{}) error 
 		return fmt.Errorf("create Kubernetes client: %w", err)
 	}
 	s.kubernetes = client
-	s.client = &http.Client{Timeout: 10 * time.Second}
+	s.client = &http.Client{Timeout: 15 * time.Second}
 	return nil
 }
 
@@ -89,12 +123,29 @@ func (s *brokerSolver) request(method string, ch *acme.ChallengeRequest) error {
 	if err != nil {
 		return fmt.Errorf("encode broker challenge request: %w", err)
 	}
-	url := fmt.Sprintf(
-		"%s/v1/managed-domains/allocations/%s/challenges",
-		strings.TrimSuffix(s.config.BrokerURL, "/"),
-		s.config.AllocationID,
-	)
-	request, err := http.NewRequest(method, url, bytes.NewReader(body))
+	return s.requestWithRetry(context.Background(), method, token, body)
+}
+
+func (s *brokerSolver) requestWithRetry(ctx context.Context, method string, token string, body []byte) error {
+	var requestError error
+	for attempt := 0; attempt <= len(brokerRetryDelays); attempt++ {
+		requestError = s.sendRequest(ctx, method, token, body)
+		if requestError == nil {
+			return nil
+		}
+		if !shouldRetryBrokerRequest(requestError) || attempt == len(brokerRetryDelays) {
+			return requestError
+		}
+		if err := waitBeforeBrokerRetry(ctx, brokerRetryDelays[attempt]); err != nil {
+			return fmt.Errorf("managed-domain broker retry canceled: %w", err)
+		}
+	}
+	return requestError
+}
+
+func (s *brokerSolver) sendRequest(ctx context.Context, method string, token string, body []byte) error {
+	url := strings.TrimSuffix(s.config.BrokerURL, "/") + acmeDnsTxtPath
+	request, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("create broker challenge request: %w", err)
 	}
@@ -102,19 +153,46 @@ func (s *brokerSolver) request(method string, ch *acme.ChallengeRequest) error {
 	request.Header.Set("Content-Type", "application/json")
 	response, err := s.client.Do(request)
 	if err != nil {
-		return fmt.Errorf("call managed-domain broker: %w", err)
+		if ctx.Err() != nil {
+			return fmt.Errorf("call managed-domain broker: %w", err)
+		}
+		return &brokerRequestError{err: err}
 	}
 	defer response.Body.Close()
 	responseBody, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf(
-			"managed-domain broker %s returned %d: %s",
-			method,
-			response.StatusCode,
-			strings.TrimSpace(string(responseBody)),
-		)
+	if response.StatusCode != http.StatusNoContent {
+		return &brokerStatusError{
+			body:       strings.TrimSpace(string(responseBody)),
+			method:     method,
+			statusCode: response.StatusCode,
+		}
 	}
 	return nil
+}
+
+func shouldRetryBrokerRequest(err error) bool {
+	var requestError *brokerRequestError
+	if errors.As(err, &requestError) {
+		return true
+	}
+	var statusError *brokerStatusError
+	if errors.As(err, &statusError) {
+		return statusError.statusCode == http.StatusRequestTimeout ||
+			statusError.statusCode == http.StatusTooManyRequests ||
+			statusError.statusCode >= http.StatusInternalServerError
+	}
+	return false
+}
+
+func waitBeforeBrokerRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (s *brokerSolver) readToken(ref secretKeyRef) (string, error) {
@@ -131,21 +209,19 @@ func (s *brokerSolver) readToken(ref secretKeyRef) (string, error) {
 
 func loadEnvironmentConfig() (solverConfig, error) {
 	config := solverConfig{
-		AllocationID: os.Getenv("ALLOCATION_ID"),
-		BrokerURL:    os.Getenv("BROKER_URL"),
+		BrokerURL: os.Getenv("BROKER_URL"),
 		TokenSecretRef: secretKeyRef{
 			Key:       os.Getenv("TOKEN_SECRET_KEY"),
 			Name:      os.Getenv("TOKEN_SECRET_NAME"),
 			Namespace: os.Getenv("TOKEN_SECRET_NAMESPACE"),
 		},
 	}
-	if config.AllocationID == "" ||
-		config.BrokerURL == "" ||
+	if config.BrokerURL == "" ||
 		config.TokenSecretRef.Name == "" ||
 		config.TokenSecretRef.Key == "" ||
 		config.TokenSecretRef.Namespace == "" {
 		return config, fmt.Errorf(
-			"ALLOCATION_ID, BROKER_URL, TOKEN_SECRET_NAMESPACE, TOKEN_SECRET_NAME, and TOKEN_SECRET_KEY are required",
+			"BROKER_URL, TOKEN_SECRET_NAMESPACE, TOKEN_SECRET_NAME, and TOKEN_SECRET_KEY are required",
 		)
 	}
 	return config, nil

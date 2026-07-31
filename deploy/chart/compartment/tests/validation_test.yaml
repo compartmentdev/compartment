@@ -19,7 +19,7 @@ tests:
         acmeEmail: admin@example.com
     asserts:
       - failedTemplate:
-          errorMessage: secrets.managedDomainBrokerToken is required for managed TLS
+          errorMessage: secrets.managedDomainAcmeDnsToken is required for managed TLS
 
   - it: requires managed domain mode for managed TLS
     set:
@@ -27,7 +27,7 @@ tests:
         <<: *managedPlatform
         domainMode: custom
       secrets:
-        managedDomainBrokerToken: broker-token
+        managedDomainAcmeDnsToken: broker-token
     asserts:
       - failedTemplate:
           errorMessage: platform.domainMode must be managed when platform.tlsMode is broker-dns01
@@ -36,9 +36,8 @@ tests:
     set:
       platform:
         <<: *managedPlatform
-        managedDomainAllocationId: allocation-1
       secrets:
-        managedDomainBrokerToken: broker-token
+        managedDomainAcmeDnsToken: broker-token
       tls:
         issuerRef:
           name: customer-wide
@@ -53,10 +52,10 @@ tests:
         <<: *managedPlatform
         managedDomainBrokerUrl: ''
       secrets:
-        managedDomainBrokerToken: broker-token
+        managedDomainAcmeDnsToken: broker-token
     asserts:
       - failedTemplate:
-          errorMessage: platform.managedDomainBrokerUrl is required when secrets.managedDomainBrokerToken is configured
+          errorMessage: platform.managedDomainBrokerUrl is required when secrets.managedDomainAcmeDnsToken is configured
 
   - it: requires the canonical broker URL when a broker token is configured
     set:
@@ -68,10 +67,10 @@ tests:
         tlsMode: issuer
         managedDomainBrokerUrl: ''
       secrets:
-        managedDomainBrokerToken: retained-token
+        managedDomainAcmeDnsToken: retained-token
     asserts:
       - failedTemplate:
-          errorMessage: platform.managedDomainBrokerUrl is required when secrets.managedDomainBrokerToken is configured
+          errorMessage: platform.managedDomainBrokerUrl is required when secrets.managedDomainAcmeDnsToken is configured
 
   - it: rejects an endpoint type that does not match its value
     set:

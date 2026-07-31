@@ -65,8 +65,7 @@ export interface KubernetesInstallState {
   ingressClassName: string;
   ingressEndpoint: KubernetesIngressEndpoint | null;
   ingressTargets: KubernetesIngressEndpoint[];
-  managedDomainAllocationId: string;
-  managedDomainBrokerToken: string;
+  managedDomainAcmeDnsToken: string;
   publicProtocol: KubernetesPublicProtocol;
   registryHostname: string;
   registryIssuerRef: KubernetesInstallRegistryIssuerReference;
@@ -75,10 +74,9 @@ export interface KubernetesInstallState {
 
 export interface RetainedManagedDomainState {
   acmeEmail: string;
-  allocationId: string;
+  acmeDnsToken: string;
   baseDomain: string;
   brokerUrl: string;
-  brokerToken: string;
   issuerRef: DomainIssuerReference;
   publicProtocol: 'https';
   tlsMode: 'broker-dns01';
@@ -118,7 +116,6 @@ export interface KubernetesInstallPlatformValues {
   domainGeneration: number;
   domainMode: KubernetesInstallDomainMode;
   installationId: string;
-  managedDomainAllocationId?: string | undefined;
   managedDomainBrokerUrl: string;
   publicProtocol?: KubernetesPublicProtocol | undefined;
   tlsMode?: KubernetesInstallTlsMode | undefined;
@@ -126,7 +123,7 @@ export interface KubernetesInstallPlatformValues {
 
 export interface KubernetesInstallSecretValueFields {
   installToken: string;
-  managedDomainBrokerToken: string;
+  managedDomainAcmeDnsToken: string;
 }
 
 export interface KubernetesPublicIngress {

@@ -71,9 +71,10 @@ Make the k3s kube context available to the CLI, then run:
 compartment install
 ```
 
-The default domain choice is a managed Compartment domain. It is reserved directly during installation with no prior
-setup, then bound to the Ingress endpoint discovered by the installer. Select an operator-owned domain only when you
-want to provide its DNS and certificate configuration yourself.
+The default domain choice is a managed Compartment domain. It is allocated directly during installation with no prior
+setup when the discovered Ingress endpoint is IPv4 or IPv6. If the Ingress publishes a hostname, use an operator-owned
+domain: the production broker publishes only A/AAAA records, and the installer will not resolve a cloud load-balancer
+hostname to an unstable IP address.
 
 Default k3s supplies Traefik, ServiceLB, Flannel, its NetworkPolicy controller, CoreDNS, and the `local-path`
 StorageClass. The pinned cert-manager manifest supplies the Certificate APIs, controller, webhook, and cainjector.

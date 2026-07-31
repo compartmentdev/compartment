@@ -5,8 +5,8 @@ import {
   type DomainDnsRecord,
   type DomainDnsRecordPurpose,
   type DomainDnsRecordType,
-  type ManagedDomainTarget,
 } from '@compartment/contracts';
+import type { ApiPublicIngressTarget } from '../api-public-ingress-config';
 import type { ApiPublicIngressConfig } from '../config';
 import {
   buildCompartmentDomainOwnershipRecordName,
@@ -120,8 +120,8 @@ async function verifyDirectAddressBinding(
   publicIngressConfig: ApiPublicIngressConfig,
 ): Promise<DomainCheckFailure | null> {
   const answers: DirectDomainBindingAnswers = await resolveDirectDomainBindingAnswers(host);
-  const hostnameTargets: ManagedDomainTarget[] = publicIngressConfig.targets.filter(
-    (target: ManagedDomainTarget): boolean => target.type === 'hostname',
+  const hostnameTargets: ApiPublicIngressTarget[] = publicIngressConfig.targets.filter(
+    (target: ApiPublicIngressTarget): boolean => target.type === 'hostname',
   );
   if (hostnameTargets.length > 0) {
     return verifyHostnameBinding(host, answers.cnameRecords, hostnameTargets);
@@ -143,10 +143,10 @@ async function verifyDirectAddressBinding(
 function verifyHostnameBinding(
   host: string,
   cnameRecords: string[],
-  hostnameTargets: ManagedDomainTarget[],
+  hostnameTargets: ApiPublicIngressTarget[],
 ): DomainCheckFailure | null {
   const expectedHostnames: Set<string> = new Set<string>(
-    hostnameTargets.map((target: ManagedDomainTarget): string => target.value),
+    hostnameTargets.map((target: ApiPublicIngressTarget): string => target.value),
   );
   return cnameRecords.some((record: string): boolean => expectedHostnames.has(record))
     ? null

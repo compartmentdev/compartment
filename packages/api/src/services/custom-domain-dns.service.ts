@@ -2,11 +2,11 @@ import type {
   CustomDomainCheckStatus,
   CustomDomainDnsRecordPurpose,
   CustomDomainDnsRecordType,
-  ManagedDomainTarget,
 } from '@compartment/contracts';
 import { normalizeDnsHostname } from '@compartment/utils';
 import { getDomain } from 'tldts';
 import { hashToken } from '../lib/tokens';
+import type { ApiPublicIngressTarget } from '../api-public-ingress-config';
 import {
   buildCompartmentDomainOwnershipRecordName,
   buildCompartmentDomainOwnershipValue,
@@ -60,7 +60,7 @@ function buildOwnershipDnsRecord(input: CustomDomainDnsInput): CustomDomainDnsRe
 function buildRoutingDnsRecords(input: CustomDomainDnsInput): CustomDomainDnsRecordInstruction[] {
   if (input.hostPlan.domainKind === 'managed') {
     return input.config.targets.map(
-      (target: ManagedDomainTarget): CustomDomainDnsRecordInstruction =>
+      (target: ApiPublicIngressTarget): CustomDomainDnsRecordInstruction =>
         buildRoutingDnsRecord(input.host, target.type === 'hostname' ? 'CNAME' : target.type, target.value, true),
     );
   }
@@ -120,12 +120,12 @@ async function verifyManagedTargetRoutingRecords(
   input: CustomDomainDnsVerificationInput,
 ): Promise<'invalid' | 'valid'> {
   const answers: DirectDomainBindingAnswers = await resolveDirectDomainBindingAnswers(input.host);
-  const hostnameTargets: ManagedDomainTarget[] = input.config.targets.filter(
-    (target: ManagedDomainTarget): boolean => target.type === 'hostname',
+  const hostnameTargets: ApiPublicIngressTarget[] = input.config.targets.filter(
+    (target: ApiPublicIngressTarget): boolean => target.type === 'hostname',
   );
   if (hostnameTargets.length > 0) {
     const expectedHostnames: Set<string> = new Set<string>(
-      hostnameTargets.map((target: ManagedDomainTarget): string => target.value),
+      hostnameTargets.map((target: ApiPublicIngressTarget): string => target.value),
     );
     return answers.cnameRecords.some((record: string): boolean => expectedHostnames.has(normalizeDnsHostname(record)))
       ? 'valid'

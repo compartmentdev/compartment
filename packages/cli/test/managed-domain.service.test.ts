@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { requireManagedBrokerUrl } from '../src/services/kubernetes-install-managed-state.support';
-import { reserveInstallManagedDomain } from '../src/services/managed-domain.service';
+import { allocateInstallManagedDomain } from '../src/services/managed-domain.service';
 
 describe('managed-domain broker configuration', (): void => {
+  const publicIp: string = [8, 8, 8, 8].join('.');
   afterEach((): void => {
     vi.unstubAllGlobals();
   });
@@ -15,20 +16,21 @@ describe('managed-domain broker configuration', (): void => {
     }
   });
 
-  it('reports the absolute broker URL for a non-HTTP reservation failure', async (): Promise<void> => {
+  it('reports the absolute broker URL for a non-HTTP allocation failure', async (): Promise<void> => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (): Promise<Response> => await Promise.resolve(Response.json({}))),
     );
 
     await expect(
-      reserveInstallManagedDomain({
+      allocateInstallManagedDomain({
         brokerUrl: 'https://broker.compartment.run',
         installationId: 'installation-123',
+        publicIp,
         requestedLabelSource: 'Acme',
       }),
     ).rejects.toThrow(
-      'Managed-domain broker POST https://broker.compartment.run/v1/managed-domains/allocations request failed while attempting to reserve managed domain:',
+      'Managed-domain broker POST https://broker.compartment.run/v1/managed-domains request failed while attempting to allocate managed domain:',
     );
   });
 
@@ -36,9 +38,10 @@ describe('managed-domain broker configuration', (): void => {
     const brokerUrl: string = 'https://broker-user:broker-secret@broker.compartment.run';
 
     await expect(
-      reserveInstallManagedDomain({
+      allocateInstallManagedDomain({
         brokerUrl,
         installationId: 'installation-123',
+        publicIp,
         requestedLabelSource: 'Acme',
       }),
     ).rejects.toSatisfy(

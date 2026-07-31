@@ -58,7 +58,8 @@ the same node. Priority does not guarantee availability during node failure or k
 
 Set `ingress.className` to the selected existing IngressClass. When that controller does not publish Ingress status,
 set `ingress.endpoint.type` to `A`, `AAAA`, or `hostname` and provide `ingress.endpoint.value`. The installer persists
-the equivalent typed targets in `ingress.targetsJson`.
+the equivalent typed targets in `ingress.targetsJson`. Managed domains require `A` or `AAAA`; use an operator-owned
+base domain for a hostname endpoint because the managed-domain broker cannot publish CNAME records.
 
 The chart renders exact console and application host rules with no catch-all host, default backend, or
 controller-specific annotation. Caddy is reachable only through a ClusterIP Service on the internal HTTP port. Its
@@ -100,9 +101,12 @@ bundled PostgreSQL Service, Deployment, or PVC; the API and migration Job read t
 
 ## TLS
 
-Managed-domain installations use the bundled allocation-scoped DNS-01 solver. For an operator-owned domain, set
-`tls.issuerRef.name` and `tls.issuerRef.kind` to an existing Issuer or ClusterIssuer. `tls.existingSecret` may reference
-an existing `kubernetes.io/tls` Secret.
+Managed-domain installations use the bundled ACME DNS token-scoped solver only for one wildcard Certificate. The
+console and the default `registry.<base-domain>` host reuse that wildcard Secret. Project custom domains use a
+separate namespaced HTTP-01 Issuer, so their exact hostnames are never sent to the managed-domain broker. A managed
+registry hostname outside the wildcard depth also uses that HTTP-01 Issuer unless it has an explicit different
+issuer. For an operator-owned domain, set `tls.issuerRef.name` and `tls.issuerRef.kind` to an existing Issuer or
+ClusterIssuer. `tls.existingSecret` may reference an existing `kubernetes.io/tls` Secret.
 
 The selected Ingress and cert-manager path own public TLS. Compartment does not create, copy, or mount operator
 certificate material.

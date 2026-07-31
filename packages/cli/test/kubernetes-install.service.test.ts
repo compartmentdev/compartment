@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import type { ManagedDomainReservationRequest } from '@compartment/contracts';
+import type { ManagedDomainAllocationRequest } from '@compartment/contracts';
 import type { JsonValue } from '@compartment/utils';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { CommandResult } from '../src/command-runner.types';
@@ -116,7 +116,6 @@ describe('Kubernetes install deployment', (): void => {
   });
 
   afterEach((): void => {
-    delete process.env.COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN;
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -150,35 +149,25 @@ describe('Kubernetes install deployment', (): void => {
       'helm:foundation',
       'kubectl:ingress',
       'broker:allocate',
-      'broker:bind',
       'helm:foundation',
       'helm:full',
       'kubectl:certificate',
     ]);
-    const brokerRequest: ManagedDomainReservationRequest = readBrokerRequestBody(brokerRequests[0]!);
-    expect(brokerRequest).toMatchObject({ requestedLabelSource: 'Acme Dev' });
+    const brokerRequest: ManagedDomainAllocationRequest = readBrokerRequestBody(brokerRequests[0]!);
+    expect(brokerRequest).toMatchObject({ publicIp: detectedPublicIpv4, requestedLabelSource: 'Acme Dev' });
+    expect(brokerRequests).toHaveLength(1);
     expect(new Headers(brokerRequests[0]!.headers).get('Authorization')).toBeNull();
-    expect(new Headers(brokerRequests[1]!.headers).get('Authorization')).toBe('Bearer allocation-token');
     expect(readResolvedInstallValues(state)).toMatchObject({
       platform: {
         baseDomain: 'acme.compartment.run',
-        managedDomainAllocationId: 'allocation-1',
         publicProtocol: 'https',
         tlsMode: 'broker-dns01',
       },
-      secrets: { managedDomainBrokerToken: 'allocation-token' },
+      secrets: { managedDomainAcmeDnsToken: 'acme-dns-token' },
     });
     expect(state.installValueModes).toEqual([0o600, 0o600, 0o600]);
     expect(readCommandText()).not.toContain(result.installToken);
     await expect(readFile(state.installValuePaths[0]!, 'utf8')).rejects.toThrow();
-    process.env.COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN = 'test-reservation-token';
-    const authorizedState: InstallHarnessState = createInstallHarnessState();
-    mocks.runCommand.mockImplementation(createInstallCommandHandler(authorizedState));
-    const authorizedRequests: RequestInit[] = [];
-    stubManagedInstallFetch(authorizedState.events, authorizedRequests);
-    await deployAndWaitForKubernetesInstall(managedDeploymentInput);
-    expect(new Headers(authorizedRequests[0]!.headers).get('Authorization')).toBe('Bearer test-reservation-token');
-    expect(new Headers(authorizedRequests[1]!.headers).get('Authorization')).toBe('Bearer allocation-token');
   });
 
   it('retries transient broker failures with the same installation identity', async (): Promise<void> => {
@@ -192,14 +181,11 @@ describe('Kubernetes install deployment', (): void => {
       vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
         if (readFetchUrl(input).startsWith('https://broker.compartment.run')) {
           brokerRequests.push(init ?? {});
-          if (readFetchUrl(input).endsWith('/targets')) {
-            return await Promise.resolve(managedBrokerResponse(readFetchUrl(input)));
-          }
           brokerAttempt += 1;
           if (brokerAttempt < 3) {
             return await Promise.resolve(new Response('', { status: 502 }));
           }
-          return await Promise.resolve(managedBrokerResponse(readFetchUrl(input)));
+          return await Promise.resolve(managedBrokerResponse());
         }
         return await Promise.resolve(readyControlPlaneResponse());
       }),
@@ -212,7 +198,7 @@ describe('Kubernetes install deployment', (): void => {
     });
     await vi.advanceTimersByTimeAsync(10_000);
     await expect(install).resolves.toMatchObject({ baseDomain: 'acme.compartment.run' });
-    expect(brokerRequests).toHaveLength(4);
+    expect(brokerRequests).toHaveLength(3);
     expect(brokerRequests.slice(0, 3).map(readBrokerRequestBody)).toEqual([
       readBrokerRequestBody(brokerRequests[0]!),
       readBrokerRequestBody(brokerRequests[0]!),
@@ -234,14 +220,11 @@ describe('Kubernetes install deployment', (): void => {
           return await Promise.resolve(readyControlPlaneResponse());
         }
         brokerRequests.push(init ?? {});
-        if (readFetchUrl(input).endsWith('/targets')) {
-          return await Promise.resolve(managedBrokerResponse(readFetchUrl(input)));
-        }
         brokerAttempt += 1;
         if (brokerAttempt === 1) {
           throw createFetchConnectionError('ECONNRESET');
         }
-        return await Promise.resolve(managedBrokerResponse(readFetchUrl(input)));
+        return await Promise.resolve(managedBrokerResponse());
       }),
     );
 
@@ -273,13 +256,8 @@ describe('Kubernetes install deployment', (): void => {
         if (!readFetchUrl(input).startsWith('https://broker.compartment.run')) {
           return await Promise.resolve(readyControlPlaneResponse());
         }
-        if (readFetchUrl(input).endsWith('/targets')) {
-          return await Promise.resolve(managedBrokerResponse(readFetchUrl(input)));
-        }
         brokerAttempt += 1;
-        return await Promise.resolve(
-          brokerAttempt === 1 ? new Response('', { status: 429 }) : managedBrokerResponse(readFetchUrl(input)),
-        );
+        return await Promise.resolve(brokerAttempt === 1 ? new Response('', { status: 429 }) : managedBrokerResponse());
       }),
     );
 
@@ -310,7 +288,7 @@ describe('Kubernetes install deployment', (): void => {
       progress: new RecordingProgressReporter(retryEvents),
     });
     const failure: Promise<void> = expect(install).rejects.toThrow(
-      'Managed-domain broker POST https://broker.compartment.run/v1/managed-domains/allocations failed with status 502 (request-id: req_retry_123); transient failure after 4 attempts while attempting to reserve managed domain. Re-run install to resume.',
+      'Managed-domain broker POST https://broker.compartment.run/v1/managed-domains failed with status 502 (request-id: req_retry_123); transient failure after 4 attempts while attempting to allocate managed domain. Re-run install to resume.',
     );
     await vi.waitFor((): void => {
       expect(brokerFetch).toHaveBeenCalledTimes(1);
@@ -332,7 +310,7 @@ describe('Kubernetes install deployment', (): void => {
     vi.stubGlobal('fetch', brokerFetch);
 
     const expectedMessage: string =
-      'Managed-domain broker POST https://broker.compartment.run/v1/managed-domains/allocations failed with status 400 (request-id: req_invalid_123) while attempting to reserve managed domain. Check the install configuration before re-running install.';
+      'Managed-domain broker POST https://broker.compartment.run/v1/managed-domains failed with status 400 (request-id: req_invalid_123) while attempting to allocate managed domain. Check the install configuration before re-running install.';
     await expect(deployAndWaitForKubernetesInstall(managedDeploymentInput)).rejects.toSatisfy(
       (error: Error): boolean => error.message === expectedMessage && !error.message.includes('--init-install'),
     );
@@ -358,7 +336,6 @@ describe('Kubernetes install deployment', (): void => {
       expect.stringMatching(/^Installing foundation \(postgres, registry\).* \u2713 /u),
       expect.stringMatching(/^Waiting for Ingress endpoint.* \u2713 .*8\.8\.8\.8/u),
       expect.stringMatching(/^Requesting managed domain.* \u2713 /u),
-      expect.stringMatching(/^Binding managed-domain DNS targets.* \u2713 /u),
       expect.stringMatching(/^Checking private registry DNS on every node.* \u2713 /u),
       expect.stringMatching(/^Saving installation configuration.* \u2713 /u),
       expect.stringMatching(/^Waiting for platform Certificates.* \u2713 /u),
@@ -374,7 +351,7 @@ describe('Kubernetes install deployment', (): void => {
     mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
     const fetchMock: Mock<(url: string) => Promise<Response>> = vi.fn(async (url: string): Promise<Response> => {
       if (url.startsWith('https://broker.compartment.run')) {
-        return await Promise.resolve(managedBrokerResponse(url));
+        return await Promise.resolve(managedBrokerResponse());
       }
       return await Promise.resolve(readyControlPlaneResponse());
     });
@@ -432,7 +409,7 @@ describe('Kubernetes install deployment', (): void => {
       'fetch',
       vi.fn(async (input: string | URL | Request): Promise<Response> => {
         if (readFetchUrl(input).startsWith('https://broker.compartment.run')) {
-          return await Promise.resolve(managedBrokerResponse(readFetchUrl(input)));
+          return await Promise.resolve(managedBrokerResponse());
         }
         return await Promise.resolve(readyControlPlaneResponse());
       }),
@@ -459,7 +436,7 @@ describe('Kubernetes install deployment', (): void => {
       'fetch',
       vi.fn(async (input: string | URL | Request): Promise<Response> => {
         if (readFetchUrl(input).includes('/v1/managed-domains')) {
-          return await Promise.resolve(managedBrokerResponse(readFetchUrl(input)));
+          return await Promise.resolve(managedBrokerResponse());
         }
         return await Promise.resolve(readyControlPlaneResponse());
       }),
@@ -481,7 +458,7 @@ describe('Kubernetes install deployment', (): void => {
       'fetch',
       vi.fn(async (input: string | URL | Request): Promise<Response> => {
         if (readFetchUrl(input).includes('/v1/managed-domains')) {
-          return await Promise.resolve(managedBrokerResponse(readFetchUrl(input)));
+          return await Promise.resolve(managedBrokerResponse());
         }
         return await Promise.resolve(readyControlPlaneResponse());
       }),
@@ -566,7 +543,7 @@ describe('Kubernetes install deployment', (): void => {
         const url: string = readFetchUrl(input);
         brokerUrls.push(url);
         return await Promise.resolve(
-          url.startsWith('https://broker.compartment.run') ? managedBrokerResponse(url) : readyControlPlaneResponse(),
+          url.startsWith('https://broker.compartment.run') ? managedBrokerResponse() : readyControlPlaneResponse(),
         );
       }),
     );
@@ -582,8 +559,7 @@ describe('Kubernetes install deployment', (): void => {
       'Reconciling changed Helm values: ingress.endpoint.value, ingress.targetsJson, storage.storageClass',
     );
     expect(readHelmStages()).toEqual(['foundation', 'foundation', 'full']);
-    expect(brokerUrls.some((url: string): boolean => url.endsWith('/allocations'))).toBe(false);
-    expect(brokerUrls.some((url: string): boolean => url.endsWith('/targets'))).toBe(true);
+    expect(brokerUrls.some((url: string): boolean => url.startsWith('https://broker.compartment.run'))).toBe(false);
   });
   it('rechecks Certificate readiness when resuming after a full-stage timeout', async (): Promise<void> => {
     const state: InstallHarnessState = createInstallHarnessState();
@@ -695,7 +671,7 @@ describe('Kubernetes install deployment', (): void => {
     );
     const retainedInstallationId: string | undefined = state.retainedState?.installationId;
     expect(retainedInstallationId).toMatch(/^[\da-f-]{36}$/u);
-    expect(state.retainedState).toMatchObject({ baseDomain: '', managedDomainBrokerToken: '' });
+    expect(state.retainedState).toMatchObject({ baseDomain: '', managedDomainAcmeDnsToken: '' });
 
     await expect(deployAndWaitForKubernetesInstall(managedDeploymentInput)).resolves.toMatchObject({
       baseDomain: 'acme.compartment.run',
@@ -703,12 +679,12 @@ describe('Kubernetes install deployment', (): void => {
     expect(
       brokerRequests
         .map(readBrokerRequestBody)
-        .filter((request: ManagedDomainReservationRequest): boolean => 'installationId' in request)
-        .map((request: ManagedDomainReservationRequest): string => request.installationId),
+        .filter((request: ManagedDomainAllocationRequest): boolean => 'installationId' in request)
+        .map((request: ManagedDomainAllocationRequest): string => request.installationId),
     ).toEqual([retainedInstallationId, retainedInstallationId]);
     expect(state.retainedState).toMatchObject({
       baseDomain: 'acme.compartment.run',
-      managedDomainBrokerToken: 'allocation-token',
+      managedDomainAcmeDnsToken: 'acme-dns-token',
     });
   });
 
@@ -726,6 +702,26 @@ describe('Kubernetes install deployment', (): void => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('rejects a hostname Ingress endpoint before broker allocation without resolving it to an IP', async (): Promise<void> => {
+    const state: InstallHarnessState = createInstallHarnessState();
+    mocks.runCommand.mockImplementation(createInstallCommandHandler(state, 'shared-lb.example.com'));
+    const fetchMock: Mock<(input: string | URL | Request) => Promise<Response>> = vi.fn(
+      async (): Promise<Response> => await Promise.resolve(readyControlPlaneResponse()),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deployAndWaitForKubernetesInstall({
+        ...managedDeploymentInput,
+        configuredIngressEndpoint: { type: 'hostname', value: 'shared-lb.example.com' },
+      }),
+    ).rejects.toThrow(
+      'Managed domains are unavailable for a hostname Ingress endpoint because the broker can publish only A/AAAA records to an IP address. Use your own domain with --base-domain instead',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(state.events).toEqual([]);
+  });
+
   it('persists a managed allocation before rejecting a mismatched Console URL', async (): Promise<void> => {
     const state: InstallHarnessState = createInstallHarnessState();
     mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
@@ -740,7 +736,7 @@ describe('Kubernetes install deployment', (): void => {
     expect(readHelmStages()).toEqual(['foundation', 'foundation']);
     expect(state.retainedState).toMatchObject({
       baseDomain: 'acme.compartment.run',
-      managedDomainBrokerToken: 'allocation-token',
+      managedDomainAcmeDnsToken: 'acme-dns-token',
     });
   });
 
@@ -963,20 +959,14 @@ function stubManagedInstallFetch(events: string[], brokerRequests: RequestInit[]
     vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
       const url: string = readFetchUrl(input);
       if (url.startsWith('https://broker.compartment.run')) {
-        const binding: boolean = url.endsWith('/targets');
-        events.push(binding ? 'broker:bind' : 'broker:allocate');
+        events.push('broker:allocate');
         brokerRequests.push(init ?? {});
         return await Promise.resolve(
-          binding
-            ? Response.json({
-                allocationId: 'allocation-1',
-                targets: [{ type: 'A', value: detectedPublicIpv4 }],
-              })
-            : Response.json({
-                allocationId: 'allocation-1',
-                baseDomain: 'acme.compartment.run',
-                scopedToken: 'allocation-token',
-              }),
+          Response.json({
+            acmeDnsToken: 'acme-dns-token',
+            baseDomain: 'acme.compartment.run',
+            dnsRecords: [{ host: '*.acme.compartment.run', purpose: 'Managed ingress', type: 'A/AAAA-or-CNAME' }],
+          }),
         );
       }
       return await Promise.resolve(readyControlPlaneResponse());
@@ -991,24 +981,19 @@ function readFetchUrl(input: string | URL | Request): string {
   return input instanceof URL ? input.toString() : input.url;
 }
 
-function managedBrokerResponse(url: string): Response {
-  return url.endsWith('/targets')
-    ? Response.json({
-        allocationId: 'allocation-1',
-        targets: [{ type: 'A', value: detectedPublicIpv4 }],
-      })
-    : Response.json({
-        allocationId: 'allocation-1',
-        baseDomain: 'acme.compartment.run',
-        scopedToken: 'allocation-token',
-      });
+function managedBrokerResponse(): Response {
+  return Response.json({
+    acmeDnsToken: 'acme-dns-token',
+    baseDomain: 'acme.compartment.run',
+    dnsRecords: [{ host: '*.acme.compartment.run', purpose: 'Managed ingress', type: 'A/AAAA-or-CNAME' }],
+  });
 }
 
-function readBrokerRequestBody(request: RequestInit): ManagedDomainReservationRequest {
+function readBrokerRequestBody(request: RequestInit): ManagedDomainAllocationRequest {
   if (typeof request.body !== 'string') {
     throw new Error('Expected a JSON broker request body.');
   }
-  return JSON.parse(request.body) as ManagedDomainReservationRequest;
+  return JSON.parse(request.body) as ManagedDomainAllocationRequest;
 }
 
 function readResolvedInstallValues(state: InstallHarnessState): KubernetesInstallSecretValues {
@@ -1073,8 +1058,7 @@ function readRetainedState(releaseValues: string): KubernetesInstallState {
       values.ingress?.targetsJson === undefined
         ? []
         : (JSON.parse(values.ingress.targetsJson) as KubernetesIngressEndpoint[]),
-    managedDomainAllocationId: values.platform.managedDomainAllocationId ?? '',
-    managedDomainBrokerToken: values.secrets.managedDomainBrokerToken,
+    managedDomainAcmeDnsToken: values.secrets.managedDomainAcmeDnsToken,
     publicProtocol: values.platform.publicProtocol ?? 'http',
     registryHostname: values.registry.hostname,
     registryIssuerRef: values.registry.issuerRef,

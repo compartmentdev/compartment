@@ -102,7 +102,6 @@ platform:
   domainGeneration: 0
   domainCommit: true
   installationId: ''
-  managedDomainAllocationId: ''
   domainMode: custom
   baseDomain: localhost
   publicProtocol: http
@@ -232,7 +231,7 @@ secrets:
   tenantSecretsKek: ''
   tenantSecretsPreviousKek: null
   variablesMasterKey: ''
-  managedDomainBrokerToken: ''
+  managedDomainAcmeDnsToken: ''
 
 podSecurityContext:
   seccompProfile:

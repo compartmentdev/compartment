@@ -217,9 +217,8 @@ describe('Kubernetes system-domain activation', (): void => {
     };
     mocks.readRetainedManagedState.mockResolvedValue({
       acmeEmail: 'admin@example.com',
-      allocationId: 'allocation-1',
       baseDomain: managedHostPlan.baseDomain,
-      brokerToken: 'token',
+      acmeDnsToken: 'token',
       brokerUrl: 'https://broker.compartment.run',
       issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
       publicProtocol: 'https',

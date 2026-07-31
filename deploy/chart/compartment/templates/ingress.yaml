@@ -1,6 +1,7 @@
 {{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
 {{- $baseDomain := default (printf "pending.%s.invalid" .Release.Name) $installState.effective.platform.baseDomain -}}
 {{- $operatorTlsSecret := .Values.tls.existingSecret -}}
+{{- $managedTlsSecret := default (printf "%s-wildcard-tls" (include "compartment.fullname" .)) $operatorTlsSecret -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -14,10 +15,10 @@ spec:
   tls:
     - hosts:
         - {{ printf "console.%s" $baseDomain | quote }}
-      secretName: {{ default (printf "%s-console-tls" (include "compartment.fullname" .)) $operatorTlsSecret }}
+      secretName: {{ if eq $installState.effective.platform.domainMode "managed" }}{{ $managedTlsSecret }}{{ else }}{{ default (printf "%s-console-tls" (include "compartment.fullname" .)) $operatorTlsSecret }}{{ end }}
     - hosts:
         - {{ printf "*.%s" $baseDomain | quote }}
-      secretName: {{ default (printf "%s-wildcard-tls" (include "compartment.fullname" .)) $operatorTlsSecret }}
+      secretName: {{ default $managedTlsSecret $operatorTlsSecret }}
 {{- end }}
   rules:
     {{- include "compartment.caddyIngressRule" (dict "root" . "host" (printf "console.%s" $baseDomain)) | nindent 4 }}

@@ -73,9 +73,7 @@ async function runRetainedInstallStateGate() {
       '--set',
       'platform.managedDomainBrokerUrl=https://broker.example.test',
       '--set',
-      'platform.managedDomainAllocationId=retained-allocation',
-      '--set',
-      'secrets.managedDomainBrokerToken=retained-token',
+      'secrets.managedDomainAcmeDnsToken=retained-token',
     ]);
     helm([
       'upgrade',
@@ -118,7 +116,7 @@ async function runRetainedInstallStateGate() {
       'productLogs.enabled=false',
     ]);
     const installationId = readSecretValue('installation-id');
-    const allocationId = readSecretValue('managed-domain-allocation-id');
+    const acmeDnsToken = readSecretValue('managed-domain-acme-dns-token');
     const brokerUrl = readSecretValue('managed-domain-broker-url');
     const registryHostname = readSecretValue('registry-hostname');
     const registryIssuerName = readSecretValue('registry-issuer-ref-name');
@@ -135,7 +133,7 @@ async function runRetainedInstallStateGate() {
     ]);
     if (
       installationId !== 'retained-installation' ||
-      allocationId !== 'retained-allocation' ||
+      acmeDnsToken !== 'retained-token' ||
       brokerUrl !== 'https://broker.example.test' ||
       registryHostname !== 'registry.retained.example.test' ||
       registryIssuerName !== 'retained-registry-issuer' ||

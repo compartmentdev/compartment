@@ -24,7 +24,7 @@ import {
   managedInstallValuesPath,
   prepareManagedInstallFixture,
   readManagedInstallBrokerState,
-  renewManagedInstallConsoleCertificate,
+  renewManagedInstallWildcardCertificate,
   waitForManagedDomainBrokerObservation,
   type ManagedDomainAuditObservation,
   type ManagedDomainBrokerObservation,
@@ -66,7 +66,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
   }, fixtureTimeoutMs);
 
   it(
-    'installs the default managed domain without reservation environment, then accepts a fresh login',
+    'installs the default managed domain without user authorization, then accepts a fresh login',
     async (): Promise<void> => {
       const suffix: string = randomUUID().replaceAll('-', '').slice(0, 12);
       const ownerEmail: string = `managed-e2e-${suffix}@compartment.test`;
@@ -101,7 +101,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       expect(freshIdentity.currentOrganization?.slug).toBe(organizationSlug);
 
       const broker: ManagedDomainBrokerObservation = await waitForManagedDomainBrokerObservation();
-      expect(broker.allocations[0]).toMatchObject({
+      expect(broker.managedDomains[0]).toMatchObject({
         requestedLabelSource: organizationSlug,
         targets: [{ type: 'A', value: managedIngressIpv4 }],
       });
@@ -111,18 +111,30 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       expect(
         broker.audit.some((event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_cleaned'),
       ).toBe(true);
-      await renewManagedInstallConsoleCertificate();
+      expect(
+        broker.audit
+          .filter((event: ManagedDomainAuditObservation): boolean => event.event.startsWith('challenge_'))
+          .every(
+            (event: ManagedDomainAuditObservation): boolean =>
+              event.name === `_acme-challenge.${managedInstallBaseDomain}`,
+          ),
+      ).toBe(true);
+      await renewManagedInstallWildcardCertificate();
       const renewedBroker: ManagedDomainBrokerObservation = await waitForManagedDomainBrokerObservation();
+      const presentedChallenges: ManagedDomainAuditObservation[] = renewedBroker.audit.filter(
+        (event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_presented',
+      );
+      const cleanedChallenges: ManagedDomainAuditObservation[] = renewedBroker.audit.filter(
+        (event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_cleaned',
+      );
+      expect(presentedChallenges.length).toBeGreaterThanOrEqual(1);
+      expect(cleanedChallenges).toHaveLength(presentedChallenges.length);
       expect(
-        renewedBroker.audit.filter(
-          (event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_presented',
-        ).length,
-      ).toBeGreaterThanOrEqual(2);
-      expect(
-        renewedBroker.audit.filter(
-          (event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_cleaned',
-        ).length,
-      ).toBeGreaterThanOrEqual(2);
+        [...presentedChallenges, ...cleanedChallenges].every(
+          (event: ManagedDomainAuditObservation): boolean =>
+            event.name === `_acme-challenge.${managedInstallBaseDomain}`,
+        ),
+      ).toBe(true);
       managedInstallCompleted = true;
     },
     installTimeoutMs,
@@ -132,7 +144,6 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
 async function createFreshCli(adminPassword?: string): Promise<SelfHostedUserSetupCli> {
   const homeDirectory: string = await createTemporaryDirectory();
   const env: NodeJS.ProcessEnv = buildSelfHostedUserSetupClientEnv(homeDirectory);
-  delete env.COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN;
   env.COMPARTMENT_MANAGED_DOMAIN_BROKER_URL = managedInstallBrokerUrl;
   env.NODE_EXTRA_CA_CERTS = managedInstallCertificateAuthorityPath;
   if (adminPassword !== undefined) {

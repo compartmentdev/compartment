@@ -18,13 +18,13 @@ import {
   type DeploymentSummary,
   type DeployResponse,
   type InstallResponse,
-  type ManagedDomainTarget,
   type SystemDomainMutationResponse,
   type SystemDomainSetRequest,
   type RemoveCustomDomainResponse,
   type VerifyCustomDomainResponse,
   type WorkerClaimedDeployment,
 } from '@compartment/contracts';
+import type { ApiPublicIngressTarget } from '../src/api-public-ingress-config';
 import type { LightMyRequestResponse } from 'fastify';
 import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -193,7 +193,7 @@ function createManagedDualStackPublicIngressConfig(): ApiPublicIngressConfig {
 
 function readIngressTarget(config: ApiPublicIngressConfig, type: 'A' | 'AAAA'): string {
   const target: string | undefined = config.targets.find(
-    (candidate: ManagedDomainTarget): boolean => candidate.type === type,
+    (candidate: ApiPublicIngressTarget): boolean => candidate.type === type,
   )?.value;
   if (target === undefined) {
     throw new Error(`Missing ${type} ingress target.`);
