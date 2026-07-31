@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, type SQL } from 'drizzle-orm';
 import { sourceBindingBranchMappings, sourceBindings, sources } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { requirePersistedRow } from './persisted-row.query.shared';
@@ -18,7 +18,7 @@ import type {
 export async function listActiveSourcesByProviderRepository(
   organizationId: string,
   providerRegistrationId: string,
-  providerInstallationId: string,
+  providerInstallationId: string | null,
   providerHost: string,
   repositoryExternalId: string,
 ): Promise<SourceRow[]> {
@@ -48,14 +48,14 @@ export async function listActiveSourcesByProviderInstallation(
 async function listActiveSourcesByProviderSelector(input: {
   organizationId: string;
   providerHost: string;
-  providerInstallationId: string;
+  providerInstallationId: string | null;
   providerRegistrationId: string;
   repositoryExternalId?: string | undefined;
 }): Promise<SourceRow[]> {
   const conditions: SQL[] = [
     eq(sources.organizationId, input.organizationId),
     eq(sources.providerRegistrationId, input.providerRegistrationId),
-    eq(sources.providerInstallationId, input.providerInstallationId),
+    buildProviderInstallationCondition(input.providerInstallationId),
     eq(sources.providerHost, input.providerHost),
     eq(sources.status, 'active'),
   ];
@@ -68,6 +68,12 @@ async function listActiveSourcesByProviderSelector(input: {
     .from(sources)
     .where(and(...conditions))
     .orderBy(asc(sources.createdAt), asc(sources.id));
+}
+
+function buildProviderInstallationCondition(providerInstallationId: string | null): SQL {
+  return providerInstallationId === null
+    ? isNull(sources.providerInstallationId)
+    : eq(sources.providerInstallationId, providerInstallationId);
 }
 
 export async function findActiveSourceByAutomationPrincipal(input: {

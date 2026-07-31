@@ -22,12 +22,12 @@ interface ParsedGitDescriptorPullRequestStatusToken {
 }
 
 interface ParsedGitDescriptorPullRequestStatusTokenPayload {
-  providerHost?: string;
-  pullRequestNumber?: number;
-  registrationId?: string;
-  repositoryName?: string;
-  repositoryOwner?: string;
-  version?: number;
+  providerHost: string | number | undefined;
+  pullRequestNumber: string | number | undefined;
+  registrationId: string | number | undefined;
+  repositoryName: string | number | undefined;
+  repositoryOwner: string | number | undefined;
+  version: string | number | undefined;
 }
 
 export function withGitDescriptorPullRequestStatusToken(

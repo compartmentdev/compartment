@@ -1,41 +1,56 @@
 import { describe, expect, it, vi, type Mock } from 'vitest';
-import type { GitHubInstallationRepositoryListResponse } from '@compartment/contracts';
+import type { GitProviderRegistrationRepositoryListResponse } from '@compartment/contracts';
 import type { Actor } from '../src/services/auth-actor.types';
 import type { GitProviderRegistrationRow } from '../src/queries/git-provider-registration.query.types';
 import type * as GithubAppClientAdapter from '../src/services/git-source/github-app-client.adapter';
 import type { GitHubInstallationRepository } from '../src/services/git-source/github-app-client.adapter.types';
 import type * as GitSourceDescriptorRegistrationAccess from '../src/services/git-source/git-source-descriptor-registration-access.service';
-import {
-  listGitHubInstallationRepositories,
-  type ListGitHubInstallationRepositoriesInput,
-} from '../src/services/git-source/git-source-repository-list.service';
+import type { GitProviderAccess } from '../src/services/git-source/git-source-provider.types';
+import { listGitProviderRegistrationRepositories } from '../src/services/git-source/git-source-repository-list.service';
+import type * as OutboundHttpService from '../src/services/outbound-http.service';
 
 type ListGitHubInstallationRepositoriesFromGitHub = typeof GithubAppClientAdapter.listGitHubInstallationRepositories;
-type RequireGitHubRegistrationAccess = typeof GitSourceDescriptorRegistrationAccess.requireGitHubRegistrationAccess;
-type BuildGitHubRegistrationClientAuth = typeof GitSourceDescriptorRegistrationAccess.buildGitHubRegistrationClientAuth;
+type RequireGitProviderRegistrationAccess =
+  typeof GitSourceDescriptorRegistrationAccess.requireGitProviderRegistrationAccess;
 
 interface GithubAppClientAdapterModule {
   listGitHubInstallationRepositories: Mock<ListGitHubInstallationRepositoriesFromGitHub>;
 }
 
 interface GitSourceDescriptorRegistrationAccessModule {
-  buildGitHubRegistrationClientAuth: Mock<BuildGitHubRegistrationClientAuth>;
-  requireGitHubRegistrationAccess: Mock<RequireGitHubRegistrationAccess>;
+  requireGitProviderRegistrationAccess: Mock<RequireGitProviderRegistrationAccess>;
+}
+
+interface OutboundHttpServiceModule {
+  createGitLabTrustedOutboundFetch: Mock<CreateGitLabTrustedOutboundFetch>;
+}
+
+interface TestListGitProviderRegistrationRepositoriesInput {
+  actor: Actor;
+  organizationId: string;
+  registrationId: string;
 }
 
 const mocks: {
-  buildGitHubRegistrationClientAuth: Mock<BuildGitHubRegistrationClientAuth>;
   listGitHubInstallationRepositories: Mock<ListGitHubInstallationRepositoriesFromGitHub>;
-  requireGitHubRegistrationAccess: Mock<RequireGitHubRegistrationAccess>;
+  requireGitProviderRegistrationAccess: Mock<RequireGitProviderRegistrationAccess>;
+  createGitLabTrustedOutboundFetch: Mock<CreateGitLabTrustedOutboundFetch>;
 } = vi.hoisted(
   (): {
-    buildGitHubRegistrationClientAuth: Mock<BuildGitHubRegistrationClientAuth>;
     listGitHubInstallationRepositories: Mock<ListGitHubInstallationRepositoriesFromGitHub>;
-    requireGitHubRegistrationAccess: Mock<RequireGitHubRegistrationAccess>;
+    requireGitProviderRegistrationAccess: Mock<RequireGitProviderRegistrationAccess>;
+    createGitLabTrustedOutboundFetch: Mock<CreateGitLabTrustedOutboundFetch>;
   } => ({
-    buildGitHubRegistrationClientAuth: vi.fn<BuildGitHubRegistrationClientAuth>(),
     listGitHubInstallationRepositories: vi.fn<ListGitHubInstallationRepositoriesFromGitHub>(),
-    requireGitHubRegistrationAccess: vi.fn<RequireGitHubRegistrationAccess>(),
+    requireGitProviderRegistrationAccess: vi.fn<RequireGitProviderRegistrationAccess>(),
+    createGitLabTrustedOutboundFetch: vi.fn<CreateGitLabTrustedOutboundFetch>(),
+  }),
+);
+
+vi.mock(
+  '../src/services/outbound-http.service',
+  (): OutboundHttpServiceModule => ({
+    createGitLabTrustedOutboundFetch: mocks.createGitLabTrustedOutboundFetch,
   }),
 );
 
@@ -49,18 +64,17 @@ vi.mock(
 vi.mock(
   '../src/services/git-source/git-source-descriptor-registration-access.service',
   (): GitSourceDescriptorRegistrationAccessModule => ({
-    buildGitHubRegistrationClientAuth: mocks.buildGitHubRegistrationClientAuth,
-    requireGitHubRegistrationAccess: mocks.requireGitHubRegistrationAccess,
+    requireGitProviderRegistrationAccess: mocks.requireGitProviderRegistrationAccess,
   }),
 );
 
 describe('git source repository list service', (): void => {
-  it('returns ready repositories when GitHub can list the installation', async (): Promise<void> => {
+  it('returns repositories when the provider can list the registration', async (): Promise<void> => {
     prepareRepositoryListMocks();
     mocks.listGitHubInstallationRepositories.mockResolvedValueOnce([createRepository()]);
 
-    const response: GitHubInstallationRepositoryListResponse =
-      await listGitHubInstallationRepositories(createListInput());
+    const response: GitProviderRegistrationRepositoryListResponse =
+      await listGitProviderRegistrationRepositories(createListInput());
 
     expect(response).toEqual({
       repositories: [
@@ -73,55 +87,78 @@ describe('git source repository list service', (): void => {
           private: true,
         },
       ],
-      status: 'ready',
     });
   });
 
-  it('returns bootstrap required when the persisted installation cannot list repositories', async (): Promise<void> => {
+  it('surfaces not-found as a provider-neutral access error', async (): Promise<void> => {
     prepareRepositoryListMocks();
     mocks.listGitHubInstallationRepositories.mockRejectedValueOnce(createGitHubRequestFailure(404));
 
-    const response: GitHubInstallationRepositoryListResponse =
-      await listGitHubInstallationRepositories(createListInput());
-
-    expect(response).toEqual({
-      repositories: [],
-      status: 'provider_bootstrap_required',
+    await expect(listGitProviderRegistrationRepositories(createListInput())).rejects.toMatchObject({
+      code: 'git_source_repository_access_denied',
     });
   });
 
-  it('returns bootstrap required for repository access denial without mutating bootstrap state', async (): Promise<void> => {
+  it('surfaces access denial through the same neutral error', async (): Promise<void> => {
     prepareRepositoryListMocks();
     mocks.listGitHubInstallationRepositories.mockRejectedValueOnce(createGitHubRequestFailure(403));
 
-    await expect(listGitHubInstallationRepositories(createListInput())).resolves.toEqual({
-      repositories: [],
-      status: 'provider_bootstrap_required',
+    await expect(listGitProviderRegistrationRepositories(createListInput())).rejects.toMatchObject({
+      code: 'git_source_repository_access_denied',
+    });
+  });
+
+  it('classifies a revoked GitLab token on repository listing as token invalid', async (): Promise<void> => {
+    vi.resetAllMocks();
+    mocks.requireGitProviderRegistrationAccess.mockResolvedValue(createGitLabProviderAccess());
+    mocks.createGitLabTrustedOutboundFetch.mockReturnValue(
+      vi.fn<typeof fetch>().mockResolvedValue(new Response('revoked', { status: 401 })),
+    );
+
+    await expect(listGitProviderRegistrationRepositories(createListInput())).rejects.toMatchObject({
+      code: 'gitlab_token_invalid',
     });
   });
 });
 
 function prepareRepositoryListMocks(): void {
   vi.resetAllMocks();
-  mocks.requireGitHubRegistrationAccess.mockResolvedValue({
-    privateKeyPem: 'private-key',
-    registration: createRegistration(),
-  });
-  mocks.buildGitHubRegistrationClientAuth.mockReturnValue({
-    appId: '12345',
-    installationId: '98765',
-    privateKeyPem: 'private-key',
-    providerHost: 'github.enterprise.example',
-  });
+  mocks.requireGitProviderRegistrationAccess.mockResolvedValue(createProviderAccess());
 }
 
-function createListInput(): ListGitHubInstallationRepositoriesInput {
+function createProviderAccess(): GitProviderAccess {
+  return {
+    credential: {
+      appId: '12345',
+      appName: 'Compartment',
+      appSlug: 'compartment',
+      appUrl: 'https://github.enterprise.example/apps/compartment',
+      installationAccountLogin: 'acme',
+      installationAccountType: 'Organization',
+      installationId: '98765',
+      kind: 'github_app',
+      privateKeyPem: 'private-key',
+    },
+    registration: createRegistration(),
+  };
+}
+
+function createGitLabProviderAccess(): GitProviderAccess {
+  return {
+    credential: { expiresAt: null, kind: 'gitlab_token', token: 'revoked-token' },
+    registration: {
+      ...createRegistration(),
+      providerHost: 'gitlab.example.com',
+      providerType: 'gitlab',
+    },
+  };
+}
+
+function createListInput(): TestListGitProviderRegistrationRepositoriesInput {
   return {
     actor: createActor(),
     organizationId: 'org_123',
-    providerHost: 'github.enterprise.example',
     registrationId: 'gpr_123',
-    repositoryOwner: 'acme',
   };
 }
 
@@ -158,22 +195,15 @@ function createActor(): Actor {
 
 function createRegistration(): GitProviderRegistrationRow {
   return {
-    appId: '12345',
-    appName: 'Compartment',
-    appSlug: 'compartment',
-    appUrl: 'https://github.enterprise.example/apps/compartment',
+    providerAccountId: null,
+    providerAccountLogin: null,
     bootstrapStateId: null,
     callbackUrl: 'https://console.example/v1/sources/git/providers/github/callback',
     createdAt: new Date('2026-05-01T00:00:00.000Z'),
     createdByPrincipalId: 'prn_admin',
     id: 'gpr_123',
     organizationId: 'org_123',
-    installationAccountLogin: 'acme',
-    installationAccountType: 'Organization',
-    installationId: '98765',
     pendingExpiresAt: null,
-    privateKeyPemCiphertext: 'private-key-ciphertext',
-    privateKeyPemEncryptionKeyId: 'private-key-id',
     providerHost: 'github.enterprise.example',
     providerType: 'github_app',
     repositoryOwner: 'acme',
@@ -184,3 +214,4 @@ function createRegistration(): GitProviderRegistrationRow {
     webhookUrl: 'https://console.example/v1/sources/git/providers/github/registrations/gpr_123/webhook',
   };
 }
+type CreateGitLabTrustedOutboundFetch = typeof OutboundHttpService.createGitLabTrustedOutboundFetch;

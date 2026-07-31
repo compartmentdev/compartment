@@ -1,5 +1,3 @@
-import type { GitHubInstallationRepositoryListRequest } from './source-git-bootstrap.contract';
-
 const compartmentAuthPathname: string = '/v1/auth';
 export const compartmentAuthActivatePathname: string = `${compartmentAuthPathname}/activate`;
 export const compartmentAuthActivateStatePathname: string = `${compartmentAuthPathname}/activate-state`;
@@ -53,9 +51,11 @@ export const compartmentGitHubProviderBootstrapPathname: string = `${compartment
 export const compartmentGitHubProviderAccountDiscoveryPathname: string = `${compartmentSourcesPathname}/git/providers/github/account-discovery`;
 export const compartmentGitHubProviderAccountDiscoveryResultPathname: string = `${compartmentGitHubProviderAccountDiscoveryPathname}/result`;
 export const compartmentGitHubProviderBootstrapStartPathnameTemplate: string = `${compartmentGitHubProviderBootstrapPathname}/:bootstrapStateId/start`;
-export const compartmentGitHubProviderRegistrationRepositoriesPathnameTemplate: string = `${compartmentSourcesPathname}/git/providers/github/registrations/:registrationId/repositories`;
+export const compartmentGitProviderRegistrationsPathname: string = `${compartmentSourcesPathname}/git/providers/registrations`;
+export const compartmentGitProviderRegistrationRepositoriesPathnameTemplate: string = `${compartmentGitProviderRegistrationsPathname}/:registrationId/repositories`;
 export const compartmentGitHubProviderCallbackPathname: string = `${compartmentSourcesPathname}/git/providers/github/callback`;
 export const compartmentGitHubProviderSetupPathname: string = `${compartmentSourcesPathname}/git/providers/github/setup`;
+export const compartmentGitLabProviderRegistrationsPathname: string = `${compartmentSourcesPathname}/git/providers/gitlab/registrations`;
 export const compartmentGitSourceConnectPathname: string = `${compartmentSourcesPathname}/git/connect`;
 export const compartmentGitDescriptorPlanPathname: string = `${compartmentSourcesPathname}/git/descriptor-plan`;
 export const compartmentGitDescriptorPullRequestPathname: string = `${compartmentSourcesPathname}/git/descriptor-pr`;
@@ -92,20 +92,11 @@ export function buildCompartmentGitHubProviderBootstrapStartPathname(bootstrapSt
   return `${compartmentGitHubProviderBootstrapPathname}/${encodeURIComponent(bootstrapStateId)}/start`;
 }
 
-export function buildCompartmentGitHubProviderRegistrationRepositoriesPathname(
-  registrationId: string,
-  request?: GitHubInstallationRepositoryListRequest,
-): string {
-  const pathname: string = `${compartmentSourcesPathname}/git/providers/github/registrations/${encodeURIComponent(registrationId)}/repositories`;
-  if (request === undefined) {
-    return pathname;
-  }
-
-  const searchParams: URLSearchParams = new URLSearchParams({
-    providerHost: request.providerHost,
-    repositoryOwner: request.repositoryOwner,
-  });
-  return `${pathname}?${searchParams.toString()}`;
+export function buildCompartmentGitProviderRegistrationRepositoriesPathname(registrationId: string): string {
+  return compartmentGitProviderRegistrationRepositoriesPathnameTemplate.replace(
+    ':registrationId',
+    encodeURIComponent(registrationId),
+  );
 }
 
 export function buildCompartmentFirstDeployOnboardingStatusPathname(sessionId: string): string {

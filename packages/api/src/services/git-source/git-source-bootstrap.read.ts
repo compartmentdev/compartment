@@ -17,6 +17,8 @@ import {
   readGitHubBootstrapStatus,
 } from './git-source-bootstrap.support';
 import type { GitHubProviderBootstrapView, StartGitHubProviderBootstrapInput } from './git-source.service.types';
+import { requireGitProviderAccessByRegistrationId } from './git-source-provider-access.service';
+import type { GitProviderAccess, GitProviderCredential } from './git-source-provider.types';
 
 export async function readGitHubBootstrapViewForState(
   compartmentUrl: string,
@@ -27,16 +29,41 @@ export async function readGitHubBootstrapViewForState(
     registrationId: state.providerRegistrationId,
   });
   const status: GitHubBootstrapStatus = readGitHubBootstrapStatus(registration.status);
+  const credential: Extract<GitProviderCredential, { kind: 'github_app' }> | null = await readActiveCredential(
+    registration,
+    status,
+  );
   return buildGitHubBootstrapView(
     registration.id,
     state.providerHost,
     state.repositoryOwner,
-    registration.installationAccountLogin,
-    registration.installationId,
+    credential?.installationAccountLogin ?? null,
+    credential?.installationId ?? null,
     status,
     state.id,
     status === 'active' ? null : buildGitHubBootstrapBrowserUrl(compartmentUrl, state.id),
   );
+}
+
+async function readActiveCredential(
+  registration: GitProviderRegistrationRow,
+  status: GitHubBootstrapStatus,
+): Promise<Extract<GitProviderCredential, { kind: 'github_app' }> | null> {
+  if (status !== 'active') return null;
+  const access: GitProviderAccess = await requireGitProviderAccessByRegistrationId(
+    registration.organizationId,
+    registration.id,
+  );
+  return requireGitHubCredential(access.credential);
+}
+
+function requireGitHubCredential(
+  credential: GitProviderCredential,
+): Extract<GitProviderCredential, { kind: 'github_app' }> {
+  if (credential.kind !== 'github_app') {
+    throw createGitSourceRegistrationFailedError('Git provider registration has invalid credentials.');
+  }
+  return credential;
 }
 
 export function buildPendingBootstrapResponse(

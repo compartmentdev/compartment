@@ -33,7 +33,7 @@ export {
 export {
   buildCompartmentGitSourceExcludePathname,
   buildCompartmentGitHubProviderBootstrapStartPathname,
-  buildCompartmentGitHubProviderRegistrationRepositoriesPathname,
+  buildCompartmentGitProviderRegistrationRepositoriesPathname,
   buildCompartmentGitSourceIncludePathname,
   buildCompartmentGitSourceSettingsPathname,
   buildCompartmentResourceBackupCollectionPathname,
@@ -62,7 +62,7 @@ export {
   compartmentGitHubProviderAccountDiscoveryResultPathname,
   compartmentGitHubProviderBootstrapPathname,
   compartmentGitHubProviderBootstrapStartPathnameTemplate,
-  compartmentGitHubProviderRegistrationRepositoriesPathnameTemplate,
+  compartmentGitProviderRegistrationRepositoriesPathnameTemplate,
   compartmentGitHubProviderCallbackPathname,
   compartmentGitHubProviderSetupPathname,
   compartmentGitSourceConnectPathname,

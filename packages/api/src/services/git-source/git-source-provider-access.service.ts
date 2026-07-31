@@ -1,62 +1,51 @@
-import { decryptVariableValueFromStorage } from '../../lib/variables-crypto';
 import {
   createGitSourceRegistrationFailedError,
   createGitSourceRegistrationPendingError,
 } from '../../errors/api-business-error';
-import { findActiveGitProviderRegistration } from '../../queries/git-provider-registration.query';
-import { findPendingGitProviderRegistration } from '../../queries/git-provider-registration-bootstrap.query';
-import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
-import { getApiConfig } from '../../runtime/runtime-access';
-import { requireGitProviderField } from './git-source-view.service';
+import { findGitProviderRegistrationByIdWithExecutor } from '../../queries/git-provider-registration.query';
+import type {
+  GitProviderReadExecutor,
+  GitProviderRegistrationRow,
+  GitProviderWriteExecutor,
+} from '../../queries/git-provider-registration.query.types';
+import { getApiDatabase } from '../../runtime/runtime-access';
+import { getGitProviderAdapter } from './git-source-provider.registry';
+import type { GitProviderAccess } from './git-source-provider.types';
 
-export interface GitHubProviderAccess {
-  privateKeyPem: string;
-  registration: GitProviderRegistrationRow;
-}
-
-export async function requireActiveGitHubProviderAccess(
+export async function requireGitProviderAccessByRegistrationId(
   organizationId: string,
-  providerHost: string,
-  repositoryOwner: string,
-): Promise<GitHubProviderAccess> {
-  const registration: GitProviderRegistrationRow = await requireActiveGitProviderRegistration(
-    organizationId,
-    providerHost,
-    repositoryOwner,
-  );
-  return {
-    privateKeyPem: readGitHubRegistrationPrivateKey(registration),
-    registration,
-  };
-}
-
-export function readGitHubRegistrationPrivateKey(registration: GitProviderRegistrationRow): string {
-  return decryptVariableValueFromStorage(
-    requireGitProviderField(registration.privateKeyPemCiphertext, 'private_key_pem_ciphertext'),
-    requireGitProviderField(registration.privateKeyPemEncryptionKeyId, 'private_key_pem_encryption_key_id'),
-    getApiConfig().variablesMasterKey,
+  registrationId: string,
+): Promise<GitProviderAccess> {
+  return await getApiDatabase().transaction(
+    async (transaction: GitProviderWriteExecutor): Promise<GitProviderAccess> => {
+      const registration: GitProviderRegistrationRow | undefined = await findGitProviderRegistrationByIdWithExecutor(
+        transaction,
+        { organizationId, registrationId },
+      );
+      if (registration?.status === 'pending') {
+        throw createGitSourceRegistrationPendingError();
+      }
+      if (registration?.status !== 'active') {
+        throw createGitSourceRegistrationFailedError('The selected git provider registration is not active.');
+      }
+      return await buildGitProviderAccess(transaction, registration);
+    },
   );
 }
 
-async function requireActiveGitProviderRegistration(
-  organizationId: string,
-  providerHost: string,
-  repositoryOwner: string,
-): Promise<GitProviderRegistrationRow> {
-  const activeRegistration: GitProviderRegistrationRow | undefined = await findActiveGitProviderRegistration({
-    organizationId,
-    providerHost,
-    repositoryOwner,
-  });
-  if (activeRegistration !== undefined) {
-    return activeRegistration;
+export async function buildGitProviderAccess(
+  executor: GitProviderReadExecutor,
+  registration: GitProviderRegistrationRow,
+): Promise<GitProviderAccess> {
+  try {
+    return {
+      credential: await getGitProviderAdapter(registration.providerType).readRegistrationCredential(
+        executor,
+        registration.id,
+      ),
+      registration,
+    };
+  } catch {
+    throw createGitSourceRegistrationFailedError('The selected git provider registration has invalid credentials.');
   }
-
-  if (
-    (await findPendingGitProviderRegistration(organizationId, providerHost, repositoryOwner, new Date())) !== undefined
-  ) {
-    throw createGitSourceRegistrationPendingError();
-  }
-
-  throw createGitSourceRegistrationFailedError('Connect the install-owned GitHub App before registering this source.');
 }

@@ -1,8 +1,7 @@
-import { and, eq, gt, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, sql } from 'drizzle-orm';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { gitProviderRegistrations } from '../db/schema';
 import { requirePersistedRow } from './persisted-row.query.shared';
-import { buildGitProviderRegistrationOrganizationFilter } from './git-provider-registration-scope.query.helpers';
 import type {
   ActivateGitProviderRegistrationInput,
   CreatePendingGitProviderRegistrationInput,
@@ -12,32 +11,9 @@ import type {
   GitProviderReadExecutor,
   GitProviderRegistrationRow,
   GitProviderWriteExecutor,
-  PersistGitProviderRegistrationManifestExchangeInput,
+  PersistGitProviderRegistrationWebhookSecretInput,
   PersistedGitProviderRegistrationRow,
 } from './git-provider-registration.query.types';
-
-interface GitProviderRegistrationManifestExchangeUpdate {
-  appId: string;
-  appName: string | null;
-  appSlug: string | null;
-  appUrl: string | null;
-  privateKeyPemCiphertext: string;
-  privateKeyPemEncryptionKeyId: string;
-  updatedAt: Date;
-  webhookSecretCiphertext: string;
-  webhookSecretEncryptionKeyId: string;
-}
-
-export async function findActiveGitProviderRegistration(
-  input: Pick<FindGitProviderRegistrationByStatusInput, 'organizationId' | 'providerHost' | 'repositoryOwner'>,
-): Promise<GitProviderRegistrationRow | undefined> {
-  return await findGitProviderRegistrationByStatusWithExecutor(getApiDatabase(), {
-    organizationId: input.organizationId,
-    providerHost: input.providerHost,
-    repositoryOwner: input.repositoryOwner,
-    status: 'active',
-  });
-}
 
 export async function findGitProviderRegistrationById(
   input: FindGitProviderRegistrationByIdInput,
@@ -51,6 +27,19 @@ export async function findGitProviderRegistrationByWebhookTarget(
   return await findGitProviderRegistrationByIdWithExecutor(getApiDatabase(), input);
 }
 
+export async function listActiveGitProviderRegistrationsWithExecutor(
+  executor: GitProviderReadExecutor,
+  organizationId: string,
+): Promise<GitProviderRegistrationRow[]> {
+  return await executor
+    .select()
+    .from(gitProviderRegistrations)
+    .where(
+      and(eq(gitProviderRegistrations.organizationId, organizationId), eq(gitProviderRegistrations.status, 'active')),
+    )
+    .orderBy(asc(gitProviderRegistrations.createdAt), asc(gitProviderRegistrations.id));
+}
+
 export async function findGitProviderRegistrationByIdWithExecutor(
   executor: GitProviderReadExecutor,
   input: FindGitProviderRegistrationByIdInput,
@@ -61,12 +50,12 @@ export async function findGitProviderRegistrationByIdWithExecutor(
     .where(
       and(
         eq(gitProviderRegistrations.id, input.registrationId),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId, input.registrationId),
+        eq(gitProviderRegistrations.organizationId, input.organizationId),
       ),
     )
     .limit(1);
 
-  return mapGitProviderRegistrationRow(rows[0], input.organizationId);
+  return mapGitProviderRegistrationRow(rows[0]);
 }
 
 export async function createPendingGitProviderRegistration(
@@ -80,6 +69,7 @@ export async function createPendingGitProviderRegistration(
       callbackUrl: input.callbackUrl,
       createdByPrincipalId: input.createdByPrincipalId,
       id: input.id,
+      organizationId: input.organizationId,
       pendingExpiresAt: input.pendingExpiresAt,
       providerHost: input.providerHost,
       providerType: input.providerType,
@@ -90,10 +80,7 @@ export async function createPendingGitProviderRegistration(
     })
     .returning();
 
-  return mapRequiredGitProviderRegistrationRow(
-    requirePersistedRow(registration, 'git provider registration'),
-    input.organizationId,
-  );
+  return mapRequiredGitProviderRegistrationRow(requirePersistedRow(registration, 'git provider registration'));
 }
 
 export async function setGitProviderRegistrationBootstrapState(
@@ -111,10 +98,7 @@ export async function setGitProviderRegistrationBootstrapState(
       updatedAt: new Date(),
     })
     .where(
-      and(
-        eq(gitProviderRegistrations.id, registrationId),
-        buildGitProviderRegistrationOrganizationFilter(organizationId, registrationId),
-      ),
+      and(eq(gitProviderRegistrations.id, registrationId), eq(gitProviderRegistrations.organizationId, organizationId)),
     );
 }
 
@@ -122,48 +106,26 @@ export async function activateGitProviderRegistration(
   executor: GitProviderWriteExecutor,
   input: ActivateGitProviderRegistrationInput,
 ): Promise<GitProviderRegistrationRow | undefined> {
-  const [registration]: PersistedGitProviderRegistrationRow[] = await executor
-    .update(gitProviderRegistrations)
-    .set({
-      bootstrapStateId: null,
-      installationAccountLogin: input.installationAccountLogin,
-      installationAccountType: input.installationAccountType,
-      installationId: input.installationId,
-      pendingExpiresAt: null,
-      status: input.status,
-      updatedAt: input.updatedAt,
-    })
-    .where(
-      and(
-        eq(gitProviderRegistrations.id, input.id),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId, input.id),
-        eq(gitProviderRegistrations.status, 'pending'),
-      ),
-    )
-    .returning();
-
-  return mapGitProviderRegistrationRow(registration, input.organizationId);
+  return await transitionGitProviderRegistration(executor, input, 'pending');
 }
 
-export async function persistGitProviderRegistrationManifestExchange(
+export async function persistGitProviderRegistrationWebhookSecret(
   executor: GitProviderWriteExecutor,
-  input: PersistGitProviderRegistrationManifestExchangeInput,
+  input: PersistGitProviderRegistrationWebhookSecretInput,
 ): Promise<GitProviderRegistrationRow> {
   const [registration]: PersistedGitProviderRegistrationRow[] = await executor
     .update(gitProviderRegistrations)
-    .set(buildGitProviderRegistrationManifestExchangeUpdate(input))
+    .set({
+      updatedAt: input.updatedAt,
+      webhookSecretCiphertext: input.webhookSecretCiphertext,
+      webhookSecretEncryptionKeyId: input.webhookSecretEncryptionKeyId,
+    })
     .where(
-      and(
-        eq(gitProviderRegistrations.id, input.id),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId, input.id),
-      ),
+      and(eq(gitProviderRegistrations.id, input.id), eq(gitProviderRegistrations.organizationId, input.organizationId)),
     )
     .returning();
 
-  return mapRequiredGitProviderRegistrationRow(
-    requirePersistedRow(registration, 'git provider registration'),
-    input.organizationId,
-  );
+  return mapRequiredGitProviderRegistrationRow(requirePersistedRow(registration, 'git provider registration'));
 }
 
 export async function failGitProviderRegistration(
@@ -178,7 +140,15 @@ export async function failGitProviderRegistrationWithCurrentStatus(
   input: FailGitProviderRegistrationInput,
   currentStatus: string,
 ): Promise<void> {
-  await executor
+  await transitionGitProviderRegistration(executor, input, currentStatus);
+}
+
+async function transitionGitProviderRegistration(
+  executor: GitProviderWriteExecutor,
+  input: ActivateGitProviderRegistrationInput | FailGitProviderRegistrationInput,
+  currentStatus: string,
+): Promise<GitProviderRegistrationRow | undefined> {
+  const [registration]: PersistedGitProviderRegistrationRow[] = await executor
     .update(gitProviderRegistrations)
     .set({
       bootstrapStateId: null,
@@ -189,10 +159,13 @@ export async function failGitProviderRegistrationWithCurrentStatus(
     .where(
       and(
         eq(gitProviderRegistrations.id, input.id),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId, input.id),
+        eq(gitProviderRegistrations.organizationId, input.organizationId),
         eq(gitProviderRegistrations.status, currentStatus),
       ),
-    );
+    )
+    .returning();
+
+  return mapGitProviderRegistrationRow(registration);
 }
 
 export async function findGitProviderRegistrationByStatusWithExecutor(
@@ -205,9 +178,10 @@ export async function findGitProviderRegistrationByStatusWithExecutor(
     .where(
       and(
         eq(sql`lower(${gitProviderRegistrations.providerHost})`, input.providerHost.toLowerCase()),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId),
+        eq(gitProviderRegistrations.organizationId, input.organizationId),
         eq(sql`lower(${gitProviderRegistrations.repositoryOwner})`, input.repositoryOwner.toLowerCase()),
         eq(gitProviderRegistrations.status, input.status),
+        ...(input.providerType === undefined ? [] : [eq(gitProviderRegistrations.providerType, input.providerType)]),
         ...(input.expiresAfter === undefined
           ? []
           : [gt(gitProviderRegistrations.pendingExpiresAt, input.expiresAfter)]),
@@ -215,35 +189,15 @@ export async function findGitProviderRegistrationByStatusWithExecutor(
     )
     .limit(1);
 
-  return mapGitProviderRegistrationRow(rows[0], input.organizationId);
+  return mapGitProviderRegistrationRow(rows[0]);
 }
 
 export function mapGitProviderRegistrationRow(
   row: PersistedGitProviderRegistrationRow | undefined,
-  organizationId: string,
 ): GitProviderRegistrationRow | undefined {
-  return row === undefined ? undefined : mapRequiredGitProviderRegistrationRow(row, organizationId);
+  return row === undefined ? undefined : mapRequiredGitProviderRegistrationRow(row);
 }
 
-function mapRequiredGitProviderRegistrationRow(
-  row: PersistedGitProviderRegistrationRow,
-  organizationId: string,
-): GitProviderRegistrationRow {
-  return { ...row, organizationId };
-}
-
-function buildGitProviderRegistrationManifestExchangeUpdate(
-  input: PersistGitProviderRegistrationManifestExchangeInput,
-): GitProviderRegistrationManifestExchangeUpdate {
-  return {
-    appId: input.appId,
-    appName: input.appName,
-    appSlug: input.appSlug,
-    appUrl: input.appUrl,
-    privateKeyPemCiphertext: input.privateKeyPemCiphertext,
-    privateKeyPemEncryptionKeyId: input.privateKeyPemEncryptionKeyId,
-    updatedAt: input.updatedAt,
-    webhookSecretCiphertext: input.webhookSecretCiphertext,
-    webhookSecretEncryptionKeyId: input.webhookSecretEncryptionKeyId,
-  };
+function mapRequiredGitProviderRegistrationRow(row: PersistedGitProviderRegistrationRow): GitProviderRegistrationRow {
+  return row;
 }

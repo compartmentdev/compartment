@@ -1,27 +1,32 @@
 import {
-  buildCompartmentGitHubProviderRegistrationRepositoriesPathname,
+  buildCompartmentGitProviderRegistrationRepositoriesPathname,
   buildCompartmentGitSourceExcludePathname,
   buildCompartmentGitSourceIncludePathname,
   buildCompartmentGitSourceSettingsPathname,
   compartmentGitHubProviderBootstrapPathname,
+  compartmentGitProviderRegistrationsPathname,
+  compartmentGitLabProviderRegistrationsPathname,
   compartmentGitSourceConnectPathname,
   compartmentSourcesPathname,
   disconnectGitSourceResponseSchema,
-  gitHubInstallationRepositoryListRequestSchema,
   gitSourceExclusionMutationResponseSchema,
-  gitHubInstallationRepositoryListResponseSchema,
+  gitProviderRegistrationRepositoryListResponseSchema,
   gitHubProviderBootstrapResponseSchema,
+  createGitProviderRegistrationResponseSchema,
+  gitProviderRegistrationListResponseSchema,
   gitSourceListResponseSchema,
   gitSourceResponseSchema,
   gitSourceSettingsResponseSchema,
   gitSourceSyncTaskResponseSchema,
   type ConnectGitSourceRequest,
+  type CreateGitLabProviderRegistrationRequest,
+  type CreateGitProviderRegistrationResponse,
   type DisconnectGitSourceResponse,
   type GitSourceExclusionMutationResponse,
-  type GitHubInstallationRepositoryListRequest,
-  type GitHubInstallationRepositoryListResponse,
   type GitHubProviderBootstrapRequest,
   type GitHubProviderBootstrapResponse,
+  type GitProviderRegistrationListResponse,
+  type GitProviderRegistrationRepositoryListResponse,
   type GitSourceListResponse,
   type GitSourceResponse,
   type GitSourceSettingsResponse,
@@ -54,16 +59,36 @@ export async function getGitHubProviderBootstrapStatus(
   });
 }
 
-export async function listGitHubInstallationRepositories(
+export async function listGitProviderRegistrationRepositories(
   request: CompartmentRequester,
   registrationId: string,
-  input: GitHubInstallationRepositoryListRequest,
-): Promise<GitHubInstallationRepositoryListResponse> {
-  const query: GitHubInstallationRepositoryListRequest = gitHubInstallationRepositoryListRequestSchema.parse(input);
-  return await request<GitHubInstallationRepositoryListResponse, undefined>({
+): Promise<GitProviderRegistrationRepositoryListResponse> {
+  return await request<GitProviderRegistrationRepositoryListResponse, undefined>({
     method: 'GET',
-    path: buildCompartmentGitHubProviderRegistrationRepositoriesPathname(registrationId, query),
-    schema: gitHubInstallationRepositoryListResponseSchema,
+    path: buildCompartmentGitProviderRegistrationRepositoriesPathname(registrationId),
+    schema: gitProviderRegistrationRepositoryListResponseSchema,
+  });
+}
+
+export async function createGitLabProviderRegistration(
+  request: CompartmentRequester,
+  input: CreateGitLabProviderRegistrationRequest,
+): Promise<CreateGitProviderRegistrationResponse> {
+  return await request<CreateGitProviderRegistrationResponse, CreateGitLabProviderRegistrationRequest>({
+    body: input,
+    method: 'POST',
+    path: compartmentGitLabProviderRegistrationsPathname,
+    schema: createGitProviderRegistrationResponseSchema,
+  });
+}
+
+export async function listGitProviderRegistrations(
+  request: CompartmentRequester,
+): Promise<GitProviderRegistrationListResponse> {
+  return await request<GitProviderRegistrationListResponse, undefined>({
+    method: 'GET',
+    path: compartmentGitProviderRegistrationsPathname,
+    schema: gitProviderRegistrationListResponseSchema,
   });
 }
 

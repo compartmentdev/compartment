@@ -203,9 +203,9 @@ async function readGitHubProviderBootstrapPageForState(
   state: GitProviderBootstrapStateRow,
   registration: GitProviderRegistrationRow,
 ): Promise<GitHubProviderBootstrapPage> {
-  if (registration.appSlug !== null) {
+  if (state.appSlug !== null) {
     return {
-      installUrl: buildGitHubAppInstallUrl(state.providerHost, registration.appSlug, state.id),
+      installUrl: buildGitHubAppInstallUrl(state.providerHost, state.appSlug, state.id),
       kind: 'install',
     };
   }

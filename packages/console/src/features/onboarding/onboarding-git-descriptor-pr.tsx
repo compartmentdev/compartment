@@ -9,6 +9,8 @@ import type {
 import { OpenDescriptorPullRequestButton } from './onboarding-git-descriptor-pr-open-button';
 import { OnboardingCommandBlock, OnboardingStatus } from './onboarding-shared';
 import { onboardingStatusPollingIntervalMs } from './onboarding-status-polling';
+import { readOnboardingGitProviderDescriptor } from './onboarding-git-providers';
+import type { OnboardingGitRequestTerms } from './onboarding-git-provider.types';
 
 interface GitDescriptorPrStepProps {
   isPrPending: boolean;
@@ -29,6 +31,7 @@ interface DescriptorTargetSelectProps {
 
 interface GitDescriptorPrCreateProps {
   formInput: GitConnectFormInput;
+  request: OnboardingGitRequestTerms;
   onCreatePr: () => Promise<GitDescriptorPullRequestResponse>;
   onPrCreated: (response: GitDescriptorPullRequestResponse) => void;
   onTargetChange: (targetId: string) => void;
@@ -41,51 +44,51 @@ interface DescriptorRepositoryProps {
 }
 
 interface DescriptorPreviewProps {
+  request: OnboardingGitRequestTerms;
   target: GitDescriptorTargetOption;
 }
 
 interface GitDescriptorPrHeaderProps {
+  request: OnboardingGitRequestTerms;
   repository: OnboardingRepositoryOption;
   target: GitDescriptorTargetOption;
 }
 
 interface GitDescriptorPrWaitingProps {
+  request: OnboardingGitRequestTerms;
   onPrMerged: () => Promise<void>;
 }
 
 interface CreatePrButtonProps {
+  request: OnboardingGitRequestTerms;
   onCreatePr: () => Promise<GitDescriptorPullRequestResponse>;
   onPrCreated: (response: GitDescriptorPullRequestResponse) => void;
 }
 
-export function GitDescriptorPrStep({
-  formInput,
-  isPrPending,
-  onCreatePr,
-  onPrCreated,
-  onPrMerged,
-  onTargetChange,
-  target,
-  targetOptions,
-}: Readonly<GitDescriptorPrStepProps>): JSX.Element {
-  if (isPrPending) {
-    return <GitDescriptorPrWaiting onPrMerged={onPrMerged} />;
+export function GitDescriptorPrStep(props: Readonly<GitDescriptorPrStepProps>): JSX.Element {
+  const request: OnboardingGitRequestTerms = readOnboardingGitProviderDescriptor(
+    props.formInput.repository.provider,
+  ).request;
+  if (props.isPrPending) {
+    return <GitDescriptorPrWaiting request={request} onPrMerged={props.onPrMerged} />;
   }
 
   return (
     <GitDescriptorPrCreate
-      formInput={formInput}
-      onCreatePr={onCreatePr}
-      onPrCreated={onPrCreated}
-      onTargetChange={onTargetChange}
-      target={target}
-      targetOptions={targetOptions}
+      formInput={props.formInput}
+      request={request}
+      onCreatePr={props.onCreatePr}
+      onPrCreated={props.onPrCreated}
+      onTargetChange={props.onTargetChange}
+      target={props.target}
+      targetOptions={props.targetOptions}
     />
   );
 }
 
 function GitDescriptorPrCreate({
   formInput,
+  request,
   onCreatePr,
   onPrCreated,
   onTargetChange,
@@ -94,37 +97,37 @@ function GitDescriptorPrCreate({
 }: Readonly<GitDescriptorPrCreateProps>): JSX.Element {
   return (
     <div className="grid gap-5 p-5">
-      <GitDescriptorPrHeader repository={formInput.repository} target={target} />
+      <GitDescriptorPrHeader request={request} repository={formInput.repository} target={target} />
       <DescriptorRepository repository={formInput.repository} />
       <DescriptorTargetSelect onTargetChange={onTargetChange} target={target} targetOptions={targetOptions} />
-      <DescriptorPreview target={target} />
-      <CreatePrButton onCreatePr={onCreatePr} onPrCreated={onPrCreated} />
+      <DescriptorPreview request={request} target={target} />
+      <CreatePrButton request={request} onCreatePr={onCreatePr} onPrCreated={onPrCreated} />
     </div>
   );
 }
 
-function GitDescriptorPrWaiting({ onPrMerged }: Readonly<GitDescriptorPrWaitingProps>): JSX.Element {
+function GitDescriptorPrWaiting({ request, onPrMerged }: Readonly<GitDescriptorPrWaitingProps>): JSX.Element {
   usePullRequestStatusPolling(onPrMerged);
 
   return (
     <div className="grid gap-5 p-5">
       <div>
-        <h2 className="text-[24px] font-semibold leading-8">Waiting for pull request merge</h2>
+        <h2 className="text-[24px] font-semibold leading-8">Waiting for {request.name} merge</h2>
         <p className="mt-2 max-w-2xl text-[14px] leading-6 text-[#485259]">
-          The pull request is open. Merge it to let Compartment deploy from this repository.
+          The {request.name} is open. Merge it to let Compartment deploy from this repository.
         </p>
       </div>
-      <OnboardingStatus label="Pull request" onRefresh={onPrMerged} value="Waiting for pull request merge" />
+      <OnboardingStatus label={request.label} onRefresh={onPrMerged} value={`Waiting for ${request.name} merge`} />
     </div>
   );
 }
 
-function GitDescriptorPrHeader({ repository, target }: Readonly<GitDescriptorPrHeaderProps>): JSX.Element {
-  const title: string = target.files.length > 1 ? 'Create starter app pull request' : 'Create compartment.yml';
+function GitDescriptorPrHeader({ request, repository, target }: Readonly<GitDescriptorPrHeaderProps>): JSX.Element {
+  const title: string = target.files.length > 1 ? `Create starter app ${request.name}` : 'Create compartment.yml';
   const description: string =
     target.files.length > 1
-      ? `${repository.owner}/${repository.name} does not have a deployable app yet. Compartment can create a starter app PR for you.`
-      : `${repository.owner}/${repository.name} does not have a descriptor yet. Pick the app folder and create a PR.`;
+      ? `${repository.owner}/${repository.name} does not have a deployable app yet. Compartment can create a starter app ${request.shortName} for you.`
+      : `${repository.owner}/${repository.name} does not have a descriptor yet. Pick the app folder and create a ${request.shortName}.`;
   return (
     <div>
       <h2 className="text-[24px] font-semibold leading-8">{title}</h2>
@@ -169,11 +172,11 @@ function DescriptorRepository({ repository }: Readonly<DescriptorRepositoryProps
   );
 }
 
-function DescriptorPreview({ target }: Readonly<DescriptorPreviewProps>): JSX.Element {
+function DescriptorPreview({ request, target }: Readonly<DescriptorPreviewProps>): JSX.Element {
   return (
     <div className="grid gap-4 rounded-lg border border-black/10 bg-[#fbfcfc] p-4">
       <p className="text-[12px] font-medium uppercase text-[#485259]">
-        {target.files.length === 1 ? 'PR file' : 'PR files'}
+        {target.files.length === 1 ? `${request.shortName} file` : `${request.shortName} files`}
       </p>
       {target.files.map(
         (file: GitDescriptorDraftFile): JSX.Element => (
@@ -187,8 +190,8 @@ function DescriptorPreview({ target }: Readonly<DescriptorPreviewProps>): JSX.El
   );
 }
 
-function CreatePrButton({ onCreatePr, onPrCreated }: Readonly<CreatePrButtonProps>): JSX.Element {
-  return <OpenDescriptorPullRequestButton onCreatePr={onCreatePr} onPrCreated={onPrCreated} />;
+function CreatePrButton({ request, onCreatePr, onPrCreated }: Readonly<CreatePrButtonProps>): JSX.Element {
+  return <OpenDescriptorPullRequestButton request={request} onCreatePr={onCreatePr} onPrCreated={onPrCreated} />;
 }
 
 function usePullRequestStatusPolling(onPrMerged: () => Promise<void>): void {

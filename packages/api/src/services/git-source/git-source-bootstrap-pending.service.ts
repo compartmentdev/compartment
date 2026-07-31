@@ -1,5 +1,9 @@
 import { decryptVariableValueFromStorage } from '../../lib/variables-crypto';
-import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
+import { findGitProviderBootstrapStateById } from '../../queries/git-provider-bootstrap-state.query';
+import type {
+  GitProviderBootstrapStateRow,
+  GitProviderRegistrationRow,
+} from '../../queries/git-provider-registration.query.types';
 import { getApiConfig } from '../../runtime/runtime-access';
 import { assertGitHubAppStillExists } from './github-app-client.adapter';
 import {
@@ -20,23 +24,37 @@ export async function readReusablePendingGitHubBootstrap(
 }
 
 async function isPendingGitHubBootstrapReusable(registration: GitProviderRegistrationRow): Promise<boolean> {
-  if (registration.appSlug === null) {
+  const state: GitProviderBootstrapStateRow | undefined = await readPendingGitHubBootstrapState(registration);
+  if (state === undefined) {
+    return false;
+  }
+  if (state.appSlug === null) {
     return true;
   }
-  if (!hasPendingGitHubAppCredentials(registration)) {
+  if (!hasPendingGitHubAppCredentials(state)) {
     return false;
   }
 
   try {
     await assertGitHubAppStillExists({
-      appId: registration.appId!,
-      privateKeyPem: readPendingGitHubAppPrivateKey(registration),
+      appId: state.appId!,
+      privateKeyPem: readPendingGitHubAppPrivateKey(state),
       providerHost: registration.providerHost,
     });
     return true;
   } catch (error) {
     return shouldKeepPendingGitHubBootstrapOnValidationError(error instanceof Error ? error : undefined);
   }
+}
+
+async function readPendingGitHubBootstrapState(
+  registration: GitProviderRegistrationRow,
+): Promise<GitProviderBootstrapStateRow | undefined> {
+  if (registration.bootstrapStateId === null) return undefined;
+  return await findGitProviderBootstrapStateById({
+    bootstrapStateId: registration.bootstrapStateId,
+    organizationId: registration.organizationId,
+  });
 }
 
 function hasActivePendingGitHubBootstrap(
@@ -47,18 +65,14 @@ function hasActivePendingGitHubBootstrap(
   return pendingRegistration?.bootstrapStateId != null && pendingExpiresAt != null && pendingExpiresAt > now;
 }
 
-function hasPendingGitHubAppCredentials(registration: GitProviderRegistrationRow): boolean {
-  return (
-    registration.appId !== null &&
-    registration.privateKeyPemCiphertext !== null &&
-    registration.privateKeyPemEncryptionKeyId !== null
-  );
+function hasPendingGitHubAppCredentials(state: GitProviderBootstrapStateRow): boolean {
+  return state.appId !== null && state.privateKeyPemCiphertext !== null && state.privateKeyPemEncryptionKeyId !== null;
 }
 
-function readPendingGitHubAppPrivateKey(registration: GitProviderRegistrationRow): string {
+function readPendingGitHubAppPrivateKey(state: GitProviderBootstrapStateRow): string {
   return decryptVariableValueFromStorage(
-    registration.privateKeyPemCiphertext!,
-    registration.privateKeyPemEncryptionKeyId!,
+    state.privateKeyPemCiphertext!,
+    state.privateKeyPemEncryptionKeyId!,
     getApiConfig().variablesMasterKey,
   );
 }

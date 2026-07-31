@@ -8,7 +8,7 @@ export interface GitHubBootstrapStateRouteParams {
   bootstrapStateId: string;
 }
 
-export interface GitHubProviderRegistrationRouteParams {
+export interface GitProviderRegistrationRouteParams {
   registrationId: string;
 }
 
@@ -23,6 +23,11 @@ export interface GitHubCallbackQuery {
 }
 
 export interface GitHubSourceWebhookRouteParams {
+  organizationId: string;
+  registrationId: string;
+}
+
+export interface GitLabSourceWebhookRouteParams {
   organizationId: string;
   registrationId: string;
 }
@@ -44,7 +49,7 @@ export const gitHubBootstrapStateRouteParamsSchema: z.ZodType<GitHubBootstrapSta
   })
   .strict();
 
-export const gitHubProviderRegistrationRouteParamsSchema: z.ZodType<GitHubProviderRegistrationRouteParams> = z
+export const gitProviderRegistrationRouteParamsSchema: z.ZodType<GitProviderRegistrationRouteParams> = z
   .object({
     registrationId: z.string().min(1),
   })
@@ -65,6 +70,13 @@ export const gitHubCallbackQuerySchema: z.ZodType<GitHubCallbackQuery> = z
   .passthrough();
 
 export const gitHubSourceWebhookRouteParamsSchema: z.ZodType<GitHubSourceWebhookRouteParams> = z
+  .object({
+    organizationId: z.string().min(1),
+    registrationId: z.string().min(1),
+  })
+  .strict();
+
+export const gitLabSourceWebhookRouteParamsSchema: z.ZodType<GitLabSourceWebhookRouteParams> = z
   .object({
     organizationId: z.string().min(1),
     registrationId: z.string().min(1),

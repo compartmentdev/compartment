@@ -6,6 +6,7 @@ import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import {
   gitProviderRegistrations,
+  githubAppRegistrationCredentials,
   organizations,
   principals,
   sourceSyncTaskCandidates,
@@ -304,25 +305,32 @@ async function createSyncScope(): Promise<void> {
     slug: 'git-sync-org',
   });
   await db.insert(gitProviderRegistrations).values({
-    appId: 'app_sync',
-    appName: 'Compartment GitHub App',
-    appSlug: 'compartment-github-app',
-    appUrl: 'https://github.com/apps/compartment-github-app',
     bootstrapStateId: null,
     callbackUrl: 'https://console.example/v1/sources/git/providers/github/callback',
     createdByPrincipalId: 'prn_git_sync',
     id: 'gpr_git_sync',
+    organizationId: 'org_git_sync',
     pendingExpiresAt: null,
-    privateKeyPemCiphertext: null,
-    privateKeyPemEncryptionKeyId: null,
     providerHost: 'github.com',
     providerType: 'github_app',
     repositoryOwner: 'acme',
     status: 'active',
-    webhookSecretCiphertext: null,
-    webhookSecretEncryptionKeyId: null,
+    webhookSecretCiphertext: 'webhook-secret-ciphertext',
+    webhookSecretEncryptionKeyId: 'webhook-secret-key-id',
     webhookUrl:
       'https://console.example/v1/sources/git/providers/github/organizations/org_git_sync/registrations/gpr_git_sync/webhook',
+  });
+  await db.insert(githubAppRegistrationCredentials).values({
+    appId: 'app_sync',
+    appName: 'Compartment GitHub App',
+    appSlug: 'compartment-github-app',
+    appUrl: 'https://github.com/apps/compartment-github-app',
+    installationAccountLogin: 'acme',
+    installationAccountType: 'Organization',
+    installationId: '501',
+    privateKeyPemCiphertext: 'private-key-ciphertext',
+    privateKeyPemEncryptionKeyId: 'private-key-id',
+    registrationId: 'gpr_git_sync',
   });
 }
 

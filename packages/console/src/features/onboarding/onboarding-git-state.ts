@@ -5,7 +5,6 @@ import {
   type GitDescriptorPlanResponse,
 } from '@compartment/contracts/browser';
 import { readBrowserGitDescriptorPlan } from './onboarding-git-api';
-import { gitOnboardingProviderHost } from './onboarding-git-constants';
 import {
   useGitRepositoryOptions,
   type GitRepositoryLoadStatus,
@@ -16,6 +15,7 @@ import type {
   GitConnectFormPatch,
   GitDescriptorTargetOption,
   OnboardingRepositoryOption,
+  OnboardingGitProvider,
 } from './onboarding-page.types';
 
 export interface GitOnboardingState {
@@ -37,8 +37,11 @@ export interface GitDescriptorLoadResult {
 }
 
 interface UseGitOnboardingStateInput {
+  gitConnected: boolean;
   initialBranchName: string | undefined;
   initialEnvironmentName: string | undefined;
+  provider: OnboardingGitProvider;
+  providerHost: string;
   registrationId: string | undefined;
   repositoryOwner: string | undefined;
   sessionId: string | undefined;
@@ -133,7 +136,7 @@ async function loadDescriptorTargets(input: Readonly<GitOnboardingStateInput>): 
   }
   const plan: GitDescriptorPlanResponse = await readBrowserGitDescriptorPlan(input.selectedOrganizationSlug, {
     branchName: input.formInput.branchName,
-    providerHost: gitOnboardingProviderHost,
+    providerHost: input.formInput.repository.providerHost,
     registrationId: input.formInput.repository.registrationId,
     repositoryName: input.formInput.repository.name,
     repositoryOwner: input.formInput.repository.owner,

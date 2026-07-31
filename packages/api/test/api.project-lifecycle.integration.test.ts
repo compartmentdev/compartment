@@ -38,6 +38,7 @@ import {
   projectServices,
   projects,
   gitProviderRegistrations,
+  githubAppRegistrationCredentials,
   sourceBindings,
   sources,
 } from '../src/db/schema';
@@ -196,22 +197,31 @@ describe('Phase 0 API integration project lifecycle', (): void => {
     expect(projectId).not.toBe('');
 
     await db.insert(gitProviderRegistrations).values({
-      appId: 'app_archive_unarchive_remote_state',
-      appName: 'Compartment GitHub App',
-      appSlug: 'compartment-github-app',
-      appUrl: 'https://github.com/apps/compartment-github-app',
       bootstrapStateId: null,
       callbackUrl: 'https://console.example/v1/sources/git/providers/github/callback',
       createdByPrincipalId: principalId,
       id: 'gpr_archive_unarchive_remote_state',
+      organizationId,
       pendingExpiresAt: null,
-      privateKeyPemCiphertext: null,
-      privateKeyPemEncryptionKeyId: null,
       providerHost: 'github.com',
       providerType: 'github_app',
       repositoryOwner: 'acme',
       status: 'active',
+      webhookSecretCiphertext: 'webhook-secret-ciphertext',
+      webhookSecretEncryptionKeyId: 'webhook-secret-key-id',
       webhookUrl: `https://console.example/v1/sources/git/providers/github/organizations/${organizationId}/registrations/gpr_archive_unarchive_remote_state/webhook`,
+    });
+    await db.insert(githubAppRegistrationCredentials).values({
+      appId: 'app_archive_unarchive_remote_state',
+      appName: 'Compartment GitHub App',
+      appSlug: 'compartment-github-app',
+      appUrl: 'https://github.com/apps/compartment-github-app',
+      installationAccountLogin: 'acme',
+      installationAccountType: 'Organization',
+      installationId: 'inst_archive_unarchive_remote_state',
+      privateKeyPemCiphertext: 'private-key-ciphertext',
+      privateKeyPemEncryptionKeyId: 'private-key-id',
+      registrationId: 'gpr_archive_unarchive_remote_state',
     });
     await db.insert(sources).values({
       autoAdoptNewApps: true,

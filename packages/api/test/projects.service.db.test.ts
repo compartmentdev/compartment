@@ -7,6 +7,7 @@ import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import {
   gitProviderRegistrations,
+  githubAppRegistrationCredentials,
   organizationMemberships,
   organizations,
   principals,
@@ -335,23 +336,32 @@ async function seedDeleteScope(): Promise<void> {
     updatedAt: new Date('2026-04-28T12:00:00.000Z'),
   });
   await db.insert(gitProviderRegistrations).values({
-    appId: 'app_123',
-    appName: 'Compartment GitHub App',
-    appSlug: 'compartment-github-app',
-    appUrl: 'https://github.com/apps/compartment-github-app',
     bootstrapStateId: null,
     callbackUrl: 'https://console.example/v1/sources/git/providers/github/callback',
     createdByPrincipalId: 'prn_git_sources',
     id: 'gpr_git_sources',
+    organizationId: 'org_git_sources',
     pendingExpiresAt: null,
-    privateKeyPemCiphertext: null,
-    privateKeyPemEncryptionKeyId: null,
     providerHost: 'github.com',
     providerType: 'github_app',
     repositoryOwner: 'acme',
     status: 'active',
+    webhookSecretCiphertext: 'webhook-secret-ciphertext',
+    webhookSecretEncryptionKeyId: 'webhook-secret-key-id',
     webhookUrl:
       'https://console.example/v1/sources/git/providers/github/organizations/org_git_sources/registrations/gpr_git_sources/webhook',
+  });
+  await db.insert(githubAppRegistrationCredentials).values({
+    appId: 'app_123',
+    appName: 'Compartment GitHub App',
+    appSlug: 'compartment-github-app',
+    appUrl: 'https://github.com/apps/compartment-github-app',
+    installationAccountLogin: 'acme',
+    installationAccountType: 'Organization',
+    installationId: 'inst_123',
+    privateKeyPemCiphertext: 'private-key-ciphertext',
+    privateKeyPemEncryptionKeyId: 'private-key-id',
+    registrationId: 'gpr_git_sources',
   });
   await db.insert(sources).values({
     autoAdoptNewApps: true,

@@ -1,69 +1,34 @@
-import {
-  type GitHubInstallationRepositoryListResponse,
-  type GitHubInstallationRepositorySummary,
-} from '@compartment/contracts';
-import { listGitHubInstallationRepositories as listGitHubInstallationRepositoriesFromGitHub } from './github-app-client.adapter';
-import type { GitHubInstallationRepository } from './github-app-client.adapter.types';
-import { isGitHubAppAuthenticationFailure, isGitHubRepositoryAccessFailure } from './github-app-http.adapter';
-import {
-  buildGitHubRegistrationClientAuth,
-  requireGitHubRegistrationAccess,
-  type GitHubRegistrationAccess,
-} from './git-source-descriptor-registration-access.service';
+import { requireGitProviderRegistrationAccess } from './git-source-descriptor-registration-access.service';
+import { getGitProviderAdapter } from './git-source-provider.registry';
+import { throwGitProviderBusinessError } from './git-source-provider-error.service';
+import type {
+  GitProviderAccess,
+  GitProviderAdapter,
+  GitProviderRepositoryListView,
+  GitProviderRepositoryView,
+  GitRepositorySummary,
+} from './git-source-provider.types';
 import type { GitSourceContextInput } from './git-source.service.types';
 
-export interface ListGitHubInstallationRepositoriesInput extends GitSourceContextInput {
-  providerHost: string;
+interface ListGitProviderRegistrationRepositoriesInput extends GitSourceContextInput {
   registrationId: string;
-  repositoryOwner: string;
 }
 
-export async function listGitHubInstallationRepositories(
-  input: ListGitHubInstallationRepositoriesInput,
-): Promise<GitHubInstallationRepositoryListResponse> {
-  const access: GitHubRegistrationAccess = await requireGitHubRegistrationAccess(input);
+export async function listGitProviderRegistrationRepositories(
+  input: ListGitProviderRegistrationRepositoriesInput,
+): Promise<GitProviderRepositoryListView> {
+  const access: GitProviderAccess = await requireGitProviderRegistrationAccess(input);
+  const adapter: GitProviderAdapter = getGitProviderAdapter(access.registration.providerType);
   try {
-    return buildReadyGitHubInstallationRepositoriesResponse(
-      await listGitHubInstallationRepositoriesFromGitHub({
-        ...buildGitHubRegistrationClientAuth(access),
-      }),
-    );
+    const repositories: GitRepositorySummary[] = await adapter.listRegistrationRepositories(access);
+    return { repositories: repositories.map(toRepositorySummary) };
   } catch (error) {
-    return recoverGitHubInstallationRepositories(error instanceof Error ? error : undefined);
+    const providerError: Error | undefined = error instanceof Error ? error : undefined;
+    throwGitProviderBusinessError(adapter, providerError, 'The registered repositories could not be read.');
   }
 }
 
-function buildReadyGitHubInstallationRepositoriesResponse(
-  repositories: GitHubInstallationRepository[],
-): GitHubInstallationRepositoryListResponse {
-  return {
-    repositories: repositories.map(toGitHubInstallationRepositorySummary),
-    status: 'ready',
-  };
-}
-
-function recoverGitHubInstallationRepositories(error: Error | undefined): GitHubInstallationRepositoryListResponse {
-  if (!isGitHubProviderRecoveryFailure(error)) {
-    throw error ?? new Error('GitHub repository list failed.');
-  }
-
-  return buildProviderBootstrapRequiredGitHubInstallationRepositoriesResponse();
-}
-
-function isGitHubProviderRecoveryFailure(error: Error | undefined): boolean {
-  return isGitHubRepositoryAccessFailure(error) || isGitHubAppAuthenticationFailure(error);
-}
-
-function buildProviderBootstrapRequiredGitHubInstallationRepositoriesResponse(): GitHubInstallationRepositoryListResponse {
-  return {
-    repositories: [],
-    status: 'provider_bootstrap_required',
-  };
-}
-
-function toGitHubInstallationRepositorySummary(
-  repository: GitHubInstallationRepository,
-): GitHubInstallationRepositorySummary {
+function toRepositorySummary(repository: GitRepositorySummary): GitProviderRepositoryView {
   return {
     defaultBranchName: repository.defaultBranchName,
     fullName: repository.fullName,

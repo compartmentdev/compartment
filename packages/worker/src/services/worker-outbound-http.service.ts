@@ -7,24 +7,24 @@ import {
 import { readWorkerTrustedOutboundHosts } from '../config';
 import type { WorkerArtifactRegistryConfig } from '../worker-artifact-registry.types';
 
-const builtInTrustedPublicOutboundHosts: readonly string[] = ['api.github.com', 'codeload.github.com'];
-const gitHubTrustedOutboundMaxRedirects: number = 5;
+const builtInTrustedPublicOutboundHosts: readonly string[] = ['api.github.com', 'codeload.github.com', 'gitlab.com'];
+const gitProviderTrustedOutboundMaxRedirects: number = 5;
 
-export function createWorkerGitHubTrustedOutboundFetch(): typeof fetch {
+export function createWorkerGitProviderTrustedOutboundFetch(): typeof fetch {
   return createOutboundHttpFetch({
     addressPolicy: 'public',
     allowedProtocols: ['https:'],
-    maxRedirects: gitHubTrustedOutboundMaxRedirects,
+    maxRedirects: gitProviderTrustedOutboundMaxRedirects,
     trustedHosts: readWorkerTrustedPublicOutboundHosts(),
   });
 }
 
-export function createWorkerGitHubArchiveTrustedOutboundFetch(): typeof fetch {
+export function createWorkerGitProviderArchiveTrustedOutboundFetch(): typeof fetch {
   return createOutboundHttpFetch({
     addressPolicy: 'public',
     allowedProtocols: ['https:'],
     maxResponseBytes: null,
-    maxRedirects: gitHubTrustedOutboundMaxRedirects,
+    maxRedirects: gitProviderTrustedOutboundMaxRedirects,
     trustedHosts: readWorkerTrustedPublicOutboundHosts(),
   });
 }

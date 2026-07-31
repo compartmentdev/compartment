@@ -107,7 +107,7 @@ describe('browser onboarding route state', (): void => {
         href:
           'http://console.localhost/onboarding?method=git&step=deploy&branch=main&env=production&owner=acme' +
           '&registration=gpr_123&repo=repo_123&repository=web&source=src_123&sync=sst_123&git=connected' +
-          '&session=fdo_123#pr_token=prt_123',
+          '&session=fdo_123&provider=gitlab&provider_host=gitlab.example.com#pr_token=prt_123',
       },
     });
 
@@ -117,6 +117,8 @@ describe('browser onboarding route state', (): void => {
       environmentName: 'production',
       gitConnected: true,
       method: 'git',
+      provider: 'gitlab',
+      providerHost: 'gitlab.example.com',
       registrationId: 'gpr_123',
       repositoryId: 'repo_123',
       repositoryName: 'web',
@@ -126,6 +128,32 @@ describe('browser onboarding route state', (): void => {
       sourceId: 'src_123',
       step: 'deploy',
       syncTaskId: 'sst_123',
+    });
+  });
+
+  it('keeps legacy Git URLs compatible without provider parameters', (): void => {
+    vi.stubGlobal('window', {
+      location: { href: 'http://console.localhost/onboarding?method=git&step=prepare&git=connected' },
+    });
+
+    expect(readCurrentOnboardingRouteState()).toMatchObject({
+      method: 'git',
+      provider: undefined,
+      providerHost: undefined,
+      step: 'prepare',
+    });
+  });
+
+  it('drops an invalid provider host from a crafted onboarding URL', (): void => {
+    vi.stubGlobal('window', {
+      location: {
+        href: 'http://console.localhost/onboarding?method=git&step=prepare&provider=gitlab&provider_host=https%3A%2F%2Fevil.example',
+      },
+    });
+
+    expect(readCurrentOnboardingRouteState()).toMatchObject({
+      provider: 'gitlab',
+      providerHost: undefined,
     });
   });
 
@@ -170,6 +198,52 @@ describe('browser onboarding route state', (): void => {
       repositoryName: 'api',
       sourceId: undefined,
       syncTaskId: undefined,
+    });
+  });
+
+  it('preserves the selected Git provider before connection', (): void => {
+    const nextState: OnboardingRouteState = readNextRouteState(
+      { ...createDefaultOnboardingRouteState(), method: 'git', step: 'prepare' },
+      { provider: 'gitlab', providerHost: 'gitlab.example.com' },
+    );
+
+    expect(nextState).toMatchObject({ provider: 'gitlab', providerHost: 'gitlab.example.com' });
+  });
+
+  it('clears stale Git connection state when re-entering provider credentials', (): void => {
+    const nextState: OnboardingRouteState = readNextRouteState(
+      {
+        ...createDefaultOnboardingRouteState(),
+        branchName: 'main',
+        descriptorPath: 'compartment.yml',
+        environmentName: 'production',
+        gitAccountDiscoverySessionId: 'discovery_123',
+        gitAccountDiscoveryToken: 'token_123',
+        gitConnected: true,
+        method: 'git',
+        projectName: 'web',
+        provider: 'gitlab',
+        providerHost: 'gitlab.example.com',
+        pullRequestNumber: 12,
+        pullRequestState: 'pending',
+        pullRequestStatusToken: 'prt_123',
+        registrationId: 'gpr_123',
+        repositoryId: 'repo_123',
+        repositoryName: 'web',
+        repositoryOwner: 'acme',
+        sourceId: 'src_123',
+        step: 'prepare',
+        syncTaskId: 'sst_123',
+      },
+      { gitConnected: false },
+    );
+
+    expect(nextState).toEqual({
+      ...createDefaultOnboardingRouteState(),
+      method: 'git',
+      provider: 'gitlab',
+      providerHost: 'gitlab.example.com',
+      step: 'prepare',
     });
   });
 

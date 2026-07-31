@@ -4,13 +4,13 @@ import { buildGitHubApiBaseUrl, hasText } from '@compartment/utils';
 import { z } from 'zod';
 import { createGitHubTrustedOutboundFetch } from '../outbound-http.service';
 
-export interface GitHubAppOctokitInput {
+interface GitHubAppOctokitInput {
   appId: string;
   privateKeyPem: string;
   providerHost: string;
 }
 
-export interface GitHubInstallationOctokitInput extends GitHubAppOctokitInput {
+interface GitHubInstallationOctokitInput extends GitHubAppOctokitInput {
   installationId: string;
 }
 
@@ -39,7 +39,7 @@ interface GitHubOctokitRequestOptions {
   fetch: typeof fetch;
 }
 
-export type GitHubInstallationTokenInput = GitHubInstallationOctokitInput;
+type GitHubInstallationTokenInput = GitHubInstallationOctokitInput;
 
 const gitHubEmptyRepositoryFailureMessage: string = 'Git Repository is empty';
 
@@ -131,7 +131,7 @@ export function readOptionalGitHubField(value: string | null | undefined): strin
   return hasText(value) ? value : null;
 }
 
-function readGitHubRequestFailureStatus(error: Error | null | undefined): number | null {
+export function readGitHubRequestFailureStatus(error: Error | null | undefined): number | null {
   if (error !== null && error !== undefined && 'status' in error && typeof error.status === 'number') {
     return error.status;
   }

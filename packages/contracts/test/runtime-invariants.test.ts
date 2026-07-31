@@ -4,6 +4,7 @@ import {
   buildNodeDrainDeploymentRequest,
   buildNodeInspectReadinessFields,
   gitDescriptorPlanResponseSchema,
+  gitDescriptorPullRequestResponseSchema,
   gitDescriptorPullRequestStatusResponseSchema,
   isDeployableCompartmentServiceKind,
   isRoutableCompartmentServiceKind,
@@ -247,6 +248,18 @@ describe('runtime invariants', (): void => {
       pullRequestUrl: 'https://github.com/acme/mono/pull/42',
       state: 'merged',
     });
+  });
+
+  it('rejects non-HTTPS descriptor pull request URLs', (): void => {
+    expect((): void => {
+      gitDescriptorPullRequestResponseSchema.parse({
+        descriptorPath: 'compartment.yml',
+        pullRequestNumber: 42,
+        pullRequestUrl: 'javascript:alert(1)',
+        state: 'open',
+        statusToken: 'status-token',
+      });
+    }).toThrow('Pull request URL must use HTTPS.');
   });
 
   it('parses nested worker drain state and clear semantics', (): void => {

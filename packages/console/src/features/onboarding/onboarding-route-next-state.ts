@@ -56,7 +56,7 @@ function readNextPullRequestState(
   method: OnboardingDeployMethod,
   patch: OnboardingRouteStatePatch,
 ): OnboardingPullRequestState | undefined {
-  if (method === 'cli' || patch.step === 'prepare') {
+  if (method === 'cli' || patch.gitConnected === false || patch.step === 'prepare') {
     return undefined;
   }
   if (patch.repositoryId !== undefined && patch.pullRequestState === undefined) {
@@ -79,6 +79,13 @@ function readNextGitRouteState(
   if (method === 'cli') {
     return createEmptyGitRouteState();
   }
+  if (patch.gitConnected === false) {
+    return {
+      ...createEmptyGitRouteState(),
+      provider: patch.provider ?? currentState.provider,
+      providerHost: patch.providerHost ?? currentState.providerHost,
+    };
+  }
 
   const resetRepositoryFlow: boolean = patch.step === 'prepare' || patch.repositoryId !== undefined;
   return {
@@ -95,6 +102,8 @@ function readStableGitRouteState(currentState: OnboardingRouteState, patch: Onbo
     gitAccountDiscoverySessionId: patch.gitAccountDiscoverySessionId ?? currentState.gitAccountDiscoverySessionId,
     gitAccountDiscoveryToken: patch.gitAccountDiscoveryToken ?? currentState.gitAccountDiscoveryToken,
     gitConnected: patch.gitConnected ?? currentState.gitConnected,
+    provider: patch.provider ?? currentState.provider,
+    providerHost: patch.providerHost ?? currentState.providerHost,
     registrationId: patch.registrationId ?? currentState.registrationId,
     repositoryId: patch.repositoryId ?? currentState.repositoryId,
     repositoryName: patch.repositoryName ?? currentState.repositoryName,
@@ -130,6 +139,8 @@ function createEmptyGitRouteState(): GitRouteState {
     gitAccountDiscoveryToken: undefined,
     gitConnected: false,
     projectName: undefined,
+    provider: undefined,
+    providerHost: undefined,
     pullRequestNumber: undefined,
     pullRequestStatusToken: undefined,
     registrationId: undefined,

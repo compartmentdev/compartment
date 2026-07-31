@@ -14,8 +14,10 @@ describe('source git sync runtime contract', (): void => {
     const claim: WorkerClaimGitSourceSyncTaskResponse = workerClaimGitSourceSyncTaskResponseSchema.parse({
       task: {
         claimToken: 'wrk_claim',
-        installationToken: 'installation-token',
+        providerAccessToken: 'installation-token',
         providerHost: 'github.com',
+        providerType: 'github_app',
+        repositoryExternalId: 'repo_123',
         repositoryName: 'mono',
         repositoryOwner: 'acme',
         requestedBranchName: 'main',
@@ -33,6 +35,7 @@ describe('source git sync runtime contract', (): void => {
     const fail: WorkerFailGitSourceSyncTaskRequest = workerFailGitSourceSyncTaskRequestSchema.parse({
       claimToken: 'wrk_claim',
       failureReason: 'checkout failed',
+      retryable: true,
       taskId: 'sst_123',
     });
 

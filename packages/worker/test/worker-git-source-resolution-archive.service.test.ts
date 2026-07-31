@@ -9,10 +9,13 @@ import {
   resolveGitSourceSnapshot,
   type ResolvedGitSourceSnapshot,
 } from '../src/services/worker-git-source-resolution-archive.service';
-import type { downloadGitHubRepositoryArchive } from '../src/services/worker-git-source-github.service';
 
-type DownloadGitHubRepositoryArchive = typeof downloadGitHubRepositoryArchive;
 type WorkerGitHubArchiveTask = WorkerClaimedGitSourceResolutionTask | WorkerClaimedGitSourceSyncTask;
+type DownloadGitHubRepositoryArchive = (
+  task: WorkerGitHubArchiveTask,
+  commitSha: string,
+  archivePath: string,
+) => Promise<void>;
 
 interface WorkerGitHubMocks {
   downloadGitHubRepositoryArchive: Mock<DownloadGitHubRepositoryArchive>;
@@ -24,7 +27,21 @@ const workerGitHubMocks: WorkerGitHubMocks = vi.hoisted(
   }),
 );
 
-vi.mock('../src/services/worker-git-source-github.service', (): WorkerGitHubMocks => workerGitHubMocks);
+vi.mock(
+  '../src/services/worker-git-source-github.service',
+  async (importOriginal: () => Promise<object>): Promise<object> => {
+    const original: object = await importOriginal();
+    return {
+      ...original,
+      ...workerGitHubMocks,
+      workerGitHubSourceProvider: {
+        downloadRepositoryArchive: workerGitHubMocks.downloadGitHubRepositoryArchive,
+        providerType: 'github_app',
+        readBranchHeadSha: vi.fn(),
+      },
+    };
+  },
+);
 
 const executeFileAsync: (
   file: string,
@@ -143,9 +160,11 @@ function createResolutionTask(): WorkerClaimedGitSourceResolutionTask {
     branchName: 'main',
     commitSha: '5d3d3c93adb278920f7aec89d43cab9b790f3496',
     descriptorPath: 'packages/browser-commenter/compartment.yml',
-    installationToken: 'installation-token',
+    providerAccessToken: 'installation-token',
     projectName: 'browser-commenter',
     providerHost: 'github.com',
+    providerType: 'github_app',
+    repositoryExternalId: 'repo_1',
     repositoryName: 'reddit-scraper',
     repositoryOwner: 'example-labs',
     sourceBindingId: 'sbd_123',

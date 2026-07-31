@@ -24,27 +24,6 @@ export interface GitHubProviderBootstrapResponse {
   status: GitHubProviderRegistrationStatus;
 }
 
-export interface GitHubInstallationRepositorySummary {
-  defaultBranchName: string;
-  fullName: string;
-  id: string;
-  name: string;
-  owner: string;
-  private: boolean;
-}
-
-export type GitHubInstallationRepositoryListStatus = 'ready' | 'provider_bootstrap_required';
-
-export interface GitHubInstallationRepositoryListResponse {
-  repositories: GitHubInstallationRepositorySummary[];
-  status: GitHubInstallationRepositoryListStatus;
-}
-
-export interface GitHubInstallationRepositoryListRequest {
-  providerHost: string;
-  repositoryOwner: string;
-}
-
 export const gitHubProviderBootstrapRequestSchema: ContractSchema<GitHubProviderBootstrapRequest> = z
   .object({
     providerHost: gitProviderHostSchema,
@@ -63,36 +42,5 @@ export const gitHubProviderBootstrapResponseSchema: ContractSchema<GitHubProvide
     registrationId: z.string().min(1),
     repositoryOwner: z.string().min(1),
     status: gitHubProviderRegistrationStatusSchema,
-  })
-  .strict();
-
-const gitHubInstallationRepositorySummarySchema: ContractSchema<GitHubInstallationRepositorySummary> = z
-  .object({
-    defaultBranchName: z.string().min(1),
-    fullName: z.string().min(1),
-    id: z.string().min(1),
-    name: z.string().min(1),
-    owner: z.string().min(1),
-    private: z.boolean(),
-  })
-  .strict();
-
-const gitHubInstallationRepositoryListStatusSchema: ContractSchema<GitHubInstallationRepositoryListStatus> = z.enum([
-  'ready',
-  'provider_bootstrap_required',
-]);
-
-export const gitHubInstallationRepositoryListResponseSchema: ContractSchema<GitHubInstallationRepositoryListResponse> =
-  z
-    .object({
-      repositories: z.array(gitHubInstallationRepositorySummarySchema),
-      status: gitHubInstallationRepositoryListStatusSchema,
-    })
-    .strict();
-
-export const gitHubInstallationRepositoryListRequestSchema: ContractSchema<GitHubInstallationRepositoryListRequest> = z
-  .object({
-    providerHost: gitProviderHostSchema,
-    repositoryOwner: z.string().min(1),
   })
   .strict();

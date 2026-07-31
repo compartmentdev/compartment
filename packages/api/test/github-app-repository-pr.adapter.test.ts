@@ -44,6 +44,7 @@ interface GitHubRepositoryPullRequestApiResponse {
 
 type GetRef = () => Promise<GitHubApiResponse<GitHubGitRefApiResponse>>;
 type CreateRef = (input: CreateRefInput) => Promise<void>;
+type DeleteRef = (input: { owner: string; ref: string; repo: string }) => Promise<void>;
 type CreateOrUpdateFileContents = (input: CreateOrUpdateFileContentsInput) => Promise<void>;
 type CreatePullRequest = (
   input: PullRequestCreateInput,
@@ -53,17 +54,20 @@ const mocks: {
   createOrUpdateFileContents: Mock<CreateOrUpdateFileContents>;
   createPullRequest: Mock<CreatePullRequest>;
   createRef: Mock<CreateRef>;
+  deleteRef: Mock<DeleteRef>;
   getRef: Mock<GetRef>;
 } = vi.hoisted(
   (): {
     createOrUpdateFileContents: Mock<CreateOrUpdateFileContents>;
     createPullRequest: Mock<CreatePullRequest>;
     createRef: Mock<CreateRef>;
+    deleteRef: Mock<DeleteRef>;
     getRef: Mock<GetRef>;
   } => ({
     createOrUpdateFileContents: vi.fn<CreateOrUpdateFileContents>(),
     createPullRequest: vi.fn<CreatePullRequest>(),
     createRef: vi.fn<CreateRef>(),
+    deleteRef: vi.fn<DeleteRef>(),
     getRef: vi.fn<GetRef>(),
   }),
 );
@@ -79,6 +83,7 @@ vi.mock('../src/services/git-source/github-app-http.adapter', async (): Promise<
       const octokit: Octokit = new Octokit();
       Object.assign(octokit.rest.git, {
         createRef: mocks.createRef,
+        deleteRef: mocks.deleteRef,
         getRef: mocks.getRef,
       });
       Object.assign(octokit.rest.pulls, {
@@ -158,5 +163,32 @@ describe('GitHub App repository PR adapter', (): void => {
         title: 'Add Compartment starter app for mono',
       }),
     );
+  });
+
+  it('deletes the created branch when pull request creation fails', async (): Promise<void> => {
+    vi.resetAllMocks();
+    mocks.getRef.mockResolvedValue({ data: { object: { sha: 'abc123' } } });
+    mocks.createPullRequest.mockRejectedValue(new Error('pull request failed'));
+
+    await expect(
+      createGitHubRepositoryDescriptorPullRequest({
+        appId: '12345',
+        baseBranchName: 'main',
+        descriptorPath: 'compartment.yml',
+        files: [{ content: 'name: mono\n', path: 'compartment.yml' }],
+        installationId: '98765',
+        owner: 'acme',
+        privateKeyPem: 'private-key',
+        projectName: 'mono',
+        providerHost: 'github.com',
+        repositoryName: 'mono',
+      }),
+    ).rejects.toThrow('pull request failed');
+    expect(mocks.deleteRef).toHaveBeenCalledOnce();
+    expect(mocks.deleteRef.mock.calls[0]?.[0]).toMatchObject({
+      owner: 'acme',
+      repo: 'mono',
+    });
+    expect(mocks.deleteRef.mock.calls[0]?.[0].ref).toMatch(/^heads\/compartment\/add-descriptor-/u);
   });
 });

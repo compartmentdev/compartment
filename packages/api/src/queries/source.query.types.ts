@@ -27,7 +27,8 @@ export interface SourceRow {
   id: string;
   organizationId: string;
   providerHost: string;
-  providerInstallationId: string;
+  providerInstallationId: string | null;
+  providerWebhookId: string | null;
   providerRegistrationId: string;
   repositoryCloneUrl: string;
   repositoryExternalId: string;
@@ -85,7 +86,8 @@ export interface CreateSourceInput {
   lastSyncAt?: Date | null | undefined;
   organizationId: string;
   providerHost: string;
-  providerInstallationId: string;
+  providerInstallationId: string | null;
+  providerWebhookId?: string | null | undefined;
   providerRegistrationId: string;
   repositoryCloneUrl: string;
   repositoryExternalId: string;
@@ -104,7 +106,8 @@ export interface UpdateSourceToActiveInput {
   defaultEnvironmentName: string;
   displayName: string;
   lastSyncAt?: Date | null | undefined;
-  providerInstallationId: string;
+  providerInstallationId: string | null;
+  providerWebhookId?: string | null | undefined;
   providerRegistrationId: string;
   repositoryCloneUrl: string;
   repositoryName: string;

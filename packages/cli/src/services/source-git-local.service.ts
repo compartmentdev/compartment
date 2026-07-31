@@ -7,7 +7,7 @@ interface ReadGitOutputOptions {
   allowEmptyOutput?: boolean | undefined;
 }
 
-interface ParsedGitHubRemote {
+interface ParsedGitRemote {
   providerHost: string;
   repositoryName: string;
   repositoryOwner: string;
@@ -15,7 +15,7 @@ interface ParsedGitHubRemote {
 
 export async function readLocalGitSourcePlan(cwd: string): Promise<LocalGitSourcePlan> {
   const remoteName: string = await readPreferredRemoteName(cwd);
-  const remote: ParsedGitHubRemote = parseGitHubRemoteUrl(
+  const remote: ParsedGitRemote = parseGitRemoteUrl(
     await readGitOutput(cwd, ['config', '--get', `remote.${remoteName}.url`], 'Failed to read Git remote URL.'),
   );
 
@@ -64,43 +64,52 @@ function readGitCommandError(message: string, stderr: string): string {
   return hasText(stderr) ? `${message} ${stderr.trim()}` : message;
 }
 
-function parseGitHubRemoteUrl(value: string): ParsedGitHubRemote {
-  return parseSshRemoteUrl(value) ?? parseStandardRemoteUrl(value) ?? failUnsupportedRemote(value);
+function parseGitRemoteUrl(value: string): ParsedGitRemote {
+  return parseSshRemoteUrl(value) ?? parseStandardRemoteUrl(value) ?? failUnsupportedRemote();
 }
 
-function parseSshRemoteUrl(value: string): ParsedGitHubRemote | null {
-  const match: RegExpMatchArray | null = /^git@([^:]+):([^/]+)\/(.+?)(?:\.git)?$/.exec(value);
+function parseSshRemoteUrl(value: string): ParsedGitRemote | null {
+  const match: RegExpMatchArray | null = /^git@([^:]+):(.+)$/.exec(value);
   if (match === null) {
     return null;
   }
 
-  return {
-    providerHost: match[1]!,
-    repositoryName: match[3]!,
-    repositoryOwner: match[2]!,
-  };
+  return buildParsedGitRemote(match[1]!, match[2]!);
 }
 
-function parseStandardRemoteUrl(value: string): ParsedGitHubRemote | null {
+function parseStandardRemoteUrl(value: string): ParsedGitRemote | null {
   let parsed: URL;
   try {
     parsed = new URL(value);
   } catch {
     return null;
   }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:' && parsed.protocol !== 'ssh:') return null;
+  const providerHost: string = parsed.protocol === 'ssh:' ? parsed.hostname : parsed.host;
+  return buildParsedGitRemote(providerHost, parsed.pathname);
+}
 
-  const pathSegments: string[] = parsed.pathname.split('/').filter(hasText);
-  if (pathSegments.length !== 2) {
-    return null;
-  }
-
+function buildParsedGitRemote(providerHost: string, path: string): ParsedGitRemote | null {
+  const pathSegments: string[] | null = decodePathSegments(path);
+  if (pathSegments === null) return null;
+  if (pathSegments.length < 2) return null;
+  const repositoryName: string = pathSegments.pop()!.replace(/\.git$/i, '');
+  if (!hasText(repositoryName)) return null;
   return {
-    providerHost: parsed.host,
-    repositoryName: pathSegments[1]?.replace(/\.git$/, '') ?? '',
-    repositoryOwner: pathSegments[0] ?? '',
+    providerHost: providerHost.toLowerCase(),
+    repositoryName,
+    repositoryOwner: pathSegments.join('/'),
   };
 }
 
-function failUnsupportedRemote(value: string): never {
-  throw new Error(`Unsupported Git remote URL for GitHub App bootstrap: ${value}`);
+function decodePathSegments(path: string): string[] | null {
+  try {
+    return path.split('/').filter(hasText).map(decodeURIComponent);
+  } catch {
+    return null;
+  }
+}
+
+function failUnsupportedRemote(): never {
+  throw new Error('Unsupported Git remote URL. Use an HTTPS or SSH repository remote.');
 }

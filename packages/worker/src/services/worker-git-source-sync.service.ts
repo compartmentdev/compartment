@@ -13,6 +13,7 @@ import {
   resolveGitSourceSyncDiscovery,
   type ResolvedGitSourceSyncDiscovery,
 } from './worker-git-source-sync-discovery.service';
+import { isRetryableGitSourceTaskError } from './worker-git-source-resolution-failure.support';
 
 export async function runGitSourceSyncIteration(request: CompartmentRequester): Promise<boolean> {
   const claimed: WorkerClaimGitSourceSyncTaskResponse = await claimNextGitSourceSyncTask(request);
@@ -49,6 +50,7 @@ async function reportGitSourceSyncFailure(
   const body: WorkerFailGitSourceSyncTaskRequest = {
     claimToken: task.claimToken,
     failureReason: failure?.message ?? 'Unknown git source sync failure.',
+    retryable: isRetryableGitSourceTaskError(failure),
     taskId: task.taskId,
   };
   await failGitSourceSyncTask(request, body);

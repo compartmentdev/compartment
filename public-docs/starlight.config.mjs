@@ -16,6 +16,7 @@ const docsSidebar = [
     items: [
       'deploy-apps/deploy-using-cli',
       'deploy-apps/deploy-using-git',
+      'deploy-apps/gitlab-git-sources',
       'deploy-apps/deployment-lifecycle',
       'deploy-apps/projects-and-app-urls',
       'deploy-apps/runtime-variables',

@@ -184,6 +184,7 @@ export interface SourceConnectGitCommandOptions extends SourceRemoteCommandOptio
   branch?: string | undefined;
   env?: string | undefined;
   manual?: boolean | undefined;
+  provider?: string | undefined;
 }
 
 export type SourceSyncCommandOptions = SourceRemoteCommandOptions;

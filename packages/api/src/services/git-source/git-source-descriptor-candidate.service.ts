@@ -7,7 +7,7 @@ import {
   type GitDescriptorDraftFile,
 } from '@compartment/contracts';
 import { slugifyText } from '@compartment/utils';
-import type { GitHubRepositoryTreeEntry } from './github-app-client.adapter.types';
+import type { GitRepositoryTreeEntry } from './git-source-provider.types';
 
 interface PackageJsonDescriptorCandidate {
   appFolder: string;
@@ -19,7 +19,7 @@ const starterMetadataFileBaseNames: readonly string[] = ['.editorconfig', '.gita
 
 export function buildDescriptorCandidates(
   repositoryName: string,
-  tree: readonly GitHubRepositoryTreeEntry[],
+  tree: readonly GitRepositoryTreeEntry[],
 ): GitDescriptorCandidate[] {
   if (isStarterEligibleRepository(tree)) {
     return [buildStarterDescriptorCandidate(repositoryName)];
@@ -31,11 +31,11 @@ export function buildDescriptorCandidates(
   );
 }
 
-export function readFirstDescriptorPath(tree: readonly GitHubRepositoryTreeEntry[]): string | null {
+export function readFirstDescriptorPath(tree: readonly GitRepositoryTreeEntry[]): string | null {
   return (
     tree
-      .filter((entry: GitHubRepositoryTreeEntry): boolean => entry.type === 'blob')
-      .map((entry: GitHubRepositoryTreeEntry): string => entry.path)
+      .filter((entry: GitRepositoryTreeEntry): boolean => entry.type === 'blob')
+      .map((entry: GitRepositoryTreeEntry): string => entry.path)
       .filter(
         (path: string): boolean =>
           path === compartmentDescriptorFileName || path.endsWith(`/${compartmentDescriptorFileName}`),
@@ -45,12 +45,12 @@ export function readFirstDescriptorPath(tree: readonly GitHubRepositoryTreeEntry
 }
 
 function readPackageJsonDescriptorCandidates(
-  tree: readonly GitHubRepositoryTreeEntry[],
+  tree: readonly GitRepositoryTreeEntry[],
 ): PackageJsonDescriptorCandidate[] {
   const packageJsonPaths: Set<string> = new Set<string>(
     tree
-      .filter((entry: GitHubRepositoryTreeEntry): boolean => entry.type === 'blob')
-      .map((entry: GitHubRepositoryTreeEntry): string => entry.path)
+      .filter((entry: GitRepositoryTreeEntry): boolean => entry.type === 'blob')
+      .map((entry: GitRepositoryTreeEntry): string => entry.path)
       .filter(isSupportedPackageJsonPath),
   );
   const sortedPaths: string[] = [...packageJsonPaths].sort(comparePackageJsonCandidatePaths);
@@ -133,10 +133,10 @@ function createDraftFile(path: string, content: string): GitDescriptorDraftFile 
   };
 }
 
-function isStarterEligibleRepository(tree: readonly GitHubRepositoryTreeEntry[]): boolean {
+function isStarterEligibleRepository(tree: readonly GitRepositoryTreeEntry[]): boolean {
   const blobPaths: string[] = tree
-    .filter((entry: GitHubRepositoryTreeEntry): boolean => entry.type === 'blob')
-    .map((entry: GitHubRepositoryTreeEntry): string => entry.path);
+    .filter((entry: GitRepositoryTreeEntry): boolean => entry.type === 'blob')
+    .map((entry: GitRepositoryTreeEntry): string => entry.path);
   return blobPaths.every(isStarterAllowedPath);
 }
 

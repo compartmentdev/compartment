@@ -26,6 +26,7 @@ export type ApiBusinessErrorCode =
   | 'git_source_registration_pending'
   | 'git_source_repository_access_denied'
   | 'git_source_repository_empty'
+  | 'gitlab_token_invalid'
   | 'custom_domain_collision'
   | 'custom_domain_not_found'
   | 'domain_idempotency_conflict'

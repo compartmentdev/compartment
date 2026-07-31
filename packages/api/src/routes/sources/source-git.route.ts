@@ -55,6 +55,7 @@ import { emitGitSourceConnectResultAuditEvents, emitGitSourceDisconnectAuditEven
 import { registerGitSourceDescriptorRoutes } from './source-git-descriptor.route';
 import { registerGitSourceSyncRoutes } from './source-git-sync.route';
 import { registerGitSourceSettingsRoutes } from './source-git-settings.route';
+import { registerGitLabSourceRoutes } from './source-gitlab.route';
 
 export function registerGitSourceRoutes(app: ApiApp): void {
   registerGitSourceReadRoutes(app);
@@ -62,6 +63,7 @@ export function registerGitSourceRoutes(app: ApiApp): void {
   registerGitSourceDescriptorRoutes(app);
   registerGitSourceSettingsRoutes(app);
   registerGitSourceSyncRoutes(app);
+  registerGitLabSourceRoutes(app);
 }
 
 async function handleGitSourceList(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {

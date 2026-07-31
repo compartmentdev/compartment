@@ -131,11 +131,18 @@ export const createGitDescriptorPullRequestRequestSchema: ContractSchema<CreateG
   })
   .strict();
 
+const gitDescriptorHttpsUrlSchema: z.ZodType<string> = z
+  .string()
+  .url()
+  .refine((value: string): boolean => new URL(value).protocol === 'https:', {
+    message: 'Pull request URL must use HTTPS.',
+  });
+
 export const gitDescriptorPullRequestResponseSchema: ContractSchema<GitDescriptorPullRequestResponse> = z
   .object({
     descriptorPath: gitSourceDescriptorPathSchema,
     pullRequestNumber: z.number().int().positive(),
-    pullRequestUrl: z.string().url(),
+    pullRequestUrl: gitDescriptorHttpsUrlSchema,
     state: gitDescriptorPullRequestStateSchema,
     statusToken: z.string().min(1),
   })
@@ -144,7 +151,7 @@ export const gitDescriptorPullRequestResponseSchema: ContractSchema<GitDescripto
 export const gitDescriptorPullRequestStatusResponseSchema: ContractSchema<GitDescriptorPullRequestStatusResponse> = z
   .object({
     pullRequestNumber: z.number().int().positive(),
-    pullRequestUrl: z.string().url(),
+    pullRequestUrl: gitDescriptorHttpsUrlSchema,
     state: gitDescriptorPullRequestStateSchema,
   })
   .strict();

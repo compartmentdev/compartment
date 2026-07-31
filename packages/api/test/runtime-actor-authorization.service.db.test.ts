@@ -11,6 +11,7 @@ import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import {
   gitProviderRegistrations,
+  githubAppRegistrationCredentials,
   localCredentials,
   organizationMemberships,
   organizations,
@@ -235,13 +236,28 @@ async function seedRuntimeAuthorizationScope(): Promise<void> {
     callbackUrl: 'https://console.example.com/callback',
     createdByPrincipalId: 'prn_human_active',
     id: 'gpr_123',
+    organizationId: 'org_123',
     providerHost: 'github.example.com',
     providerType: 'github_app',
     repositoryOwner: 'acme',
     status: 'active',
+    webhookSecretCiphertext: 'webhook-secret-ciphertext',
+    webhookSecretEncryptionKeyId: 'webhook-secret-key-id',
     webhookUrl:
       'https://console.example.com/v1/sources/git/providers/github/organizations/org_123/registrations/gpr_123/webhook',
     updatedAt: new Date('2026-05-01T09:00:00.000Z'),
+  });
+  await db.insert(githubAppRegistrationCredentials).values({
+    appId: 'app_123',
+    appName: 'Compartment GitHub App',
+    appSlug: 'compartment-github-app',
+    appUrl: 'https://github.example.com/apps/compartment-github-app',
+    installationAccountLogin: 'acme',
+    installationAccountType: 'Organization',
+    installationId: 'inst_123',
+    privateKeyPemCiphertext: 'private-key-ciphertext',
+    privateKeyPemEncryptionKeyId: 'private-key-id',
+    registrationId: 'gpr_123',
   });
   await db.insert(sources).values({
     automationPrincipalId: 'prn_git_auto',

@@ -8,6 +8,7 @@ This page is generated from the current shipped `compartment` help output.
 Related guides:
 
 - [Deploy using Git](/deploy-apps/deploy-using-git/)
+- [Connect GitLab repositories](/deploy-apps/gitlab-git-sources/)
 
 ## Help Output
 
@@ -15,6 +16,7 @@ Related guides:
 Usage: compartment source connect git [options]
 
 Options:
+  --provider <provider>          git provider: github or gitlab
   --all                          auto-adopt discovered descriptor apps
   --auto-adopt-new-apps <state>  enabled or disabled
   --auto-deploy                  enable auto deploy for created bindings

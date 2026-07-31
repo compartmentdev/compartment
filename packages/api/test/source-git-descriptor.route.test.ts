@@ -6,7 +6,7 @@ import {
   gitDescriptorPullRequestStatusResponseSchema,
   gitHubAccountDiscoveryResultResponseSchema,
   gitHubAccountDiscoveryStartResponseSchema,
-  gitHubInstallationRepositoryListResponseSchema,
+  gitProviderRegistrationRepositoryListResponseSchema,
   listCompartmentRolePermissions,
   type CreateGitDescriptorPullRequestRequest,
   type GitDescriptorPlanRequest,
@@ -16,7 +16,7 @@ import {
   type GitHubAccountDiscoveryAccount,
   type GitHubAccountDiscoveryResultResponse,
   type GitHubAccountDiscoveryStartResponse,
-  type GitHubInstallationRepositoryListResponse,
+  type GitProviderRegistrationRepositoryListResponse,
 } from '@compartment/contracts';
 import type { ApiApp } from '../src/app.types';
 import { createGitSourceRepositoryEmptyError } from '../src/errors/api-business-error';
@@ -34,7 +34,7 @@ import type {
   readGitDescriptorPlan,
   readGitDescriptorPullRequestStatus,
 } from '../src/services/git-source/git-source-descriptor.service';
-import type { listGitHubInstallationRepositories } from '../src/services/git-source/git-source-repository-list.service';
+import type { listGitProviderRegistrationRepositories } from '../src/services/git-source/git-source-repository-list.service';
 import { applyApiRouteTestEnv, expectJsonError, withApiRouteApp } from './api-route-test.harness';
 
 type AuthenticateSession = typeof authenticateSession;
@@ -43,7 +43,7 @@ type ResolveOrganizationForPrincipal = typeof resolveOrganizationForPrincipal;
 type IsAuthSessionAllowedForOrganization = typeof isAuthSessionAllowedForOrganization;
 type StartGitHubAccountDiscovery = typeof startGitHubAccountDiscovery;
 type ReadGitHubAccountDiscoveryResult = typeof readGitHubAccountDiscoveryResult;
-type ListGitHubInstallationRepositories = typeof listGitHubInstallationRepositories;
+type ListGitHubInstallationRepositories = typeof listGitProviderRegistrationRepositories;
 type ReadGitDescriptorPlan = typeof readGitDescriptorPlan;
 type CreateGitDescriptorPullRequest = typeof createGitDescriptorPullRequest;
 type ReadGitDescriptorPullRequestStatus = typeof readGitDescriptorPullRequestStatus;
@@ -52,7 +52,7 @@ interface SourceGitDescriptorRouteMocks {
   authenticateSession: Mock<AuthenticateSession>;
   createGitDescriptorPullRequest: Mock<CreateGitDescriptorPullRequest>;
   isAuthSessionAllowedForOrganization: Mock<IsAuthSessionAllowedForOrganization>;
-  listGitHubInstallationRepositories: Mock<ListGitHubInstallationRepositories>;
+  listGitProviderRegistrationRepositories: Mock<ListGitHubInstallationRepositories>;
   readGitDescriptorPlan: Mock<ReadGitDescriptorPlan>;
   readGitDescriptorPullRequestStatus: Mock<ReadGitDescriptorPullRequestStatus>;
   readGitHubAccountDiscoveryResult: Mock<ReadGitHubAccountDiscoveryResult>;
@@ -93,7 +93,7 @@ const mocks: SourceGitDescriptorRouteMocks = vi.hoisted(
     authenticateSession: vi.fn<AuthenticateSession>(),
     createGitDescriptorPullRequest: vi.fn<CreateGitDescriptorPullRequest>(),
     isAuthSessionAllowedForOrganization: vi.fn<IsAuthSessionAllowedForOrganization>(),
-    listGitHubInstallationRepositories: vi.fn<ListGitHubInstallationRepositories>(),
+    listGitProviderRegistrationRepositories: vi.fn<ListGitHubInstallationRepositories>(),
     readGitDescriptorPlan: vi.fn<ReadGitDescriptorPlan>(),
     readGitDescriptorPullRequestStatus: vi.fn<ReadGitDescriptorPullRequestStatus>(),
     readGitHubAccountDiscoveryResult: vi.fn<ReadGitHubAccountDiscoveryResult>(),
@@ -150,8 +150,8 @@ vi.mock(
 
 vi.mock(
   '../src/services/git-source/git-source-repository-list.service',
-  (): { listGitHubInstallationRepositories: Mock<ListGitHubInstallationRepositories> } => ({
-    listGitHubInstallationRepositories: mocks.listGitHubInstallationRepositories,
+  (): { listGitProviderRegistrationRepositories: Mock<ListGitHubInstallationRepositories> } => ({
+    listGitProviderRegistrationRepositories: mocks.listGitProviderRegistrationRepositories,
   }),
 );
 
@@ -224,67 +224,61 @@ describe('git source descriptor and discovery routes', (): void => {
 
   it('lists GitHub installation repositories for an authenticated admin', async (): Promise<void> => {
     prepareAuthenticatedRoute('admin');
-    mocks.listGitHubInstallationRepositories.mockResolvedValueOnce(
-      createGitHubInstallationRepositoryListResponsePayload(),
+    mocks.listGitProviderRegistrationRepositories.mockResolvedValueOnce(
+      createGitProviderRegistrationRepositoryListResponsePayload(),
     );
 
     await withApiRouteApp(async (app: ApiApp): Promise<void> => {
       const response: LightMyRequestResponse = await app.inject({
         headers: createAuthenticatedHeaders(),
         method: 'GET',
-        url: '/v1/sources/git/providers/github/registrations/gpr_123/repositories?providerHost=github.enterprise.example&repositoryOwner=acme',
+        url: '/v1/sources/git/providers/registrations/gpr_123/repositories',
       });
 
       expect(response.statusCode).toBe(200);
-      const payload: GitHubInstallationRepositoryListResponse = gitHubInstallationRepositoryListResponseSchema.parse(
-        response.json(),
-      );
+      const payload: GitProviderRegistrationRepositoryListResponse =
+        gitProviderRegistrationRepositoryListResponseSchema.parse(response.json());
       expect(payload.repositories[0]?.fullName).toBe('acme/mono');
-      expect(payload.status).toBe('ready');
-      expect(mocks.listGitHubInstallationRepositories).toHaveBeenCalledWith({
+      expect(mocks.listGitProviderRegistrationRepositories).toHaveBeenCalledWith({
         actor: createActor(),
         organizationId: 'org_123',
-        providerHost: 'github.enterprise.example',
         registrationId: 'gpr_123',
-        repositoryOwner: 'acme',
       });
     });
   });
 
-  it('returns repository listing status from the service', async (): Promise<void> => {
+  it('returns an empty provider-neutral repository listing', async (): Promise<void> => {
     prepareAuthenticatedRoute('admin');
-    mocks.listGitHubInstallationRepositories.mockResolvedValueOnce({
+    mocks.listGitProviderRegistrationRepositories.mockResolvedValueOnce({
       repositories: [],
-      status: 'provider_bootstrap_required',
     });
 
     await withApiRouteApp(async (app: ApiApp): Promise<void> => {
       const response: LightMyRequestResponse = await app.inject({
         headers: createAuthenticatedHeaders(),
         method: 'GET',
-        url: '/v1/sources/git/providers/github/registrations/gpr_123/repositories?providerHost=github.enterprise.example&repositoryOwner=acme',
+        url: '/v1/sources/git/providers/registrations/gpr_123/repositories',
       });
 
       expect(response.statusCode).toBe(200);
-      const payload: GitHubInstallationRepositoryListResponse = gitHubInstallationRepositoryListResponseSchema.parse(
-        response.json(),
-      );
-      expect(payload.status).toBe('provider_bootstrap_required');
+      const payload: GitProviderRegistrationRepositoryListResponse =
+        gitProviderRegistrationRepositoryListResponseSchema.parse(response.json());
+      expect(payload.repositories).toEqual([]);
     });
   });
 
-  it('rejects repository listing without selected provider host and owner', async (): Promise<void> => {
-    prepareAuthenticatedRoute('admin');
+  it('requires source manage permission for repository listing', async (): Promise<void> => {
+    prepareAuthenticatedRoute('deployer');
 
     await withApiRouteApp(async (app: ApiApp): Promise<void> => {
       const response: LightMyRequestResponse = await app.inject({
         headers: createAuthenticatedHeaders(),
         method: 'GET',
-        url: '/v1/sources/git/providers/github/registrations/gpr_123/repositories',
+        url: '/v1/sources/git/providers/registrations/gpr_123/repositories',
       });
 
-      expectJsonError(response, 400, 'invalid_git_source_params');
-      expect(mocks.listGitHubInstallationRepositories).not.toHaveBeenCalled();
+      expectJsonError(response, 403, 'forbidden');
+      expect(mocks.listGitProviderRegistrationRepositories).not.toHaveBeenCalled();
     });
   });
 
@@ -462,7 +456,7 @@ function createGitHubAccountDiscoveryResultResponsePayload(): GitHubAccountDisco
   };
 }
 
-function createGitHubInstallationRepositoryListResponsePayload(): GitHubInstallationRepositoryListResponse {
+function createGitProviderRegistrationRepositoryListResponsePayload(): GitProviderRegistrationRepositoryListResponse {
   return {
     repositories: [
       {
@@ -474,7 +468,6 @@ function createGitHubInstallationRepositoryListResponsePayload(): GitHubInstalla
         private: true,
       },
     ],
-    status: 'ready',
   };
 }
 

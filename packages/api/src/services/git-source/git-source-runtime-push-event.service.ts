@@ -5,11 +5,11 @@ import type {
   SourceEventRow,
   SourceResolutionMutationTransaction,
 } from '../../queries/source-resolution.query.types';
-import type { HandleGitHubSourceWebhookInput, PushChangedFilesState } from './git-source-runtime.service.types';
+import type { ProviderPushDeliveryInput, PushChangedFilesState } from './git-source-runtime.service.types';
 
 export async function createSourcePushEventIfMissing(
   transaction: SourceResolutionMutationTransaction,
-  input: HandleGitHubSourceWebhookInput,
+  input: ProviderPushDeliveryInput,
   sourceId: string,
   branchName: string,
   commitSha: string,

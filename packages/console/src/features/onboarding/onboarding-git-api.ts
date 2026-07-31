@@ -1,5 +1,5 @@
 import {
-  buildCompartmentGitHubProviderRegistrationRepositoriesPathname,
+  buildCompartmentGitProviderRegistrationRepositoriesPathname,
   buildCompartmentGitSourceSyncTaskPathname,
   compartmentDeploymentsStatusPathname,
   compartmentGitDescriptorPlanPathname,
@@ -8,8 +8,12 @@ import {
   compartmentGitHubProviderAccountDiscoveryPathname,
   compartmentGitHubProviderAccountDiscoveryResultPathname,
   compartmentGitHubProviderBootstrapPathname,
+  compartmentGitLabProviderRegistrationsPathname,
+  compartmentGitProviderRegistrationsPathname,
   compartmentGitSourceConnectPathname,
   connectGitSourceRequestSchema,
+  createGitLabProviderRegistrationRequestSchema,
+  createGitProviderRegistrationResponseSchema,
   createGitDescriptorPullRequestRequestSchema,
   deploymentStatusQuerySchema,
   deploymentStatusResponseSchema,
@@ -22,13 +26,15 @@ import {
   gitHubAccountDiscoveryResultResponseSchema,
   gitHubAccountDiscoveryStartRequestSchema,
   gitHubAccountDiscoveryStartResponseSchema,
-  gitHubInstallationRepositoryListRequestSchema,
-  gitHubInstallationRepositoryListResponseSchema,
+  gitProviderRegistrationRepositoryListResponseSchema,
+  gitProviderRegistrationListResponseSchema,
   gitHubProviderBootstrapRequestSchema,
   gitHubProviderBootstrapResponseSchema,
   gitSourceResponseSchema,
   gitSourceSyncTaskResponseSchema,
   type ConnectGitSourceRequest,
+  type CreateGitLabProviderRegistrationRequest,
+  type CreateGitProviderRegistrationResponse,
   type CreateGitDescriptorPullRequestRequest,
   type DeploymentStatusQuery,
   type DeploymentStatusResponse,
@@ -41,8 +47,8 @@ import {
   type GitHubAccountDiscoveryResultResponse,
   type GitHubAccountDiscoveryStartRequest,
   type GitHubAccountDiscoveryStartResponse,
-  type GitHubInstallationRepositoryListRequest,
-  type GitHubInstallationRepositoryListResponse,
+  type GitProviderRegistrationRepositoryListResponse,
+  type GitProviderRegistrationListResponse,
   type GitHubProviderBootstrapRequest,
   type GitHubProviderBootstrapResponse,
   type GitSourceResponse,
@@ -91,18 +97,35 @@ export async function readBrowserGitHubAccountDiscoveryResult(
   );
 }
 
-export async function listBrowserGitHubInstallationRepositories(
+export async function listBrowserGitProviderRepositories(
   currentOrganization: string,
   registrationId: string,
-  query: GitHubInstallationRepositoryListRequest,
-): Promise<GitHubInstallationRepositoryListResponse> {
+): Promise<GitProviderRegistrationRepositoryListResponse> {
   return await requestBrowserApi(
-    buildCompartmentGitHubProviderRegistrationRepositoriesPathname(
-      registrationId,
-      gitHubInstallationRepositoryListRequestSchema.parse(query),
-    ),
-    gitHubInstallationRepositoryListResponseSchema,
+    buildCompartmentGitProviderRegistrationRepositoriesPathname(registrationId),
+    gitProviderRegistrationRepositoryListResponseSchema,
     { currentOrganization },
+  );
+}
+
+export async function listBrowserGitProviderRegistrations(
+  currentOrganization: string,
+): Promise<GitProviderRegistrationListResponse> {
+  return await requestBrowserApi(
+    compartmentGitProviderRegistrationsPathname,
+    gitProviderRegistrationListResponseSchema,
+    { currentOrganization },
+  );
+}
+
+export async function createBrowserGitLabProviderRegistration(
+  currentOrganization: string,
+  body: CreateGitLabProviderRegistrationRequest,
+): Promise<CreateGitProviderRegistrationResponse> {
+  return await requestBrowserApi(
+    compartmentGitLabProviderRegistrationsPathname,
+    createGitProviderRegistrationResponseSchema,
+    { currentOrganization, json: createGitLabProviderRegistrationRequestSchema.parse(body), method: 'POST' },
   );
 }
 

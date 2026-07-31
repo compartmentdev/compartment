@@ -406,6 +406,11 @@ export const publicDocsAreas = [
         slug: 'deploy-apps/deploy-using-git',
         title: 'Deploy using Git',
       },
+      {
+        path: 'public-docs/src/content/docs/deploy-apps/gitlab-git-sources.md',
+        slug: 'deploy-apps/gitlab-git-sources',
+        title: 'Connect GitLab repositories',
+      },
     ],
     guideSourcePatterns: [
       /^packages\/cli\/src\/services\/sources\.service\.ts$/u,

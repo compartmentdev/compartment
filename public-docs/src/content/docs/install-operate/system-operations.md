@@ -39,7 +39,7 @@ Set `COMPARTMENT_AUDIT_RETENTION_DAYS` in the install env to choose the default 
 
 Audit retention cleanup runs automatically from the API job scheduler. New installs use `COMPARTMENT_AUDIT_RETENTION_CLEANUP_CRON="0 3 * * *"`. Each run deletes expired rows in bounded batches controlled by `COMPARTMENT_AUDIT_RETENTION_CLEANUP_BATCH_SIZE` and `COMPARTMENT_AUDIT_RETENTION_CLEANUP_MAX_BATCHES`.
 
-Set `COMPARTMENT_TRUSTED_OUTBOUND_HOSTS` when an external service used by the install has a public HTTPS host that is not trusted by default. OIDC SSO browser authorization endpoints use this allowlist when the provider is not a built-in Google or Microsoft host.
+Set `COMPARTMENT_TRUSTED_OUTBOUND_HOSTS` when an external service used by the install has a public HTTPS host that is not trusted by default. This includes self-managed GitLab hosts used by both the API and worker services, as well as OIDC SSO browser authorization endpoints when the provider is not a built-in Google or Microsoft host.
 
 For install-level domain work, use:
 

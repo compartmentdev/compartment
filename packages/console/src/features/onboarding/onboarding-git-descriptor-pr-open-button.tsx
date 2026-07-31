@@ -2,15 +2,18 @@ import { useState, type JSX } from 'react';
 import type { GitDescriptorPullRequestResponse } from '@compartment/contracts/browser';
 import { Button } from '../../components/ui/button';
 import { GitBranch, LoaderCircle } from '../../components/ui/icons';
+import type { OnboardingGitRequestTerms } from './onboarding-git-provider.types';
 
 type DescriptorPullRequestOpenStatus = 'failed' | 'idle' | 'loading';
 
 interface OpenDescriptorPullRequestButtonProps {
+  request: OnboardingGitRequestTerms;
   onCreatePr: () => Promise<GitDescriptorPullRequestResponse>;
   onPrCreated: (response: GitDescriptorPullRequestResponse) => void;
 }
 
 interface DescriptorPullRequestOpenButtonProps {
+  request: OnboardingGitRequestTerms;
   state: DescriptorPullRequestOpenButtonState;
 }
 
@@ -27,6 +30,7 @@ class DescriptorPullRequestOpenButtonStateValue implements DescriptorPullRequest
 }
 
 export function OpenDescriptorPullRequestButton({
+  request,
   onCreatePr,
   onPrCreated,
 }: Readonly<OpenDescriptorPullRequestButtonProps>): JSX.Element {
@@ -35,14 +39,17 @@ export function OpenDescriptorPullRequestButton({
   return (
     <div className="grid gap-3">
       {state.status === 'failed' ? (
-        <p className="text-[13px] leading-5 text-[#b42318]">Could not create pull request. Try again.</p>
+        <p className="text-[13px] leading-5 text-[#b42318]">Could not create {request.name}. Try again.</p>
       ) : null}
-      <DescriptorPullRequestOpenButton state={state} />
+      <DescriptorPullRequestOpenButton request={request} state={state} />
     </div>
   );
 }
 
-function DescriptorPullRequestOpenButton({ state }: Readonly<DescriptorPullRequestOpenButtonProps>): JSX.Element {
+function DescriptorPullRequestOpenButton({
+  request,
+  state,
+}: Readonly<DescriptorPullRequestOpenButtonProps>): JSX.Element {
   const isLoading: boolean = state.status === 'loading';
   return (
     <Button className="w-fit" disabled={isLoading} onClick={state.onClick} type="button">
@@ -51,7 +58,7 @@ function DescriptorPullRequestOpenButton({ state }: Readonly<DescriptorPullReque
       ) : (
         <GitBranch aria-hidden="true" size={15} />
       )}
-      {isLoading ? 'Creating pull request' : 'Open pull request'}
+      {isLoading ? `Creating ${request.name}` : `Open ${request.name}`}
     </Button>
   );
 }

@@ -6,15 +6,14 @@ import { gitSourceExclusionSummarySchema, type GitSourceExclusionSummary } from 
 import { gitSourceDescriptorPathSchema, gitSourceRepositoryPathSchema } from './source-git-sync-path.contract';
 import { gitProviderHostSchema } from './source-git-provider.contract';
 
-export { type GitHubProviderRegistrationStatus } from './source-git-provider.contract';
 export {
-  type GitHubInstallationRepositoryListResponse,
-  type GitHubInstallationRepositoryListRequest,
-  type GitHubInstallationRepositorySummary,
+  type GitHubProviderRegistrationStatus,
+  type GitProviderRepositorySummary,
+  type GitProviderType,
+} from './source-git-provider.contract';
+export {
   type GitHubProviderBootstrapRequest,
   type GitHubProviderBootstrapResponse,
-  gitHubInstallationRepositoryListRequestSchema,
-  gitHubInstallationRepositoryListResponseSchema,
   gitHubProviderBootstrapRequestSchema,
   gitHubProviderBootstrapResponseSchema,
 } from './source-git-bootstrap.contract';
@@ -59,6 +58,7 @@ export interface ConnectGitSourceRequest {
   defaultEnvironmentName: string;
   descriptorPathToInclude?: string | undefined;
   providerHost: string;
+  registrationId: string;
   repositoryName: string;
   repositoryOwner: string;
   syncBranchName: string;
@@ -149,6 +149,7 @@ export const connectGitSourceRequestSchema: ContractSchema<ConnectGitSourceReque
     defaultEnvironmentName: environmentNameSchema,
     descriptorPathToInclude: gitSourceDescriptorPathSchema.optional(),
     providerHost: gitProviderHostSchema,
+    registrationId: z.string().min(1),
     repositoryName: z.string().min(1),
     repositoryOwner: z.string().min(1),
     syncBranchName: z.string().min(1),
