@@ -330,28 +330,34 @@ describe('Phase 0 API integration projects', (): void => {
     const deployResponse: LightMyRequestResponse = await injectDeployRequest(app, viewerSessionToken, 'acme-dev');
     expect(deployResponse.statusCode).toBe(403);
     expect(errorResponseSchema.parse(deployResponse.json()).error.code).toBe('forbidden');
+
+    const roleListResponse: LightMyRequestResponse = await app.inject({
+      headers: viewerHeaders,
+      method: 'GET',
+      url: '/v1/roles',
+    });
+    expect(roleListResponse.statusCode).toBe(403);
+    expect(errorResponseSchema.parse(roleListResponse.json()).error.code).toBe('forbidden');
     const deniedEvents: (typeof auditEvents.$inferSelect)[] = await db
       .select()
       .from(auditEvents)
       .where(eq(auditEvents.eventType, 'authorization.denied'));
-    expect(deniedEvents).toHaveLength(5);
-    expect(deniedEvents).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          actorEmail: 'viewer@example.com',
-          organizationId: installPayload.organization.id,
-          status: 'failed',
-          targetId: '/v1/deployments',
-          targetType: 'route',
-        }),
-      ]),
-    );
+    expect(deniedEvents).toEqual([
+      expect.objectContaining({
+        actorEmail: 'viewer@example.com',
+        organizationId: installPayload.organization.id,
+        status: 'failed',
+        targetId: '/v1/roles',
+        targetType: 'route',
+      }),
+    ]);
     const failedOperationEvents: (typeof auditEvents.$inferSelect)[] = await db
       .select()
       .from(auditEvents)
       .where(eq(auditEvents.status, 'failed'));
     expect(failedOperationEvents).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ eventType: 'deployment.created', targetId: '/v1/deployments' }),
         expect.objectContaining({ eventType: 'deployment.created', targetId: '/v1/deployments/promote' }),
         expect.objectContaining({ eventType: 'deployment.rolled_back', targetId: '/v1/deployments/rollback' }),
       ]),

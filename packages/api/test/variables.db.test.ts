@@ -71,6 +71,14 @@ import type {
   TenantSecretMigrationResult,
 } from '../src/services/tenant-secret-migration.service.types';
 
+interface VariableAuditTestMetadata {
+  action: string;
+  keyName: string;
+  resourceName: string | null;
+  sensitivity?: string | undefined;
+  serviceName: string | null;
+}
+
 const { testDatabaseUrl } = readDatabaseTestMode();
 const variablesDbDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'variables_db_query');
 const variablesMasterKey: Buffer = parseVariablesMasterKey('11'.repeat(32));
@@ -440,23 +448,27 @@ describe('variables db queries', (): void => {
         }),
       ]),
     );
-    expect(rows.map((row: typeof auditEvents.$inferSelect): string => row.metadataJson)).toEqual(
+    const metadata: VariableAuditTestMetadata[] = rows.map(
+      (row: typeof auditEvents.$inferSelect): VariableAuditTestMetadata =>
+        JSON.parse(row.metadataJson) as VariableAuditTestMetadata,
+    );
+    expect(metadata).toEqual(
       expect.arrayContaining([
-        JSON.stringify({
+        {
           action: 'set',
           keyName: 'API_TOKEN',
           resourceName: null,
           sensitivity: 'sensitive',
           serviceName: null,
-        }),
-        JSON.stringify({ action: 'delete', keyName: 'API_TOKEN', resourceName: null, serviceName: null }),
-        JSON.stringify({
+        },
+        { action: 'delete', keyName: 'API_TOKEN', resourceName: null, serviceName: null },
+        {
           action: 'replace',
           keyName: 'LOG_LEVEL',
           resourceName: null,
           sensitivity: 'plain',
           serviceName: null,
-        }),
+        },
       ]),
     );
     expect(JSON.stringify(rows)).not.toContain(secretValue);
