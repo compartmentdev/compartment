@@ -122,7 +122,7 @@ storage.
 Interactive installation discovers the cluster choices and prompts when more than one valid option exists:
 
 ```bash
-compartment install --kubeconfig ./kubeconfig --kube-context production
+KUBECONFIG=./kubeconfig compartment install --kube-context production
 ```
 
 The managed Compartment domain is the default domain choice and requires no prior setup or domain preparation. The
@@ -143,6 +143,11 @@ usual choice; a private ACME server does not imply public trust.
 An issuer with `spec.ca` is supported only when that private CA is installed in the trust stores of every Kubernetes
 node and the machine running the CLI; the wizard requires confirmation. The same trust requirements apply when public
 TLS comes from an existing Secret and the private registry uses a separate issuer.
+Install the CA on every node before installing Compartment. If you add it after the node container runtime starts,
+restart the runtime so it reloads the trust store; run `systemctl restart k3s` on k3s servers and
+`systemctl restart k3s-agent` on agent nodes. Node.js does not use the system CA store by default, so run the CLI with
+`NODE_EXTRA_CA_CERTS=/path/to/ca.crt`. Alternatively, opt into the OpenSSL store with
+`NODE_OPTIONS=--use-openssl-ca`.
 
 For a clean k3s VM with Traefik and `local-path`, create a complete operator values file:
 
@@ -162,8 +167,8 @@ command arguments:
 
 ```bash
 COMPARTMENT_ADMIN_PASSWORD='replace-with-a-strong-password' \
+KUBECONFIG=./kubeconfig \
 compartment install \
-  --kubeconfig ./kubeconfig \
   --kube-context production \
   --namespace compartment \
   --release-name compartment \

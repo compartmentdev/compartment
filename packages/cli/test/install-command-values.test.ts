@@ -81,6 +81,59 @@ describe('operator install values boundary', (): void => {
     });
   });
 
+  it('accepts chart-aligned nested operator values', async (): Promise<void> => {
+    const valuesPath: string = await writeValues(`
+ingress:
+  className: traefik
+  endpoint:
+    type: hostname
+    value: ingress.apps.example.com
+tls:
+  issuerRef:
+    kind: ClusterIssuer
+    name: platform-ca
+registry:
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: registry-ca
+  storage:
+    backend: s3
+    s3:
+      bucket: compartment-registry
+      region: eu-central-1
+      regionEndpoint: https://s3.example.com
+      forcePathStyle: true
+      existingSecret: registry-s3
+nodePools:
+  system:
+    nodeSelector:
+      compartment.dev/node-pool: system
+tenantRuntime:
+  runtimeClassName: gvisor
+  createRuntimeClass: true
+  runtimeHandler: runsc
+`);
+
+    await expect(readOperatorInstallInputValues(valuesPath, true)).resolves.toMatchObject({
+      ingressClass: 'traefik',
+      ingressEndpoint: 'ingress.apps.example.com',
+    });
+    await expect(
+      resolveKubernetesInstallRegistryConfiguration({
+        baseDomain: 'apps.example.com',
+        domainMode: 'custom',
+        valuesPath,
+      }),
+    ).resolves.toMatchObject({
+      registryIssuerRef: {
+        group: 'cert-manager.io',
+        kind: 'ClusterIssuer',
+        name: 'registry-ca',
+      },
+    });
+  });
+
   it('marks an empty ingress endpoint for LoadBalancer rediscovery', async (): Promise<void> => {
     const valuesPath: string = await writeValues(
       'ingress:\n  className: traefik\n  endpoint:\n    type: ""\n    value: ""\n',
