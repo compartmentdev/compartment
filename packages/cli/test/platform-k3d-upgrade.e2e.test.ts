@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
   installResponseSchema,
   resourceResponseSchema,
@@ -64,6 +64,7 @@ const platformBaseDomain: string = 'compartment.localhost';
 const platformKubeContext: string = process.env.COMPARTMENT_E2E_KUBE_CONTEXT ?? 'k3d-compartment-e2e-upgrade';
 const platformNamespace: string = process.env.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? 'compartment-upgrade';
 const currentValuesPath: string = requireEnvironment('COMPARTMENT_E2E_PLATFORM_VALUES_PATH');
+const currentValuesFilePath: string = resolve(process.cwd(), '../..', currentValuesPath);
 const previousValuesPath: string = requireEnvironment('COMPARTMENT_E2E_PREVIOUS_PLATFORM_VALUES_PATH');
 const releaseName: string = 'compartment';
 const upgradeTimeoutMs: number = 50 * 60_000;
@@ -220,7 +221,7 @@ async function readHelmRevision(): Promise<number> {
 }
 
 async function expectCurrentPlatformImages(): Promise<void> {
-  const values: PlatformImageValues = parse(await readFile(currentValuesPath, 'utf8')) as PlatformImageValues;
+  const values: PlatformImageValues = parse(await readFile(currentValuesFilePath, 'utf8')) as PlatformImageValues;
   for (const [component, imageKey] of [
     ['api', 'api'],
     ['caddy', 'caddy'],
