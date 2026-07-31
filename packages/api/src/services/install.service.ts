@@ -5,6 +5,7 @@ import { createId } from '../lib/tokens';
 import { insertInitialInstallationWithExecutor, withInitialInstallationGuard } from '../queries/install.query';
 import type { CreateInitialInstallationInput, InstallTransaction } from '../queries/install.query.types';
 import type { InsertOperationInput, OperationRecord } from '../queries/operations.query.types';
+import { findOperationRecordByType } from '../queries/operations.query';
 import { getApiConfig } from '../runtime/runtime-access';
 import { synchronizeEdgeAppAccessState } from './app-access-edge.service';
 import { createAuthSessionPlan } from './auth-session.service';
@@ -12,6 +13,9 @@ import { buildInstallationHostPlan } from './public-hosts.service';
 import type { InstallationHostPlan } from './public-hosts.service.types';
 import type { InstallPlan, InstallResult, InstallServiceInput } from './install.service.types';
 import { resolveOrganizationSlug } from './organization-slug.service';
+import { login } from './login.service';
+import type { LoginServiceResult } from './login.service.types';
+import type { OrganizationRow } from '../queries/organizations.query.types';
 
 export async function install(input: InstallServiceInput): Promise<InstallResult> {
   const config: ApiConfig = getApiConfig();
@@ -26,7 +30,7 @@ export async function install(input: InstallServiceInput): Promise<InstallResult
   );
 
   if (operation === null) {
-    throw createAlreadyInstalledError();
+    return await resumeExistingInstall(input, plan, config);
   }
   await synchronizeEdgeAppAccessState();
 
@@ -94,6 +98,7 @@ function buildInstallResult(input: InstallServiceInput, plan: InstallPlan, opera
   return {
     adminEmail: input.adminEmail,
     baseDomain: plan.baseDomain,
+    createdOwner: true,
     dnsRecords: plan.dnsRecords,
     operation,
     organizationId: plan.organizationId,
@@ -104,4 +109,79 @@ function buildInstallResult(input: InstallServiceInput, plan: InstallPlan, opera
     compartmentUrl: plan.compartmentUrl,
     sessionToken: plan.session.sessionToken,
   };
+}
+
+async function resumeExistingInstall(
+  input: InstallServiceInput,
+  plan: InstallPlan,
+  config: ApiConfig,
+): Promise<InstallResult> {
+  assertExistingInstallDomain(plan, config);
+  const authenticated: LoginServiceResult = await authenticateExistingOwner(input);
+  const organization: OrganizationRow = requireExistingInstallOrganization(input, plan, authenticated);
+  const operation: OperationRecord | undefined = await findOperationRecordByType('compartment.install');
+  assertOriginalInstallOwner(authenticated, organization, operation);
+  await synchronizeEdgeAppAccessState();
+  return buildRepeatedInstallResult(plan, authenticated, organization, operation);
+}
+
+function buildRepeatedInstallResult(
+  plan: InstallPlan,
+  authenticated: LoginServiceResult,
+  organization: OrganizationRow,
+  operation: OperationRecord,
+): InstallResult {
+  return {
+    adminEmail: authenticated.principalEmail,
+    baseDomain: plan.baseDomain,
+    compartmentUrl: plan.compartmentUrl,
+    createdOwner: false,
+    dnsRecords: plan.dnsRecords,
+    operation,
+    organizationId: organization.id,
+    organizationName: organization.name,
+    organizationSlug: organization.slug,
+    principalId: authenticated.principalId,
+    sessionId: authenticated.sessionId,
+    sessionToken: authenticated.sessionToken,
+  };
+}
+
+function assertExistingInstallDomain(plan: InstallPlan, config: ApiConfig): void {
+  if (plan.baseDomain !== config.baseDomain) {
+    throw createAlreadyInstalledError();
+  }
+}
+
+function requireExistingInstallOrganization(
+  input: InstallServiceInput,
+  plan: InstallPlan,
+  authenticated: LoginServiceResult,
+): OrganizationRow {
+  const organization: OrganizationRow | undefined = authenticated.organizations.find(
+    (candidate: OrganizationRow): boolean =>
+      candidate.name === input.organizationName && candidate.slug === plan.organizationSlug,
+  );
+  if (organization === undefined) {
+    throw createAlreadyInstalledError();
+  }
+  return organization;
+}
+
+function assertOriginalInstallOwner(
+  authenticated: LoginServiceResult,
+  organization: OrganizationRow,
+  operation: OperationRecord | undefined,
+): asserts operation is OperationRecord {
+  if (operation?.actorPrincipalId !== authenticated.principalId || operation.targetId !== organization.id) {
+    throw createAlreadyInstalledError();
+  }
+}
+
+async function authenticateExistingOwner(input: InstallServiceInput): Promise<LoginServiceResult> {
+  try {
+    return await login({ email: input.adminEmail, password: input.adminPassword });
+  } catch {
+    throw createAlreadyInstalledError();
+  }
 }
