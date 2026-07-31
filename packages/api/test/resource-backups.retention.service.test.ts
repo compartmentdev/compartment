@@ -1,9 +1,17 @@
+import type { CompartmentResourceOperationRetentionConfig } from '@compartment/contracts';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ResourceBackupRow } from '../src/queries/resource-backups.query.types';
 import type { ProjectResourceRow, ResourceTransaction } from '../src/queries/resources.query.types';
 import { ResourceBackupRetentionOperationError } from '../src/services/resource-backup-retention-operation.error';
 import { applyResourceBackupRetention } from '../src/services/resource-backups.retention.service';
 import type { ResourceEnvironmentContext } from '../src/services/resources.service.types';
+
+interface ResourceBackupRetentionTestInput {
+  context: ResourceEnvironmentContext;
+  now: Date;
+  resource: ProjectResourceRow;
+  retention: CompartmentResourceOperationRetentionConfig;
+}
 
 const deleteArtifact: Mock = vi.hoisted((): Mock => vi.fn());
 const insertOperation: Mock = vi.hoisted((): Mock => vi.fn());
@@ -45,7 +53,7 @@ describe('resource backup retention', (): void => {
     );
   });
 
-  it('records delete failure with backoff and completes the scheduled attempt normally', async (): Promise<void> => {
+  it('records persistent delete failure with capped backoff and completes the scheduled attempt normally', async (): Promise<void> => {
     const now: Date = new Date('2026-07-22T12:00:00.000Z');
 
     await expect(applyResourceBackupRetention(retentionInput(now))).resolves.toEqual({
@@ -64,6 +72,7 @@ describe('resource backup retention', (): void => {
         retryMaxDelayMs: 3_600_000,
       }),
     );
+    expect(deleteArtifact).toHaveBeenCalledOnce();
     expect(insertOperation).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -82,11 +91,16 @@ describe('resource backup retention', (): void => {
     await expect(applyResourceBackupRetention(retentionInput(new Date()))).rejects.toThrow('database unavailable');
   });
 
-  it('does not classify control-plane failures as operation failures', async (): Promise<void> => {
-    deleteArtifact.mockRejectedValueOnce(new Error('database unavailable before Job creation'));
+  it('makes control-plane cleanup failures visible on the backup', async (): Promise<void> => {
+    deleteArtifact.mockRejectedValue(new Error('database unavailable before Job creation'));
 
-    await expect(applyResourceBackupRetention(retentionInput(new Date()))).rejects.toThrow('database unavailable');
-    expect(recordFailure).not.toHaveBeenCalled();
+    await expect(applyResourceBackupRetention(retentionInput(new Date()))).resolves.toMatchObject({
+      recordedFailure: true,
+    });
+    expect(recordFailure).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ failureSummary: 'database unavailable before Job creation' }),
+    );
   });
 
   it('yields after one recorded failure instead of draining a runaway backlog', async (): Promise<void> => {
@@ -116,14 +130,56 @@ describe('resource backup retention', (): void => {
 
     expect(deleteArtifact).not.toHaveBeenCalled();
   });
+
+  it('re-enters max-age artifact cleanup after persisted backoff and eventually deletes the backup', async (): Promise<void> => {
+    const failedAt: Date = new Date('2026-07-22T12:00:00.000Z');
+    const retryAt: Date = new Date('2026-07-22T12:01:00.000Z');
+    const expiredBackup: ResourceBackupRow = {
+      ...resourceBackup(),
+      createdAt: new Date('2026-07-20T12:00:00.000Z'),
+    };
+    const failedBackup: ResourceBackupRow = {
+      ...expiredBackup,
+      failureSummary: 'EACCES: permission denied',
+      retentionAttempts: 1,
+      retentionFailureSummary: 'EACCES: permission denied',
+      retentionNextAttemptAt: retryAt,
+    };
+    recordFailure.mockResolvedValueOnce(failedBackup);
+    listEligibleBackups.mockResolvedValueOnce([expiredBackup]).mockResolvedValueOnce([failedBackup]);
+
+    await expect(
+      applyResourceBackupRetention(retentionInput(failedAt, { keepLast: 10, maxAgeDays: 1 })),
+    ).resolves.toEqual({
+      attempted: true,
+      cleanedBackups: [],
+      recordedFailure: true,
+    });
+
+    deleteArtifact.mockResolvedValueOnce(undefined);
+    markDeleted.mockResolvedValueOnce({ ...failedBackup, artifactLocation: null, status: 'deleted' });
+    await expect(
+      applyResourceBackupRetention(retentionInput(retryAt, { keepLast: 10, maxAgeDays: 1 })),
+    ).resolves.toMatchObject({
+      cleanedBackups: [
+        {
+          backup: { id: 'rbak_expired', status: 'deleted' },
+          reason: 'retention maxAgeDays=1',
+        },
+      ],
+      recordedFailure: false,
+    });
+
+    expect(recordFailure).toHaveBeenCalledOnce();
+    expect(deleteArtifact).toHaveBeenCalledTimes(2);
+    expect(markDeleted).toHaveBeenCalledOnce();
+  });
 });
 
-function retentionInput(now: Date): {
-  context: ResourceEnvironmentContext;
-  now: Date;
-  resource: ProjectResourceRow;
-  retention: { keepLast: number };
-} {
+function retentionInput(
+  now: Date,
+  retention: CompartmentResourceOperationRetentionConfig = { keepLast: 0 },
+): ResourceBackupRetentionTestInput {
   return {
     context: {
       environment: { id: 'env_prod' },
@@ -132,7 +188,7 @@ function retentionInput(now: Date): {
     } as ResourceEnvironmentContext,
     now,
     resource: { id: 'res_postgres', name: 'postgres' } as ProjectResourceRow,
-    retention: { keepLast: 0 },
+    retention,
   };
 }
 

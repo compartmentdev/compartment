@@ -120,7 +120,7 @@ function jobPodSecurityContext(spec: KubeJobSpec): KubePodSecurityContext | unde
     return { ...volumeGroupContext, ...projectPodSecurityContext() };
   }
   if (spec.securityProfile === 'resource-restricted') {
-    return { ...volumeGroupContext, ...resourcePodSecurityContext(spec.image) };
+    return { ...resourcePodSecurityContext(spec.image), ...volumeGroupContext };
   }
   return Object.keys(volumeGroupContext).length === 0 ? undefined : volumeGroupContext;
 }
