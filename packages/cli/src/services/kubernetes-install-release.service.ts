@@ -1,14 +1,10 @@
 import { parseJsonWith, type JsonValue } from '@compartment/utils';
 import { z } from 'zod';
-import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
-import {
-  buildHelmCommand,
-  buildHelmGetValuesCommand,
-  formatKubernetesCommandExecutionFailure,
-  readCommandDiagnostics,
-} from './kubernetes-command.support';
+import { buildHelmCommand, buildHelmGetValuesCommand } from './kubernetes-command.support';
+import { isHelmJsonObject, parseHelmRevision, runHelmInspection } from './kubernetes-helm-inspection.service';
 import { parseKubernetesIngressTargetsJson } from './kubernetes-install-ingress-targets.service';
+import { requireDeployedHelmRelease } from './kubernetes-install-recovery.service';
 import type { KubernetesInstallRegistryIssuerReference } from './kubernetes-install-registry.service.types';
 import type {
   ExistingKubernetesInstall,
@@ -24,7 +20,6 @@ import type {
 type HelmJsonObject = Record<string, JsonValue>;
 const helmJsonObjectSchema: z.ZodType<HelmJsonObject> = z.record(z.custom<JsonValue>());
 const helmReleaseListSchema: z.ZodType<JsonValue[]> = z.array(z.custom<JsonValue>());
-const kubernetesInspectionTimeoutMs: number = 30_000;
 
 export async function readExistingKubernetesInstall(
   input: KubernetesInstallDeploymentInput,
@@ -40,7 +35,7 @@ export async function readExistingKubernetesInstallRelease(
   if (release === null) {
     return null;
   }
-  requireDeployedHelmRelease(release);
+  await requireDeployedHelmRelease(input, release);
 
   const valuesResult: CommandResult = await runHelmInspection(
     buildHelmReleaseValuesCommand(input),
@@ -48,7 +43,7 @@ export async function readExistingKubernetesInstallRelease(
     false,
   );
   const values: HelmJsonObject = parseHelmValues(valuesResult.stdout);
-  return { install: parseExistingKubernetesInstall(values), values };
+  return { install: parseExistingKubernetesInstall(values), revision: release.revision, values };
 }
 
 function buildHelmReleaseListCommand(input: KubernetesInstallDeploymentInput): string[] {
@@ -67,37 +62,6 @@ function buildHelmReleaseValuesCommand(input: KubernetesInstallDeploymentInput):
   return buildHelmGetValuesCommand(input, input.releaseName, ['--all', '--output', 'json']);
 }
 
-async function runHelmInspection(
-  command: readonly string[],
-  operation: string,
-  includeStdoutInDiagnostics: boolean,
-): Promise<CommandResult> {
-  const result: CommandResult = await runCommandWithTimeout(command, kubernetesInspectionTimeoutMs);
-  if (result.exitCode === 0) {
-    return result;
-  }
-  const executionFailure: string | undefined = formatKubernetesCommandExecutionFailure(
-    `Helm ${operation} failed`,
-    result,
-  );
-  if (executionFailure !== undefined) {
-    throw new Error(executionFailure);
-  }
-  const output: string = readCommandDiagnostics(result, { includeStdout: includeStdoutInDiagnostics });
-  if (result.exitCode === 124) {
-    throw buildHelmInspectionTimeoutError(operation, output);
-  }
-  throw new Error(
-    `Helm ${operation} failed with exit code ${result.exitCode.toString()}.${output === '' ? '' : `\n${output}`}`,
-  );
-}
-
-function buildHelmInspectionTimeoutError(operation: string, output: string): Error {
-  return new Error(
-    `Timed out after 30s during Helm ${operation}. Check that the Kubernetes API is reachable for the selected context, then re-run install to resume.${output === '' ? '' : `\n${output}`}`,
-  );
-}
-
 function readNamedHelmRelease(output: string, releaseName: string): HelmReleaseSummary | null {
   const value: JsonValue[] = parseJsonWith(helmReleaseListSchema, output);
   const candidate: JsonValue | undefined = value.find(
@@ -107,20 +71,16 @@ function readNamedHelmRelease(output: string, releaseName: string): HelmReleaseS
   if (candidate === undefined || !isHelmJsonObject(candidate) || typeof candidate.status !== 'string') {
     return candidate === undefined ? null : invalidHelmReleaseLookup();
   }
-  return { name: releaseName, status: candidate.status };
+  const revision: JsonValue | undefined = candidate.revision;
+  const parsedRevision: number | null = parseHelmRevision(revision);
+  if (parsedRevision === null) {
+    return invalidHelmReleaseLookup();
+  }
+  return { name: releaseName, revision: parsedRevision, status: candidate.status };
 }
 
 function invalidHelmReleaseLookup(): never {
   throw new Error('Helm release lookup returned a release without a status.');
-}
-
-function requireDeployedHelmRelease(release: HelmReleaseSummary): void {
-  if (release.status === 'deployed') {
-    return;
-  }
-  throw new Error(
-    `The existing Helm release ${release.name} has status ${release.status}. Resolve or uninstall that release before retrying compartment install.`,
-  );
 }
 
 function parseHelmValues(output: string): HelmJsonObject {
@@ -244,10 +204,6 @@ function readOptionalPlatformText(platform: JsonValue | undefined, fieldName: st
 function readOptionalSecretText(secrets: JsonValue | undefined, fieldName: string): string {
   const value: JsonValue | undefined = isHelmJsonObject(secrets) ? secrets[fieldName] : undefined;
   return typeof value === 'string' ? value.trim() : '';
-}
-
-function isHelmJsonObject(value: JsonValue | undefined): value is HelmJsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function escapeRegularExpression(value: string): string {

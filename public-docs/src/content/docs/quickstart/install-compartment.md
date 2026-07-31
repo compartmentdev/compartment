@@ -209,6 +209,12 @@ and the intended values file. A retry compares the complete desired Helm values 
 values keep the fast resume path without an upgrade; changed, added, or removed values are listed and reconciled
 through Helm before owner creation resumes.
 
+During an upgrade, the installer records the currently deployed Helm revision. If the two-stage chart update fails,
+it attempts a standalone rollback to that revision and reports whether the release is deployed again. If automatic
+recovery also fails, copy the exact `helm rollback` command printed by the installer, then retry `compartment install`.
+Do not use Helm resource replacement flags for this recovery path; retained registry and application data must not be
+recreated.
+
 ## Public routing and TLS
 
 The existing Ingress Controller owns public ports and TLS termination. Compartment creates exact console and

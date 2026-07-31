@@ -63,8 +63,12 @@ isolation and the explicit RFC1918 egress policy.
 ## Recovery
 
 Retry `compartment install` with the same release coordinates when it stops before owner creation. It resumes the
-existing foundation or full release. Repair failed or pending Helm releases before retrying. Once the owner exists,
-use `compartment login` to recover the local session.
+existing foundation or full release. Upgrades use Helm server-side apply with forced conflict ownership only for the
+chart's own rendered fields; this does not replace Kubernetes objects. The installer records the deployed revision
+before the foundation/full upgrade pair and, after failure, runs a standalone rollback to that revision. If rollback
+also fails, the error prints the exact context-, namespace-, release-, and revision-specific recovery command. A
+later invocation that finds a failed or pending release reads Helm history and prints the latest successful revision
+to restore. Once the owner exists, use `compartment login` to recover the local session.
 
 The retained install-state Secret and registry resources use Helm keep policy. An uninstall followed by reinstall
 with the same namespace and release name reuses that retained identity. Deleting retained resources is an explicit,

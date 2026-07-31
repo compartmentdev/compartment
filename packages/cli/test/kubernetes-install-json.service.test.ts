@@ -42,7 +42,9 @@ describe('existing Kubernetes install JSON', (): void => {
 
   it('rejects non-object Helm values for a deployed release', async (): Promise<void> => {
     runCommandWithTimeout
-      .mockResolvedValueOnce(successfulCommand(JSON.stringify([{ name: 'compartment', status: 'deployed' }])))
+      .mockResolvedValueOnce(
+        successfulCommand(JSON.stringify([{ name: 'compartment', revision: '1', status: 'deployed' }])),
+      )
       .mockResolvedValueOnce(successfulCommand('[]'));
 
     await expect(readExistingKubernetesInstall(input)).rejects.toThrow();
@@ -51,7 +53,9 @@ describe('existing Kubernetes install JSON', (): void => {
   it('does not expose partial sensitive Helm values in lookup failures', async (): Promise<void> => {
     const encodedSecret: string = Buffer.from('install-token').toString('base64');
     runCommandWithTimeout
-      .mockResolvedValueOnce(successfulCommand(JSON.stringify([{ name: 'compartment', status: 'deployed' }])))
+      .mockResolvedValueOnce(
+        successfulCommand(JSON.stringify([{ name: 'compartment', revision: '1', status: 'deployed' }])),
+      )
       .mockResolvedValueOnce({
         exitCode: 1,
         stderr: 'Kubernetes API request failed',

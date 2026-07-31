@@ -10,6 +10,7 @@ export const platformK3dShardDefinitions = Object.freeze({
     index: 0,
     suites: Object.freeze(['public-operator-install', 'managed-install', 'retained-state']),
   }),
+  upgrade: Object.freeze({ index: 5, suites: Object.freeze(['upgrade']) }),
 });
 
 export const platformK3dShardNames = Object.freeze(Object.keys(platformK3dShardDefinitions));

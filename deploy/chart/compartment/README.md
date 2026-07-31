@@ -136,13 +136,16 @@ helm upgrade --install compartment ./deploy/chart/compartment \
   --namespace compartment \
   --create-namespace \
   --values compartment-values.yaml \
-  --rollback-on-failure \
+  --force-conflicts \
   --wait \
   --wait-for-jobs \
   --timeout 15m
 ```
 
 Pin verified image digests when using this path.
+`--force-conflicts` transfers server-side-apply ownership of rendered chart fields to Helm; unlike
+`--force-replace`, it does not recreate resources. Prefer `compartment install`, which also records the previous
+revision and performs a standalone rollback when either installation stage fails.
 
 ## Registry and workload isolation
 

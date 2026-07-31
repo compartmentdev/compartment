@@ -42,6 +42,7 @@ const {
   pebbleRootPath,
   platformNamespace,
   platformOwnerEnvironmentPath,
+  previousPlatformValuesPath,
   platformValuesPath,
   publicOperatorCaPath,
   publicOperatorValuesPath,
@@ -114,6 +115,11 @@ export function readPlatformK3dEnvironment(env) {
       env,
       'COMPARTMENT_E2E_OWNER_ENV_PATH',
       '.compartment/platform-k3d-e2e-owner.env',
+    ),
+    previousPlatformValuesPath: readStatePathEnv(
+      env,
+      'COMPARTMENT_E2E_PREVIOUS_PLATFORM_VALUES_PATH',
+      '.compartment/platform-k3d-previous-e2e-values.yaml',
     ),
     platformValuesPath: readStatePathEnv(
       env,
@@ -259,6 +265,10 @@ export function renderPlatformK3dValues(imageDigestsByServiceName, gvisorEnabled
   return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorEnabled)}ingress:\n  className: ${ingressClassName}\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\ntls:\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: issuer\nbuildkit:\n  namespace: ${platformNamespace}-build\n${renderBuildRuntimeValues(gvisorEnabled)}`;
 }
 
+export function renderPreviousPlatformK3dValues() {
+  return `ingress:\n  className: ${ingressClassName}\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\ntls:\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: issuer\nbuildkit:\n  namespace: ${platformNamespace}-build\n`;
+}
+
 export function renderManagedPlatformK3dValues(
   imageDigestsByServiceName,
   gvisorEnabled = platformEnvironment.gvisorEnabled,
@@ -301,6 +311,7 @@ async function upPlatform(command) {
     recreateBuilder();
     for (const statePath of [
       platformValuesPath,
+      previousPlatformValuesPath,
       managedPlatformValuesPath,
       pebbleCaPath,
       pebbleRootPath,
@@ -317,6 +328,7 @@ async function upPlatform(command) {
     writeFileSync(platformValuesPath, renderPlatformK3dValues(preparedImages.imageDigestsByServiceName), {
       mode: 0o600,
     });
+    writeFileSync(previousPlatformValuesPath, renderPreviousPlatformK3dValues(), { mode: 0o600 });
     writeFileSync(managedPlatformValuesPath, renderManagedPlatformK3dValues(preparedImages.imageDigestsByServiceName), {
       mode: 0o600,
     });
@@ -904,6 +916,7 @@ function cleanPlatformState(cleanupErrors) {
     pebbleCaPath,
     pebbleRootPath,
     platformOwnerEnvironmentPath,
+    previousPlatformValuesPath,
     publicOperatorCaPath,
     publicOperatorValuesPath,
     registryTestCaKeyPath,

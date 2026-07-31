@@ -743,9 +743,16 @@ describe('Kubernetes install deployment', (): void => {
   it.each(['failed', 'pending-upgrade', 'uninstalled'])(
     'rejects a Helm release with status %s',
     async (status: string): Promise<void> => {
-      mocks.runCommand.mockResolvedValueOnce(successfulCommandResult(helmReleaseList(status)));
+      mocks.runCommand.mockResolvedValueOnce(successfulCommandResult(helmReleaseList(status))).mockResolvedValueOnce(
+        successfulCommandResult(
+          JSON.stringify([
+            { revision: 3, status: 'superseded' },
+            { revision: 4, status },
+          ]),
+        ),
+      );
       await expect(deployAndWaitForKubernetesInstall(managedDeploymentInput)).rejects.toThrow(
-        `existing Helm release compartment has status ${status}`,
+        `existing Helm release compartment has status ${status}. Restore it with \`helm rollback compartment 3 --namespace compartment --wait --timeout 8m --force-conflicts\``,
       );
     },
   );
@@ -801,9 +808,10 @@ describe('Kubernetes Helm install timeout diagnostics', (): void => {
         'full',
       ),
     ).rejects.toThrow(
-      'Non-Ready pods: compartment-api-123 (Pending). Check with `kubectl get pods -n compartment` and re-run install to resume.',
+      'Non-Ready pods: compartment-api-123 (Pending). Check with `kubectl get pods -n compartment`. The installation remains incomplete. Inspect it with `helm status compartment --namespace compartment`, then re-run compartment install to resume.',
     );
     expect(mocks.runCommand.mock.calls[0]?.[0]).toEqual(expect.arrayContaining(['--timeout', '8m']));
+    expect(mocks.runCommand.mock.calls[0]?.[0]).toContain('--force-conflicts');
   });
 });
 
