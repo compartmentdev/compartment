@@ -75,7 +75,7 @@ This split keeps repository transport settings separate from app-specific deploy
 
 - v1 prefers install-owned GitHub App registrations for GitHub and supported GHES hosts.
 - Registrations are install-scoped, not organization-scoped.
-- Managed-domain installs may use the broker only as a stateless short-lived GitHub OAuth helper, authorized by the existing managed-domain token, to list the user's account and organization choices before install-owned app bootstrap. That helper must not request repo scopes, store GitHub OAuth tokens or account lists, or proxy repository operations.
+- Managed-domain installs may use the broker only as a stateless short-lived GitHub OAuth helper, authorized by the existing managed-domain token, to list the user's account and organization choices before install-owned app bootstrap. Custom `console.*` return URLs are accepted only when the broker has a verified alias tied to that managed-domain allocation; unmatched custom origins must be rejected. Before any callback redirect sends a discovery result or error back to the browser, the broker must revalidate that the stored return URL still maps to the same managed-domain allocation. That helper must not request repo scopes, store GitHub OAuth tokens or account lists, or proxy repository operations.
 - Source creation must verify that the selected repository is accessible through the active install-owned GitHub App registration before source creation.
 - Git auto-deploy requires a public HTTPS callback and webhook surface for the install.
 

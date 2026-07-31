@@ -3,6 +3,7 @@ import { readApiPublicIngressConfig, type ApiPublicIngressConfig } from '../conf
 import { createDomainVersionConflictError, createInvalidDomainHostPlanError } from '../errors/api-business-error';
 import { createId } from '../lib/tokens';
 import { findSystemDomainSetupState, stageSystemDomainPendingWithExecutor } from '../queries/system-domain.query';
+import { getApiConfig } from '../runtime/runtime-access';
 import type {
   StageSystemDomainPendingInput,
   SystemDomainMutationQueryResult,
@@ -75,6 +76,7 @@ function buildStageSystemDomainPendingInput(
     pendingPublicScheme: hostPlan.publicScheme,
     pendingRequiredDnsRecordsJson: JSON.stringify(
       buildRequiredSystemDomainDnsRecords({
+        managedDomainBrokerToken: getApiConfig().managedDomainBrokerToken ?? null,
         pendingBaseDomain: hostPlan.baseDomain,
         pendingOperationId: operationId,
         publicIngressConfig,

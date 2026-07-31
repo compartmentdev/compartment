@@ -159,4 +159,4 @@ Managed-domain installs can return to the originally allocated managed domain wi
 sudo compartment system domain reset-managed
 ```
 
-`reset-managed` does not allocate a new broker domain or repair broker DNS. It uses the managed-domain metadata already stored in `/var/lib/compartment/self-hosted/install-state.json`, rewrites the local runtime env, restarts the runtime, clears any pending domain setup state, and refreshes edge app routing.
+`reset-managed` does not allocate a new broker domain or repair broker DNS. It uses the managed-domain metadata already stored in `/var/lib/compartment/self-hosted/install-state.json`, rewrites the local runtime env, restarts the runtime, clears any pending domain setup state, clears the broker alias used by GitHub account discovery, and refreshes edge app routing.

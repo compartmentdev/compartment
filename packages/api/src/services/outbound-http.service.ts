@@ -52,9 +52,13 @@ export async function fetchEdgeInternalHttp(path: string, init?: RequestInit): P
 }
 
 export async function fetchGitHubAccountDiscoveryBrokerHttp(path: string, init?: RequestInit): Promise<Response> {
+  return await fetchManagedDomainBrokerHttp(path, init);
+}
+
+export async function fetchManagedDomainBrokerHttp(path: string, init?: RequestInit): Promise<Response> {
   const brokerUrl: string | null = getApiConfig().managedDomainBrokerUrl ?? null;
   if (brokerUrl === null) {
-    throw new Error('GitHub account discovery broker URL is not configured.');
+    throw new Error('Managed-domain broker URL is not configured.');
   }
 
   return await fetchConfiguredInternalOutboundHttp(buildConfiguredInternalUrl(brokerUrl, path), init);

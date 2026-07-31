@@ -4,6 +4,7 @@ import { synchronizeEdgeAppAccessState } from './app-access-edge.service';
 import { checkActiveDomainProbe, checkDomainDns } from './system-domain-check.service';
 import type { DomainCheckFailure, DomainCheckResult } from './system-domain-check.service.types';
 import { readRuntimeDomainHostPlan } from './system-domain-runtime.service';
+import { trySynchronizeManagedDomainBrokerAlias } from './system-domain-managed-broker-alias.service';
 import { mapSystemDomainStatus } from './system-domain-status.mapper';
 import { findSystemDomainSetupState } from '../queries/system-domain.query';
 import type {
@@ -24,7 +25,7 @@ export async function refreshSystemDomainStatus(): Promise<SystemDomainStatusRes
       : dnsResult;
   if (checkResult.failure === null) {
     checkResult = {
-      failure: await trySynchronizeEdgeAppAccessState(),
+      failure: await trySynchronizeActiveDomainIntegrations(activeHostPlan),
     };
   }
 
@@ -33,6 +34,10 @@ export async function refreshSystemDomainStatus(): Promise<SystemDomainStatusRes
     activeDomainHealth: buildDomainHealthResult(checkResult),
     setupState: await findSystemDomainSetupState(),
   });
+}
+
+async function trySynchronizeActiveDomainIntegrations(hostPlan: DomainHostPlan): Promise<DomainCheckFailure | null> {
+  return (await trySynchronizeManagedDomainBrokerAlias(hostPlan)) ?? (await trySynchronizeEdgeAppAccessState());
 }
 
 async function trySynchronizeEdgeAppAccessState(): Promise<DomainCheckFailure | null> {

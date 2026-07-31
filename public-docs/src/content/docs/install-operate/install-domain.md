@@ -24,6 +24,8 @@ sudo compartment system domain activate
 sudo compartment system domain status
 ```
 
+Publish every DNS record printed by `system domain set` before running `verify`. On managed-domain installs this includes the broker alias ownership TXT record for `_compartment-broker-alias.<baseDomain>`, which allows GitHub account discovery to return to the custom console domain.
+
 Use `--tls custom-cert` when you will attach your own certificate material.
 
 Browser login and hosted-app access require HTTPS public URLs because Compartment uses host-bound secure cookies for platform sessions. Legacy HTTP runtime domain settings remain readable so operators can migrate them to HTTPS.
@@ -37,6 +39,8 @@ sudo compartment system domain reset-managed
 ```
 
 That reuses the managed-domain metadata already stored by the install. It does not allocate a new broker domain. The reset also restarts the runtime and uses the same registry signature verification as other runtime restarts.
+
+On managed-domain installs, reset also clears the broker alias used by GitHub account discovery, so the previous custom console domain stops being accepted for new discovery flows.
 
 Next steps:
 

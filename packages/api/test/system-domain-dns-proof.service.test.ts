@@ -5,6 +5,10 @@ import {
   buildRequiredSystemDomainDnsRecords,
   verifySystemDomainDnsProof,
 } from '../src/services/system-domain-dns-proof.service';
+import {
+  buildManagedDomainBrokerAliasOwnershipRecordName,
+  buildManagedDomainBrokerAliasOwnershipValue,
+} from '../src/services/system-domain-managed-broker-alias-proof.service';
 import type { ApiPublicIngressConfig } from '../src/config';
 
 type ResolveTxt = (hostname: string) => Promise<string[][]>;
@@ -51,6 +55,7 @@ describe('system domain dns proof service', (): void => {
   it('builds ownership and direct ingress routing records', (): void => {
     expect(
       buildRequiredSystemDomainDnsRecords({
+        managedDomainBrokerToken: null,
         pendingBaseDomain: 'customer.example.com',
         pendingOperationId: 'domop_123',
         publicIngressConfig: createDualStackIngressConfig(),
@@ -99,11 +104,30 @@ describe('system domain dns proof service', (): void => {
     ]);
   });
 
+  it('builds managed-domain broker alias ownership records when broker credentials are present', (): void => {
+    const records: DomainDnsRecord[] = buildRequiredSystemDomainDnsRecords({
+      managedDomainBrokerToken: 'broker-token',
+      pendingBaseDomain: 'customer.example.com',
+      pendingOperationId: 'domop_123',
+      publicIngressConfig: createIpv4OnlyIngressConfig(),
+    });
+
+    expect(records).toContainEqual({
+      groupId: 'broker-alias-ownership',
+      name: '_compartment-broker-alias.customer.example.com',
+      purpose: 'ownership',
+      recordType: 'TXT',
+      required: true,
+      value: expect.stringMatching(/^compartment-broker-alias=[a-f0-9]{64}$/u) as string,
+    });
+  });
+
   it('verifies ownership and direct ingress binding', async (): Promise<void> => {
     mocks.resolve6.mockResolvedValue([publicIpv6Address]);
 
     await expect(
       verifySystemDomainDnsProof({
+        managedDomainBrokerToken: null,
         pendingBaseDomain: 'customer.example.com',
         pendingOperationId: 'domop_123',
         publicIngressConfig: createDualStackIngressConfig(),
@@ -113,11 +137,71 @@ describe('system domain dns proof service', (): void => {
     });
   });
 
+  it('verifies managed-domain broker alias ownership when broker credentials are present', async (): Promise<void> => {
+    mocks.resolveTxt.mockImplementation(async (hostname: string): Promise<string[][]> => {
+      await Promise.resolve();
+      if (hostname === '_compartment-domain.customer.example.com') {
+        return [[buildCompartmentDomainOwnershipValue('domop_123')]];
+      }
+      if (hostname === buildManagedDomainBrokerAliasOwnershipRecordName('customer.example.com')) {
+        return [[buildManagedDomainBrokerAliasOwnershipValue('customer.example.com', 'broker-token')]];
+      }
+
+      return [];
+    });
+
+    await expect(
+      verifySystemDomainDnsProof({
+        managedDomainBrokerToken: 'broker-token',
+        pendingBaseDomain: 'customer.example.com',
+        pendingOperationId: 'domop_123',
+        publicIngressConfig: createIpv4OnlyIngressConfig(),
+      }),
+    ).resolves.toEqual({
+      failure: null,
+    });
+    expect(mocks.resolveTxt).toHaveBeenCalledWith('_compartment-domain.customer.example.com');
+    expect(mocks.resolveTxt).toHaveBeenCalledWith('_compartment-broker-alias.customer.example.com');
+  });
+
+  it('rejects missing managed-domain broker alias ownership TXT', async (): Promise<void> => {
+    const expectedBrokerAliasValue: string = buildManagedDomainBrokerAliasOwnershipValue(
+      'customer.example.com',
+      'broker-token',
+    );
+    mocks.resolveTxt.mockImplementation(async (hostname: string): Promise<string[][]> => {
+      await Promise.resolve();
+      if (hostname === '_compartment-domain.customer.example.com') {
+        return [[buildCompartmentDomainOwnershipValue('domop_123')]];
+      }
+      if (hostname === buildManagedDomainBrokerAliasOwnershipRecordName('customer.example.com')) {
+        return [['wrong-broker-alias-token']];
+      }
+
+      return [];
+    });
+
+    await expect(
+      verifySystemDomainDnsProof({
+        managedDomainBrokerToken: 'broker-token',
+        pendingBaseDomain: 'customer.example.com',
+        pendingOperationId: 'domop_123',
+        publicIngressConfig: createIpv4OnlyIngressConfig(),
+      }),
+    ).resolves.toEqual({
+      failure: {
+        code: 'dns_ownership_invalid',
+        message: `Broker alias ownership TXT _compartment-broker-alias.customer.example.com must equal ${expectedBrokerAliasValue}.`,
+      },
+    });
+  });
+
   it('rejects missing ownership TXT', async (): Promise<void> => {
     mocks.resolveTxt.mockResolvedValue([['wrong-token']]);
 
     await expect(
       verifySystemDomainDnsProof({
+        managedDomainBrokerToken: null,
         pendingBaseDomain: 'customer.example.com',
         pendingOperationId: 'domop_123',
         publicIngressConfig: createIpv4OnlyIngressConfig(),
@@ -136,6 +220,7 @@ describe('system domain dns proof service', (): void => {
 
     await expect(
       verifySystemDomainDnsProof({
+        managedDomainBrokerToken: null,
         pendingBaseDomain: 'customer.example.com',
         pendingOperationId: 'domop_123',
         publicIngressConfig: createIpv4OnlyIngressConfig(),
@@ -153,6 +238,7 @@ describe('system domain dns proof service', (): void => {
 
     await expect(
       verifySystemDomainDnsProof({
+        managedDomainBrokerToken: null,
         pendingBaseDomain: 'customer.example.com',
         pendingOperationId: 'domop_123',
         publicIngressConfig: createIpv4OnlyIngressConfig(),
@@ -170,6 +256,7 @@ describe('system domain dns proof service', (): void => {
 
     await expect(
       verifySystemDomainDnsProof({
+        managedDomainBrokerToken: null,
         pendingBaseDomain: 'customer.example.com',
         pendingOperationId: 'domop_123',
         publicIngressConfig: createIpv4OnlyIngressConfig(),
@@ -188,6 +275,7 @@ describe('system domain dns proof service', (): void => {
 
     await expect(
       verifySystemDomainDnsProof({
+        managedDomainBrokerToken: null,
         pendingBaseDomain: 'customer.example.com',
         pendingOperationId: 'domop_123',
         publicIngressConfig: createIpv6OnlyIngressConfig(),
@@ -203,6 +291,7 @@ describe('system domain dns proof service', (): void => {
   it('rejects verification when public ingress config is missing', async (): Promise<void> => {
     await expect(
       verifySystemDomainDnsProof({
+        managedDomainBrokerToken: null,
         pendingBaseDomain: 'customer.example.com',
         pendingOperationId: 'domop_123',
         publicIngressConfig: createEmptyIngressConfig(),

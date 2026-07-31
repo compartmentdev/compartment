@@ -145,6 +145,7 @@ function buildLivePendingRequiredDnsRecords(
   }
 
   return buildRequiredSystemDomainDnsRecords({
+    managedDomainBrokerToken: getApiConfig().managedDomainBrokerToken ?? null,
     pendingBaseDomain: hostPlan.baseDomain,
     pendingOperationId: requirePendingText(setupState.pendingOperationId),
     publicIngressConfig,

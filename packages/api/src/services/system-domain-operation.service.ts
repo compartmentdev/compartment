@@ -20,6 +20,8 @@ import type { DomainCheckResult } from './system-domain-check.service.types';
 import { verifySystemDomainDnsProof } from './system-domain-dns-proof.service';
 import { synchronizeEdgeAfterDomainActivation } from './system-domain-health.service';
 import { runIdempotentSystemDomainMutation } from './system-domain-idempotent-mutation.service';
+import { getApiConfig } from '../runtime/runtime-access';
+import { synchronizeManagedDomainBrokerAliasAfterDomainActivation } from './system-domain-managed-broker-alias.service';
 import { readPendingSystemDomainCertificate } from './system-domain-pending-certificate.service';
 import { requirePendingSystemDomainState, type PendingSystemDomainState } from './system-domain-pending-state.service';
 import { readRuntimeDomainHostPlan } from './system-domain-runtime.service';
@@ -47,7 +49,9 @@ export async function activateSystemDomainPending(
       await completeSystemDomainPendingInTransaction(tx, input),
   );
 
-  return await synchronizeEdgeAfterDomainActivation(result);
+  return await synchronizeEdgeAfterDomainActivation(
+    await synchronizeManagedDomainBrokerAliasAfterDomainActivation(result),
+  );
 }
 
 async function completeSystemDomainPendingInTransaction(
@@ -82,6 +86,7 @@ async function updatePendingVerificationStatus(
 
   const checkResult: DomainCheckResult = await verifySystemDomainDnsProof({
     pendingBaseDomain: pendingHostPlan.baseDomain,
+    managedDomainBrokerToken: getApiConfig().managedDomainBrokerToken ?? null,
     pendingOperationId,
     publicIngressConfig: readApiPublicIngressConfig(),
   });
@@ -171,6 +176,7 @@ async function assertPendingDnsProofStillValid(
 ): Promise<void> {
   const checkResult: DomainCheckResult = await verifySystemDomainDnsProof({
     pendingBaseDomain: pendingHostPlan.baseDomain,
+    managedDomainBrokerToken: getApiConfig().managedDomainBrokerToken ?? null,
     pendingOperationId,
     publicIngressConfig: readApiPublicIngressConfig(),
   });
