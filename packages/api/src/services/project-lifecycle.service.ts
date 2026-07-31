@@ -13,6 +13,7 @@ import {
   listActiveJoinedDeploymentsForEnvironment,
   listJoinedDeploymentsForEnvironment,
 } from '../queries/deployment-joined.query';
+import type { DeploymentProjectMutationRejection } from '../queries/deployment-project-mutation.query.types';
 import { markDeploymentStopped } from '../queries/deployment-lifecycle.query';
 import type { DeploymentJoinedRow, DeploymentRow, EnvironmentRow } from '../queries/deployments.query.types';
 import { findNodeById } from '../queries/node.query';
@@ -30,7 +31,12 @@ import {
   recordProjectStopOperationSuccess,
 } from './project-lifecycle-operation.service';
 import { isReusableStoppedDeployment, readProjectLifecycleState } from './project-lifecycle-state.service';
-import type { ProjectLifecycleInput, ProjectLifecycleResult } from './project-lifecycle.service.types';
+import type {
+  ProjectLifecycleInput,
+  ProjectLifecycleResult,
+  ProjectLifecycleServiceResult,
+} from './project-lifecycle.service.types';
+import { isDeploymentProjectMutationRejection } from './deployment-project-mutation-result.service';
 
 interface ProjectLifecycleContext {
   activeDeployments: DeploymentJoinedRow[];
@@ -45,28 +51,36 @@ interface ProjectLifecycleDeploymentState {
   deployments: DeploymentJoinedRow[];
 }
 
-export async function startProjectForPrincipal(input: ProjectLifecycleInput): Promise<ProjectLifecycleResult> {
+export async function startProjectForPrincipal(input: ProjectLifecycleInput): Promise<ProjectLifecycleServiceResult> {
   const context: ProjectLifecycleContext = await resolveProjectLifecycleContext(input, 'start');
   if (context.state === 'running') {
     return buildProjectLifecycleResult('start', context, context.activeDeployments, 'running');
   }
-  if (context.state === 'updating') {
-    throw createProjectLifecycleBusyError();
-  }
-  if (context.state === 'not_deployed') {
-    throw createProjectNotStartableError();
-  }
-  if (context.state !== 'stopped') {
-    throw createProjectLifecycleNotAvailableError();
-  }
+  assertProjectStartableState(context.state);
 
-  const queuedDeployments: DeploymentJoinedRow[] = await queueArtifactStartDeployments(
-    requireStartSourceDeployments(context.deployments),
-    context.environment,
-    input.principalId,
-  );
+  const queuedDeployments: DeploymentJoinedRow[] | DeploymentProjectMutationRejection =
+    await queueArtifactStartDeployments(
+      requireStartSourceDeployments(context.deployments),
+      context.environment,
+      input.principalId,
+    );
+  if (isDeploymentProjectMutationRejection(queuedDeployments)) {
+    return queuedDeployments;
+  }
 
   return buildProjectLifecycleResult('start', context, queuedDeployments, 'updating');
+}
+
+function assertProjectStartableState(state: ProjectLifecycleState): void {
+  if (state === 'updating') {
+    throw createProjectLifecycleBusyError();
+  }
+  if (state === 'not_deployed') {
+    throw createProjectNotStartableError();
+  }
+  if (state !== 'stopped') {
+    throw createProjectLifecycleNotAvailableError();
+  }
 }
 
 export async function stopProjectForPrincipal(input: ProjectLifecycleInput): Promise<ProjectLifecycleResult> {

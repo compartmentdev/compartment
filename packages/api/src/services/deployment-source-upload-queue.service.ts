@@ -1,4 +1,6 @@
 import { consumeSourceUploadAndCreateQueuedDeploymentBatch } from '../queries/deployment-batch.query';
+import type { QueuedDeploymentBatchResult } from '../queries/deployment-batch.query.types';
+import type { DeploymentProjectMutationRejection } from '../queries/deployment-project-mutation.query.types';
 import type {
   ConsumeSourceUploadAndCreateQueuedDeploymentBatchInput,
   CreateQueuedDeploymentBatchItem,
@@ -13,6 +15,7 @@ import {
 } from './deployment-creation.service.access';
 import { buildQueuedDeploymentBatchItem } from './deployment-creation.service.helpers';
 import type { PreparedQueuedDeploymentState } from './deployment-creation.service.types';
+import { isDeploymentProjectMutationRejection } from './deployment-project-mutation-result.service';
 import { requireDeployableSourceUpload } from './source-uploads.service';
 
 export async function requireAuthorizedSubmitSourceUpload(
@@ -45,12 +48,19 @@ export async function queuePreparedDeployments(
   preparedStates: readonly PreparedQueuedDeploymentState[],
   sourceUploadScope: SourceUploadConsumptionScopeInput,
   label: string | undefined,
-): Promise<DeploymentRow[]> {
+): Promise<DeploymentRow[] | DeploymentProjectMutationRejection> {
   const consumedAt: Date = new Date();
-  const queuedDeployments: DeploymentRow[] | undefined = await consumeSourceUploadAndCreateQueuedDeploymentBatch(
+  const queuedDeployments: QueuedDeploymentBatchResult = await consumeSourceUploadAndCreateQueuedDeploymentBatch(
     buildQueuedDeploymentBatchInput(preparedStates, sourceUploadScope, label, consumedAt),
   );
-  return queuedDeployments ?? (await throwSourceUploadNoLongerDeployableError(sourceUploadScope));
+  if (queuedDeployments === undefined) {
+    return await throwSourceUploadNoLongerDeployableError(sourceUploadScope);
+  }
+  if (isDeploymentProjectMutationRejection(queuedDeployments)) {
+    return queuedDeployments;
+  }
+
+  return queuedDeployments;
 }
 
 async function requireDeployableSubmitSourceUpload(input: DeployInputContext): Promise<SourceUploadRow> {

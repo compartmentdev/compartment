@@ -10,7 +10,6 @@ import type { DeploymentRow } from '../../queries/deployments.query.types';
 import { findGitProviderRegistrationById } from '../../queries/git-provider-registration.query';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
 import { findOrganizationById } from '../../queries/organizations.query';
-import type { OrganizationRow } from '../../queries/organizations.query.types';
 import { findSourceBindingById, findSourceById, listBranchMappingsByBindingIds } from '../../queries/source.query';
 import type { SourceBindingBranchMappingRow, SourceBindingRow, SourceRow } from '../../queries/source.query.types';
 import {
@@ -21,22 +20,14 @@ import {
 } from '../../queries/source-resolution.query';
 import type { SourceResolutionTaskRow } from '../../queries/source-resolution.query.types';
 import { getApiConfig, getApiDatabase } from '../../runtime/runtime-access';
-import { createDeploymentsFromSourceUpload } from '../deployment-creation.service';
-import type { DeploymentSummaryInput, DeployResponseInput } from '../presenter.types';
-import { createSourceUploadFromArchivePath } from '../source-uploads.service';
-import type { CreatedSourceUpload } from '../source-uploads.service.types';
 import { mintGitHubInstallationToken } from './github-app-http.adapter';
-import { ensureSourceAutomationPrincipal } from './git-source-automation-principal.service';
+import { createSourceDrivenDeployments } from './git-source-resolution-deployment.service';
 import {
   completeSourceEventIfTerminal,
   completeSourceResolutionTaskAndCleanup,
   finalizeSourceResolutionTaskDeployments,
-  readBindingWatchPaths,
 } from './git-source-resolution-worker.finalization';
-import {
-  deleteSourceResolutionTaskArchive,
-  resolveSourceResolutionTaskArchivePath,
-} from './source-resolution-task-archive-storage.service';
+import { deleteSourceResolutionTaskArchive } from './source-resolution-task-archive-storage.service';
 import {
   isSourceResolutionTaskStillDeployable,
   requireActiveBinding,
@@ -45,18 +36,10 @@ import {
   requireGitProviderRegistration,
   requireOrganization,
   requireSourceResolutionTask,
-  serializeSourceBindingSnapshot,
-  serializeSourceRepositorySnapshot,
 } from './git-source-resolution-worker.support';
-import type { DeploymentSourceProvenance } from '../deployments.service.types';
+import type { DeployableSourceResolutionTaskState } from './git-source-resolution-worker.types';
 
 const sourceResolutionTaskLeaseMs: number = 5 * 60 * 1000;
-
-interface DeployableSourceResolutionTaskState {
-  binding: SourceBindingRow;
-  organization: OrganizationRow;
-  source: SourceRow;
-}
 
 export async function claimGitSourceResolutionTaskForWorker(): Promise<WorkerClaimedGitSourceResolutionTask | null> {
   const now: Date = new Date();
@@ -154,32 +137,6 @@ async function completeFreshSourceResolutionTask(
   await finalizeSourceResolutionTaskDeployments(task, deployments);
 }
 
-async function createSourceDrivenDeployments(
-  state: DeployableSourceResolutionTaskState,
-  task: SourceResolutionTaskRow,
-  input: WorkerCompleteGitSourceResolutionTaskRequest,
-): Promise<DeploymentRow[]> {
-  const automationPrincipalId: string = await ensureSourceAutomationPrincipal(state.source);
-  const sourceUpload: CreatedSourceUpload = await createSourceUploadFromArchivePath({
-    actorPrincipalId: automationPrincipalId,
-    archivePath: resolveSourceResolutionTaskArchivePath(task.id),
-    organizationId: state.source.organizationId,
-    sourceId: state.source.id,
-  });
-  const deploymentInput: DeployResponseInput = await createDeploymentsFromSourceUpload({
-    actorPrincipalId: automationPrincipalId,
-    descriptor: input.descriptor,
-    environmentName: task.targetEnvironmentName,
-    organizationId: state.organization.id,
-    organizationSlug: state.organization.slug,
-    routes: input.routes,
-    sourceProvenance: buildSourceProvenance(state, task, automationPrincipalId),
-    sourceUploadId: sourceUpload.id,
-  });
-
-  return deploymentInput.deployments.map((deployment: DeploymentSummaryInput): DeploymentRow => deployment.deployment);
-}
-
 async function readDeployableSourceResolutionTaskState(
   task: SourceResolutionTaskRow,
 ): Promise<DeployableSourceResolutionTaskState | null> {
@@ -214,28 +171,6 @@ async function failClaimedSourceResolutionTask(task: SourceResolutionTaskRow, fa
     updatedAt: now,
   });
   await completeSourceEventIfTerminal(task.sourceEventId, now);
-}
-
-function buildSourceProvenance(
-  state: DeployableSourceResolutionTaskState,
-  task: SourceResolutionTaskRow,
-  automationPrincipalId: string,
-): DeploymentSourceProvenance {
-  return {
-    sourceAutomationPrincipalId: automationPrincipalId,
-    sourceBindingId: state.binding.id,
-    sourceBindingSnapshotJson: serializeSourceBindingSnapshot(
-      state.binding,
-      task,
-      readBindingWatchPaths(state.binding),
-    ),
-    sourceCommitSha: task.commitSha,
-    sourceEventId: task.sourceEventId,
-    sourceId: state.source.id,
-    sourceKind: state.source.type,
-    sourceRepositorySnapshotJson: serializeSourceRepositorySnapshot(state.source, task),
-    sourceResolutionTaskId: task.id,
-  };
 }
 
 async function mintSourceInstallationToken(

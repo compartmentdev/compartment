@@ -3,6 +3,9 @@ import type { Database } from '../db/client';
 import { buildArtifacts, deployments, environments } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { toDeploymentRow } from './deployment-row.mapper';
+import type { QueuedExistingArtifactDeploymentBatchResult } from './deployment-batch.query.types';
+import { lockActiveProjectDeploymentMutationWithExecutor } from './deployment-project-mutation.query';
+import type { DeploymentProjectMutationStatus } from './deployment-project-mutation.query.types';
 import type { OperationRecord } from './operations.query.types';
 import { requirePersistedRow } from './persisted-row.query.shared';
 import { insertOperationRecordWithExecutor } from './operations.query';
@@ -11,6 +14,7 @@ import type {
   BuildArtifactRow,
   CreateDeploymentInput,
   CreateQueuedExistingArtifactDeploymentBatchItem,
+  CreateQueuedExistingArtifactDeploymentBatchInput,
   DeploymentRow,
   DeploymentTransaction,
   FindDeploymentRunDeploymentInput,
@@ -74,14 +78,30 @@ export async function listDeploymentsBySourceResolutionTaskId(
 }
 
 export async function createQueuedExistingArtifactDeploymentBatch(
-  items: CreateQueuedExistingArtifactDeploymentBatchItem[],
-): Promise<DeploymentRow[]> {
-  return await getApiDatabase().transaction(async (tx: DeploymentTransaction): Promise<DeploymentRow[]> => {
-    return await createQueuedExistingArtifactDeploymentBatchWithExecutor(tx, items);
-  });
+  input: CreateQueuedExistingArtifactDeploymentBatchInput,
+): Promise<QueuedExistingArtifactDeploymentBatchResult> {
+  return await getApiDatabase().transaction(
+    async (tx: DeploymentTransaction): Promise<QueuedExistingArtifactDeploymentBatchResult> =>
+      await createQueuedExistingArtifactDeploymentBatchWithExecutor(tx, input),
+  );
 }
 
 export async function createQueuedExistingArtifactDeploymentBatchWithExecutor(
+  tx: DeploymentTransaction,
+  input: CreateQueuedExistingArtifactDeploymentBatchInput,
+): Promise<QueuedExistingArtifactDeploymentBatchResult> {
+  const projectStatus: DeploymentProjectMutationStatus = await lockActiveProjectDeploymentMutationWithExecutor(
+    tx,
+    input.projectId,
+  );
+  if (projectStatus !== 'active') {
+    return projectStatus;
+  }
+
+  return await insertQueuedExistingArtifactDeploymentBatchWithExecutor(tx, input.items);
+}
+
+async function insertQueuedExistingArtifactDeploymentBatchWithExecutor(
   tx: DeploymentTransaction,
   items: CreateQueuedExistingArtifactDeploymentBatchItem[],
 ): Promise<DeploymentRow[]> {

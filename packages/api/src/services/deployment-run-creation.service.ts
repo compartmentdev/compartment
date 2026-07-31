@@ -43,14 +43,20 @@ function buildCreateDeploymentRunRecordInput(
   };
 }
 
-export async function withDeploymentRunCleanupOnError<T>(
+export async function withDeploymentRunCleanupOnErrorOrResult<T>(
   deploymentRunId: string,
   action: () => Promise<T>,
+  shouldCleanupResult: (result: T) => boolean,
 ): Promise<T> {
   try {
-    return await action();
+    const result: T = await action();
+    if (shouldCleanupResult(result)) {
+      await deleteDeploymentRunIfExists(deploymentRunId);
+    }
+
+    return result;
   } catch (error) {
-    await deleteDeploymentRunById(deploymentRunId).catch((): void => undefined);
+    await deleteDeploymentRunIfExists(deploymentRunId);
     throw error;
   }
 }
@@ -89,4 +95,8 @@ function buildCreateDeploymentRunInput(input: CreateDeploymentRunRecordInput): C
     triggerType: input.triggerType,
     updatedAt: input.updatedAt,
   };
+}
+
+async function deleteDeploymentRunIfExists(deploymentRunId: string): Promise<void> {
+  await deleteDeploymentRunById(deploymentRunId).catch((): void => undefined);
 }

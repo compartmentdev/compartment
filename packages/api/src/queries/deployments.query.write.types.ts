@@ -76,6 +76,11 @@ export interface CreateQueuedDeploymentBatchItem {
   operation: InsertOperationInput;
 }
 
+export interface CreateQueuedExistingArtifactDeploymentBatchInput {
+  items: CreateQueuedExistingArtifactDeploymentBatchItem[];
+  projectId: string;
+}
+
 export interface ConsumeSourceUploadAndCreateQueuedDeploymentBatchInput {
   actorPrincipalId: string;
   consumedAt: Date;
@@ -97,6 +102,13 @@ export interface MarkDeploymentFailedInput {
   completedAt: Date;
   deploymentId: string;
   failureMessage: string;
+  updatedAt: Date;
+}
+
+export interface MarkQueuedProjectDeploymentsFailedInput {
+  completedAt: Date;
+  failureMessage: string;
+  projectId: string;
   updatedAt: Date;
 }
 

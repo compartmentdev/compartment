@@ -9,6 +9,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiApp } from '../../app.types';
 import { parseRequestValue } from '../../http/validation';
 import '../../http/request.types';
+import { requireActiveProjectMutationRouteResult } from '../deployment-project-mutation-route.helpers';
 import { createCurrentOrganizationRouteResponseOptions } from '../protected/current-organization-route';
 import { buildProjectLifecycleResponse } from './project-lifecycle.presenter';
 import type {
@@ -37,7 +38,9 @@ async function handlePostProjectLifecycle(
   executeLifecycle: ProjectLifecycleRouteExecutor,
 ): Promise<FastifyReply> {
   const response: ProjectLifecycleResponse = projectLifecycleResponseSchema.parse(
-    buildProjectLifecycleResponse(await executeLifecycle(createProjectLifecycleRouteInput(request))),
+    buildProjectLifecycleResponse(
+      requireActiveProjectMutationRouteResult(await executeLifecycle(createProjectLifecycleRouteInput(request))),
+    ),
   );
 
   return await reply.send(response);

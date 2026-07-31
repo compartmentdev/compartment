@@ -26,6 +26,7 @@ import {
   resolveWritablePromotionEnvironmentContext,
 } from './deployment-movement.service.helpers';
 import type {
+  DeploymentMovementResult,
   DeploymentMovementServiceScope,
   PromoteDeploymentInput,
   RollbackDeploymentInput,
@@ -41,7 +42,7 @@ import {
 } from './deployment-movement.service.rollback.helpers';
 import { requireActiveHumanRuntimeActor } from './runtime-actor-authorization.service';
 
-export async function promoteDeploymentsForPrincipal(input: PromoteDeploymentInput): Promise<DeploymentJoinedRow[]> {
+export async function promoteDeploymentsForPrincipal(input: PromoteDeploymentInput): Promise<DeploymentMovementResult> {
   await requireActiveHumanRuntimeActor({
     organizationId: input.organizationId,
     principalId: input.actorPrincipalId,
@@ -65,7 +66,9 @@ export async function promoteDeploymentsForPrincipal(input: PromoteDeploymentInp
   );
 }
 
-export async function rollbackDeploymentForPrincipal(input: RollbackDeploymentInput): Promise<DeploymentJoinedRow[]> {
+export async function rollbackDeploymentForPrincipal(
+  input: RollbackDeploymentInput,
+): Promise<DeploymentMovementResult> {
   await requireActiveHumanRuntimeActor({
     organizationId: input.organizationId,
     principalId: input.actorPrincipalId,

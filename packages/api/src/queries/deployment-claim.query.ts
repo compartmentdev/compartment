@@ -18,6 +18,7 @@ const fairQueuedDeploymentClaimQuery: SQL<QueuedDeploymentClaimCandidateRow> = s
     candidate.environment_id as "environmentId",
     candidate.environment_name as "environmentName",
     candidate.organization_id as "organizationId",
+    candidate.project_id as "projectId",
     candidate.project_name as "projectName",
     candidate.service_id as "serviceId",
     candidate.service_name as "serviceName"
@@ -27,6 +28,7 @@ const fairQueuedDeploymentClaimQuery: SQL<QueuedDeploymentClaimCandidateRow> = s
       ${deployments.environmentId} as environment_id,
       ${environments.name} as environment_name,
       ${projects.organizationId} as organization_id,
+      ${projects.id} as project_id,
       ${projects.name} as project_name,
       ${projectServices.id} as service_id,
       ${projectServices.name} as service_name,
@@ -45,19 +47,22 @@ const fairQueuedDeploymentClaimQuery: SQL<QueuedDeploymentClaimCandidateRow> = s
     where ${deployments.status} = ${'queued'}
       and ${projects.archivedAt} is null
   ) as candidate
-  inner join ${deployments} locked_deployment
-    on locked_deployment.id = candidate.deployment_id
-    and locked_deployment.status = ${'queued'}
+  inner join ${projects} locked_project
+    on locked_project.id = candidate.project_id
+    and locked_project.archived_at is null
+  inner join ${deployments}
+    on ${deployments.id} = candidate.deployment_id
+    and ${deployments.status} = ${'queued'}
   order by
     candidate.organization_queue_rank,
     candidate.last_claimed_at nulls first,
     candidate.created_at,
     candidate.deployment_id
-  for update of locked_deployment skip locked
+  for update of locked_project skip locked
   limit 1
 `;
 
-export async function findFirstFairQueuedDeploymentCandidateForUpdate(
+export async function findFirstFairQueuedDeploymentCandidate(
   tx: DeploymentTransaction,
 ): Promise<QueuedDeploymentClaimCandidateRow | undefined> {
   const rows: object[] = (await tx.execute(fairQueuedDeploymentClaimQuery)).rows;

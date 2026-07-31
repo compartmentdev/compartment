@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto';
+import { mkdir } from 'node:fs/promises';
 import { eq } from 'drizzle-orm';
 import type { Pool } from 'pg';
 import type {
@@ -19,6 +20,7 @@ import {
   principals,
   sourceBindings,
   sourceEvents,
+  sourceUploads,
   sourceResolutionTasks,
   sourceSyncTaskCandidates,
   sourceSyncTasks,
@@ -46,6 +48,8 @@ import type {
   HandleGitHubSourceWebhookInput,
 } from '../src/services/git-source/git-source-runtime.service.types';
 import { claimNextSourceResolutionTask } from '../src/queries/source-resolution.query';
+import { storeSourceResolutionTaskArchive } from '../src/services/git-source/source-resolution-task-archive-storage.service';
+import { createRawSourceArchive } from './api-integration.harness';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
@@ -1108,6 +1112,56 @@ describe('git source runtime service', (): void => {
     expect(completedTask.completedAt).toBeInstanceOf(Date);
     expect(completedEvent.status).toBe('completed');
     expect(completedEvent.completedAt).toBeInstanceOf(Date);
+  });
+
+  it('cleans the created source upload when source-driven deployment creation fails', async (): Promise<void> => {
+    await connectRuntimeSource([createBinding('billing', 'apps/billing/compartment.yml')]);
+
+    await handleGitHubSourceWebhook(
+      createWebhookInput({
+        eventType: 'push',
+        payload: createPushPayload({
+          changedPaths: ['apps/billing/app.py'],
+          commitSha: 'sha_push_deployment_failure_cleanup',
+        }),
+        providerDeliveryId: 'delivery_push_deployment_failure_cleanup',
+      }),
+    );
+
+    const claimedTask: typeof sourceResolutionTasks.$inferSelect = requireClaimedSourceResolutionTask(
+      await claimNextSourceResolutionTask('wrk_test', new Date(), new Date(Date.now() + 60_000)),
+    );
+    await mkdir(apiConfig.sourceArchiveDirectory, { recursive: true });
+    await storeSourceResolutionTaskArchive(
+      claimedTask.id,
+      createRawSourceArchive(
+        [
+          {
+            contents: 'console.log("billing");\n',
+            path: 'apps/billing/app.js',
+            type: 'file',
+          },
+        ],
+        {
+          descriptorDirectoryRelativePath: 'apps/billing',
+          version: 1,
+        },
+      ),
+    );
+
+    await expect(
+      completeGitSourceResolutionTaskForWorker({
+        descriptor: {
+          name: 'billing',
+          services: {
+            web: '.',
+          },
+        },
+        taskId: claimedTask.id,
+      }),
+    ).rejects.toMatchObject({ code: 'node_unavailable' });
+
+    expect(await db.select().from(sourceUploads)).toHaveLength(0);
   });
 });
 
