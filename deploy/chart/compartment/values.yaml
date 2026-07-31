@@ -175,7 +175,7 @@ buildkit:
   namespace: compartment-build
   gcKeepStorageMb: 2000
   maximumConcurrentBuilds: 2
-  maximumConcurrentBuildsPerProject: 1
+  maximumConcurrentBuildsPerProject: 2
   runtimeClassName: ''
   createRuntimeClass: false
   runtimeHandler: runsc
