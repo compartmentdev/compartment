@@ -256,7 +256,7 @@ export function isConsoleReadyStatus(status) {
 }
 
 export function renderPlatformK3dValues(imageDigestsByServiceName, gvisorEnabled = platformEnvironment.gvisorEnabled) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorEnabled)}ingress:\n  className: ${ingressClassName}\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\ntls:\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: issuer\nbuildkit:\n  namespace: ${platformNamespace}-build\n${renderBuildRuntimeValues(gvisorEnabled)}`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorEnabled)}ingress:\n  className: ${ingressClassName}\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\ntls:\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: issuer\nbuildkit:\n  maximumConcurrentBuildsPerProject: 2\n  namespace: ${platformNamespace}-build\n${renderBuildRuntimeValues(gvisorEnabled)}`;
 }
 
 export function renderManagedPlatformK3dValues(

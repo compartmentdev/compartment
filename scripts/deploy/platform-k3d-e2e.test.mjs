@@ -389,6 +389,7 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).toContain('className: traefik');
     expect(values).not.toContain('NodePort');
     expect(values).not.toContain('service:');
+    expect(values).toContain('maximumConcurrentBuildsPerProject: 2');
     expect(values).toContain('namespace: compartment-build');
     expect(values).toContain('clusterIP: 10.43.250.250');
     expect(values).not.toContain('hostname:');
@@ -406,7 +407,7 @@ describe('platform k3d e2e command boundary', () => {
       'tenantRuntime:\n  runtimeClassName: gvisor\n  createRuntimeClass: false\n  runtimeHandler: runsc',
     );
     expect(renderPlatformK3dValues(createTestImageDigests(), true)).toContain(
-      'buildkit:\n  namespace: compartment-build\n  runtimeClassName: gvisor',
+      'buildkit:\n  maximumConcurrentBuildsPerProject: 2\n  namespace: compartment-build\n  runtimeClassName: gvisor',
     );
   });
 
