@@ -480,16 +480,8 @@ describe('Kubernetes install deployment', (): void => {
   });
 
   it('resumes owner bootstrap without rendering an existing full release', async (): Promise<void> => {
-    const releaseValues: Record<string, JsonValue> = JSON.parse(existingInstallValues('full', 'managed')) as Record<
-      string,
-      JsonValue
-    >;
-    releaseValues.secrets = {
-      ...(releaseValues.secrets as Record<string, JsonValue>),
-      tenantSecretsPreviousKek: null,
-    };
     mocks.readChartValues.mockResolvedValue({ secrets: { tenantSecretsPreviousKek: null } });
-    const state: InstallHarnessState = createInstallHarnessState(JSON.stringify(releaseValues));
+    const state: InstallHarnessState = createInstallHarnessState(existingInstallValues('full', 'managed'));
     mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
     vi.stubGlobal(
       'fetch',

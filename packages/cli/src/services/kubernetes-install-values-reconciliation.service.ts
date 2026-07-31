@@ -154,6 +154,9 @@ function readObjectKeys(value: JsonValue | undefined): string[] {
 }
 
 function valuesEqual(left: JsonValue | undefined, right: JsonValue | undefined): boolean {
+  if ((left === null || left === undefined) && (right === null || right === undefined)) {
+    return true;
+  }
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
