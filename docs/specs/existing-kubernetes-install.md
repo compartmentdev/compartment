@@ -40,7 +40,9 @@ previous dedicated-cluster Caddy architecture.
 13. NetworkPolicy resources remain mandatory runtime projections, but the installer does not detect the CNI, test
     NetworkPolicy support, or run an enforcement probe.
 14. There is no `compartment doctor` command in this scope.
-15. Firecracker, gVisor, Kata Containers, and RuntimeClass selection are not part of this installation mode.
+15. Firecracker and Kata Containers are not part of this installation mode. gVisor is not installed or required;
+    source builds can use an operator-provided RuntimeClass, and install preflight reports whether that optional
+    sandbox is selected or available.
 16. The production runtime is Kubernetes only. Docker Engine and Docker Compose production installation paths are
     deleted rather than retained as fallbacks.
 17. Dockerfile and OCI image build support remains. `packages/docker` is retained only for BuildKit command shaping
@@ -527,8 +529,9 @@ The model does not protect against:
 - a node kernel or container runtime escape;
 - a compromise of the trusted Compartment control plane.
 
-Firecracker, gVisor, Kata, dedicated nodes, and per-organization clusters are deferred. They are not silently promised
-by namespace isolation.
+Firecracker, Kata, dedicated nodes, and per-organization clusters are deferred. An operator-selected gVisor
+RuntimeClass can strengthen source-build isolation, but it is not installed, required, or silently promised by
+namespace isolation.
 
 ### API and database boundary
 
@@ -983,9 +986,10 @@ NetworkPolicy manifests and CI enforcement tests are retained.
 ### Sandbox runtimes
 
 - Firecracker integration.
-- gVisor installation or detection.
+- gVisor installation, node mutation, or automatic RuntimeClass selection.
+- install failure solely because no gVisor RuntimeClass is available.
 - Kata Containers installation or detection.
-- RuntimeClass selection in the install wizard or public install contract.
+- a separate RuntimeClass selector in the public install contract; operators configure the chart value.
 - a security claim that Kubernetes namespaces provide VM-level isolation.
 
 ### Docker production runtime

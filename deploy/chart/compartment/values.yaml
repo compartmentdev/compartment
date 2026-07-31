@@ -174,8 +174,8 @@ buildkit:
   enabled: true
   namespace: compartment-build
   gcKeepStorageMb: 2000
-  runtimeClassName: gvisor
-  createRuntimeClass: true
+  runtimeClassName: ''
+  createRuntimeClass: false
   runtimeHandler: runsc
   timeoutMs: 1800000
   dnsNamespaceSelector:

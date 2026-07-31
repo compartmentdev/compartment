@@ -337,7 +337,11 @@ tolerations:
 {{- if and (empty $pool.nodeSelector) (empty $pool.tolerations) -}}
 {{- $pool = .Values.nodePools.system -}}
 {{- end -}}
-{{- dict "nodeSelector" $pool.nodeSelector "runtimeClassName" .Values.buildkit.runtimeClassName "tolerations" $pool.tolerations | toJson -}}
+{{- $scheduling := dict "nodeSelector" $pool.nodeSelector "tolerations" $pool.tolerations -}}
+{{- if not (empty .Values.buildkit.runtimeClassName) -}}
+{{- $_ := set $scheduling "runtimeClassName" .Values.buildkit.runtimeClassName -}}
+{{- end -}}
+{{- $scheduling | toJson -}}
 {{- end }}
 
 {{- define "compartment.tenantSchedulingJson" -}}

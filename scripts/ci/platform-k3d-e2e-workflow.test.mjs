@@ -21,7 +21,7 @@ describe('platform k3d e2e workflow', () => {
       matrix: { shard: platformK3dShardNames },
     });
     expect(job.name).toContain('${{ matrix.shard }}');
-    expect(job.env.COMPARTMENT_E2E_GVISOR_ENABLED).toBe('1');
+    expect(job.env.COMPARTMENT_E2E_GVISOR_ENABLED).toBe("${{ matrix.shard == 'build-matrix-a' && '0' || '1' }}");
     const toolInstallStep = job.steps.find((step) => step.name.startsWith('Install pinned k3d, kubectl, Helm'));
     expect(toolInstallStep.env.GVISOR_VERSION).toMatch(/^release\/\d{8}\.\d+$/);
     expect(toolInstallStep.run).toContain('gvisor.tar.bz2');

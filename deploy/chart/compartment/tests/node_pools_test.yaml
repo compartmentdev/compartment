@@ -147,7 +147,7 @@ tests:
         documentIndex: 4
       - equal:
           path: data.COMPARTMENT_KUBE_BUILD_SCHEDULING
-          value: '{"nodeSelector":{},"runtimeClassName":"gvisor","tolerations":[]}'
+          value: '{"nodeSelector":{},"tolerations":[]}'
         template: configmap.yaml
 
   - it: routes platform, build, and tenant workloads to their configured pools
@@ -203,7 +203,7 @@ tests:
         documentIndex: 4
       - equal:
           path: data.COMPARTMENT_KUBE_BUILD_SCHEDULING
-          value: '{"nodeSelector":{"compartment.dev/node-pool":"build"},"runtimeClassName":"gvisor","tolerations":[{"effect":"NoSchedule","key":"compartment.dev/node-pool","operator":"Equal","value":"build"}]}'
+          value: '{"nodeSelector":{"compartment.dev/node-pool":"build"},"tolerations":[{"effect":"NoSchedule","key":"compartment.dev/node-pool","operator":"Equal","value":"build"}]}'
         template: configmap.yaml
       - contains: &tenantSchedulingEnv
           path: spec.template.spec.containers[0].env
@@ -216,6 +216,33 @@ tests:
 
   - it: falls back from an empty build pool to the system pool
     set:
+      nodePools:
+        system: *systemPool
+    asserts:
+      - equal:
+          path: data.COMPARTMENT_KUBE_BUILD_SCHEDULING
+          value: '{"nodeSelector":{"compartment.dev/node-pool":"system"},"tolerations":[{"effect":"NoSchedule","key":"compartment.dev/node-pool","operator":"Equal","value":"system"}]}'
+        template: configmap.yaml
+
+  - it: includes an explicitly configured build RuntimeClass with the build pool
+    set:
+      buildkit:
+        runtimeClassName: gvisor
+      nodePools:
+        build:
+          nodeSelector: { compartment.dev/node-pool: build }
+          tolerations:
+            - { key: compartment.dev/node-pool, operator: Equal, value: build, effect: NoSchedule }
+    asserts:
+      - equal:
+          path: data.COMPARTMENT_KUBE_BUILD_SCHEDULING
+          value: '{"nodeSelector":{"compartment.dev/node-pool":"build"},"runtimeClassName":"gvisor","tolerations":[{"effect":"NoSchedule","key":"compartment.dev/node-pool","operator":"Equal","value":"build"}]}'
+        template: configmap.yaml
+
+  - it: includes an explicitly configured build RuntimeClass with the system pool fallback
+    set:
+      buildkit:
+        runtimeClassName: gvisor
       nodePools:
         system: *systemPool
     asserts:

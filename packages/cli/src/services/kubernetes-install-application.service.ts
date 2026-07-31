@@ -19,6 +19,7 @@ import type {
   KubernetesInstallDeploymentInput,
   KubernetesInstallDeploymentResult,
   KubernetesInstallDomainMode,
+  KubernetesInstallHelmMaterial,
   KubernetesIngressEndpoint,
 } from './kubernetes-install.service.types';
 import type {
@@ -32,6 +33,10 @@ import {
 } from './kubernetes-install-tls.service';
 import { isReservedKubernetesInstallLocalhostDomain } from '../kubernetes-install-domain';
 import type { KubernetesOperatorIssuerAssessment } from './kubernetes-operator-issuer-trust.service.types';
+import { inspectKubernetesBuildRuntime } from './kubernetes-build-runtime-preflight.service';
+import type { KubernetesBuildRuntimeAssessment } from './kubernetes-build-runtime-preflight.service.types';
+import { resolveKubernetesBuildRuntimeClassName } from './kubernetes-build-runtime-values.service';
+import { readKubernetesChartValues } from './kubernetes-chart-values.service';
 
 export async function installIntoKubernetes(
   input: KubernetesInstallApplicationInput,
@@ -52,8 +57,27 @@ async function runCanonicalPreflight(
       apiHosts: readExpectedIngressHosts(input),
       install: input,
     });
-    await verifyInstallImages(deploymentInput);
+    const runtimeClassName: string = await verifyInstallImages(deploymentInput);
+    reportBuildRuntimeAssessment(input, await inspectBuildRuntime(input, runtimeClassName));
   });
+}
+
+async function inspectBuildRuntime(
+  input: KubernetesInstallApplicationInput,
+  runtimeClassName: string,
+): Promise<KubernetesBuildRuntimeAssessment> {
+  return await inspectKubernetesBuildRuntime({
+    kubeContext: input.kubeContext,
+    kubeconfigPath: input.kubeconfigPath,
+    runtimeClassName,
+  });
+}
+
+function reportBuildRuntimeAssessment(
+  input: KubernetesInstallApplicationInput,
+  assessment: KubernetesBuildRuntimeAssessment,
+): void {
+  input.progress.report(assessment.detail, { renderMode: 'line' });
 }
 
 async function verifyOperatorCertificateSources(input: KubernetesInstallDeploymentInput): Promise<void> {
@@ -90,10 +114,14 @@ function reportIssuerTrustWarning(
   input.progress?.report(`TLS trust warning: ${assessment.detail}`, { renderMode: 'line' });
 }
 
-async function verifyInstallImages(input: KubernetesInstallDeploymentInput): Promise<void> {
+async function verifyInstallImages(input: KubernetesInstallDeploymentInput): Promise<string> {
   const directory: string = await createKubernetesInstallMaterializedDirectory();
   try {
-    await prepareKubernetesInstallHelmMaterial(input, directory);
+    const material: KubernetesInstallHelmMaterial = await prepareKubernetesInstallHelmMaterial(input, directory);
+    return await resolveKubernetesBuildRuntimeClassName(
+      await readKubernetesChartValues(material.chartPath),
+      input.valuesPath,
+    );
   } finally {
     await rm(directory, { force: true, recursive: true });
   }
