@@ -5,9 +5,11 @@ import type {
   WorkerFailDeploymentRequest,
   WorkerRunNextScheduledResourceOperationResponse,
 } from '@compartment/contracts';
-import type { CompartmentBinaryRequester, CompartmentRawRequester, CompartmentRequester } from '@compartment/sdk';
+import type { CompartmentRawRequester, CompartmentRequester } from '@compartment/sdk';
+import type { KubeRuntime } from '@compartment/kube-runtime';
 import pino, { type Logger } from 'pino';
-import { runWorkerIteration as runWorkerIterationWithKek } from '../src/services/worker.service';
+import { runWorkerIteration as runWorkerIterationWithConfig } from '../src/services/worker.service';
+import type { WorkerConfig } from '../src/config';
 import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
 import type { WorkerDeploymentEventContext } from '../src/services/worker-deployment-event.types';
 import { testTenantSecretsKek } from './tenant-secret-test.fixtures';
@@ -20,10 +22,9 @@ type AppendDeploymentStepEventSafely = (
 ) => Promise<void>;
 type BuildReleaseImageFromSource = (
   request: CompartmentRequester,
-  archiveRequest: CompartmentBinaryRequester,
   deployment: WorkerClaimedDeployment,
-  artifactRegistry: WorkerArtifactRegistryConfig,
-  tenantSecretsKek: typeof testTenantSecretsKek,
+  config: WorkerConfig,
+  runtime: KubeRuntime,
 ) => Promise<string>;
 
 type ClaimNextDeployment = (request: CompartmentRequester) => Promise<WorkerClaimDeploymentResponse>;
@@ -46,7 +47,6 @@ type RunNextScheduledResourceOperation = (
 ) => Promise<WorkerRunNextScheduledResourceOperationResponse>;
 
 interface WorkerServiceMocks {
-  archiveRequest: CompartmentBinaryRequester;
   appendDeploymentStepEventSafely: Mock<AppendDeploymentStepEventSafely>;
   buildReleaseImageFromSource: Mock<BuildReleaseImageFromSource>;
   claimNextDeployment: Mock<ClaimNextDeployment>;
@@ -61,7 +61,6 @@ interface WorkerServiceMocks {
 
 const mocks: WorkerServiceMocks = vi.hoisted(
   (): WorkerServiceMocks => ({
-    archiveRequest: vi.fn() as CompartmentBinaryRequester,
     appendDeploymentStepEventSafely: vi.fn<AppendDeploymentStepEventSafely>(),
     buildReleaseImageFromSource: vi.fn<BuildReleaseImageFromSource>(),
     claimNextDeployment: vi.fn<ClaimNextDeployment>(),
@@ -81,7 +80,6 @@ vi.mock(
   '@compartment/sdk',
   (): {
     claimNextDeployment: Mock<ClaimNextDeployment>;
-    createCompartmentBinaryRequester: () => CompartmentBinaryRequester;
     createCompartmentRawRequester: () => CompartmentRawRequester;
     createCompartmentRequester: () => CompartmentRequester;
     failDeployment: Mock<FailDeployment>;
@@ -89,7 +87,6 @@ vi.mock(
     runNextScheduledResourceOperation: Mock<RunNextScheduledResourceOperation>;
   } => ({
     claimNextDeployment: mocks.claimNextDeployment,
-    createCompartmentBinaryRequester: (): CompartmentBinaryRequester => mocks.archiveRequest,
     createCompartmentRawRequester: (): CompartmentRawRequester => mocks.rawRequest,
     createCompartmentRequester: (): CompartmentRequester => mocks.request,
     failDeployment: mocks.failDeployment,
@@ -153,12 +150,10 @@ async function runWorkerIteration(
   artifactRegistry: WorkerArtifactRegistryConfig,
   iterationLogger: Logger<never, boolean>,
 ): Promise<boolean> {
-  return await runWorkerIterationWithKek(
-    apiUrl,
-    internalToken,
-    artifactRegistry,
+  return await runWorkerIterationWithConfig(
+    createWorkerConfig(apiUrl, internalToken, artifactRegistry),
+    runtime,
     iterationLogger,
-    testTenantSecretsKek,
   );
 }
 
@@ -196,10 +191,9 @@ describe('runWorkerIteration', (): void => {
 
     expect(mocks.buildReleaseImageFromSource).toHaveBeenCalledWith(
       mocks.request,
-      mocks.archiveRequest,
       deployment,
-      artifactRegistry,
-      testTenantSecretsKek,
+      createWorkerConfig('http://api', 'worker-secret', artifactRegistry),
+      runtime,
     );
     expect(mocks.handoffBuiltDeploymentToKube).toHaveBeenCalledWith(
       mocks.request,
@@ -275,10 +269,9 @@ describe('runWorkerIteration', (): void => {
     expect(logger.error).toHaveBeenCalledOnce();
     expect(mocks.buildReleaseImageFromSource).toHaveBeenCalledWith(
       mocks.request,
-      mocks.archiveRequest,
       deployment,
-      artifactRegistry,
-      testTenantSecretsKek,
+      createWorkerConfig('http://api', 'worker-secret', artifactRegistry),
+      runtime,
     );
   });
 
@@ -298,10 +291,9 @@ describe('runWorkerIteration', (): void => {
 
     expect(mocks.buildReleaseImageFromSource).toHaveBeenCalledWith(
       mocks.request,
-      mocks.archiveRequest,
       deployment,
-      artifactRegistry,
-      testTenantSecretsKek,
+      createWorkerConfig('http://api', 'worker-secret', artifactRegistry),
+      runtime,
     );
   });
 });
@@ -312,6 +304,39 @@ const artifactRegistry: WorkerArtifactRegistryConfig = {
   internalAddress: 'registry:5000',
   internalUrl: 'http://registry:5000',
 };
+const runtime: KubeRuntime = {} as KubeRuntime;
+
+function createWorkerConfig(
+  apiUrl: string,
+  runtimeControlToken: string,
+  registry: WorkerArtifactRegistryConfig,
+): WorkerConfig {
+  return {
+    apiUrl,
+    artifactRegistry: registry,
+    buildSandbox: {
+      buildKitImage: 'moby/buildkit@sha256:builder',
+      buildKitResources: {},
+      gcKeepStorageMb: 2000,
+      namespace: 'compartment-build',
+      runnerImage: 'compartment-worker@sha256:runner',
+      runnerResources: {},
+      scheduling: { nodeSelector: {}, runtimeClassName: 'gvisor', tolerations: [] },
+      timeoutMs: 900000,
+    },
+    customDomains: {
+      caddyServiceName: 'compartment-caddy',
+      ingressClassName: 'traefik',
+      issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
+      namespace: 'compartment',
+    },
+    logLevel: 'silent',
+    pollIntervalMs: 1000,
+    runtimeControlToken,
+    tenantSecretsKek: testTenantSecretsKek,
+    usageMeteringIntervalMs: 60000,
+  };
+}
 
 function createClaimedDeployment(): WorkerClaimedDeployment {
   return {

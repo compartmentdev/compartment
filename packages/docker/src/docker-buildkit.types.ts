@@ -15,13 +15,6 @@ export interface BuildKitImageMetadata {
   'containerimage.digest'?: string | undefined;
 }
 
-export interface BuildKitRailpackBuildctlInput {
-  buildKitAddress: string;
-  contextDirectory: string;
-  dockerfileDirectory: string;
-  output?: string;
-}
-
 export interface BuildKitDockerfileBuildctlInput {
   buildKitAddress: string;
   input: DockerBuildImageInput;

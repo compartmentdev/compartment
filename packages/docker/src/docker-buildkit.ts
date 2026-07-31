@@ -1,18 +1,10 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  readBuildKitAddress,
-  runBuildctlCommandWithOptionalProgressReporter,
-  runBuildctlCommandWithRegistryRetry,
-} from './buildkit-command';
-import {
-  buildDockerfileBuildctlArgs,
-  buildRailpackImageBuildctlArgs,
-  buildRailpackToolchainBuildctlArgs,
-} from './docker-buildkit-args';
+import { readBuildKitAddress, runBuildctlCommandWithOptionalProgressReporter } from './buildkit-command';
+import { buildDockerfileBuildctlArgs, buildRailpackImageBuildctlArgs } from './docker-buildkit-args';
 import { readPushedBuildKitImageRef } from './docker-buildkit-metadata';
-import { buildRailpackPlanPaths, writeSourceBuildToolchainPrewarmFixture } from './docker-build-plan';
+import { buildRailpackPlanPaths } from './docker-build-plan';
 import type { RailpackBuildSecrets, RailpackPlanPaths } from './docker-build.types';
 import {
   buildPrepareRailpackPlanInput,
@@ -45,30 +37,6 @@ export async function buildDockerImageWithRemoteBuildKit(
     };
   } finally {
     await rm(metadataDirectory, { force: true, recursive: true });
-  }
-}
-
-export async function prewarmSourceBuildToolchainWithRemoteBuildKit(): Promise<void> {
-  const buildKitAddress: string = requireBuildKitAddress();
-  const prewarmDirectory: string = await mkdtemp(join(tmpdir(), 'compartment-source-build-prewarm-'));
-  const prewarmPlanPaths: RailpackPlanPaths = buildRailpackPlanPaths(prewarmDirectory);
-
-  try {
-    await writeSourceBuildToolchainPrewarmFixture(prewarmDirectory);
-    await prepareRailpackPlan({
-      contextDirectory: prewarmDirectory,
-      infoPath: prewarmPlanPaths.infoPath,
-      planPath: prewarmPlanPaths.planPath,
-    });
-    await runBuildctlCommandWithRegistryRetry(
-      buildRailpackToolchainBuildctlArgs({
-        buildKitAddress,
-        contextDirectory: prewarmDirectory,
-        dockerfileDirectory: prewarmDirectory,
-      }),
-    );
-  } finally {
-    await rm(prewarmDirectory, { force: true, recursive: true });
   }
 }
 

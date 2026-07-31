@@ -119,8 +119,8 @@ Platform and build scheduling remains owned by the Helm chart.
 Tenant kernel sandboxing is installation-owned and opt-in through `tenantRuntime.runtimeClassName`.
 The selected RuntimeClass is projected onto application Deployments, resource Deployments, product Jobs, and
 provisioning Jobs; an empty value omits `runtimeClassName` entirely. Platform workloads and `api-migrate` remain on
-the node default runtime. BuildKit is intentionally outside the sandbox because its build execution contract is
-isolated through the build node pool instead. PostgreSQL resources use the tenant RuntimeClass without a separate
+the node default runtime. Build Jobs use their separate chart-owned gVisor RuntimeClass and build node pool.
+PostgreSQL resources use the tenant RuntimeClass without a separate
 opt-out; the additional I/O cost is an accepted isolation tradeoff.
 
 Network isolation follows the T2 evidence. Application Pods and product Jobs
@@ -144,20 +144,22 @@ checksum and size. Restore verification finishes before the user restore command
 
 ## Build pipeline
 
-Cluster source builds run through one rootless BuildKit pod installed by the
-platform Helm chart. The chart owns BuildKit deployment, storage, pruning, and
-network isolation; the worker remains the sole build orchestrator. The build
+Each cluster source build runs as one deterministic worker-owned Kubernetes Job. The Job contains the build runner
+and a rootless BuildKit native sidecar, uses the `gvisor` RuntimeClass, joins an existing Job after worker recovery,
+and is deleted after its result and logs are captured. The chart owns the BuildKit image, resources, scheduling,
+namespace RBAC, and network isolation; no long-lived BuildKit Deployment or Service exists. The build
+sidecar uses BuildKit's native snapshotter because gVisor does not support the trusted overlay redirect xattr.
+The default build timeout is 30 minutes to accommodate cold native-snapshotter builds.
 namespace uses Pod Security `enforce=privileged` with
 `audit=baseline` and `warn=baseline` because the tested AppArmor Unconfined
-profile is not admitted by baseline enforcement. The pod keeps the exact T4
-minimum security context and must never be described as baseline-compatible.
+profile is not admitted by baseline enforcement. Isolation comes from gVisor plus pod ephemerality, not PSA.
+Fresh installs and upgrades bind only the existing platform worker ServiceAccount to the namespaced Job, Secret, Pod,
+and Pod-log permissions required by `runJob`; no tenant or seeded product principal receives Kubernetes authority.
 
-BuildKit has an 8 GiB PVC, a 2 GiB GC target, and at most two concurrent builds.
-The daily CronJob uses `buildctl prune --all --keep-duration 24h --keep-storage
-2000`. NetworkPolicy defaults the namespace to deny and admits
-only selected worker ingress plus explicit DNS, base-image, and registry
-egress. Public internet egress excludes metadata, link-local, Pod, and Service
-CIDRs.
+Each Job uses only `emptyDir` local cache and a project/service-scoped registry cache; no unencrypted cache volume is
+shared between tenants. The worker's existing limit of two concurrent builds now limits build pods. NetworkPolicy
+defaults the namespace to deny and admits only DNS, source archive API, base-image, and registry egress. Public
+internet egress excludes metadata, link-local, RFC1918, Pod, and Service CIDRs.
 
 The F1 chart installs a private persistent bundled registry. External/BYO
 registry values are deferred to F2. Application namespaces use

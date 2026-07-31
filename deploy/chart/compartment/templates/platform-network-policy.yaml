@@ -50,6 +50,12 @@ spec:
               {{- include "compartment.componentLabels" (dict "root" . "component" "project-provisioner") | nindent 14 }}
         - namespaceSelector:
             matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.buildkit.namespace }}
+          podSelector:
+            matchLabels:
+              compartment.dev/job-class: build
+        - namespaceSelector:
+            matchLabels:
               kubernetes.io/metadata.name: {{ $productLogsNamespace }}
           podSelector:
             matchLabels:

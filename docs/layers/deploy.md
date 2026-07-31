@@ -11,6 +11,7 @@
 - expose BuildKit, the registry, internal-token routes, or control-plane health routes through public ingress;
 - depend on the current Kubernetes context or commit generated credentials and cluster state.
 
-The chart is the sole owner of installation-time BuildKit deployment, pruning,
-storage, and network policy. The runtime package continues to own application
-workload reconciliation.
+The chart owns BuildKit sandbox configuration and build-namespace network policy.
+The worker submits each ephemeral build through the runtime package's `runJob`
+primitive; the runtime package continues to own Kubernetes transport and
+application workload reconciliation.

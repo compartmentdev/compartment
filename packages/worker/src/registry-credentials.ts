@@ -5,15 +5,15 @@ import type {
   RegistryRequestAuthorization,
 } from './registry-credentials.types';
 import { isManifestDigest, isManifestReference } from './registry-manifest-reference';
+import { isRegistryCredentialPayload, projectRepositoryPattern } from './registry-credential-payload';
 
 const credentialUsernamePrefix: string = 'compartment-v1-';
-const immutableIdPattern: RegExp = /^[A-Za-z0-9][A-Za-z0-9_-]*$/u;
 const projectIdPattern: RegExp = /^prj_[A-Za-z0-9_-]+$/u;
-const repositoryPattern: RegExp = /^projects\/(prj_[A-Za-z0-9_-]+)\/services\/(svc_[A-Za-z0-9_-]+)$/u;
 const registryRequestPattern: RegExp =
   /^\/v2\/(projects\/prj_[A-Za-z0-9_-]+\/services\/svc_[A-Za-z0-9_-]+)\/(?:blobs|manifests|tags)\//u;
 const pushCredentialLifetimeSeconds: number = 60 * 60;
 const cleanupCredentialLifetimeSeconds: number = 10 * 60;
+export const buildCacheTag: string = 'build-cache';
 
 export function issueProjectPullCredential(signingKey: string, projectId: string): RegistryCredential {
   assertProjectId(projectId);
@@ -34,6 +34,7 @@ export function issueBuildPushCredential(
   assertProjectRepository(repository, projectId);
   return signCredential(signingKey, {
     access: 'push',
+    cacheTag: buildCacheTag,
     expiresAt: nowSeconds + pushCredentialLifetimeSeconds,
     projectId,
     repository,
@@ -137,7 +138,7 @@ function decodeCredentialPayload(encodedPayload: string): RegistryCredentialPayl
     const payload: Partial<RegistryCredentialPayload> | null = JSON.parse(
       Buffer.from(encodedPayload, 'base64url').toString('utf8'),
     ) as Partial<RegistryCredentialPayload> | null;
-    return isCredentialPayload(payload) ? payload : null;
+    return isRegistryCredentialPayload(payload, buildCacheTag) ? payload : null;
   } catch {
     return null;
   }
@@ -154,32 +155,6 @@ function parseBasicAuthorization(header: string | undefined): RegistryCredential
     : { password: decoded.slice(separatorIndex + 1), username: decoded.slice(0, separatorIndex) };
 }
 
-function isCredentialPayload(value: Partial<RegistryCredentialPayload> | null): value is RegistryCredentialPayload {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-  if (
-    value.version !== 1 ||
-    (value.access !== 'cleanup' && value.access !== 'pull' && value.access !== 'push') ||
-    typeof value.projectId !== 'string' ||
-    !immutableIdPattern.test(value.projectId)
-  ) {
-    return false;
-  }
-  if (value.access === 'pull') {
-    return value.repository === undefined && value.tag === undefined && value.expiresAt === undefined;
-  }
-  return (
-    typeof value.repository === 'string' &&
-    repositoryPattern.test(value.repository) &&
-    value.repository.startsWith(`projects/${value.projectId}/`) &&
-    typeof value.tag === 'string' &&
-    isManifestReference(value.tag) &&
-    typeof value.expiresAt === 'number' &&
-    Number.isSafeInteger(value.expiresAt)
-  );
-}
-
 function readRequestRepository(requestTarget: string | undefined): string | null {
   if (requestTarget === undefined || requestTarget.includes('\\') || requestTarget.startsWith('//')) {
     return null;
@@ -192,7 +167,7 @@ function readRequestRepository(requestTarget: string | undefined): string | null
 }
 
 function assertProjectRepository(repository: string, projectId: string): void {
-  const match: RegExpExecArray | null = repositoryPattern.exec(repository);
+  const match: RegExpExecArray | null = projectRepositoryPattern.exec(repository);
   if (match?.[1] !== projectId) {
     throw new Error('Registry repository must use the immutable project ID prefix.');
   }
@@ -247,7 +222,10 @@ function writeMatchesBuildIntent(
   }
   if (requestUrl.pathname.startsWith(manifestPrefix)) {
     const reference: string = requestUrl.pathname.slice(manifestPrefix.length);
-    return method?.toUpperCase() === 'PUT' && (reference === credential.tag || isManifestDigest(reference));
+    return (
+      method?.toUpperCase() === 'PUT' &&
+      (reference === credential.tag || reference === credential.cacheTag || isManifestDigest(reference))
+    );
   }
   const mountedFrom: string | null = requestUrl.searchParams.get('from');
   return mountedFrom === null || mountedFrom === credential.repository;

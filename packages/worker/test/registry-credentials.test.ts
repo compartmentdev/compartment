@@ -34,6 +34,7 @@ describe('project-scoped registry credentials', (): void => {
     expect(
       authorizeRegistryRequest(credential, 'PUT', `/v2/${repository}/manifests/sha256:${'a'.repeat(64)}`, 101),
     ).not.toBeNull();
+    expect(authorizeRegistryRequest(credential, 'PUT', `/v2/${repository}/manifests/build-cache`, 101)).not.toBeNull();
   });
 
   it('rejects writes outside the active build intent', (): void => {
@@ -43,6 +44,9 @@ describe('project-scoped registry credentials', (): void => {
     const digest: string = `sha256:${'a'.repeat(64)}`;
 
     expect(authorizeRegistryRequest(credential, 'PUT', `/v2/${repository}/manifests/art_other`, 101)).toBeNull();
+    expect(
+      authorizeRegistryRequest(credential, 'PUT', `/v2/${repository}/manifests/build-cache-other`, 101),
+    ).toBeNull();
     expect(authorizeRegistryRequest(credential, 'PUT', `/v2/${repository}/manifests/sha256:abc`, 101)).toBeNull();
     expect(authorizeRegistryRequest(credential, 'POST', `/v2/${repository}/manifests/${digest}`, 101)).toBeNull();
     expect(authorizeRegistryRequest(credential, 'PATCH', `/v2/${repository}/manifests/${digest}`, 101)).toBeNull();

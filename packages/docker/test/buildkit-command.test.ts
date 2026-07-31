@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  runBuildctlCommandWithOptionalProgressReporter,
-  runBuildctlCommandWithRegistryRetry,
-} from '../src/buildkit-command';
+import { runBuildctlCommandWithOptionalProgressReporter } from '../src/buildkit-command';
 import { waitForBuildKitEndpoint } from '../src/buildkit-endpoint';
 import { runProcessCommand, runProcessCommandWithProgress } from '../src/process-command';
 
@@ -51,7 +48,7 @@ describe('BuildKit command readiness boundary', (): void => {
   it('waits for the configured endpoint before starting buildctl', async (): Promise<void> => {
     const args: string[] = ['--addr', 'tcp://compartment-buildkit.platform-build.svc:1234', 'build'];
 
-    await runBuildctlCommandWithRegistryRetry(args);
+    await runBuildctlCommandWithOptionalProgressReporter(args, undefined);
 
     expect(waitForBuildKitEndpoint).toHaveBeenCalledWith('tcp://compartment-buildkit.platform-build.svc:1234');
     expect(runProcessCommand).toHaveBeenCalledOnce();
@@ -78,9 +75,9 @@ describe('BuildKit command readiness boundary', (): void => {
     const readinessFailure: Error = new Error('BuildKit endpoint is unavailable.');
     vi.mocked(waitForBuildKitEndpoint).mockRejectedValue(readinessFailure);
 
-    await expect(runBuildctlCommandWithRegistryRetry(['--addr', 'tcp://buildkit:1234', 'build'])).rejects.toBe(
-      readinessFailure,
-    );
+    await expect(
+      runBuildctlCommandWithOptionalProgressReporter(['--addr', 'tcp://buildkit:1234', 'build'], undefined),
+    ).rejects.toBe(readinessFailure);
     expect(runProcessCommand).not.toHaveBeenCalled();
   });
 });

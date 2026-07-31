@@ -21,3 +21,7 @@ export function readTenantWorkloadScheduling(value: string | undefined): KubeWor
   }
   return tenantWorkloadSchedulingSchema.parse(JSON.parse(value));
 }
+
+export function readRequiredWorkloadScheduling(value: string): KubeWorkloadScheduling {
+  return tenantWorkloadSchedulingSchema.parse(JSON.parse(value));
+}

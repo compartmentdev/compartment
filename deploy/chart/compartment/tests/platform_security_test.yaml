@@ -132,6 +132,12 @@ tests:
                       app.kubernetes.io/component: project-provisioner
                 - namespaceSelector:
                     matchLabels:
+                      kubernetes.io/metadata.name: compartment-build
+                  podSelector:
+                    matchLabels:
+                      compartment.dev/job-class: build
+                - namespaceSelector:
+                    matchLabels:
                       kubernetes.io/metadata.name: compartment-logs
                   podSelector:
                     matchLabels:

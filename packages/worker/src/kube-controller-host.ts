@@ -154,16 +154,17 @@ class CustomDomainReconcileArea implements KubeControllerHost {
   }
 }
 
-export function createKubeControllerHosts(config: WorkerConfig, logger: Logger): KubeControllerHost[] {
-  if (!isKubeRuntimeConfigured()) {
-    throw new Error('Kubernetes worker requires KUBERNETES_SERVICE_HOST or KUBECONFIG.');
-  }
+export function createKubeControllerHosts(
+  config: WorkerConfig,
+  logger: Logger,
+  runtime: KubeRuntime = createKubeRuntimeFromEnvironment(),
+): KubeControllerHost[] {
+  assertKubeRuntimeConfigured();
   const request: CompartmentRequester = createCompartmentRequester({
     apiUrl: config.apiUrl,
     internalToken: config.runtimeControlToken,
     requestTimeoutMs: controllerRequestTimeoutMs,
   });
-  const runtime: KubeRuntime = createKubeRuntimeFromEnvironment();
   return [
     new PodMetricsReconcileArea(request, runtime, logger, config.usageMeteringIntervalMs),
     new DeploymentReconcileArea(
@@ -176,6 +177,12 @@ export function createKubeControllerHosts(config: WorkerConfig, logger: Logger):
     new ResourceReconcileArea(request, runtime, config.tenantSecretsKek, config.tenantScheduling),
     new CustomDomainReconcileArea(request, runtime, config.customDomains),
   ];
+}
+
+function assertKubeRuntimeConfigured(): void {
+  if (!isKubeRuntimeConfigured()) {
+    throw new Error('Kubernetes worker requires KUBERNETES_SERVICE_HOST or KUBECONFIG.');
+  }
 }
 
 async function reconcileProductJob(

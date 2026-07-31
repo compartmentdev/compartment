@@ -28,7 +28,7 @@ import type { SelfHostedUserSetupCommandResult } from './self-hosted-user-setup-
 import { deploymentStatusCommandResponseParser } from './self-hosted-user-setup-cli-response.harness';
 import { expectK3dProjectNamespaceDeleted, seedK3dProjectTeardownFixture } from './self-hosted-user-setup-k3d.harness';
 
-const deploymentRunPollAttempts: number = 90;
+const deploymentRunPollAttempts: number = process.env.COMPARTMENT_E2E_GVISOR_ENABLED === '1' ? 900 : 90;
 const deploymentRunPollDelayMs: number = 2_000;
 const kubernetesResourceStartupTimeoutMs: number = 180_000;
 const blockedPublicControlPlanePollAttempts: number = 6;

@@ -378,15 +378,24 @@ export async function expectControlPlaneLogoutRevokesApp(
 }
 
 export async function expectAppForbidden(routeUrl: string, appSessionCookie: string, pathname: string): Promise<void> {
-  const response: SelfHostedUserSetupHttpResponse = (
-    await sendSelfHostedJsonRequest(new URL(pathname, `${routeUrl}/`).toString(), {
-      headers: {
-        cookie: appSessionCookie,
-      },
-    })
-  ).response;
+  let lastStatusCode: number | null = null;
+  for (let attempt: number = 0; attempt < appProbePollAttempts; attempt += 1) {
+    const response: SelfHostedUserSetupHttpResponse = (
+      await sendSelfHostedJsonRequest(new URL(pathname, `${routeUrl}/`).toString(), {
+        headers: {
+          cookie: appSessionCookie,
+        },
+      })
+    ).response;
+    if (response.statusCode === 403) {
+      return;
+    }
 
-  expect(response.statusCode).toBe(403);
+    lastStatusCode = response.statusCode;
+    await sleep(appProbePollDelayMs);
+  }
+
+  expect(lastStatusCode).toBe(403);
 }
 
 export async function expectAppSessionRedirectedToLogin(

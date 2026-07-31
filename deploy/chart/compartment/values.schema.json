@@ -99,13 +99,12 @@
     "ports": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["api", "edge", "registry", "registryInternal", "buildkit", "http"],
+      "required": ["api", "edge", "registry", "registryInternal", "http"],
       "properties": {
         "api": { "$ref": "#/definitions/tcpPort" },
         "edge": { "$ref": "#/definitions/tcpPort" },
         "registry": { "$ref": "#/definitions/tcpPort" },
         "registryInternal": { "$ref": "#/definitions/tcpPort" },
-        "buildkit": { "$ref": "#/definitions/tcpPort" },
         "http": { "$ref": "#/definitions/tcpPort" }
       }
     },
@@ -329,8 +328,10 @@
         "enabled",
         "namespace",
         "gcKeepStorageMb",
-        "pruneSchedule",
-        "pruneKeepDuration",
+        "runtimeClassName",
+        "createRuntimeClass",
+        "runtimeHandler",
+        "timeoutMs",
         "podCidr",
         "serviceCidr"
       ],
@@ -338,15 +339,14 @@
         "enabled": { "type": "boolean" },
         "namespace": { "type": "string", "minLength": 1 },
         "gcKeepStorageMb": { "type": "integer", "minimum": 1 },
-        "pruneSchedule": { "type": "string", "minLength": 1 },
-        "pruneKeepDuration": { "type": "string", "minLength": 1 },
-        "workerNamespaceSelector": { "type": "object", "additionalProperties": { "type": "string" } },
-        "workerPodSelector": { "type": "object", "additionalProperties": { "type": "string" } },
+        "runtimeClassName": { "type": "string", "minLength": 1 },
+        "createRuntimeClass": { "type": "boolean" },
+        "runtimeHandler": { "type": "string", "minLength": 1 },
+        "timeoutMs": { "type": "integer", "minimum": 1 },
         "dnsNamespaceSelector": { "type": "object", "additionalProperties": { "type": "string" } },
         "dnsPodSelector": { "type": "object", "additionalProperties": { "type": "string" } },
         "podCidr": { "type": "string", "minLength": 1 },
-        "serviceCidr": { "type": "string", "minLength": 1 },
-        "seccompProfile": { "type": "object" }
+        "serviceCidr": { "type": "string", "minLength": 1 }
       }
     },
     "edge": {

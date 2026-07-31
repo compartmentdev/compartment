@@ -94,9 +94,10 @@ nodePools:
 An empty build pool uses the system pool. Pass the file to `compartment install` with `--values
 compartment-values.yaml`.
 
-Tenant kernel sandboxing is optional. Before enabling it, install `runsc` on every tenant node and configure a
-matching containerd runtime handler; Compartment does not install runtimes or change node containerd configuration.
-Then add the RuntimeClass settings to the same values file:
+Build isolation requires `runsc` and a matching containerd runtime handler on every node eligible for
+`nodePools.build`; Compartment creates the `gvisor` RuntimeClass by default but does not install runtimes or change
+node containerd configuration. Set `buildkit.createRuntimeClass: false` only when the operator manages that
+RuntimeClass. Tenant kernel sandboxing remains optional and uses separate settings:
 
 ```yaml
 tenantRuntime:
@@ -107,7 +108,8 @@ tenantRuntime:
 
 Set `createRuntimeClass: false` when the cluster operator manages the `gvisor` RuntimeClass separately. The sandbox
 covers application and stateful resource Pods plus product and provisioning Jobs. Platform Pods, `api-migrate`, and
-BuildKit keep the node default runtime; use the build pool to isolate build execution.
+control-plane workloads keep the node default runtime. Each build runs in a short-lived gVisor Job and is deleted
+after completion.
 
 Compartment samples tenant CPU and memory usage every 60 seconds and retains hourly aggregates for 400 days by
 default. The metering interval also controls hosted application traffic flushes. Use
@@ -232,8 +234,9 @@ The registry hostname must resolve on every eligible node to the retained regist
 certificate chain must be trusted by each node container runtime. The platform certificate must also be trusted by
 the machine running the CLI. A self-signed issuer does not satisfy either requirement.
 
-Dockerfile and Railpack builds continue to use BuildKit and produce OCI images. Project NetworkPolicies preserve
-tenant isolation and the configured RFC1918 egress policy.
+Dockerfile and Railpack builds use an ephemeral rootless BuildKit sidecar under gVisor and produce OCI images. Build
+cache is stored in the project/service registry repository; no persistent cache volume is shared between tenants.
+Project NetworkPolicies preserve tenant isolation and the configured RFC1918 egress policy.
 
 Kubernetes cluster administrators and anyone able to escape a container remain outside the tenant-isolation boundary.
 Namespaces and NetworkPolicies do not provide VM-level isolation.
