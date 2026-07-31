@@ -25,6 +25,35 @@ interface DockerBuildTestMocks {
   runDockerCommand: Mock<RunDockerCommand>;
 }
 
+interface StaticRailpackPlanBuildTestInput {
+  readonly buildCommand?: string;
+  readonly expectedDeployInputs: StaticRailpackDeployInputFixture[];
+  readonly plan: StaticRailpackPlanFixture;
+  readonly staticOutputDirectory: string;
+}
+
+interface StaticRailpackPlanFixture {
+  readonly deploy: StaticRailpackDeployFixture;
+  readonly steps: StaticRailpackStepFixture[];
+}
+
+interface StaticRailpackDeployFixture {
+  readonly inputs: StaticRailpackDeployInputFixture[];
+  readonly startCommand?: string;
+}
+
+interface StaticRailpackDeployInputFixture {
+  readonly include: string[];
+  readonly step: string;
+}
+
+interface StaticRailpackStepFixture {
+  readonly assets?: StaticRailpackStepAssetsFixture;
+  readonly name: string;
+}
+
+type StaticRailpackStepAssetsFixture = Readonly<Record<string, string>>;
+
 const mocks: DockerBuildTestMocks = vi.hoisted(
   (): DockerBuildTestMocks => ({
     prepareRailpackPlan: vi.fn<PrepareRailpackPlan>(),
@@ -290,96 +319,94 @@ describe('buildDockerImage', (): void => {
     );
   });
 
-  it('builds a static image with a narrowed deploy plan', async (): Promise<void> => {
-    const digest: string = `sha256:${'f'.repeat(64)}`;
-    let normalizedPlanText: string = '';
-
-    process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
-    mocks.prepareRailpackPlan.mockImplementationOnce(async (input: PrepareRailpackPlanInput): Promise<void> => {
-      await writeFile(
-        input.planPath,
-        JSON.stringify(
-          {
-            deploy: {
-              inputs: [
-                {
-                  include: ['/railpack/caddy'],
-                  step: 'packages:caddy',
-                },
-                {
-                  include: ['/Caddyfile'],
-                  step: 'caddy',
-                },
-                {
-                  include: ['public-docs/dist'],
-                  step: 'build',
-                },
-                {
-                  include: ['.'],
-                  step: 'build',
-                },
-              ],
-            },
-            steps: [],
-          },
-          null,
-          2,
-        ),
-        'utf8',
-      );
-    });
-    mocks.runBuildctlCommandWithOptionalProgressReporter.mockImplementationOnce(
-      async (args: string[]): Promise<void> => {
-        const railpackInput: PrepareRailpackPlanInput | undefined = mocks.prepareRailpackPlan.mock.calls[0]?.[0];
-        if (railpackInput === undefined) {
-          throw new Error('Expected Railpack plan input.');
-        }
-        normalizedPlanText = await readFile(railpackInput.planPath, 'utf8');
-        await writeBuildKitMetadata(args, digest);
-      },
-    );
-
-    await expect(
-      buildDockerImage({
-        buildCommand: 'pnpm docs:build',
-        contextDirectory: '/tmp/source',
-        imageTag: 'registry.example/compartment-web:art_123',
-        labels: {
-          'compartment.namespace': 'compartment-e2e',
+  it('preserves the generated Caddyfile in a narrowed starter-static deploy plan', async (): Promise<void> => {
+    await expectStaticRailpackPlanBuild({
+      expectedDeployInputs: [
+        {
+          include: ['/railpack/caddy'],
+          step: 'packages:caddy',
         },
-        packer: 'static',
-        runtimeAptPackages: ['jq'],
-        staticOutputDirectory: 'public-docs/dist',
-      }),
-    ).resolves.toEqual({
-      imageRef: `registry.example/compartment-web@${digest}`,
-      pushed: true,
-    });
-
-    const railpackInput: PrepareRailpackPlanInput | undefined = mocks.prepareRailpackPlan.mock.calls[0]?.[0];
-    expect(railpackInput?.appPath).toBeUndefined();
-    expect(railpackInput?.buildCommand).toBe('pnpm docs:build');
-    expect(railpackInput?.runtimeAptPackages).toEqual(['jq']);
-    expect(railpackInput?.staticOutputDirectory).toBe('public-docs/dist');
-    expect(JSON.parse(normalizedPlanText)).toMatchObject({
-      deploy: {
-        inputs: [
+        {
+          include: ['apps/site', 'Caddyfile'],
+          step: 'build',
+        },
+      ],
+      plan: {
+        deploy: {
+          inputs: [
+            {
+              include: ['/railpack/caddy'],
+              step: 'packages:caddy',
+            },
+            {
+              include: ['.'],
+              step: 'build',
+            },
+          ],
+          startCommand: 'caddy run --config Caddyfile --adapter caddyfile 2>&1',
+        },
+        steps: [
           {
-            include: ['/railpack/caddy'],
-            step: 'packages:caddy',
-          },
-          {
-            include: ['/Caddyfile'],
-            step: 'caddy',
-          },
-          {
-            include: ['public-docs/dist'],
-            step: 'build',
+            assets: {
+              Caddyfile: ':{$PORT:80} {\n\trespond /health 200\n\troot * .\n\tfile_server\n}\n',
+            },
+            name: 'build',
           },
         ],
       },
+      staticOutputDirectory: 'apps/site',
     });
-    expect(normalizedPlanText).not.toContain('"include": [\n          "."\n        ]');
+  });
+
+  it('preserves a separate SPA Caddyfile input without copying it from the build step', async (): Promise<void> => {
+    await expectStaticRailpackPlanBuild({
+      buildCommand: 'pnpm docs:build',
+      expectedDeployInputs: [
+        {
+          include: ['/railpack/caddy'],
+          step: 'packages:caddy',
+        },
+        {
+          include: ['/Caddyfile'],
+          step: 'caddy',
+        },
+        {
+          include: ['public-docs/dist'],
+          step: 'build',
+        },
+      ],
+      plan: {
+        deploy: {
+          inputs: [
+            {
+              include: ['/railpack/caddy'],
+              step: 'packages:caddy',
+            },
+            {
+              include: ['/Caddyfile'],
+              step: 'caddy',
+            },
+            {
+              include: ['public-docs/dist'],
+              step: 'build',
+            },
+            {
+              include: ['.'],
+              step: 'build',
+            },
+          ],
+        },
+        steps: [
+          {
+            assets: {
+              Caddyfile: ':{$PORT:80} {\n\trespond /health 200\n\troot * /app/public-docs/dist\n\tfile_server\n}\n',
+            },
+            name: 'caddy',
+          },
+        ],
+      },
+      staticOutputDirectory: 'public-docs/dist',
+    });
   });
 });
 
@@ -519,6 +546,51 @@ describe('inspectDockerImage', (): void => {
     await expect(inspectDockerImage({ imageRef: 'sha256:image-id' })).rejects.toBeNull();
   });
 });
+
+async function expectStaticRailpackPlanBuild(input: StaticRailpackPlanBuildTestInput): Promise<void> {
+  const digest: string = `sha256:${'f'.repeat(64)}`;
+  let normalizedPlanText: string = '';
+
+  process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
+  mocks.prepareRailpackPlan.mockImplementationOnce(async (railpackInput: PrepareRailpackPlanInput): Promise<void> => {
+    await writeFile(railpackInput.planPath, JSON.stringify(input.plan, null, 2), 'utf8');
+  });
+  mocks.runBuildctlCommandWithOptionalProgressReporter.mockImplementationOnce(async (args: string[]): Promise<void> => {
+    const railpackInput: PrepareRailpackPlanInput | undefined = mocks.prepareRailpackPlan.mock.calls[0]?.[0];
+    if (railpackInput === undefined) {
+      throw new Error('Expected Railpack plan input.');
+    }
+    normalizedPlanText = await readFile(railpackInput.planPath, 'utf8');
+    await writeBuildKitMetadata(args, digest);
+  });
+
+  await expect(
+    buildDockerImage({
+      ...(input.buildCommand === undefined ? {} : { buildCommand: input.buildCommand }),
+      contextDirectory: '/tmp/source',
+      imageTag: 'registry.example/compartment-web:art_123',
+      labels: {
+        'compartment.namespace': 'compartment-e2e',
+      },
+      packer: 'static',
+      staticOutputDirectory: input.staticOutputDirectory,
+    }),
+  ).resolves.toEqual({
+    imageRef: `registry.example/compartment-web@${digest}`,
+    pushed: true,
+  });
+
+  const railpackInput: PrepareRailpackPlanInput | undefined = mocks.prepareRailpackPlan.mock.calls[0]?.[0];
+  expect(railpackInput?.appPath).toBeUndefined();
+  expect(railpackInput?.buildCommand).toBe(input.buildCommand);
+  expect(railpackInput?.staticOutputDirectory).toBe(input.staticOutputDirectory);
+  expect(JSON.parse(normalizedPlanText)).toMatchObject({
+    deploy: {
+      inputs: input.expectedDeployInputs,
+    },
+  });
+  expect(normalizedPlanText).not.toContain('"include": [\n          "."\n        ]');
+}
 
 function mockBuildKitImageOutput(digest: string): void {
   mocks.runBuildctlCommandWithOptionalProgressReporter.mockImplementationOnce(async (args: string[]): Promise<void> => {

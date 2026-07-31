@@ -13,6 +13,7 @@ import {
   type DeploymentListResponse,
   type DeploymentRunLogsResponse,
   type DeploymentRunStepSummary,
+  type DeploymentReadSummary,
   type DeploymentStatusResponse,
   type DeploymentSummary,
   type DeployResponse,
@@ -497,6 +498,82 @@ describe('Phase 0 API integration deployment status', (): void => {
     );
     expect(requireSingleDeployment(scopedStatusPayload.deployments).id).toBe(secondDeployment.id);
     expect(requireSingleDeployment(scopedStatusPayload.activeDeployments).id).toBe(deployment.id);
+  });
+  it('reports a failed starter-static deploy when its implicit readiness check fails', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    await registerLocalNode(app);
+    const descriptorYaml: string = `name: starter-static
+
+services:
+  web:
+    accessMode: public
+    kind: static
+    path: .
+    build:
+      outputDirectory: apps/site
+`;
+    const deployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+      {
+        descriptor: {
+          name: 'starter-static',
+          services: {
+            web: {
+              accessMode: 'public',
+              build: {
+                outputDirectory: 'apps/site',
+              },
+              kind: 'static',
+              path: '.',
+            },
+          },
+        },
+        sourceArchive: await createSourceArchive({
+          'apps/site/index.html': '<!doctype html><title>Compartment Starter App</title>\n',
+          'compartment.yml': descriptorYaml,
+        }),
+      },
+    );
+    expect(deployResponse.statusCode, deployResponse.body).toBe(200);
+    const deployment: DeploymentSummary = requireDeployResponseDeployment(
+      deployResponseSchema.parse(deployResponse.json()),
+    );
+    const claimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
+    expect(claimedDeployment.service.kind).toBe('static');
+    expect(claimedDeployment.readiness).toEqual({
+      path: '/health',
+      timeoutMs: 30_000,
+      type: 'http',
+    });
+
+    const failureMessage: string = 'runtime readiness failed: static container exited before serving /health';
+    const failedResponse: LightMyRequestResponse = await app.inject({
+      headers: {
+        authorization: 'Bearer test-runtime-control-token',
+      },
+      method: 'POST',
+      payload: {
+        deploymentId: claimedDeployment.deploymentId,
+        message: failureMessage,
+      },
+      url: '/internal/deployments/fail',
+    });
+    expect(failedResponse.statusCode, failedResponse.body).toBe(200);
+
+    const statusResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+      method: 'GET',
+      url: '/v1/deployments/status?projectName=starter-static',
+    });
+    expect(statusResponse.statusCode, statusResponse.body).toBe(200);
+    const statusPayload: DeploymentStatusResponse = deploymentStatusResponseSchema.parse(statusResponse.json());
+    const failedDeployment: DeploymentReadSummary = requireSingleDeployment(statusPayload.deployments);
+    expect(failedDeployment.id).toBe(deployment.id);
+    expect(failedDeployment.status).toBe('failed');
+    expect(failedDeployment.failureMessage).toBe(failureMessage);
+    expect(statusPayload.activeDeployments).toEqual([]);
   });
   it('does not serve per-artifact archives for non-source-resolution deployments', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
