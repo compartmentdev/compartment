@@ -177,6 +177,9 @@ describe.sequential('production Kubernetes upgrade', (): void => {
       { cwd: app.directory, input: 'encrypted-upgrade-secret\n' },
     );
     expect(sensitiveVariable.variable.valueHidden).toBe(true);
+    await cli.runJson(`variable set E2E_MESSAGE upgrade-gate --env ${app.environmentName}`, variableResponseSchema, {
+      cwd: app.directory,
+    });
     await cli.runJson(
       `variable set E2E_BUILD_MESSAGE upgrade-gate --env ${app.environmentName}`,
       variableResponseSchema,
