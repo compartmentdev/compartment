@@ -14,10 +14,14 @@ import {
 } from '../queries/variables-resource-output.query';
 import type {
   InsertVariableChangeEventInput,
+  ResourceOutputBindingDeleteAuditResult,
+  ResourceOutputBindingWriteAuditResult,
   UpsertEnvironmentResourceOutputVariableBindingInput,
 } from '../queries/variables.query.types';
+import { writeCommittedAuditEventRowsToLocalFileSink } from './audit-events.service';
 import { parseStoredResourceOutputs } from './resources.service.storage';
 import { failMissingServiceName } from './variables.service.helpers';
+import { buildVariableAuditEventInput } from './variables.service.write.helpers';
 import type {
   RemoveVariableInput,
   SetVariableInput,
@@ -38,10 +42,12 @@ export async function setResourceOutputVariableForPrincipal(
 ): Promise<VariableResult> {
   const reference: ResourceOutputReference = readResourceOutputReference(input.fromResource);
   await assertNoDirectServiceVariableConflict(input, target);
-  await upsertEnvironmentResourceOutputVariableBindingWithAudit(
-    buildUpsertResourceOutputVariableBindingInput(input, target, reference, now),
-    buildSetResourceOutputVariableChangeEventInput(input, target, reference),
-  );
+  const writeResult: ResourceOutputBindingWriteAuditResult =
+    await upsertEnvironmentResourceOutputVariableBindingWithAudit(
+      buildUpsertResourceOutputVariableBindingInput(input, target, reference, now),
+      buildSetResourceOutputVariableChangeEventInput(input, target, reference),
+    );
+  writeCommittedAuditEventRowsToLocalFileSink(writeResult.auditEvents);
 
   return {
     environment: target.environment,
@@ -60,7 +66,7 @@ export async function removeResourceOutputVariableBinding(
     return false;
   }
 
-  return await deleteEnvironmentResourceOutputVariableBindingWithAudit(
+  const result: ResourceOutputBindingDeleteAuditResult = await deleteEnvironmentResourceOutputVariableBindingWithAudit(
     {
       environmentId: target.environment.id,
       keyName: input.keyName,
@@ -68,6 +74,8 @@ export async function removeResourceOutputVariableBinding(
     },
     buildRemoveResourceOutputVariableChangeEventInput(input, target),
   );
+  writeCommittedAuditEventRowsToLocalFileSink(result.auditEvents);
+  return result.deleted;
 }
 
 function readResourceOutputReference(value: string | undefined): ResourceOutputReference {
@@ -167,6 +175,7 @@ function buildSetResourceOutputVariableChangeEventInput(
 ): InsertVariableChangeEventInput {
   return {
     actorPrincipalId: input.principalId,
+    auditEvents: [buildVariableAuditEventInput(input, target, input.keyName, 'bind')],
     fingerprintsJson: JSON.stringify([buildResourceOutputReference(reference)]),
     keyNamesJson: JSON.stringify([input.keyName]),
     operation: 'set',
@@ -183,6 +192,7 @@ function buildRemoveResourceOutputVariableChangeEventInput(
 ): InsertVariableChangeEventInput {
   return {
     actorPrincipalId: input.principalId,
+    auditEvents: [buildVariableAuditEventInput(input, target, input.keyName, 'unbind')],
     keyNamesJson: JSON.stringify([input.keyName]),
     operation: 'remove',
     organizationId: target.organization.id,

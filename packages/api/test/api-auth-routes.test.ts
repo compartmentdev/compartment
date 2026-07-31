@@ -33,6 +33,10 @@ import type {
   recordFailedLoginAttempt,
 } from '../src/services/login-throttle.service';
 import type { login, loginForOrganization } from '../src/services/login.service';
+import type {
+  recordFailedLoginAuditEvent,
+  recordSuccessfulLoginAuditEvents,
+} from '../src/services/authentication-audit.service';
 import type { LoginServiceResult } from '../src/services/login.service.types';
 import type { logout } from '../src/services/logout.service';
 import type { OrganizationRow } from '../src/queries/organizations.query.types';
@@ -80,6 +84,8 @@ type ReadLoginThrottleBlock = typeof readLoginThrottleBlock;
 type ReadResetPasswordThrottleBlock = typeof readResetPasswordThrottleBlock;
 type RecordFailedActivationAttempt = typeof recordFailedActivationAttempt;
 type RecordFailedLoginAttempt = typeof recordFailedLoginAttempt;
+type RecordFailedLoginAuditEvent = typeof recordFailedLoginAuditEvent;
+type RecordSuccessfulLoginAuditEvents = typeof recordSuccessfulLoginAuditEvents;
 type RecordFailedResetPasswordAttempt = typeof recordFailedResetPasswordAttempt;
 type ResetPassword = typeof resetPassword;
 type ResolveOrganizationForPrincipal = typeof resolveOrganizationForPrincipal;
@@ -106,6 +112,8 @@ interface ApiAuthRouteMocks {
   readResetPasswordThrottleBlock: Mock<ReadResetPasswordThrottleBlock>;
   recordFailedActivationAttempt: Mock<RecordFailedActivationAttempt>;
   recordFailedLoginAttempt: Mock<RecordFailedLoginAttempt>;
+  recordFailedLoginAuditEvent: Mock<RecordFailedLoginAuditEvent>;
+  recordSuccessfulLoginAuditEvents: Mock<RecordSuccessfulLoginAuditEvents>;
   recordFailedResetPasswordAttempt: Mock<RecordFailedResetPasswordAttempt>;
   resetPassword: Mock<ResetPassword>;
   resolveOrganizationForPrincipal: Mock<ResolveOrganizationForPrincipal>;
@@ -151,11 +159,24 @@ const mocks: ApiAuthRouteMocks = vi.hoisted(
     readResetPasswordThrottleBlock: vi.fn<ReadResetPasswordThrottleBlock>(),
     recordFailedActivationAttempt: vi.fn<RecordFailedActivationAttempt>(),
     recordFailedLoginAttempt: vi.fn<RecordFailedLoginAttempt>(),
+    recordFailedLoginAuditEvent: vi.fn<RecordFailedLoginAuditEvent>(),
+    recordSuccessfulLoginAuditEvents: vi.fn<RecordSuccessfulLoginAuditEvents>(),
     recordFailedResetPasswordAttempt: vi.fn<RecordFailedResetPasswordAttempt>(),
     resetPassword: vi.fn<ResetPassword>(),
     resolveOrganizationForPrincipal: vi.fn<ResolveOrganizationForPrincipal>(),
     resolveBrowserLoginOrganizationId: vi.fn<ResolveBrowserLoginOrganizationId>(),
     requireInstalledCompartment: vi.fn<RequireInstalledCompartment>(),
+  }),
+);
+
+vi.mock(
+  '../src/services/authentication-audit.service',
+  (): {
+    recordFailedLoginAuditEvent: Mock<RecordFailedLoginAuditEvent>;
+    recordSuccessfulLoginAuditEvents: Mock<RecordSuccessfulLoginAuditEvents>;
+  } => ({
+    recordFailedLoginAuditEvent: mocks.recordFailedLoginAuditEvent,
+    recordSuccessfulLoginAuditEvents: mocks.recordSuccessfulLoginAuditEvents,
   }),
 );
 
@@ -276,6 +297,8 @@ describe('api auth login routes', (): void => {
     mocks.readResetPasswordThrottleBlock.mockResolvedValue(null);
     mocks.recordFailedActivationAttempt.mockResolvedValue();
     mocks.recordFailedLoginAttempt.mockResolvedValue();
+    mocks.recordFailedLoginAuditEvent.mockResolvedValue();
+    mocks.recordSuccessfulLoginAuditEvents.mockResolvedValue();
     mocks.recordFailedResetPasswordAttempt.mockResolvedValue();
     mocks.resolveBrowserLoginOrganizationId.mockResolvedValue('org_123');
     mockFilterSessionVisibleOrganizationsPassthrough(mocks.filterSessionVisibleOrganizations);
@@ -301,6 +324,8 @@ describe('api auth login routes', (): void => {
     mocks.readResetPasswordThrottleBlock.mockReset();
     mocks.recordFailedActivationAttempt.mockReset();
     mocks.recordFailedLoginAttempt.mockReset();
+    mocks.recordFailedLoginAuditEvent.mockReset();
+    mocks.recordSuccessfulLoginAuditEvents.mockReset();
     mocks.recordFailedResetPasswordAttempt.mockReset();
     mocks.resetPassword.mockReset();
     mocks.resolveOrganizationForPrincipal.mockReset();

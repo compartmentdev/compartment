@@ -23,7 +23,7 @@ import { eq } from 'drizzle-orm';
 import type { ApiApp } from '../src/app.types';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 
-import { buildArtifacts, environments } from '../src/db/schema';
+import { auditEvents, buildArtifacts, environments } from '../src/db/schema';
 import type { EnvironmentRow } from '../src/queries/deployments.query.types';
 
 import {
@@ -393,7 +393,16 @@ describe('Phase 0 API integration rollback', (): void => {
     await completeQueuedDeployment(app, firstDeployment.id, firstClaimedDeployment.routeHost);
 
     const secondDeployPayload: DeployResponse = deployResponseSchema.parse(
-      (await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev')).json(),
+      (
+        await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev', {
+          descriptor: {
+            name: 'smoke-web',
+            services: {
+              web: { accessMode: 'public', path: '.' },
+            },
+          },
+        })
+      ).json(),
     );
     const secondDeployment: DeploymentSummary = requireDeployResponseDeployment(secondDeployPayload);
     const secondClaimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(
@@ -419,7 +428,21 @@ describe('Phase 0 API integration rollback', (): void => {
     const rollbackDeployment: DeploymentSummary = requireDeployResponseDeployment(rollbackPayload);
     expect(rollbackDeployment.id).not.toBe(firstDeployment.id);
     expect(rollbackDeployment.label).toBe('release 1');
-
+    const [rollbackAuditEvent] = await db
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.eventType, 'deployment.rolled_back'));
+    expect(rollbackAuditEvent).toEqual(
+      expect.objectContaining({
+        actorEmail: 'admin@example.com',
+        environmentId: rollbackPayload.environment.id,
+        organizationId: installPayload.organization.id,
+        projectId: rollbackPayload.project.id,
+        status: 'succeeded',
+        targetId: rollbackDeployment.id,
+        targetType: 'deployment',
+      }),
+    );
     const storedArtifacts: StoredBuildArtifactRow[] = await db.select().from(buildArtifacts);
     expect(storedArtifacts).toHaveLength(2);
 
@@ -430,6 +453,23 @@ describe('Phase 0 API integration rollback', (): void => {
     expect(claimedRollbackDeployment.artifact.imageRef).toBe('registry.example/app@sha256:image');
     expect(claimedRollbackDeployment.run).toEqual(expectedRun);
     await completeQueuedDeployment(app, rollbackDeployment.id, claimedRollbackDeployment.routeHost);
+    const accessModeAuditEvents: (typeof auditEvents.$inferSelect)[] = await db
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.eventType, 'service.access_mode.changed'));
+    expect(accessModeAuditEvents).toHaveLength(2);
+    expect(accessModeAuditEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ actorEmail: 'admin@example.com', status: 'succeeded', targetType: 'service' }),
+      ]),
+    );
+    expect(accessModeAuditEvents[0]?.targetId).toBe(accessModeAuditEvents[1]?.targetId);
+    expect(accessModeAuditEvents.map((event: typeof auditEvents.$inferSelect): string => event.metadataJson)).toEqual(
+      expect.arrayContaining([
+        JSON.stringify({ currentAccessMode: 'public', previousAccessMode: 'authenticated' }),
+        JSON.stringify({ currentAccessMode: 'authenticated', previousAccessMode: 'public' }),
+      ]),
+    );
 
     const statusResponse: LightMyRequestResponse = await app.inject({
       method: 'GET',

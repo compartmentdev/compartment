@@ -22,6 +22,7 @@ import { readProjectNetworkPolicyPorts } from '../queries/network-policy-ports.q
 import { readPublicRouteSubdomain } from '../lib/public-route-host';
 import { getApiConfig } from '../runtime/runtime-access';
 import { synchronizeEdgeAppAccessState } from './app-access-edge.service';
+import { writeCommittedAuditEventRowsToLocalFileSink } from './audit-events.service';
 import { buildDeploymentRuntimePlan, type DeploymentRuntimePlan } from './deployment-runtime-plan.service';
 import { parseResolvedRelease } from './deployment-release.service';
 import { parseResolvedReadiness } from './deployment-readiness.service';
@@ -62,13 +63,16 @@ export async function claimDeploymentReconcileTarget(): Promise<DeploymentReconc
 export async function observeDeploymentReconcile(
   input: WorkerObserveDeploymentReconcileRequest,
 ): Promise<DeploymentReconcileObservationResult> {
-  const applied: boolean = await persistDeploymentReconcileObservation({
-    deploymentId: input.deploymentId,
-    failureMessage: input.message ?? null,
-    observation: input.observation,
-    observedAt: new Date(input.observedAt),
-    revision: input.revision,
-  });
+  const applied: boolean = await persistDeploymentReconcileObservation(
+    {
+      deploymentId: input.deploymentId,
+      failureMessage: input.message ?? null,
+      observation: input.observation,
+      observedAt: new Date(input.observedAt),
+      revision: input.revision,
+    },
+    writeCommittedAuditEventRowsToLocalFileSink,
+  );
   if (applied && input.observation === 'ready') {
     await synchronizeEdgeAppAccessState();
   }

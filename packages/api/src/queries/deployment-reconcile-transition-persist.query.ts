@@ -1,7 +1,10 @@
 import { eq, sql } from 'drizzle-orm';
 import { deploymentKubeReferences, deploymentRunEvents, deployments } from '../db/schema';
 import { createId } from '../lib/tokens';
-import { persistActiveDeploymentDrift } from './deployment-reconcile-transition-audit.query';
+import {
+  persistActiveDeploymentDrift,
+  persistDeploymentAccessModeChange,
+} from './deployment-reconcile-transition-audit.query';
 import { findPreviousActiveId, findReconcileCandidate } from './deployment-reconcile-transition-observe.query';
 import { switchReadyDeploymentRoute } from './deployment-reconcile-route.query';
 import {
@@ -14,7 +17,11 @@ import {
   type SupersedeCandidateContext,
 } from './deployment-reconcile-supersede.query';
 import type { DeploymentTransaction } from './deployments.query.types';
-import type { PersistDeploymentReconcileObservationInput } from './deployment-reconcile.query.types';
+import type {
+  PersistDeploymentReconcileObservationInput,
+  PersistDeploymentReconcileObservationResult,
+} from './deployment-reconcile.query.types';
+import type { AuditEventRow } from './audit-events.query.types';
 
 type DeploymentReferenceState = 'active' | 'desired' | 'pending' | 'stopped' | 'stopping';
 
@@ -54,28 +61,32 @@ export async function persistReadyDeploymentObservation(
   tx: DeploymentTransaction,
   input: PersistDeploymentReconcileObservationInput,
   state: DeploymentReferenceState,
-): Promise<boolean> {
+): Promise<PersistDeploymentReconcileObservationResult> {
   if (state !== 'pending') {
-    return false;
+    return { applied: false, auditEvents: [] };
   }
   const candidate: SupersedeCandidateContext | undefined = await findReconcileCandidate(tx, input.deploymentId);
   if (candidate === undefined) {
-    return false;
+    return { applied: false, auditEvents: [] };
   }
   if (candidate.isActive) {
-    return await updateReference(tx, input, 'active');
+    return { applied: await updateReference(tx, input, 'active'), auditEvents: [] };
   }
-  await promoteReadyCandidate(tx, input, candidate);
-  return true;
+  return { applied: true, auditEvents: await promoteReadyCandidate(tx, input, candidate) };
 }
 
 async function promoteReadyCandidate(
   tx: DeploymentTransaction,
   input: PersistDeploymentReconcileObservationInput,
   candidate: SupersedeCandidateContext,
-): Promise<void> {
+): Promise<AuditEventRow[]> {
   await lockDeploymentRun(tx, candidate.deploymentRunId);
   const previousActiveId: string | undefined = await findPreviousActiveId(tx, input.deploymentId, candidate);
+  const accessModeAuditEvent: AuditEventRow | null = await persistDeploymentAccessModeChange(
+    tx,
+    input,
+    previousActiveId,
+  );
   await supersedePreviousKubeDeployment(tx, {
     candidate,
     currentDeploymentId: input.deploymentId,
@@ -86,6 +97,7 @@ async function promoteReadyCandidate(
   await switchReadyDeploymentRoute(tx, input, candidate, previousActiveId);
   await publishReconcileSucceeded(tx, input, candidate.deploymentRunId);
   await updateReference(tx, input, 'active');
+  return accessModeAuditEvent === null ? [] : [accessModeAuditEvent];
 }
 
 async function publishReconcileSucceeded(

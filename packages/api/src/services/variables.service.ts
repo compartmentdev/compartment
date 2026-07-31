@@ -7,10 +7,16 @@ import {
   importEnvironmentVariableValues,
   upsertEnvironmentVariableValueWithAudit,
 } from '../queries/variables.query';
-import type { UpsertEnvironmentVariableValueInput } from '../queries/variables.query.types';
+import type {
+  EnvironmentVariableDeleteAuditResult,
+  EnvironmentVariableImportAuditResult,
+  EnvironmentVariableWriteAuditResult,
+  UpsertEnvironmentVariableValueInput,
+} from '../queries/variables.query.types';
 import { getApiConfig } from '../runtime/runtime-access';
 import { loadEffectiveVariables } from './effective-variables.service';
 import type { EffectiveVariable, ListedVariable } from './effective-variables.service.types';
+import { writeCommittedAuditEventRowsToLocalFileSink } from './audit-events.service';
 import { loadEnvironmentVariableInventory } from './variables.inventory.service';
 import {
   resolveReadVariableTarget,
@@ -61,10 +67,11 @@ export async function setVariableForPrincipal(input: SetVariableInput): Promise<
     getApiConfig().variablesMasterKey,
   );
 
-  await upsertEnvironmentVariableValueWithAudit(
+  const writeResult: EnvironmentVariableWriteAuditResult = await upsertEnvironmentVariableValueWithAudit(
     buildUpsertVariableInput(input, target, createId('var'), now, sensitivity, encryptedValue),
     buildSetVariableChangeEventInput(input, target, sensitivity, encryptedValue),
   );
+  writeCommittedAuditEventRowsToLocalFileSink(writeResult.auditEvents);
 
   return await showVariableForPrincipal(buildShowVariableAfterWriteInput(input, target));
 }
@@ -131,7 +138,7 @@ async function removeDirectVariable(input: RemoveVariableInput, target: Variable
     return false;
   }
 
-  return await deleteEnvironmentVariableValueWithAudit(
+  const result: EnvironmentVariableDeleteAuditResult = await deleteEnvironmentVariableValueWithAudit(
     {
       environmentId: target.environment.id,
       keyName: input.keyName,
@@ -140,6 +147,8 @@ async function removeDirectVariable(input: RemoveVariableInput, target: Variable
     },
     buildRemoveVariableChangeEventInput(input, target),
   );
+  writeCommittedAuditEventRowsToLocalFileSink(result.auditEvents);
+  return result.deleted;
 }
 
 function buildVariableDetailResult(variable: EffectiveVariable): VariableDetailResult {
@@ -164,7 +173,7 @@ async function persistImportedVariables(
   encryptedEntries: readonly ImportedEncryptedEntry[],
   now: Date,
 ): Promise<void> {
-  await importEnvironmentVariableValues({
+  const result: EnvironmentVariableImportAuditResult = await importEnvironmentVariableValues({
     changeEvent: buildImportVariableChangeEventInput(
       input,
       target,
@@ -173,6 +182,7 @@ async function persistImportedVariables(
     ),
     values: buildImportedUpsertValues(input, target, sensitivity, encryptedEntries, now),
   });
+  writeCommittedAuditEventRowsToLocalFileSink(result.auditEvents);
 }
 
 function buildImportVariablesResult(input: ImportVariablesInput, target: VariableTargetContext): ImportVariablesResult {

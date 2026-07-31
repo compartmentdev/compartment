@@ -40,6 +40,7 @@ import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 
 import {
+  auditEvents,
   authSessions,
   buildArtifacts,
   deploymentRunEvents,
@@ -621,6 +622,21 @@ describe('Phase 0 API integration deploy submission', (): void => {
     expect(storedBuildArtifact).toHaveLength(1);
     expect(storedBuildArtifact[0]?.sourceUploadId).toBe(sourceUpload.id);
     expect(storedSourceUploads[0]?.consumedAt).not.toBeNull();
+    const [deploymentAuditEvent] = await db
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.eventType, 'deployment.created'));
+    expect(deploymentAuditEvent).toEqual(
+      expect.objectContaining({
+        actorEmail: 'admin@example.com',
+        environmentId: deployPayload.environment.id,
+        organizationId: installPayload.organization.id,
+        projectId: deployPayload.project.id,
+        status: 'succeeded',
+        targetId: deployment.id,
+        targetType: 'deployment',
+      }),
+    );
   });
   it.each([
     [

@@ -11,7 +11,7 @@ import { variableSetRequestSchema, type SetVariableRequest } from './variable.ro
 export function registerPostVariableRoute(app: ApiApp): void {
   app.post(
     compartmentVariablesPathname,
-    createCurrentOrganizationRouteResponseOptions(undefined, { 200: variableResponseSchema }),
+    createCurrentOrganizationRouteResponseOptions(undefined, { 200: variableResponseSchema }, 'variable.changed'),
     handlePostVariableRequest,
   );
 }

@@ -20,7 +20,7 @@ import {
 export function registerDeleteVariableRoute(app: ApiApp): void {
   app.delete(
     compartmentVariablePathnameTemplate,
-    createCurrentOrganizationRouteResponseOptions(undefined, { 200: removeVariableResponseSchema }),
+    createCurrentOrganizationRouteResponseOptions(undefined, { 200: removeVariableResponseSchema }, 'variable.changed'),
     handleDeleteVariableRequest,
   );
 }

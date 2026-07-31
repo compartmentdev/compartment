@@ -68,7 +68,12 @@ const auditEventActorTypeValues: readonly [AuditEventActorType, ...AuditEventAct
 ];
 export const auditEventTypeOptions: readonly [AuditEventType, ...AuditEventType[]] = [
   'audit.export.created',
+  'authentication.login',
+  'authorization.denied',
+  'deployment.created',
   'deployment.kubernetes.drift_detected',
+  'deployment.rolled_back',
+  'installation.owner.activated',
   'organization.assignment.created',
   'organization.assignment.deleted',
   'organization.auth_settings.updated',
@@ -89,6 +94,13 @@ export const auditEventTypeOptions: readonly [AuditEventType, ...AuditEventType[
   'organization.user.password_reset_issued',
   'organization.user.removed',
   'organization.user.unblocked',
+  'resource.backup.created',
+  'resource.backup.restored',
+  'resource.bootstrapped',
+  'resource.deleted',
+  'resource.started',
+  'resource.stopped',
+  'service.access_mode.changed',
   'source.auto_deploy.queued',
   'source.auto_deploy.skipped',
   'source.binding.created',
@@ -102,6 +114,7 @@ export const auditEventTypeOptions: readonly [AuditEventType, ...AuditEventType[
   'source.sync.failed',
   'source.sync.requested',
   'source.sync.succeeded',
+  'variable.changed',
 ];
 
 export const auditEventTypeSchema: ContractSchema<AuditEventType> = z.enum(auditEventTypeOptions);

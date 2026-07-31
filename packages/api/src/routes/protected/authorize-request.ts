@@ -22,6 +22,7 @@ export async function requireCurrentOrganizationAccess(
     throw createOrganizationNotFoundError();
   }
   await requireCurrentOrganizationSessionVisibility(request, organization);
+  request.currentOrganization = { id: organization.id, slug: organization.slug };
   if (requiredPermission !== undefined) {
     await requireCurrentOrganizationPermission(request.actor.principalId, organization.id, requiredPermission);
   }

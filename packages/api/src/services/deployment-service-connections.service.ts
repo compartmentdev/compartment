@@ -7,8 +7,11 @@ import {
 } from '../queries/variables-resource-output.query';
 import type {
   InsertVariableChangeEventInput,
+  ResourceOutputBindingDeleteAuditResult,
+  ResourceOutputBindingWriteAuditResult,
   UpsertEnvironmentResourceOutputVariableBindingInput,
 } from '../queries/variables.query.types';
+import { writeCommittedAuditEventRowsToLocalFileSink } from './audit-events.service';
 import type { ResolvedDescriptorService } from './deployments.service.types';
 import type {
   ApplyDescriptorServiceConnectionBindingPlanInput,
@@ -43,22 +46,25 @@ export async function applyDescriptorServiceConnectionBindingPlan(
   input: ApplyDescriptorServiceConnectionBindingPlanInput,
 ): Promise<void> {
   for (const removal of input.plan.removals) {
-    await deleteEnvironmentResourceOutputVariableBindingBySourceWithAudit(
-      {
-        environmentId: removal.environmentId,
-        keyName: removal.keyName,
-        source: 'descriptor',
-        targetServiceName: removal.serviceName,
-      },
-      buildRemoveDescriptorServiceConnectionChangeEventInput(input.plan.actorPrincipalId, removal),
-    );
+    const result: ResourceOutputBindingDeleteAuditResult =
+      await deleteEnvironmentResourceOutputVariableBindingBySourceWithAudit(
+        {
+          environmentId: removal.environmentId,
+          keyName: removal.keyName,
+          source: 'descriptor',
+          targetServiceName: removal.serviceName,
+        },
+        buildRemoveDescriptorServiceConnectionChangeEventInput(input.plan.actorPrincipalId, removal),
+      );
+    writeCommittedAuditEventRowsToLocalFileSink(result.auditEvents);
   }
 
   for (const binding of input.plan.upserts) {
-    await upsertEnvironmentResourceOutputVariableBindingWithAudit(
+    const result: ResourceOutputBindingWriteAuditResult = await upsertEnvironmentResourceOutputVariableBindingWithAudit(
       buildDescriptorServiceConnectionBindingInput(input.plan.actorPrincipalId, binding),
       buildSetDescriptorServiceConnectionChangeEventInput(input.plan.actorPrincipalId, binding),
     );
+    writeCommittedAuditEventRowsToLocalFileSink(result.auditEvents);
   }
 }
 

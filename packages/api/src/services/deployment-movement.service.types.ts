@@ -2,6 +2,7 @@ import type { DeploymentJoinedRow, EnvironmentRow } from '../queries/deployments
 import type { ProjectRow } from '../queries/projects.query.types';
 
 export type DeploymentMovementOperationType = 'deployment.promote' | 'deployment.rollback';
+export type DeploymentMovementResult = DeploymentJoinedRow[];
 
 export interface PromoteDeploymentInput {
   actorPrincipalId: string;

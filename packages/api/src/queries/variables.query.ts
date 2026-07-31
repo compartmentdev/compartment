@@ -11,10 +11,11 @@ import {
 } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type {
-  DeleteEnvironmentVariableValueInput,
+  EnvironmentVariableImportAuditResult,
   EnvironmentVariableSetBindingRow,
   EnvironmentVariableSetBindingSelection,
   EnvironmentVariableValueRow,
+  EnvironmentVariableWriteAuditResult,
   ImportEnvironmentVariableValuesInput,
   InsertVariableAccessEventInput,
   InsertVariableChangeEventInput,
@@ -29,9 +30,9 @@ import type {
   UpsertEnvironmentVariableValueInput,
   VariableAccessEventRow,
 } from './variables.query.types';
+import { insertVariableAuditEventsWithExecutor } from './variables-audit.query';
 import { mapSensitiveRow } from './variables.query.helpers';
 import {
-  buildEnvironmentVariableTargetPredicate,
   insertVariableChangeEventWithExecutor,
   upsertEnvironmentVariableValueWithExecutor,
   type VariablesWriteExecutor,
@@ -162,21 +163,28 @@ export async function listProjectServiceNamesByProjectId(projectId: string): Pro
 export async function upsertEnvironmentVariableValueWithAudit(
   input: UpsertEnvironmentVariableValueInput,
   changeEvent: InsertVariableChangeEventInput,
-): Promise<EnvironmentVariableValueRow> {
+): Promise<EnvironmentVariableWriteAuditResult> {
   return await getApiDatabase().transaction(
-    async (tx: VariablesWriteExecutor): Promise<EnvironmentVariableValueRow> => {
+    async (tx: VariablesWriteExecutor): Promise<EnvironmentVariableWriteAuditResult> => {
       const row: EnvironmentVariableValueRow = await upsertEnvironmentVariableValueWithExecutor(tx, input);
       await insertVariableChangeEventWithExecutor(tx, changeEvent);
-      return row;
+      return {
+        auditEvents: await insertVariableAuditEventsWithExecutor(
+          tx,
+          changeEvent.actorPrincipalId,
+          changeEvent.auditEvents ?? [],
+        ),
+        value: row,
+      };
     },
   );
 }
 
 export async function importEnvironmentVariableValues(
   input: ImportEnvironmentVariableValuesInput,
-): Promise<EnvironmentVariableValueRow[]> {
+): Promise<EnvironmentVariableImportAuditResult> {
   return await getApiDatabase().transaction(
-    async (tx: VariablesWriteExecutor): Promise<EnvironmentVariableValueRow[]> => {
+    async (tx: VariablesWriteExecutor): Promise<EnvironmentVariableImportAuditResult> => {
       const rows: EnvironmentVariableValueRow[] = [];
 
       for (const value of input.values) {
@@ -184,34 +192,16 @@ export async function importEnvironmentVariableValues(
       }
 
       await insertVariableChangeEventWithExecutor(tx, input.changeEvent);
-      return rows;
+      return {
+        auditEvents: await insertVariableAuditEventsWithExecutor(
+          tx,
+          input.changeEvent.actorPrincipalId,
+          input.changeEvent.auditEvents ?? [],
+        ),
+        values: rows,
+      };
     },
   );
-}
-
-export async function deleteEnvironmentVariableValueWithAudit(
-  input: DeleteEnvironmentVariableValueInput,
-  changeEvent: InsertVariableChangeEventInput,
-): Promise<boolean> {
-  return await getApiDatabase().transaction(async (tx: VariablesWriteExecutor): Promise<boolean> => {
-    const rows: PersistedEnvironmentVariableValueRow[] = await tx
-      .delete(environmentVariableValues)
-      .where(
-        buildEnvironmentVariableTargetPredicate(
-          input.environmentId,
-          input.projectServiceId,
-          input.targetResourceName,
-          input.keyName,
-        ),
-      )
-      .returning();
-    if (rows.length === 0) {
-      return false;
-    }
-
-    await insertVariableChangeEventWithExecutor(tx, changeEvent);
-    return true;
-  });
 }
 
 export async function insertVariableAccessEvent(
@@ -225,6 +215,8 @@ export async function insertVariableAccessEvent(
 
   return row;
 }
+
+export { deleteEnvironmentVariableValueWithAudit } from './variables-delete.query';
 
 function buildActiveVariableSetIdsPredicate(organizationVariableSetIds: string[], organizationId: string): SQL {
   return and(

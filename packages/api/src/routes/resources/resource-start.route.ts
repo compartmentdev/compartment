@@ -8,13 +8,14 @@ import type { ApiApp } from '../../app.types';
 import '../../http/request.types';
 import { startResourceForPrincipal } from '../../services/resources.service';
 import { createCurrentOrganizationRouteOptions } from '../protected/current-organization-route';
+import { recordResourceAuditEvent } from '../audit/privileged-operation-audit';
 import { buildResourceResponse } from './resource.presenter';
 import { parseResourceTargetQuery } from './resource-get.route';
 
 export function registerPostResourceStartRoute(app: ApiApp): void {
   app.post(
     compartmentResourceStartPathnameTemplate,
-    createCurrentOrganizationRouteOptions('project.lifecycle.write'),
+    createCurrentOrganizationRouteOptions('project.lifecycle.write', 'resource.started'),
     handlePostResourceStartRequest,
   );
 }
@@ -29,6 +30,7 @@ async function handlePostResourceStartRequest(request: FastifyRequest, reply: Fa
       }),
     ),
   );
+  await recordResourceAuditEvent(request, response, 'resource.started');
 
   return await reply.send(response);
 }

@@ -11,13 +11,14 @@ import '../../http/request.types';
 import { parseRequestValue } from '../../http/validation';
 import { restoreResourceBackupForPrincipal } from '../../services/resource-backups.service';
 import { createCurrentOrganizationRouteOptions } from '../protected/current-organization-route';
+import { recordResourceBackupRestoredAuditEvent } from '../audit/privileged-operation-audit';
 import { buildResourceRestoreResponse } from './resource.presenter';
 import { parseResourceTargetQuery } from './resource-get.route';
 
 export function registerPostResourceRestoreRoute(app: ApiApp): void {
   app.post(
     compartmentResourceRestorePathnameTemplate,
-    createCurrentOrganizationRouteOptions('deployment.create'),
+    createCurrentOrganizationRouteOptions('deployment.create', 'resource.backup.restored'),
     handlePostResourceRestoreRequest,
   );
 }
@@ -38,6 +39,7 @@ async function handlePostResourceRestoreRequest(request: FastifyRequest, reply: 
       }),
     ),
   );
+  await recordResourceBackupRestoredAuditEvent(request, response);
 
   return await reply.send(response);
 }

@@ -59,6 +59,16 @@ export async function findOrganizationById(organizationId: string): Promise<Orga
   return rows[0];
 }
 
+export async function findOrganizationBySlug(organizationSlug: string): Promise<OrganizationRow | undefined> {
+  const rows: OrganizationRow[] = await getApiDatabase()
+    .select(organizationRowSelection)
+    .from(organizations)
+    .where(eq(organizations.slug, organizationSlug))
+    .limit(1);
+
+  return rows[0];
+}
+
 export async function findOrganizationRowForPrincipalBySlug(
   principalId: string,
   organizationSlug: string,

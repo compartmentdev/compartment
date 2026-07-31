@@ -15,7 +15,11 @@ import { variableImportRequestSchema, type ImportVariablesRequest } from './vari
 export function registerPostImportVariablesRoute(app: ApiApp): void {
   app.post(
     compartmentVariableImportPathname,
-    createCurrentOrganizationRouteResponseOptions(undefined, { 200: importVariablesResponseSchema }),
+    createCurrentOrganizationRouteResponseOptions(
+      undefined,
+      { 200: importVariablesResponseSchema },
+      'variable.changed',
+    ),
     handlePostImportVariablesRequest,
   );
 }
