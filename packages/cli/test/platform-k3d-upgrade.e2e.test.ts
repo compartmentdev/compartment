@@ -172,9 +172,9 @@ describe.sequential('production Kubernetes upgrade', (): void => {
 
   async function setSensitiveFixtureValue(): Promise<void> {
     const sensitiveVariable: VariableResponse = await cli.runJson(
-      `variable set DIRECT_FLAG encrypted-upgrade-secret --sensitive --env ${app.environmentName}`,
+      `variable set DIRECT_FLAG --sensitive --stdin --env ${app.environmentName}`,
       variableResponseSchema,
-      { cwd: app.directory },
+      { cwd: app.directory, input: 'encrypted-upgrade-secret\n' },
     );
     expect(sensitiveVariable.variable.valueHidden).toBe(true);
     await cli.runJson(
