@@ -7,6 +7,7 @@ import { environments, operations, organizations, projectResources, projects, re
 import {
   completeResourceBackupWithExecutor,
   createResourceBackupWithExecutor,
+  markResourceBackupRetentionDeletedWithExecutor,
   recordResourceBackupRetentionFailureWithExecutor,
 } from '../src/queries/resource-backups.query';
 import type { ResourceBackupRow } from '../src/queries/resource-backups.query.types';
@@ -83,6 +84,7 @@ describe('resource backup retention queries', (): void => {
     });
 
     expect(failed).toMatchObject({
+      failureSummary: 'EACCES',
       retentionAttempts: 1,
       retentionFailureSummary: 'EACCES',
       retentionNextAttemptAt: new Date('2026-07-22T12:01:00.000Z'),
@@ -97,6 +99,7 @@ describe('resource backup retention queries', (): void => {
       retryMaxDelayMs: 3_600_000,
     });
     expect(secondFailure).toMatchObject({
+      failureSummary: 'EACCES again',
       retentionAttempts: 2,
       retentionNextAttemptAt: new Date('2026-07-22T12:03:00.000Z'),
     });
@@ -113,6 +116,19 @@ describe('resource backup retention queries', (): void => {
       retentionAttempts: 31,
       retentionNextAttemptAt: new Date('2026-07-22T14:00:00.000Z'),
       status: 'succeeded',
+    });
+
+    const deleted: ResourceBackupRow = await markResourceBackupRetentionDeletedWithExecutor(db, {
+      backupId: backup.id,
+      retentionDeletedAt: new Date('2026-07-22T14:00:00.000Z'),
+      retentionReason: 'retention maxAgeDays=1',
+    });
+    expect(deleted).toMatchObject({
+      failureSummary: null,
+      retentionAttempts: 31,
+      retentionFailureSummary: null,
+      retentionNextAttemptAt: null,
+      status: 'deleted',
     });
   });
 });

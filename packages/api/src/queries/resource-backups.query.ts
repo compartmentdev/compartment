@@ -113,6 +113,7 @@ export async function markResourceBackupRetentionDeletedWithExecutor(
     .update(resourceBackups)
     .set({
       artifactLocation: null,
+      failureSummary: null,
       retentionDeletedAt: input.retentionDeletedAt,
       retentionFailureSummary: null,
       retentionNextAttemptAt: null,
@@ -132,6 +133,7 @@ export async function recordResourceBackupRetentionFailureWithExecutor(
   const [backup] = await executor
     .update(resourceBackups)
     .set({
+      failureSummary: input.failureSummary,
       retentionAttempts: sql`${resourceBackups.retentionAttempts} + 1`,
       retentionFailureSummary: input.failureSummary,
       retentionNextAttemptAt: sql`${input.failedAt}::timestamptz + least(

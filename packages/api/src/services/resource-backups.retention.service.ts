@@ -134,10 +134,9 @@ async function deleteBackupArtifactAndMarkRecord(
         resource: input.resource,
       });
     } catch (error) {
-      if (!(error instanceof ResourceBackupRetentionOperationError)) {
-        throw error;
-      }
-      await recordResourceBackupRetentionFailure(cleanup.backup, input, error);
+      const failure: Error =
+        error instanceof Error ? error : new ResourceBackupRetentionOperationError('Unknown artifact cleanup failure.');
+      await recordResourceBackupRetentionFailure(cleanup.backup, input, failure);
       return null;
     }
   }

@@ -71,6 +71,17 @@ describe('tenant workload restricted Pod Security', (): void => {
     }
   });
 
+  it('uses the shared project group for resource-operation backup volumes', (): void => {
+    const podSpec: KubeProjectedPodSpec = resourceOperationJobPodSpec();
+
+    expect(podSpec.securityContext).toMatchObject({
+      fsGroup: 10_001,
+      fsGroupChangePolicy: 'Always',
+      runAsGroup: 999,
+      runAsUser: 999,
+    });
+  });
+
   it('omits tenant scheduling fields when tenant configuration is absent', (): void => {
     for (const podSpec of [applicationPodSpec(), resourcePodSpec(), releaseJobPodSpec(), provisioningJobPodSpec()]) {
       expect(podSpec).not.toHaveProperty('nodeSelector');
@@ -149,6 +160,15 @@ function resourceOperationJobPodSpec(image: string = 'docker.io/library/postgres
     namespace: 'project',
     securityProfile: 'resource-restricted',
     timeoutMs: 60_000,
+    volumeMounts: [
+      {
+        claimName: 'volume-resource-backup-artifacts',
+        expectedClaimUid: 'uid-backup-artifacts',
+        mountPath: '/backups',
+        name: 'backup-artifacts',
+        resourceId: 'resource',
+      },
+    ],
   };
   const job: KubeJobManifest = kubeJobManifest(spec, 'resource-operation', {});
   return job.spec!.template.spec;
