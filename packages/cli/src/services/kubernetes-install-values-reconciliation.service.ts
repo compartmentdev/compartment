@@ -70,7 +70,8 @@ async function buildDesiredEffectiveValues(
       readYamlFile(material.imageTrustValuesPath, 'image trust values file'),
       Promise.resolve({ platform: { startupStage: 'full' } }),
     ]);
-    return values.map(requireValuesObject).reduce(mergeValues, {});
+    const [chartValues, ...overlays]: YamlFileObject[] = values.map(requireValuesObject);
+    return overlays.reduce(mergeValues, chartValues!);
   } finally {
     await rm(directory, { force: true, recursive: true });
   }
@@ -153,6 +154,9 @@ function readObjectKeys(value: JsonValue | undefined): string[] {
 }
 
 function valuesEqual(left: JsonValue | undefined, right: JsonValue | undefined): boolean {
+  if ((left === null || left === undefined) && (right === null || right === undefined)) {
+    return true;
+  }
   return JSON.stringify(left) === JSON.stringify(right);
 }
 

@@ -21,6 +21,17 @@ export async function checkKubernetesInstallRegistryDns(
   reportKubernetesInstallWarning(input, warning);
 }
 
+export async function verifyObservableKubernetesRegistry(
+  input: KubernetesInstallDeploymentInput,
+  state: KubernetesInstallState,
+): Promise<string | null> {
+  return await runObservableInstallStep(
+    input.progress,
+    'Verifying private registry pull on every node',
+    async (): Promise<string | null> => await verifyKubernetesInstallRegistryNodePullWithManagedDnsGrace(input, state),
+  );
+}
+
 export async function verifyKubernetesInstallRegistryNodePullWithManagedDnsGrace(
   input: KubernetesInstallDeploymentInput,
   state: KubernetesInstallState,

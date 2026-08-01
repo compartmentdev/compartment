@@ -54,6 +54,9 @@ async function handlePostInstall(
 }
 
 async function recordOwnerActivationAudit(request: FastifyRequest, result: InstallResult): Promise<void> {
+  if (!result.createdOwner) {
+    return;
+  }
   await recordAuditEvent({
     actor: {
       email: result.adminEmail,

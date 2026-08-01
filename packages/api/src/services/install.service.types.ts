@@ -25,6 +25,7 @@ export interface InstallPlan {
 export interface InstallResult {
   adminEmail: string;
   baseDomain: string;
+  createdOwner: boolean;
   dnsRecords: DnsRecordInstruction[];
   operation: OperationRecord;
   organizationId: string;

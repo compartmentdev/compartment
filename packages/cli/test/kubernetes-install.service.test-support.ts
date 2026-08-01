@@ -185,7 +185,7 @@ export function managedInstallValuesWithoutIngress(): string {
 }
 
 export function helmReleaseList(status: string): string {
-  return JSON.stringify([{ name: 'compartment', status }]);
+  return JSON.stringify([{ name: 'compartment', revision: '4', status }]);
 }
 
 export function readyControlPlaneResponse(): Response {

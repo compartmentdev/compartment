@@ -7,6 +7,7 @@ import { readSeaAssetBuffer } from '../sea';
 import {
   buildHelmCommand,
   buildKubectlCommand,
+  formatKubernetesShellCommand,
   formatKubernetesCommandExecutionFailure,
   readCommandOutput,
 } from './kubernetes-command.support';
@@ -21,6 +22,7 @@ import type {
 const bundledKubernetesChartAssetName: string = 'compartment-chart.tgz';
 const helmInstallTimeout: string = '8m';
 const helmInstallProcessTimeoutMs: number = 9 * 60_000;
+const helmRollbackTimeout: string = '8m';
 
 export async function createKubernetesInstallMaterializedDirectory(): Promise<string> {
   return await mkdtemp(resolve(tmpdir(), 'compartment-install-'));
@@ -53,6 +55,7 @@ export async function runKubernetesHelmInstallStage(
   installValuesPath: string,
   imageTrustValuesPath: string,
   stage: KubernetesInstallStage,
+  recoveryRevision: number | null = null,
 ): Promise<void> {
   const command: string[] = buildHelmInstallCommand(
     input,
@@ -65,7 +68,7 @@ export async function runKubernetesHelmInstallStage(
   const startedAt: number = Date.now();
   const result: CommandResult = await runCommandWithTimeout(command, helmInstallProcessTimeoutMs);
   if (result.exitCode !== 0) {
-    await throwHelmInstallError(input, stage, result, startedAt);
+    await throwHelmInstallError(input, stage, result, startedAt, recoveryRevision);
   }
 }
 
@@ -104,7 +107,7 @@ function buildHelmBaseCommand(
     input.namespace,
     '--create-namespace',
     ...buildHelmInstallValuesArgs(input, platformImageValuesPath, installValuesPath, imageTrustValuesPath),
-    '--rollback-on-failure',
+    '--force-conflicts',
     '--wait',
     '--timeout',
     helmInstallTimeout,
@@ -134,24 +137,80 @@ async function throwHelmInstallError(
   stage: KubernetesInstallStage,
   result: CommandResult,
   startedAt: number,
+  recoveryRevision: number | null,
 ): Promise<never> {
   const executionFailure: string | undefined = formatKubernetesCommandExecutionFailure(
     `Helm ${stage} install failed`,
     result,
   );
   if (executionFailure !== undefined) {
-    throw new Error(executionFailure);
+    const recovery: string = await recoverFailedUpgrade(input, recoveryRevision);
+    throw new Error(`${executionFailure}${recovery}`);
   }
   const output: string = readCommandOutput(result);
   if (/timed out|deadline exceeded/u.test(output.toLowerCase())) {
-    const notReadyPods: string = await readNotReadyPods(input);
-    throw new Error(
-      `Timed out waiting for ${stage === 'foundation' ? 'foundation workloads' : 'platform pods'} after ${Math.max(1, Math.ceil((Date.now() - startedAt) / 1_000)).toString()}s.${output === '' ? '' : `\n${output}`}\nNon-Ready pods: ${notReadyPods}. Check with \`kubectl get pods -n ${input.namespace}\` and re-run install to resume.`,
-    );
+    await throwHelmTimeoutError(input, stage, output, startedAt, recoveryRevision);
   }
+  const recovery: string = await recoverFailedUpgrade(input, recoveryRevision);
   throw new Error(
-    `Helm ${stage} install failed with exit code ${result.exitCode.toString()}.${output === '' ? '' : `\n${output}`}`,
+    `Helm ${stage} install failed with exit code ${result.exitCode.toString()}.${output === '' ? '' : `\n${output}`}${recovery}`,
   );
+}
+
+async function throwHelmTimeoutError(
+  input: KubernetesInstallDeploymentInput,
+  stage: KubernetesInstallStage,
+  output: string,
+  startedAt: number,
+  recoveryRevision: number | null,
+): Promise<never> {
+  const notReadyPods: string = await readNotReadyPods(input);
+  const recovery: string = await recoverFailedUpgrade(input, recoveryRevision);
+  const elapsedSeconds: string = Math.max(1, Math.ceil((Date.now() - startedAt) / 1_000)).toString();
+  throw new Error(
+    `Timed out waiting for ${stage === 'foundation' ? 'foundation workloads' : 'platform pods'} after ${elapsedSeconds}s.${output === '' ? '' : `\n${output}`}\nNon-Ready pods: ${notReadyPods}. Check with \`kubectl get pods -n ${input.namespace}\`.${recovery}`,
+  );
+}
+
+async function recoverFailedUpgrade(
+  input: KubernetesInstallDeploymentInput,
+  recoveryRevision: number | null,
+): Promise<string> {
+  if (recoveryRevision === null) {
+    return ` The installation remains incomplete. Inspect it with \`${formatKubernetesShellCommand(
+      buildHelmCommand(input, ['status', input.releaseName, '--namespace', input.namespace]),
+    )}\`, then re-run compartment install to resume.`;
+  }
+  const rollbackCommand: string[] = buildRollbackCommand(input, recoveryRevision);
+  const rollbackResult: CommandResult = await runCommandWithTimeout(rollbackCommand, helmInstallProcessTimeoutMs);
+  if (rollbackResult.exitCode === 0) {
+    return ` Helm restored revision ${recoveryRevision.toString()}; the release is deployed again. Fix the reported cause, then re-run compartment install.`;
+  }
+  return formatFailedRollback(rollbackCommand, rollbackResult, recoveryRevision);
+}
+
+function buildRollbackCommand(input: KubernetesInstallDeploymentInput, recoveryRevision: number): string[] {
+  return buildHelmCommand(input, [
+    'rollback',
+    input.releaseName,
+    recoveryRevision.toString(),
+    '--namespace',
+    input.namespace,
+    '--wait',
+    '--timeout',
+    helmRollbackTimeout,
+    '--force-conflicts',
+  ]);
+}
+
+function formatFailedRollback(
+  rollbackCommand: readonly string[],
+  rollbackResult: CommandResult,
+  recoveryRevision: number,
+): string {
+  const recoveryCommand: string = formatKubernetesShellCommand(rollbackCommand);
+  const rollbackOutput: string = readCommandOutput(rollbackResult);
+  return ` Automatic rollback to revision ${recoveryRevision.toString()} failed${rollbackOutput === '' ? '.' : `:\n${rollbackOutput}`} Recover with \`${recoveryCommand}\`, then re-run compartment install.`;
 }
 
 async function readNotReadyPods(input: KubernetesInstallDeploymentInput): Promise<string> {

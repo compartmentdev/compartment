@@ -5,6 +5,7 @@ import { type ApiConfig } from '../src/config';
 import { createEdgeStateUpdateFailedError } from '../src/errors/api-business-error';
 import type { InsertOperationInput, OperationRecord } from '../src/queries/operations.query.types';
 import type { AuthSessionPlan, IssueAuthSessionInput } from '../src/services/auth-session.types';
+import type { LoginServiceInput, LoginServiceResult } from '../src/services/login.service.types';
 import { install } from '../src/services/install.service';
 import type { InstallResult, InstallServiceInput } from '../src/services/install.service.types';
 import type {
@@ -25,12 +26,14 @@ type InsertInitialInstallationWithExecutor = (
   operationInput: InsertOperationInput,
 ) => Promise<OperationRecord>;
 type SynchronizeEdgeAppAccessState = () => Promise<void>;
+type Login = (input: LoginServiceInput) => Promise<LoginServiceResult>;
 
 interface InstallServiceTestMocks {
   createAuthSessionPlan: Mock<CreateAuthSessionPlan>;
   getApiConfig: Mock<GetApiConfig>;
   hash: Mock<HashPassword>;
   insertInitialInstallationWithExecutor: Mock<InsertInitialInstallationWithExecutor>;
+  login: Mock<Login>;
   synchronizeEdgeAppAccessState: Mock<SynchronizeEdgeAppAccessState>;
   withInitialInstallationGuard: Mock<WithInitialInstallationGuard>;
 }
@@ -41,10 +44,13 @@ const mocks: InstallServiceTestMocks = vi.hoisted(
     getApiConfig: vi.fn<GetApiConfig>(),
     hash: vi.fn<HashPassword>(),
     insertInitialInstallationWithExecutor: vi.fn<InsertInitialInstallationWithExecutor>(),
+    login: vi.fn<Login>(),
     synchronizeEdgeAppAccessState: vi.fn<SynchronizeEdgeAppAccessState>(),
     withInitialInstallationGuard: vi.fn<WithInitialInstallationGuard>(),
   }),
 );
+
+vi.mock('../src/services/login.service', (): { login: Mock<Login> } => ({ login: mocks.login }));
 
 vi.mock('argon2', (): { default: { hash: Mock<HashPassword> } } => ({
   default: {
@@ -155,6 +161,7 @@ describe('install service', (): void => {
 
   it('does not hash the password when the install guard rejects initialization', async (): Promise<void> => {
     mocks.withInitialInstallationGuard.mockResolvedValue(null);
+    mocks.login.mockRejectedValue(new Error('invalid credentials'));
 
     await expect(install(installInput)).rejects.toThrow('The installation has already been initialized.');
 

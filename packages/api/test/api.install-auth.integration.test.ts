@@ -568,6 +568,36 @@ describe('Phase 0 API integration install auth', (): void => {
     expect(storedOperations).toHaveLength(1);
     expect(storedOperations[0]?.type).toBe('compartment.install');
   });
+  it('returns a fresh owner session when install repeats with the original identity', async (): Promise<void> => {
+    const payload: Record<string, string> = {
+      adminPassword: 'supersecretpassword',
+      organizationName: 'Acme Dev',
+      organizationSlug: 'acme-dev',
+      adminEmail: 'admin@example.com',
+      baseDomain: 'localhost',
+    };
+    const firstResponse: LightMyRequestResponse = await app.inject({
+      headers: buildInstallAuthorizationHeaders(),
+      method: 'POST',
+      url: '/v1/install',
+      payload,
+    });
+    const repeatedResponse: LightMyRequestResponse = await app.inject({
+      headers: buildInstallAuthorizationHeaders(),
+      method: 'POST',
+      url: '/v1/install',
+      payload,
+    });
+    const first: InstallResponse = installResponseSchema.parse(firstResponse.json());
+    const repeated: InstallResponse = installResponseSchema.parse(repeatedResponse.json());
+
+    expect(firstResponse.statusCode).toBe(200);
+    expect(repeatedResponse.statusCode).toBe(200);
+    expect(repeated.operation.id).toBe(first.operation.id);
+    expect(repeated.organization).toEqual(first.organization);
+    expect(repeated.sessionToken).not.toBe(first.sessionToken);
+    await expect(db.select({ value: count() }).from(organizations)).resolves.toEqual([{ value: 1 }]);
+  });
   it('establishes a session and returns current organization from whoami', async (): Promise<void> => {
     const installResponse: LightMyRequestResponse = await app.inject({
       headers: buildInstallAuthorizationHeaders(),

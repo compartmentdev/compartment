@@ -14,6 +14,11 @@ export async function insertOperationRecord(input: InsertOperationInput): Promis
   return await insertOperationRecordWithExecutor(getApiDatabase(), input);
 }
 
+export async function findOperationRecordByType(type: string): Promise<OperationRecord | undefined> {
+  const [operation] = await getApiDatabase().select().from(operations).where(eq(operations.type, type)).limit(1);
+  return operation as OperationRecord | undefined;
+}
+
 export async function insertOperationRecordWithExecutor(
   executor: Pick<Database, 'insert'>,
   { actorPrincipalId, completedAt, status, summary, targetId, targetType, type }: InsertOperationInput,
