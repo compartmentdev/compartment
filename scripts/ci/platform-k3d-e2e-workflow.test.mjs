@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
-import { platformK3dShardNames } from '../deploy/platform-k3d-e2e-shards.mjs';
+import { platformK3dShardDefinitions, platformK3dShardNames } from '../deploy/platform-k3d-e2e-shards.mjs';
 
 const workflowPath = new URL('../../.github/workflows/_platform-k3d-e2e.yml', import.meta.url);
 const ciWorkflowPath = new URL('../../.github/workflows/ci.yml', import.meta.url);
@@ -21,19 +21,29 @@ describe('platform k3d e2e workflow', () => {
       matrix: { shard: platformK3dShardNames },
     });
     expect(job.name).toContain('${{ matrix.shard }}');
-    expect(job.env.COMPARTMENT_E2E_GVISOR_ENABLED).toBe(
-      "${{ (matrix.shard == 'build-matrix-a' || matrix.shard == 'upgrade') && '0' || '1' }}",
+    expect(job.env.COMPARTMENT_E2E_GVISOR_ENABLED).toBe("${{ matrix.shard == 'gvisor-build' && '1' || '0' }}");
+    expect(platformK3dShardDefinitions['gvisor-build'].suites).toEqual(['install', 'gvisor-build']);
+    expect(platformK3dShardDefinitions['build-matrix-a'].suites).toContain('build-matrix-a');
+    expect(platformK3dShardDefinitions['build-matrix-b'].suites).toContain('build-matrix-b');
+    const toolInstallStep = job.steps.find(
+      (step) => step.name === 'Install pinned k3d, kubectl, Helm, and helm-unittest',
     );
-    const toolInstallStep = job.steps.find((step) => step.name.startsWith('Install pinned k3d, kubectl, Helm'));
-    expect(toolInstallStep.env.GVISOR_VERSION).toMatch(/^release\/\d{8}\.\d+$/);
-    expect(toolInstallStep.run).toContain('gvisor.tar.bz2');
-    expect(toolInstallStep.run).toContain('sha512sum --check');
-    expect(toolInstallStep.run).toContain('/usr/bin/runsc');
-    expect(toolInstallStep.run).toContain('/usr/bin/containerd-shim-runsc-v1');
-    expect(toolInstallStep.run).toContain('/usr/bin/gvisor-bin');
-    expect(toolInstallStep.run).toContain('checkpointgofer');
-    expect(toolInstallStep.run).toContain('runsc-metric-server');
-    expect(toolInstallStep.run).toContain('/etc/containerd/runsc.toml');
+    expect(toolInstallStep.run).toContain('helm plugin install');
+    expect(toolInstallStep.run).toContain('k3d version');
+    expect(toolInstallStep.run).toContain('kubectl version --client');
+    expect(toolInstallStep.run).toContain('helm version');
+    const gvisorInstallStep = job.steps.find((step) => step.name === 'Install pinned gVisor');
+    expect(gvisorInstallStep.if).toBe("${{ matrix.shard == 'gvisor-build' }}");
+    expect(gvisorInstallStep.env.GVISOR_VERSION).toMatch(/^release\/\d{8}\.\d+$/);
+    expect(gvisorInstallStep.run).toContain('gvisor.tar.bz2');
+    expect(gvisorInstallStep.run).toContain('sha512sum --check');
+    expect(gvisorInstallStep.run).toContain('/usr/bin/runsc');
+    expect(gvisorInstallStep.run).toContain('/usr/bin/containerd-shim-runsc-v1');
+    expect(gvisorInstallStep.run).toContain('/usr/bin/gvisor-bin');
+    expect(gvisorInstallStep.run).toContain('checkpointgofer');
+    expect(gvisorInstallStep.run).toContain('runsc-metric-server');
+    expect(gvisorInstallStep.run).toContain('/etc/containerd/runsc.toml');
+    expect(gvisorInstallStep.run).toContain('runsc --version');
     const runStep = job.steps.find((step) => step.name === 'Run isolated k3d e2e shard');
     expect(runStep.run).toContain('run-platform-k3d-e2e-shard.mjs "${{ matrix.shard }}"');
     const cleanupStep = job.steps.find((step) => step.name === 'Ensure shard cleanup');

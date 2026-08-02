@@ -78,6 +78,32 @@ describe('platform k3d e2e command boundary', () => {
     );
   });
 
+  it('mounts the complete runsc runtime only for an opted-in gVisor cluster', async () => {
+    vi.stubEnv('COMPARTMENT_E2E_GVISOR_ENABLED', '1');
+    vi.resetModules();
+    try {
+      const { buildPlatformK3dClusterCreateArgs: buildGvisorClusterCreateArgs } =
+        await import('./platform-k3d-e2e.mjs');
+      const args = buildGvisorClusterCreateArgs();
+
+      expect(args).toContain('/usr/bin/runsc:/usr/local/bin/runsc@server:*;agent:*');
+      expect(args).toContain(
+        '/usr/bin/containerd-shim-runsc-v1:/usr/local/bin/containerd-shim-runsc-v1@server:*;agent:*',
+      );
+      expect(args).toContain('/usr/bin/gvisor-bin:/usr/local/bin/gvisor-bin@server:*;agent:*');
+      expect(
+        args.some((arg) =>
+          arg.endsWith(
+            'scripts/deploy/fixtures/containerd-gvisor-config.toml.tmpl:/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl@server:*;agent:*',
+          ),
+        ),
+      ).toBe(true);
+      expect(args).toContain('/etc/containerd/runsc.toml:/etc/containerd/runsc.toml@server:*;agent:*');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('retries only transient Kubernetes API availability failures', async () => {
     const waits = [];
     const commandRunner = vi

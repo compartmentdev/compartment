@@ -72,6 +72,20 @@ describe('platform k3d e2e shard runner', () => {
     expect(buildPlatformK3dShardEnvironment('user-flow', {}).COMPARTMENT_E2E_INGRESS_CLASS).toBe('traefik');
   });
 
+  it('assigns a unique port range to the minimal gVisor build shard', () => {
+    expect(buildPlatformK3dShardEnvironment('gvisor-build', {})).toMatchObject({
+      COMPARTMENT_E2E_GVISOR_ENABLED: '1',
+      COMPARTMENT_E2E_HTTP_PORT: '18680',
+      COMPARTMENT_E2E_HTTPS_PORT: '19043',
+      COMPARTMENT_E2E_REGISTRY_PORT: '16100',
+    });
+    expect(
+      buildPlatformK3dShardEnvironment('build-matrix-a', {
+        COMPARTMENT_E2E_GVISOR_ENABLED: '1',
+      }).COMPARTMENT_E2E_GVISOR_ENABLED,
+    ).toBe('0');
+  });
+
   it('rejects unknown or extra shard arguments', () => {
     expect(readPlatformK3dShard(['user-flow'])).toBe('user-flow');
     expect(() => readPlatformK3dShard([])).toThrow('Usage:');
@@ -84,6 +98,7 @@ describe('platform k3d e2e shard runner', () => {
   it('assigns every existing e2e suite and gate to one explicit shard', () => {
     expect(readPlatformK3dShardSuites('build-matrix-a')).toEqual(['install', 'ha', 'network-policy', 'build-matrix-a']);
     expect(readPlatformK3dShardSuites('build-matrix-b')).toEqual(['install', 'build-matrix-b']);
+    expect(readPlatformK3dShardSuites('gvisor-build')).toEqual(['install', 'gvisor-build']);
     expect(readPlatformK3dShardSuites('user-flow')).toEqual(['install', 'system-user']);
     expect(readPlatformK3dShardSuites('console')).toEqual(['install', 'console', 'g1', 'product-log']);
     expect(readPlatformK3dShardSuites('managed-install')).toEqual([
