@@ -33,14 +33,12 @@ export interface KubernetesInstallDeploymentResult {
 
 export interface KubernetesInstallInspection {
   existingInstall: ExistingKubernetesInstall | null;
-  releaseRevision: number | null;
   releaseValues: JsonValue | null;
   retainedState: RetainedKubernetesInstallState | null;
 }
 
 export interface ExistingKubernetesInstallRelease {
   install: ExistingKubernetesInstall;
-  revision: number;
   values: JsonValue;
 }
 
@@ -197,12 +195,6 @@ export interface KubernetesIngressLoadBalancerStatus {
 
 export interface HelmReleaseSummary {
   name: string;
-  revision: number;
-  status: string;
-}
-
-export interface HelmReleaseHistoryEntry {
-  revision: number;
   status: string;
 }
 

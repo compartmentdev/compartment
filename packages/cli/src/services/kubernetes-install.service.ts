@@ -49,7 +49,7 @@ export async function deployAndWaitForKubernetesInstall(
 ): Promise<KubernetesInstallDeploymentResult> {
   assertConfiguredManagedDomainEndpoint(input);
   const inspection: KubernetesInstallInspection = await inspectKubernetesInstall(input);
-  const { existingInstall, releaseRevision, retainedState }: KubernetesInstallInspection = inspection;
+  const { existingInstall, retainedState }: KubernetesInstallInspection = inspection;
   assertRetainedInstallState(existingInstall, retainedState);
   const effectiveInstall: ExistingKubernetesInstall | null = mergeRetainedKubernetesInstallState(
     existingInstall,
@@ -66,7 +66,7 @@ export async function deployAndWaitForKubernetesInstall(
     return await resumeKubernetesOwnerBootstrap(input, effectiveInstall);
   }
   reportKubernetesInstallValuesReconciliation(input, reconciliation);
-  return await deployKubernetesInstall(input, existingInstall, effectiveInstall, retainedState, releaseRevision);
+  return await deployKubernetesInstall(input, existingInstall, effectiveInstall, retainedState);
 }
 
 function assertMatchingInstallState(
@@ -102,7 +102,6 @@ async function deployKubernetesInstall(
   existingRelease: ExistingKubernetesInstall | null,
   existingInstall: ExistingKubernetesInstall | null,
   retainedState: RetainedKubernetesInstallState | null,
-  recoveryRevision: number | null,
 ): Promise<KubernetesInstallDeploymentResult> {
   const installToken: string = existingInstall?.installToken ?? createInstallToken();
   const installationId: string = retainedState?.installationId ?? randomUUID();
@@ -115,7 +114,6 @@ async function deployKubernetesInstall(
       installToken,
       installationId,
       materializedDirectory,
-      recoveryRevision,
     );
   } finally {
     await rm(materializedDirectory, { force: true, recursive: true });
@@ -129,7 +127,6 @@ async function deployMaterializedKubernetesInstall(
   installToken: string,
   installationId: string,
   materializedDirectory: string,
-  recoveryRevision: number | null,
 ): Promise<KubernetesInstallDeploymentResult> {
   const material: KubernetesInstallHelmMaterial = await prepareObservableInstallMaterial(input, materializedDirectory);
   const foundationInstall: ExistingKubernetesInstall = await installObservableKubernetesFoundation(
@@ -141,7 +138,7 @@ async function deployMaterializedKubernetesInstall(
     installationId,
   );
   const state: KubernetesInstallState = await resolveKubernetesInstallState(input, foundationInstall);
-  return await deployResolvedKubernetesInstall(input, material, installToken, state, recoveryRevision);
+  return await deployResolvedKubernetesInstall(input, material, installToken, state);
 }
 
 async function deployResolvedKubernetesInstall(
@@ -149,18 +146,16 @@ async function deployResolvedKubernetesInstall(
   material: KubernetesInstallHelmMaterial,
   installToken: string,
   state: KubernetesInstallState,
-  recoveryRevision: number | null,
 ): Promise<KubernetesInstallDeploymentResult> {
   await runObservableInstallStep(
     input.progress,
     'Saving installation configuration',
-    async (): Promise<void> =>
-      await persistResolvedInstallState(input, material, installToken, state, recoveryRevision),
+    async (): Promise<void> => await persistResolvedInstallState(input, material, installToken, state),
   );
   const apiUrl: string = await runObservableInstallStep(
     input.progress,
     'Waiting for platform pods (api, worker, caddy)',
-    async (): Promise<string> => await deployFullKubernetesInstall(input, material, state, recoveryRevision),
+    async (): Promise<string> => await deployFullKubernetesInstall(input, material, state),
   );
   const registryWarning: string | null = await verifyObservableKubernetesRegistry(input, state);
   reportKubernetesInstallWarning(input, registryWarning);
@@ -184,7 +179,6 @@ async function persistResolvedInstallState(
   material: KubernetesInstallHelmMaterial,
   installToken: string,
   state: KubernetesInstallState,
-  recoveryRevision: number | null,
 ): Promise<void> {
   await writeKubernetesInstallValues(material.installValuesPath, buildResolvedInstallValues(state, installToken));
   await runKubernetesHelmInstallStage(
@@ -194,7 +188,6 @@ async function persistResolvedInstallState(
     material.installValuesPath,
     material.imageTrustValuesPath,
     'foundation',
-    recoveryRevision,
   );
 }
 
@@ -202,7 +195,6 @@ async function deployFullKubernetesInstall(
   input: KubernetesInstallDeploymentInput,
   material: KubernetesInstallHelmMaterial,
   state: KubernetesInstallState,
-  recoveryRevision: number | null,
 ): Promise<string> {
   const apiUrl: string = resolveKubernetesInstallControlPlaneUrl(input.apiUrl, state.baseDomain, state.publicProtocol);
   await runKubernetesHelmInstallStage(
@@ -212,7 +204,6 @@ async function deployFullKubernetesInstall(
     material.installValuesPath,
     material.imageTrustValuesPath,
     'full',
-    recoveryRevision,
   );
   await waitForRequiredKubernetesPlatformCertificates(input, state);
   return apiUrl;

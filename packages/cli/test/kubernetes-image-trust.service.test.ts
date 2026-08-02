@@ -11,7 +11,6 @@ import {
 import type { KubernetesVerifiedPlatformImageValues } from '../src/services/kubernetes-image-trust.service.types';
 import { deployAndWaitForKubernetesInstall } from '../src/services/kubernetes-install.service';
 import type { KubernetesInstallDeploymentInput } from '../src/services/kubernetes-install.service.types';
-import { updateKubernetesSystem } from '../src/services/kubernetes-system-lifecycle.service';
 
 type RunCommand = (command: readonly string[], env?: NodeJS.ProcessEnv) => Promise<CommandResult>;
 type RunCommandCall = [command: readonly string[], env?: NodeJS.ProcessEnv | undefined];
@@ -276,43 +275,6 @@ describe('Kubernetes platform image trust', (): void => {
       await rm(directory, { force: true, recursive: true });
     }
   });
-
-  it.each([
-    ['unsigned', 'no matching signatures'],
-    ['signed by another identity', 'certificate identity mismatch'],
-  ])(
-    'rejects a Kubernetes platform update when an image is %s',
-    async (_label: string, cosignError: string): Promise<void> => {
-      const directory: string = await createTemporaryDirectory();
-      try {
-        const valuesPath: string = resolve(directory, 'values.yaml');
-        await writeFile(valuesPath, '{}');
-        mocks.runCommand.mockImplementation(async (command: readonly string[]): Promise<CommandResult> => {
-          await Promise.resolve();
-          if (command[1] === 'get') {
-            return successfulResult(JSON.stringify(releaseImageValues()));
-          }
-          if (command[1] === 'verify') {
-            return { exitCode: 1, stderr: cosignError, stdout: '' };
-          }
-          throw new Error(`Unexpected command: ${command.join(' ')}`);
-        });
-
-        await expect(
-          updateKubernetesSystem({
-            chartPath: resolve(directory, 'chart'),
-            namespace: 'compartment',
-            releaseName: 'compartment',
-            valuesPath,
-            version: 'sha-target',
-          }),
-        ).rejects.toThrow(cosignError);
-        expect(readHelmUpgradeCalls()).toHaveLength(0);
-      } finally {
-        await rm(directory, { force: true, recursive: true });
-      }
-    },
-  );
 
   it('places verified digest values after operator values before the first Helm activation', async (): Promise<void> => {
     const directory: string = await createTemporaryDirectory();

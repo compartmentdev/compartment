@@ -2,9 +2,8 @@ import { parseJsonWith, type JsonValue } from '@compartment/utils';
 import { z } from 'zod';
 import type { CommandResult } from '../command-runner.types';
 import { buildHelmCommand, buildHelmGetValuesCommand } from './kubernetes-command.support';
-import { isHelmJsonObject, parseHelmRevision, runHelmInspection } from './kubernetes-helm-inspection.service';
+import { isHelmJsonObject, runHelmInspection } from './kubernetes-helm-inspection.service';
 import { parseKubernetesIngressTargetsJson } from './kubernetes-install-ingress-targets.service';
-import { requireDeployedHelmRelease } from './kubernetes-install-recovery.service';
 import type { KubernetesInstallRegistryIssuerReference } from './kubernetes-install-registry.service.types';
 import type {
   ExistingKubernetesInstall,
@@ -35,7 +34,7 @@ export async function readExistingKubernetesInstallRelease(
   if (release === null) {
     return null;
   }
-  await requireDeployedHelmRelease(input, release);
+  requireDeployedHelmRelease(release);
 
   const valuesResult: CommandResult = await runHelmInspection(
     buildHelmReleaseValuesCommand(input),
@@ -43,7 +42,7 @@ export async function readExistingKubernetesInstallRelease(
     false,
   );
   const values: HelmJsonObject = parseHelmValues(valuesResult.stdout);
-  return { install: parseExistingKubernetesInstall(values), revision: release.revision, values };
+  return { install: parseExistingKubernetesInstall(values), values };
 }
 
 function buildHelmReleaseListCommand(input: KubernetesInstallDeploymentInput): string[] {
@@ -71,16 +70,20 @@ function readNamedHelmRelease(output: string, releaseName: string): HelmReleaseS
   if (candidate === undefined || !isHelmJsonObject(candidate) || typeof candidate.status !== 'string') {
     return candidate === undefined ? null : invalidHelmReleaseLookup();
   }
-  const revision: JsonValue | undefined = candidate.revision;
-  const parsedRevision: number | null = parseHelmRevision(revision);
-  if (parsedRevision === null) {
-    return invalidHelmReleaseLookup();
-  }
-  return { name: releaseName, revision: parsedRevision, status: candidate.status };
+  return { name: releaseName, status: candidate.status };
 }
 
 function invalidHelmReleaseLookup(): never {
   throw new Error('Helm release lookup returned a release without a status.');
+}
+
+function requireDeployedHelmRelease(release: HelmReleaseSummary): void {
+  if (release.status === 'deployed') {
+    return;
+  }
+  throw new Error(
+    `The existing Helm release ${release.name} has status ${release.status}. Resolve or uninstall that release before retrying compartment install.`,
+  );
 }
 
 function parseHelmValues(output: string): HelmJsonObject {

@@ -322,7 +322,7 @@ The endpoint must satisfy all of these constraints:
 - no node runtime mirror configuration;
 - no insecure HTTP registry;
 - no installer-managed customer-wide CA installation;
-- stable across ordinary Helm upgrades;
+- stable for the lifetime of the installation;
 - reachable by kubelet/containerd on every eligible worker node;
 - protected by repository-scoped authentication.
 
@@ -333,9 +333,8 @@ ClusterIPs. Compartment never installs the CA or mutates node host or container 
 
 This avoids the external DNS dependency and rebinding-policy failures of an address-encoding wildcard DNS name such
 as `<dashed-cluster-ip>.sslip.io`. The tradeoffs are that image references contain a non-semantic IP address and the
-operator must pre-provision node trust plus a CA issuer, rather than using the managed public ACME issuer. Ordinary
-Helm upgrades retain the Service and address; a reinstall allocates a new address and the installer deliberately
-derives a new registry identity and Certificate.
+operator must pre-provision node trust plus a CA issuer, rather than using the managed public ACME issuer. A fresh
+installation allocates a new address and deliberately derives a new registry identity and Certificate.
 
 The proof must explicitly cover:
 
@@ -1158,7 +1157,6 @@ At minimum:
 - install retry after every retained stage;
 - system-domain set, verify, activate, and reset-managed;
 - public-route denial for every private surface;
-- upgrade of the new architecture after its first release.
 
 ## Future cluster-provisioning mode
 

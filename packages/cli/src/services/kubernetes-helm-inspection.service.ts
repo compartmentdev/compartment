@@ -5,16 +5,6 @@ import { formatKubernetesCommandExecutionFailure, readCommandDiagnostics } from 
 
 const kubernetesInspectionTimeoutMs: number = 30_000;
 
-export function parseHelmRevision(value: JsonValue | undefined): number | null {
-  if (typeof value === 'number' && Number.isSafeInteger(value)) {
-    return value;
-  }
-  if (typeof value === 'string' && /^\d+$/u.test(value)) {
-    return Number(value);
-  }
-  return null;
-}
-
 export function isHelmJsonObject(value: JsonValue | undefined): value is Record<string, JsonValue> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

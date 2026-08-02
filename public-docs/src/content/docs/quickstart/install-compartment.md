@@ -202,20 +202,12 @@ registry identity from that IPv4 address. Installation stops with remediation in
 does not satisfy those requirements.
 
 The command installs the matching bundled chart, creates the first owner, and saves the CLI session. If it stops
-before owner creation, repair the reported cluster or Helm condition and retry with the same release coordinates
-and the intended values file. A retry compares the complete desired Helm values with the deployed release. Identical
-values keep the fast resume path without an upgrade; changed, added, or removed values are listed and reconciled
-through Helm before owner creation resumes.
+before owner creation, repair the reported cluster or Helm condition and retry with the same release coordinates and
+unchanged intended values. Platform replacements are installed fresh in an empty namespace.
 
 After owner creation has completed, rerunning the same command authenticates that original owner and returns a fresh
 CLI session instead of attempting to initialize the installation again. The base domain, organization name and slug,
 owner email, and owner password must still match the existing installation.
-
-During an upgrade, the installer records the currently deployed Helm revision. If the two-stage chart update fails,
-it attempts a standalone rollback to that revision and reports whether the release is deployed again. If automatic
-recovery also fails, copy the exact `helm rollback` command printed by the installer, then retry `compartment install`.
-Do not use Helm resource replacement flags for this recovery path; retained registry and application data must not be
-recreated.
 
 ## Public routing and TLS
 

@@ -75,9 +75,9 @@ describe('platform k3d e2e shard runner', () => {
   it('assigns a unique port range to the minimal gVisor build shard', () => {
     expect(buildPlatformK3dShardEnvironment('gvisor-build', {})).toMatchObject({
       COMPARTMENT_E2E_GVISOR_ENABLED: '1',
-      COMPARTMENT_E2E_HTTP_PORT: '18680',
-      COMPARTMENT_E2E_HTTPS_PORT: '19043',
-      COMPARTMENT_E2E_REGISTRY_PORT: '16100',
+      COMPARTMENT_E2E_HTTP_PORT: '18580',
+      COMPARTMENT_E2E_HTTPS_PORT: '18943',
+      COMPARTMENT_E2E_REGISTRY_PORT: '16000',
     });
     expect(
       buildPlatformK3dShardEnvironment('build-matrix-a', {
@@ -106,7 +106,6 @@ describe('platform k3d e2e shard runner', () => {
       'managed-install',
       'retained-state',
     ]);
-    expect(readPlatformK3dShardSuites('upgrade')).toEqual(['upgrade']);
   });
 
   it('cleans successful and failed runs by default while preserving the original failure', async () => {

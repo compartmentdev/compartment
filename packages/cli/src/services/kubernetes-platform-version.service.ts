@@ -21,7 +21,7 @@ export function resolvePackagedKubernetesPlatformVersion(): string | undefined {
   return undefined;
 }
 
-export function readKubernetesPlatformImageTag(value: string): string {
+function readKubernetesPlatformImageTag(value: string): string {
   const normalized: string = value.trim();
   if (!imageTagPattern.test(normalized)) {
     throw new Error('Platform version must be a valid image tag.');
