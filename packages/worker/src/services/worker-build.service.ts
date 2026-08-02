@@ -1,6 +1,7 @@
 import {
   buildCompartmentArtifactImageRepository,
   buildCompartmentArtifactImageTag,
+  retargetCompartmentArtifactImageDigestRef,
   type WorkerClaimedDeployment,
 } from '@compartment/contracts';
 import type { DockerBuildImageResult, DockerProgressLine, DockerRegistryCredentials } from '@compartment/docker';
@@ -189,10 +190,14 @@ function readReusableArtifactImageRef(
   artifactRegistry: WorkerArtifactRegistryConfig,
 ): string | null {
   const imageRef: string | null = deployment.artifact.imageRef;
-  const expectedRepository: string = `${artifactRegistry.address}/${buildReleaseImageRepository(deployment)}`;
-  return imageRef !== null && imageRef.startsWith(`${expectedRepository}@sha256:`) && isDigestPinnedImageRef(imageRef)
-    ? imageRef
-    : null;
+  if (imageRef === null) {
+    return null;
+  }
+  return retargetCompartmentArtifactImageDigestRef(
+    artifactRegistry.address,
+    buildReleaseImageRepository(deployment),
+    imageRef,
+  );
 }
 
 function buildReleaseImageRepository(deployment: WorkerClaimedDeployment): string {

@@ -39,6 +39,7 @@ export {
 export {
   buildCompartmentArtifactImageRepository,
   buildCompartmentArtifactImageTag,
+  retargetCompartmentArtifactImageDigestRef,
   type RegistryInstallVerificationOutput,
 } from './contracts/artifact-image.contract';
 export { compartmentRoutesFileName } from './contracts/compartment-routes-guide.contract';

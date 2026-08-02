@@ -33,6 +33,8 @@ import {
 import { decryptTenantProjection } from '../tenant-workload-projections';
 import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
 import { restartActiveCandidate } from './worker-deployment-restart.service';
+import type { WorkerArtifactRegistryConfig } from '../worker-artifact-registry.types';
+import { retargetWorkerDeploymentArtifactImages } from '../worker-artifact-registry';
 
 const releaseTimeoutMs: number = 600_000;
 const activeReadinessCheckCount: number = 6;
@@ -42,9 +44,11 @@ export async function reconcileDeploymentTarget(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
+  artifactRegistry: WorkerArtifactRegistryConfig,
   tenantSecretsKek: TenantSecretsKeyring,
   scheduling?: KubeWorkloadScheduling,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
+  target = retargetWorkerDeploymentArtifactImages(target, artifactRegistry);
   if (await reconcileStopState(request, runtime, target, tenantSecretsKek, scheduling)) {
     return [];
   }

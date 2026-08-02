@@ -9,11 +9,16 @@ existing-cluster preflight before applying it.
 - Helm 4.x
 - an existing Ingress Controller
 - cert-manager
+- an existing cert-manager CA Issuer or ClusterIssuer whose CA is already trusted by every node container runtime
 - NetworkPolicy enforcement
 - persistent storage
 - installer access to the namespaced and cluster-scoped resources rendered by the chart
 
 The chart does not install or disable cluster infrastructure and does not mutate nodes.
+
+The registry uses its private Service ClusterIP directly in image references and requests a certificate with that IP
+address in its SAN. Public ACME issuers cannot issue certificates for private IP addresses. Installation therefore
+fails unless the configured `registry.issuerRef` selects a CA issuer whose CA is already in every node's trust store.
 
 gVisor is an optional build-isolation enhancement. By default, ephemeral source-build Pods use each build node's
 default container runtime. To add kernel-level sandboxing, install `runsc` on the build nodes, expose it through a

@@ -81,6 +81,7 @@ class DeploymentReconcileArea implements KubeControllerHost {
         this.request,
         this.runtime,
         claimed.target,
+        this.artifactRegistry,
         this.tenantSecretsKek,
         this.scheduling,
       ),

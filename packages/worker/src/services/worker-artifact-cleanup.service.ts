@@ -30,7 +30,7 @@ export async function cleanupWorkerArtifacts(
 }
 
 async function deleteRegistryManifest(imageRef: string, artifactRegistry: WorkerArtifactRegistryConfig): Promise<void> {
-  const manifest: RegistryManifestRef = parseRegistryManifestRef(imageRef, artifactRegistry.address);
+  const manifest: RegistryManifestRef = parseRegistryManifestRef(imageRef);
   const credential: RegistryCredential = issueCleanupCredential(
     artifactRegistry.credentialSigningKey,
     readProjectId(manifest.repository),
@@ -69,18 +69,20 @@ function buildBasicAuthorization(credential: RegistryCredential): string {
   return `Basic ${encodedCredential}`;
 }
 
-function parseRegistryManifestRef(imageRef: string, artifactRegistryAddress: string): RegistryManifestRef {
+function parseRegistryManifestRef(imageRef: string): RegistryManifestRef {
   const digestSeparatorIndex: number = imageRef.lastIndexOf('@');
-  const repositoryPrefix: string = `${artifactRegistryAddress}/`;
+  const repositoryMarker: string = '/projects/';
+  const repositoryIndex: number = imageRef.lastIndexOf(repositoryMarker);
   if (
-    digestSeparatorIndex <= repositoryPrefix.length ||
+    repositoryIndex < 1 ||
+    digestSeparatorIndex <= repositoryIndex + repositoryMarker.length ||
     digestSeparatorIndex === imageRef.length - 1 ||
-    !imageRef.startsWith(repositoryPrefix)
+    !/^sha256:[a-f0-9]{64}$/u.test(imageRef.slice(digestSeparatorIndex + 1))
   ) {
-    throw new Error(`Expected cleanup image ref "${imageRef}" to belong to ${artifactRegistryAddress}.`);
+    throw new Error(`Expected cleanup image ref "${imageRef}" to contain a Compartment artifact digest.`);
   }
   return {
     digest: imageRef.slice(digestSeparatorIndex + 1),
-    repository: imageRef.slice(repositoryPrefix.length, digestSeparatorIndex),
+    repository: imageRef.slice(repositoryIndex + 1, digestSeparatorIndex),
   };
 }

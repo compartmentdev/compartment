@@ -9,6 +9,7 @@ import {
   kubeApplicationIdentityName,
   kubeNamespaceName,
   type ApplyBundle,
+  type KubeDeploymentManifest,
   type KubeManifest,
   type KubeRuntime,
   type KubeWorkloadScheduling,
@@ -17,6 +18,14 @@ import type { CompartmentRequester } from '@compartment/sdk';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { reconcileDeploymentTarget as reconcileDeploymentTargetWithKek } from '../src/services/worker-deployment-reconcile.service';
 import { encryptTestTenantEnvironment, testTenantSecretsKek } from './tenant-secret-test.fixtures';
+import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
+
+const artifactRegistry: WorkerArtifactRegistryConfig = {
+  address: '10.43.199.7:443',
+  credentialSigningKey: 'registry-signing-key-with-at-least-32-characters',
+  internalAddress: 'registry-internal.example',
+  internalUrl: 'http://registry-internal.example',
+};
 
 interface ReconcileMocks {
   applyNetworkPolicy: Mock;
@@ -37,6 +46,7 @@ async function reconcileDeploymentTarget(
     request,
     kubeRuntime,
     reconcileTarget,
+    artifactRegistry,
     testTenantSecretsKek,
     scheduling,
   );
@@ -123,6 +133,12 @@ describe('deployment reconciliation', (): void => {
     expect(runtime.apply).toHaveBeenCalledOnce();
     const bundle: ApplyBundle = runtime.apply.mock.calls[0]?.[0] as ApplyBundle;
     expect(bundle.objects.some((object: KubeManifest): boolean => object.kind === 'Deployment')).toBe(true);
+    const deployment: KubeDeploymentManifest | undefined = bundle.objects.find(
+      (object: KubeManifest): object is KubeDeploymentManifest => object.kind === 'Deployment',
+    );
+    expect(deployment?.spec?.template.spec.containers[0]?.image).toBe(
+      `10.43.199.7:443/projects/prj_1/services/svc_1@sha256:${'a'.repeat(64)}`,
+    );
     expect(bundle.objects.find((object: KubeManifest): boolean => object.kind === 'Secret')?.stringData).toEqual({
       PORT: '3000',
     });
@@ -365,7 +381,7 @@ function projection(releaseCommand: string | null): DeploymentReconcileProjectio
     environmentId: 'env_1',
     environmentName: 'production',
     env: encryptTestTenantEnvironment({ PORT: '3000' }),
-    image: 'registry.example/app@sha256:candidate',
+    image: `10.43.250.250:443/projects/prj_1/services/svc_1@sha256:${'a'.repeat(64)}`,
     imagePullSecretId: 'prj_1',
     namespaceId: 'prj_1',
     organizationId: 'org_1',

@@ -138,6 +138,8 @@ The operator must provide:
 - permissions required by the Helm release and project bootstrap model;
 - an installed and ready Ingress Controller with an IngressClass;
 - installed and ready cert-manager CRDs and controllers;
+- an existing cert-manager CA Issuer or ClusterIssuer whose CA is already in the trust store of every node container
+  runtime;
 - a usable StorageClass;
 - a CNI that enforces the NetworkPolicy features used by Compartment;
 - working cluster DNS and node access to the registries that contain signed Compartment platform images;
@@ -148,7 +150,8 @@ The Service-routing requirement remains a recorded prerequisite because the inst
 Once the retained registry-auth Service exists, the installer uses its allocated ClusterIP directly as the registry
 host. No base-domain record, broker allocation, third-party wildcard DNS service, node host alias, or container-runtime
 mirror is involved. The registry Certificate carries that address in `spec.ipAddresses`; the selected issuer must
-produce a chain already trusted by every node runtime. Reinstalling creates a new Service address, so every install
+be a CA issuer that produces a chain already trusted by every node runtime. Public ACME issuers cannot issue for a
+private ClusterIP, and installation does not proceed without this prerequisite. Reinstalling creates a new Service address, so every install
 recomputes the registry host after the foundation stage rather than preserving a previous address.
 
 The installer performs non-persistent preflight checks for:
