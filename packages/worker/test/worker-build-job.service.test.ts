@@ -77,7 +77,10 @@ describe('runWorkerBuildJob', (): void => {
           exitCode: 1,
           finalize,
           jobName: 'job-art-123',
-          logs: `${JSON.stringify({ message: 'source archive request failed', type: 'failure' })}\n`,
+          logs:
+            `${JSON.stringify({ progress: { message: '#12 exporting cache', stream: 'stdout' }, type: 'progress' })}\n` +
+            `${JSON.stringify({ progress: { message: 'failed to push: connection reset', stream: 'stderr' }, type: 'progress' })}\n` +
+            `${JSON.stringify({ message: 'buildctl failed', type: 'failure' })}\n`,
           podName: 'job-art-123-pod',
           status: 'failed',
         }),
@@ -99,7 +102,12 @@ describe('runWorkerBuildJob', (): void => {
         id: 'art_123',
         internalToken: 'runtime-control-token',
       }),
-    ).rejects.toThrow('Sandboxed build Job job-art-123 failed: source archive request failed');
+    ).rejects.toThrow(
+      'Sandboxed build Job job-art-123 failed: buildctl failed\n' +
+        'BuildKit terminal output:\n' +
+        '[stdout] #12 exporting cache\n' +
+        '[stderr] failed to push: connection reset',
+    );
     expect(finalize).toHaveBeenCalledOnce();
   });
 });

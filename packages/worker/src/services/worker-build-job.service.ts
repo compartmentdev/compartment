@@ -141,10 +141,19 @@ function readCapturedBuildResult(logs: string): DockerBuildImageResult {
 }
 
 function readCapturedBuildFailure(logs: string): string {
-  const record: WorkerBuildJobLogRecord | undefined = readBuildLogRecords(logs).findLast(
+  const records: WorkerBuildJobLogRecord[] = readBuildLogRecords(logs);
+  const record: WorkerBuildJobLogRecord | undefined = records.findLast(
     (candidate: WorkerBuildJobLogRecord): boolean => candidate.type === 'failure',
   );
-  return record?.type === 'failure' ? record.message : 'runner exited without a structured failure';
+  const message: string = record?.type === 'failure' ? record.message : 'runner exited without a structured failure';
+  const terminalProgress: string = records
+    .filter((candidate: WorkerBuildJobLogRecord): boolean => candidate.type === 'progress')
+    .slice(-20)
+    .map((candidate: WorkerBuildJobLogRecord): string =>
+      candidate.type === 'progress' ? `[${candidate.progress.stream}] ${candidate.progress.message}` : '',
+    )
+    .join('\n');
+  return terminalProgress === '' ? message : `${message}\nBuildKit terminal output:\n${terminalProgress}`;
 }
 
 function readBuildLogRecords(logs: string): WorkerBuildJobLogRecord[] {
