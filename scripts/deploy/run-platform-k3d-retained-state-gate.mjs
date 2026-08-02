@@ -117,6 +117,7 @@ async function runRetainedInstallStateGate() {
       `buildkit.namespace=${buildNamespace}`,
       '--set',
       'productLogs.enabled=false',
+      ...registryHelmArgs(registryClusterIp),
     ]);
     const reinstalledRegistryClusterIp = readServiceClusterIp();
     helm([
