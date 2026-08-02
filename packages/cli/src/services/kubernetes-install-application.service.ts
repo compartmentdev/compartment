@@ -33,6 +33,7 @@ import {
 } from './kubernetes-install-tls.service';
 import { isReservedKubernetesInstallLocalhostDomain } from '../kubernetes-install-domain';
 import type { KubernetesOperatorIssuerAssessment } from './kubernetes-operator-issuer-trust.service.types';
+import { assertRegistryIpIssuerAssessment } from './kubernetes-operator-issuer-trust.service';
 import { inspectKubernetesBuildRuntime } from './kubernetes-build-runtime-preflight.service';
 import type { KubernetesBuildRuntimeAssessment } from './kubernetes-build-runtime-preflight.service.types';
 import { resolveKubernetesBuildRuntimeClassName } from './kubernetes-build-runtime-values.service';
@@ -81,10 +82,10 @@ function reportBuildRuntimeAssessment(
 }
 
 async function verifyOperatorCertificateSources(input: KubernetesInstallDeploymentInput): Promise<void> {
+  assertRegistryIpIssuerAssessment(await assertOperatorRegistryIssuer(input));
   if (input.domainMode !== 'custom') {
     return;
   }
-  reportIssuerTrustWarning(input, await assertOperatorRegistryIssuer(input));
   if (isReservedKubernetesInstallLocalhostDomain(input.baseDomain)) {
     return;
   }

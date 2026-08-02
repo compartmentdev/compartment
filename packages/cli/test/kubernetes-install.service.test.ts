@@ -43,8 +43,8 @@ type RunCommand = (command: readonly string[]) => Promise<CommandResult>;
 type ReadChartValues = (chartPath: string) => Promise<JsonValue>;
 const mocks: KubernetesInstallServiceMocks = vi.hoisted(
   (): KubernetesInstallServiceMocks => ({
-    assertRegistryDns: vi.fn(async (): Promise<string | null> => await Promise.resolve(null)),
     readChartValues: vi.fn<ReadChartValues>().mockResolvedValue({}),
+    readRegistryServiceAddresses: vi.fn(async (): Promise<string[]> => await Promise.resolve([])),
     runCommand: vi.fn<RunCommand>(),
     verifyRegistryNodePull: vi.fn(async (): Promise<void> => await Promise.resolve()),
     usesOperatorTlsSecret: vi.fn(async (): Promise<boolean> => await Promise.resolve(false)),
@@ -55,6 +55,7 @@ const mocks: KubernetesInstallServiceMocks = vi.hoisted(
 );
 const detectedPublicIpv4: string = [8, 8, 8, 8].join('.');
 const configuredPublicIpv4: string = [8, 8, 4, 4].join('.');
+const registryClusterIp: string = [10, 43, 250, 250].join('.');
 let operatorValuesDirectory: string;
 
 vi.mock('../src/command-runner', (): object => ({
@@ -70,8 +71,8 @@ vi.mock('../src/services/kubernetes-image-trust.service', (): object => ({
 vi.mock('../src/services/kubernetes-install-registry-verification.service', (): object => ({
   verifyKubernetesInstallRegistryNodePull: mocks.verifyRegistryNodePull,
 }));
-vi.mock('../src/services/kubernetes-install-registry-dns-wait.service', (): object => ({
-  waitForKubernetesInstallRegistryDns: mocks.assertRegistryDns,
+vi.mock('../src/services/kubernetes-install-registry-service.service', (): object => ({
+  readRegistryServiceAddresses: mocks.readRegistryServiceAddresses,
 }));
 vi.mock('../src/services/kubernetes-install-tls.service', (): object => ({
   usesOperatorOwnedKubernetesTlsSecret: mocks.usesOperatorTlsSecret,
@@ -87,7 +88,7 @@ const managedDeploymentInput: KubernetesInstallDeploymentInput = {
   ingressClassName: 'traefik',
   managedDomainRequestedLabelSource: 'Acme Dev',
   namespace: 'compartment',
-  registryHostname: 'registry.acme.compartment.run',
+  registryHostname: '',
   registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'compartment-platform' },
   releaseName: 'compartment',
   valuesPath: '/tmp/compartment-values.yaml',
@@ -106,8 +107,8 @@ describe('Kubernetes install deployment', (): void => {
 
   beforeEach((): void => {
     mocks.runCommand.mockReset();
-    mocks.assertRegistryDns.mockReset().mockResolvedValue(null);
     mocks.readChartValues.mockReset().mockResolvedValue({});
+    mocks.readRegistryServiceAddresses.mockReset().mockResolvedValue([registryClusterIp]);
     mocks.verifyRegistryNodePull.mockReset().mockResolvedValue(undefined);
     mocks.usesOperatorTlsSecret.mockReset().mockResolvedValue(false);
     mocks.writeVerifiedImages.mockReset().mockImplementation(async (input: ImageTrustWriteInput): Promise<void> => {
@@ -336,7 +337,6 @@ describe('Kubernetes install deployment', (): void => {
       expect.stringMatching(/^Installing foundation \(postgres, registry\).* \u2713 /u),
       expect.stringMatching(/^Waiting for Ingress endpoint.* \u2713 .*8\.8\.8\.8/u),
       expect.stringMatching(/^Requesting managed domain.* \u2713 /u),
-      expect.stringMatching(/^Checking private registry DNS from cluster nodes.* \u2713 /u),
       expect.stringMatching(/^Saving installation configuration.* \u2713 /u),
       expect.stringMatching(/^Waiting for platform Certificates.* \u2713 /u),
       expect.stringMatching(/^Waiting for platform pods \(api, worker, caddy\).* \u2713 /u),
@@ -389,21 +389,24 @@ describe('Kubernetes install deployment', (): void => {
     expect(state.installValues[0]).toMatchObject({
       platform: { installationId: 'installation-123' },
       registry: {
-        hostname: 'registry.apps.example.com',
+        hostname: '',
         issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
       },
       secrets: { installToken: 'existing-install-token' },
     });
     expect(state.retainedState).toMatchObject({
-      registryHostname: 'registry.apps.example.com',
+      registryHostname: registryClusterIp,
       registryIssuerRef: { kind: 'Issuer', name: 'compartment-platform' },
     });
+    expect(state.retainedState?.registryHostname).not.toContain('apps.example.com');
   });
 
   it('reuses retained allocation state after the Helm release was removed', async (): Promise<void> => {
     const retainedState: KubernetesInstallState = readRetainedState(existingInstallValues('full', 'managed'));
     retainedState.brokerUrl = '';
     const state: InstallHarnessState = createInstallHarnessState(null, retainedState);
+    const reinstalledRegistryClusterIp: string = [10, 43, 199, 7].join('.');
+    mocks.readRegistryServiceAddresses.mockResolvedValue([reinstalledRegistryClusterIp]);
     mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
     vi.stubGlobal(
       'fetch',
@@ -420,6 +423,8 @@ describe('Kubernetes install deployment', (): void => {
     });
     expect(state.installValues[0]?.platform.managedDomainBrokerUrl).toBe('https://broker.compartment.run');
     expect(readResolvedInstallValues(state).platform.managedDomainBrokerUrl).toBe('https://broker.compartment.run');
+    expect(readResolvedInstallValues(state).registry.hostname).toBe(reinstalledRegistryClusterIp);
+    expect(readResolvedInstallValues(state).registry.hostname).not.toContain(retainedState.baseDomain);
   });
 
   it('keeps the broker URL that owns a retained managed allocation', async (): Promise<void> => {
@@ -479,7 +484,7 @@ describe('Kubernetes install deployment', (): void => {
     });
   });
 
-  it('resumes owner bootstrap without rendering an existing full release', async (): Promise<void> => {
+  it('migrates a legacy full release to the current registry Service address before owner bootstrap', async (): Promise<void> => {
     mocks.readChartValues.mockResolvedValue({ secrets: { tenantSecretsPreviousKek: null } });
     const state: InstallHarnessState = createInstallHarnessState(existingInstallValues('full', 'managed'));
     mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
@@ -492,8 +497,9 @@ describe('Kubernetes install deployment', (): void => {
       baseDomain: 'acme.compartment.run',
       installToken: 'existing-install-token',
     });
-    expect(readHelmStages()).toEqual([]);
-    expect(state.events).toEqual(['kubectl:certificate']);
+    expect(readHelmStages()).toEqual(['foundation', 'foundation', 'full']);
+    expect(state.events).toEqual(['helm:foundation', 'helm:foundation', 'helm:full', 'kubectl:certificate']);
+    expect(readResolvedInstallValues(state).registry.hostname).toBe(registryClusterIp);
   });
   it('reconciles changed operator certificate sources before resuming a full release', async (): Promise<void> => {
     const state: InstallHarnessState = createInstallHarnessState(existingInstallValues('full', 'custom'));
@@ -527,9 +533,8 @@ describe('Kubernetes install deployment', (): void => {
     expect(state.installValues[0]?.ingress?.className).toBe('nginx');
     expect(state.installValues[0]?.ingress?.endpoint.value).toBe(configuredPublicIpv4);
     expect(progressEvents).toContain(
-      'Reconciling changed Helm values: ingress.className, ingress.endpoint.value, ingress.targetsJson, registry.issuerRef.kind, registry.issuerRef.name',
+      'Reconciling changed Helm values: ingress.className, ingress.endpoint.value, ingress.targetsJson, registry.hostname, registry.issuerRef.kind, registry.issuerRef.name',
     );
-    expect(mocks.assertRegistryDns).toHaveBeenCalledBefore(mocks.verifyRegistryNodePull);
   });
   it('reconciles a removed managed override without reserving another domain', async (): Promise<void> => {
     const state: InstallHarnessState = createInstallHarnessState(
@@ -557,7 +562,7 @@ describe('Kubernetes install deployment', (): void => {
     });
 
     expect(progressEvents).toContain(
-      'Reconciling changed Helm values: ingress.endpoint.value, ingress.targetsJson, storage.storageClass',
+      'Reconciling changed Helm values: ingress.endpoint.value, ingress.targetsJson, registry.hostname, storage.storageClass',
     );
     expect(readHelmStages()).toEqual(['foundation', 'foundation', 'full']);
     expect(brokerUrls.some((url: string): boolean => url.startsWith('https://broker.compartment.run'))).toBe(false);
@@ -644,7 +649,7 @@ describe('Kubernetes install deployment', (): void => {
         publicProtocol: 'https',
       },
       registry: {
-        hostname: 'registry.apps.example.com',
+        hostname: registryClusterIp,
         issuerRef: { kind: 'Issuer', name: 'customer-platform' },
       },
     });
@@ -877,7 +882,7 @@ function customDeploymentInput(
     brokerUrl: undefined,
     domainMode: 'custom',
     managedDomainRequestedLabelSource: undefined,
-    registryHostname: 'registry.apps.example.com',
+    registryHostname: '',
     ...overrides,
   };
 }

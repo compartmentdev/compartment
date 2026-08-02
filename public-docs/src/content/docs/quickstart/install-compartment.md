@@ -46,9 +46,9 @@ Before installation, also provide:
 
 - `helm` 4.0.0 or newer on `PATH` (`helm version --short`);
 - `kubectl` 1.30.0 or newer on `PATH`, compatible with the target Kubernetes server (`kubectl version --client`);
-- an Issuer or ClusterIssuer for operator-owned domains whose certificates are trusted by every cluster node and the
-  machine running the CLI;
-- node DNS for `registry.<base-domain>` that returns the retained registry-auth Service ClusterIP;
+- an Issuer or ClusterIssuer for operator-owned public domains;
+- a separate cert-manager CA Issuer or ClusterIssuer for the private registry, with its CA already trusted by every
+  node container runtime and the machine running the CLI;
 - NetworkPolicy enforcement;
 - a persistent storage class;
 - credentials permitted to install the Helm release and its cluster-scoped policy resources.
@@ -56,11 +56,10 @@ Before installation, also provide:
 The installer does not install or disable an ingress controller, reserve node ports, or change node container-runtime
 configuration.
 
-The registry record deliberately maps a public DNS name to a cluster-only address. On a first install, let the
-foundation stage create the retained Service. If the CLI stops, publish the exact record it prints, for example
-`registry.apps.example.com A 10.43.251.103`, on every node resolver, then rerun the same install command to resume.
-Resolvers that block public-to-private answers as DNS rebinding must allowlist the base domain; for apps.example.com
-with dnsmasq, configure `rebind-domain-ok=/apps.example.com/`.
+The private registry uses its retained Service ClusterIP directly. The installer derives this address after the
+foundation stage and requests a Certificate with the address in its IP SAN. It does not require registry DNS or
+modify node host/runtime configuration. Public ACME issuers cannot issue this private IP certificate; configure
+`registry.issuerRef` with the node-trusted CA issuer. Reinstalling recomputes the address and registry Certificate.
 
 Optional Helm values can assign platform, build, and tenant workloads to separately labeled and tainted nodes through
 `nodePools.system`, `nodePools.build`, and `nodePools.tenant`. Leave all three pools empty for single-node clusters.
@@ -125,11 +124,12 @@ Interactive installation discovers the cluster choices and prompts when more tha
 KUBECONFIG=./kubeconfig compartment install --kube-context production
 ```
 
-The managed Compartment domain is the default domain choice and requires no prior setup or domain preparation. The
+The managed Compartment domain is the default public-domain choice and requires no prior domain preparation. The
 installer allocates the domain with the discovered IPv4 or IPv6 Ingress endpoint, retains the returned acme-dns token,
 and waits for the resulting Certificates to become ready. If the Ingress endpoint is a hostname, managed domains are
 unavailable because the broker publishes only A/AAAA records. The installer does not resolve cloud load-balancer
-hostnames into unstable IPs; choose an operator-owned base domain instead.
+hostnames into unstable IPs; choose an operator-owned base domain instead. Both domain modes still require the
+node-trusted registry CA issuer described below.
 
 When you select an operator-owned base domain, the wizard also asks how public TLS is provided. Choose an existing
 cert-manager `Issuer` or `ClusterIssuer`, or choose an existing `kubernetes.io/tls` Secret. The Secret option also asks
@@ -137,12 +137,10 @@ for an issuer for the private registry certificate. A namespaced `Issuer` or Sec
 (`--namespace`, default `compartment`); a `ClusterIssuer` is cluster-scoped. Create the namespace first when you use
 namespaced certificate resources.
 
-Do not select an issuer with `spec.selfSigned`: node container runtimes will reject the private registry certificate,
-and the CLI will reject the public control-plane certificate. An ACME issuer backed by a publicly trusted CA is the
-usual choice; a private ACME server does not imply public trust.
-An issuer with `spec.ca` is supported only when that private CA is installed in the trust stores of every Kubernetes
-node and the machine running the CLI; the wizard requires confirmation. The same trust requirements apply when public
-TLS comes from an existing Secret and the private registry uses a separate issuer.
+Do not select an issuer with `spec.selfSigned`. A public ACME issuer is appropriate for operator-owned public TLS but
+cannot issue the registry's private ClusterIP certificate. The registry issuer must use `spec.ca`, and that private CA
+must be installed in the trust stores of every Kubernetes node and the machine running the CLI; the wizard requires
+confirmation.
 Install the CA on every node before installing Compartment. If you add it after the node container runtime starts,
 restart the runtime so it reloads the trust store; run `systemctl restart k3s` on k3s servers and
 `systemctl restart k3s-agent` on agent nodes. Node.js does not use the system CA store by default, so run the CLI with
@@ -190,7 +188,7 @@ tls:
 registry:
   issuerRef:
     kind: ClusterIssuer
-    name: letsencrypt-production
+    name: node-trusted-registry-ca
 storage:
   storageClass: local-path
 ```
@@ -199,9 +197,9 @@ Use `--ingress-endpoint` only when the selected controller does not publish an a
 one IPv4 address, IPv6 address, or DNS hostname.
 
 The preflight checks APIs, cert-manager, selected issuer trust hazards, ingress, storage, Helm ownership, namespace
-policy labels, and permissions. As soon as the retained registry Service has a ClusterIP, installation also checks
-the required registry DNS record. Installation stops with remediation instructions when the existing cluster does
-not satisfy those requirements.
+policy labels, and permissions. As soon as the retained registry Service has a ClusterIP, installation derives the
+registry identity from that IPv4 address. Installation stops with remediation instructions when the existing cluster
+does not satisfy those requirements.
 
 The command installs the matching bundled chart, creates the first owner, and saves the CLI session. If it stops
 before owner creation, repair the reported cluster or Helm condition and retry with the same release coordinates
@@ -242,18 +240,12 @@ contract. Compartment does not create or copy operator certificate material.
 ## Registry and builds
 
 The bundled registry is private. Every project receives repository-scoped registry credentials and its own image pull
-Secret. Nodes resolve the operator-provided private registry hostname through cluster infrastructure; Compartment
-does not edit node files or restart node services.
+Secret. Nodes pull through the retained registry-auth Service IPv4 ClusterIP; Compartment does not edit node files or
+restart node services.
 
-The registry hostname must resolve on every eligible node to the retained registry-auth Service ClusterIP, and its
-certificate chain must be trusted by each node container runtime. The platform certificate must also be trusted by
-the machine running the CLI. A self-signed issuer does not satisfy either requirement.
-
-For a newly allocated managed domain, the initial node DNS check reports the hostname and resolver result as a warning
-while public DNS is still propagating or negatively cached. The installer still pushes a unique acceptance image and
-asks every Ready node to pull it through the public registry hostname. DNS-specific pull failures are reported as a
-warning so propagation cannot strand a new managed installation; rerun the same install command after DNS resolves to
-repeat the check. Authentication, TLS, image-push, and other node-pull failures remain blocking.
+The registry certificate carries that ClusterIP in its IP SAN, and its CA must be trusted by each node container
+runtime. The installer pushes a unique acceptance image and asks every Ready node to pull it through the direct
+Service address. Address mismatch, reachability, authentication, TLS, image-push, and node-pull failures are blocking.
 
 Dockerfile and Railpack builds use an ephemeral rootless BuildKit sidecar under gVisor and produce OCI images. Build
 cache is stored in the project/service registry repository; no persistent cache volume is shared between tenants.

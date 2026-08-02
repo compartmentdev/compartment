@@ -114,7 +114,7 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 - secretKey: registry-hostname
   valuesSection: registry
   valueKey: hostname
-  policy: stable
+  policy: dynamic
 - secretKey: registry-issuer-ref-kind
   valuesSection: registryIssuerRef
   valueKey: kind
@@ -151,7 +151,7 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- $retainedValue := $encodedRetainedValue | b64dec -}}
 {{- $useRetainedValue := and $hasRetainedValue (not (and (eq $field.policy "deferred") (eq $retainedValue "[]"))) -}}
 {{- if $useRetainedValue -}}
-{{- if or (eq $field.policy "stable") (eq $field.policy "deferred") $useRetainedDomain -}}
+{{- if or (eq $field.policy "stable") (eq $field.policy "deferred") (and (eq $field.policy "domain") $useRetainedDomain) -}}
 {{- $_ := set (get $effective $field.valuesSection) $field.valueKey $retainedValue -}}
 {{- end -}}
 {{- end -}}
@@ -286,8 +286,13 @@ spec:
     {{- end }}
     kind: {{ .issuerRef.kind | quote }}
     name: {{ .issuerRef.name | quote }}
+  {{- if .ipAddress }}
+  ipAddresses:
+    - {{ .ipAddress | quote }}
+  {{- else }}
   dnsNames:
     - {{ .host | quote }}
+  {{- end }}
 {{- end }}
 
 {{- define "compartment.caddyIngressRule" -}}

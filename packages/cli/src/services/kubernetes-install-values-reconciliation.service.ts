@@ -1,4 +1,5 @@
 import { rm } from 'node:fs/promises';
+import { buildPrivateRegistryHost } from '@compartment/contracts';
 import type { JsonValue } from '@compartment/utils';
 import { readKubernetesChartValues } from './kubernetes-chart-values.service';
 import { createKubernetesInstallMaterializedDirectory } from './kubernetes-install-helm.service';
@@ -8,6 +9,7 @@ import {
   resolveInstallPublicIngress,
 } from './kubernetes-install-state-ingress.service';
 import { buildResolvedInstallValues } from './kubernetes-install-state.service';
+import { readRegistryServiceAddresses } from './kubernetes-install-registry-service.service';
 import type {
   ExistingKubernetesInstall,
   KubernetesInstallDeploymentInput,
@@ -81,11 +83,12 @@ async function buildDesiredResumeState(
   input: KubernetesInstallDeploymentInput,
   existingInstall: ExistingKubernetesInstall,
 ): Promise<KubernetesInstallState> {
+  const registryHostname: string = buildPrivateRegistryHost((await readRegistryServiceAddresses(input))[0]!);
   const state: KubernetesInstallState = applyKubernetesConfiguredIngressState(input, {
     ...existingInstall,
     acmeEmail: input.acmeEmail,
     ingressClassName: input.ingressClassName,
-    registryHostname: input.registryHostname === '' ? existingInstall.registryHostname : input.registryHostname,
+    registryHostname,
     registryIssuerRef:
       input.registryIssuerRef.name === '' ? existingInstall.registryIssuerRef : input.registryIssuerRef,
   });

@@ -10,9 +10,11 @@ import type {
   KubernetesRegistryAcceptancePod,
 } from './kubernetes-install-registry-verification.service.types';
 import { readReadyKubernetesNodeNames } from './kubernetes-ready-nodes.service';
-import { formatRegistryDnsRecords, readRegistryServiceAddresses } from './kubernetes-install-registry-dns.service';
+import {
+  assertRegistryServiceAddress,
+  readRegistryServiceAddresses,
+} from './kubernetes-install-registry-service.service';
 import { boundRegistryDiagnostic, readRegistryDiagnosticFailure } from './kubernetes-install-registry-diagnostics';
-import { createRegistryNodePullError } from './kubernetes-install-registry-verification-error';
 
 const verificationTimeoutMs: number = 5 * 60_000;
 const verificationSecretName: string = 'compartment-registry-acceptance';
@@ -30,7 +32,8 @@ export async function verifyKubernetesInstallRegistryNodePull(
     (_node: string, index: number): string => `registry-acceptance-${index.toString()}`,
   );
   const serviceAddresses: string[] = await readRegistryServiceAddresses(input);
-  await runNodePullVerification(input, registry, verification, nodes, podNames, serviceAddresses);
+  assertRegistryServiceAddress(registry.registryHostname, serviceAddresses);
+  await runNodePullVerification(input, registry, verification, nodes, podNames);
 }
 
 async function runNodePullVerification(
@@ -39,14 +42,13 @@ async function runNodePullVerification(
   verification: RegistryInstallVerificationOutput,
   nodes: readonly string[],
   podNames: string[],
-  serviceAddresses: readonly string[],
 ): Promise<void> {
   let verificationFailure: Error | null = null;
   try {
     await applyVerificationSecret(input, verification.dockerConfigJson);
     for (let index: number = 0; index < nodes.length; index += 1) {
       await applyVerificationPod(input, podNames[index]!, nodes[index]!, verification.imageRef);
-      await waitForVerificationPod(input, registry, serviceAddresses, podNames[index]!, nodes[index]!);
+      await waitForVerificationPod(input, registry, podNames[index]!, nodes[index]!);
     }
   } catch (error) {
     verificationFailure = error instanceof Error ? error : new Error('Registry node-pull verification failed.');
@@ -135,7 +137,6 @@ async function applyVerificationPod(
 async function waitForVerificationPod(
   input: KubernetesInstallDeploymentInput,
   registry: Pick<KubernetesInstallState, 'registryHostname' | 'registryIssuerRef'>,
-  serviceAddresses: readonly string[],
   podName: string,
   nodeName: string,
 ): Promise<void> {
@@ -145,12 +146,11 @@ async function waitForVerificationPod(
   );
   if (result.exitCode !== 0) {
     const diagnostics: string = await readVerificationPodDiagnostics(input, podName);
-    const records: string = formatRegistryDnsRecords(registry.registryHostname, serviceAddresses);
     const message: string = `${formatKubernetesCommandFailure(
       `Registry node pull failed on ${nodeName}`,
       result,
-    )}\n${diagnostics}\nRegistry prerequisites: required DNS record ${records}; the TLS certificate issued by ${registry.registryIssuerRef.kind}/${registry.registryIssuerRef.name} must be trusted by the node container runtime. Install a private CA before starting the runtime; if it was added later, restart the runtime (k3s server: systemctl restart k3s; k3s agent: systemctl restart k3s-agent).`;
-    throw createRegistryNodePullError(message, diagnostics);
+    )}\n${diagnostics}\nRegistry prerequisites: the retained Service address ${registry.registryHostname} must be reachable from the node, and the TLS certificate issued by ${registry.registryIssuerRef.kind}/${registry.registryIssuerRef.name} with that IP SAN must be trusted by the node container runtime. Install a private CA before starting the runtime; if it was added later, restart the runtime (k3s server: systemctl restart k3s; k3s agent: systemctl restart k3s-agent).`;
+    throw new Error(message);
   }
 }
 

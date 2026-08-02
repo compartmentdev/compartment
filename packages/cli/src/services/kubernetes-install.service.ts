@@ -23,9 +23,8 @@ import {
 import { mergeRetainedKubernetesInstallState } from './kubernetes-install-retained-state.service';
 import { buildResolvedInstallValues, resolveKubernetesInstallState } from './kubernetes-install-state.service';
 import {
-  checkKubernetesInstallRegistryDns,
   reportKubernetesInstallWarning,
-  verifyKubernetesInstallRegistryNodePullWithManagedDnsGrace,
+  verifyKubernetesInstallRegistryNodePullForInstall,
   verifyObservableKubernetesRegistry,
 } from './kubernetes-install-registry-warning.service';
 import { usesOperatorOwnedKubernetesTlsSecret } from './kubernetes-install-tls.service';
@@ -141,9 +140,7 @@ async function deployMaterializedKubernetesInstall(
     installToken,
     installationId,
   );
-  await checkKubernetesInstallRegistryDns(input, foundationInstall, 'custom');
   const state: KubernetesInstallState = await resolveKubernetesInstallState(input, foundationInstall);
-  await checkKubernetesInstallRegistryDns(input, state, 'managed');
   return await deployResolvedKubernetesInstall(input, material, installToken, state, recoveryRevision);
 }
 
@@ -226,11 +223,10 @@ async function resumeKubernetesOwnerBootstrap(
   existingInstall: ExistingKubernetesInstall,
 ): Promise<KubernetesInstallDeploymentResult> {
   const baseDomain: string = requireExistingBaseDomain(existingInstall);
-  await checkKubernetesInstallRegistryDns(input, existingInstall, existingInstall.domainMode);
   await waitForRequiredKubernetesPlatformCertificates(input, existingInstall);
   reportKubernetesInstallWarning(
     input,
-    await verifyKubernetesInstallRegistryNodePullWithManagedDnsGrace(input, existingInstall),
+    await verifyKubernetesInstallRegistryNodePullForInstall(input, existingInstall),
   );
   return await finishKubernetesInstall(
     resolveKubernetesInstallControlPlaneUrl(input.apiUrl, baseDomain, existingInstall.publicProtocol),

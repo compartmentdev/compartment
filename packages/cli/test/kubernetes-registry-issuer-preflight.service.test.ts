@@ -5,6 +5,7 @@ import {
   assertOperatorRegistryIssuer,
   assertOperatorTlsSecret,
 } from '../src/services/kubernetes-existing-cluster-preflight.cert-manager';
+import { assertRegistryIpIssuerAssessment } from '../src/services/kubernetes-operator-issuer-trust.service';
 import type { KubernetesOperatorIssuerAssessment } from '../src/services/kubernetes-operator-issuer-trust.service.types';
 
 vi.mock('../src/command-runner', (): object => ({
@@ -19,6 +20,12 @@ afterEach((): void => {
 });
 
 describe('operator registry issuer preflight', (): void => {
+  it('accepts only a CA issuer assessment for registry IP certificates', (): void => {
+    expect((): void => assertRegistryIpIssuerAssessment({ detail: 'Private CA.', trust: 'ca' })).not.toThrow();
+    expect((): void => assertRegistryIpIssuerAssessment({ detail: 'Public ACME.', trust: 'acme' })).toThrow(
+      'Private registry IP certificates require a cert-manager CA issuer',
+    );
+  });
   it('accepts an existing namespaced Issuer', async (): Promise<void> => {
     mockedRunCommand.mockResolvedValue(
       success('{"spec":{"acme":{"server":"https://acme-v02.api.letsencrypt.org/directory"}}}'),
@@ -52,7 +59,7 @@ describe('operator registry issuer preflight', (): void => {
     expect(assessment.detail).toContain('ACME does not guarantee public trust');
   });
 
-  it('rejects a self-signed issuer with both trust failures explained', async (): Promise<void> => {
+  it('rejects a self-signed issuer with the required registry CA trust explained', async (): Promise<void> => {
     mockedRunCommand.mockResolvedValue(success('{"spec":{"selfSigned":{}}}'));
 
     await expect(
@@ -63,7 +70,7 @@ describe('operator registry issuer preflight', (): void => {
         registryIssuerRef: { group: 'cert-manager.io', kind: 'ClusterIssuer', name: 'self-signed' },
       }),
     ).rejects.toThrow(
-      'uses spec.selfSigned and cannot satisfy an operator-owned installation. The private registry must present TLS trusted by every Kubernetes node, and the CLI public HTTPS probe must trust the platform certificate.',
+      'uses spec.selfSigned and cannot satisfy an operator-owned installation. Use a CA issuer whose CA is distributed to every node and the operator machine for the private registry.',
     );
   });
 

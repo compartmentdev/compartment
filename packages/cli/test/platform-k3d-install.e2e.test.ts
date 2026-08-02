@@ -157,7 +157,7 @@ async function createFreshCli(adminPassword?: string): Promise<SelfHostedUserSet
 }
 
 async function expectOperatorRegistryInstallValues(): Promise<void> {
-  const expectedHostname: string = `registry.${platformBaseDomain}`;
+  const expectedHostname: string = [10, 43, 250, 250].join('.');
   const configuredHostname: SelfHostedUserSetupCommandResult = await runKubectl([
     'get',
     'configmap/compartment-compartment',
@@ -177,7 +177,7 @@ async function expectOperatorRegistryInstallValues(): Promise<void> {
   const certificateHostname: SelfHostedUserSetupCommandResult = await runKubectl([
     'get',
     'certificate/compartment-compartment-registry',
-    '--output=jsonpath={.spec.dnsNames[0]}',
+    '--output=jsonpath={.spec.ipAddresses[0]}',
   ]);
   expectSuccessfulCommand(certificateHostname, 'read the registry Certificate hostname');
   expect(certificateHostname.stdout).toBe(expectedHostname);

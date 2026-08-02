@@ -42,9 +42,9 @@ Provide a cluster from the supported matrix, a working kube context, the listed 
 Controller with an IngressClass, cert-manager v1.21.0 with its CRDs and controller components ready, a usable
 StorageClass, and a CNI that enforces the NetworkPolicy features used by Compartment.
 
-Nodes must resolve the private A record for the Compartment registry zone. If a node resolver blocks DNS rebinding or
-public names that resolve to private addresses, the operator must allowlist that registry zone. For dnsmasq, configure
-`rebind-domain-ok` for the exact zone; use the equivalent scoped allowlist for other resolvers.
+The private registry uses the retained Service IPv4 ClusterIP directly and requires a cert-manager CA Issuer whose CA
+is already trusted by every node container runtime. The installer does not configure registry DNS or mutate node
+host/runtime files. Public ACME issuers cannot issue the private IP certificate.
 
 Kube-proxy-based Service routing is required on every node. Kube-proxy-less Cilium is not supported.
 

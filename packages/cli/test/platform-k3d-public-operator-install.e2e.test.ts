@@ -162,11 +162,11 @@ async function expectDerivedIngressHosts(): Promise<void> {
 }
 
 async function expectDerivedRegistryTls(): Promise<void> {
-  const expectedHostname: string = `registry.${baseDomain}`;
+  const expectedHostname: string = [10, 43, 250, 250].join('.');
   const certificate: SelfHostedUserSetupCommandResult = await runKubectl([
     'get',
     `certificate/${releaseName}-compartment-registry`,
-    '--output=jsonpath={.spec.dnsNames[0]}',
+    '--output=jsonpath={.spec.ipAddresses[0]}',
   ]);
   expectSuccessfulCommand(certificate, 'read the derived registry Certificate hostname');
   expect(certificate.stdout).toBe(expectedHostname);

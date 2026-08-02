@@ -11,12 +11,9 @@ const release = 'restore2-state';
 const projectProvisioningNamespace = `${release}-compartment-project-provisioning`;
 const secretName = `${release}-install-state`;
 const registryAuthServiceName = `${release}-compartment-registry-auth`;
-const registryHelmArgs = [
-  '--set',
-  'registry.hostname=registry.retained.example.test',
-  '--set',
-  'registry.issuerRef.name=retained-registry-issuer',
-];
+function registryHelmArgs(clusterIp) {
+  return ['--set', `registry.hostname=${clusterIp}`, '--set', 'registry.issuerRef.name=retained-registry-issuer'];
+}
 
 function helm(args) {
   runCommand('helm', [...args, '--kube-context', context], repositoryRoot);
@@ -46,6 +43,7 @@ function cleanup() {
 async function runRetainedInstallStateGate() {
   cleanup();
   try {
+    const registryClusterIp = readServiceClusterIp();
     helm([
       'upgrade',
       '--install',
@@ -87,9 +85,8 @@ async function runRetainedInstallStateGate() {
       `buildkit.namespace=${buildNamespace}`,
       '--set',
       'productLogs.enabled=false',
-      ...registryHelmArgs,
+      ...registryHelmArgs(registryClusterIp),
     ]);
-    const registryClusterIp = readServiceClusterIp();
     helm(['uninstall', release, '--namespace', namespace]);
     kubectl(['wait', '--for=delete', `namespace/${buildNamespace}`, '--timeout=60s']);
     kubectl(['wait', '--for=delete', `namespace/${projectProvisioningNamespace}`, '--timeout=60s']);
@@ -114,6 +111,7 @@ async function runRetainedInstallStateGate() {
       `buildkit.namespace=${buildNamespace}`,
       '--set',
       'productLogs.enabled=false',
+      ...registryHelmArgs(registryClusterIp),
     ]);
     const installationId = readSecretValue('installation-id');
     const acmeDnsToken = readSecretValue('managed-domain-acme-dns-token');
@@ -135,7 +133,7 @@ async function runRetainedInstallStateGate() {
       installationId !== 'retained-installation' ||
       acmeDnsToken !== 'retained-token' ||
       brokerUrl !== 'https://broker.example.test' ||
-      registryHostname !== 'registry.retained.example.test' ||
+      registryHostname !== reinstalledRegistryClusterIp ||
       registryIssuerName !== 'retained-registry-issuer' ||
       runtimeBrokerUrl !== 'https://broker.example.test' ||
       reinstalledRegistryClusterIp !== registryClusterIp

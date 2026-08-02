@@ -1,7 +1,6 @@
 import type { DomainHostPlan } from './system-domain.contract';
 
 export const controlPlaneSubdomainLabel: string = 'console';
-const privateRegistrySubdomainLabel: string = 'registry';
 const appWildcardProbeSubdomainLabel: string = 'compartment-domain-probe';
 
 export function isOperatorManagedDomainHostPlan(hostPlan: DomainHostPlan): boolean {
@@ -12,8 +11,8 @@ export function buildControlPlaneHost(baseDomain: string): string {
   return `${controlPlaneSubdomainLabel}.${baseDomain}`;
 }
 
-export function buildPrivateRegistryHost(baseDomain: string): string {
-  return `${privateRegistrySubdomainLabel}.${baseDomain}`;
+export function buildPrivateRegistryHost(registryServiceAddress: string): string {
+  return registryServiceAddress;
 }
 
 export function buildDomainWildcardHost(baseDomain: string): string {

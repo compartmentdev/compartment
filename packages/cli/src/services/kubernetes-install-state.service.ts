@@ -1,5 +1,4 @@
 import { buildPrivateRegistryHost, type ManagedDomainAllocationResponse } from '@compartment/contracts';
-import { isValidDnsHostname } from '@compartment/utils';
 import { isReservedKubernetesInstallLocalhostDomain } from '../kubernetes-install-domain';
 import {
   assertManagedDomainIngressEndpoint,
@@ -13,6 +12,7 @@ import {
   type ExistingManagedDomainAllocation,
 } from './kubernetes-install-managed-state.support';
 import { runObservableInstallStep } from './kubernetes-install-progress.service';
+import { readRegistryServiceAddresses } from './kubernetes-install-registry-service.service';
 import { allocateInstallManagedDomain } from './managed-domain.service';
 import type {
   ExistingKubernetesInstall,
@@ -32,10 +32,11 @@ export async function resolveKubernetesInstallState(
   foundationInstall: ExistingKubernetesInstall,
 ): Promise<KubernetesInstallState> {
   const publicIngress: KubernetesPublicIngress = await resolveInstallPublicIngress(input, foundationInstall);
+  const registryHostname: string = buildPrivateRegistryHost((await readRegistryServiceAddresses(input))[0]!);
   if (input.domainMode === 'managed') {
-    return await resolveManagedInstallState(input, foundationInstall, publicIngress);
+    return await resolveManagedInstallState(input, foundationInstall, publicIngress, registryHostname);
   }
-  return resolveCustomInstallState(input, foundationInstall, publicIngress);
+  return resolveCustomInstallState(input, foundationInstall, publicIngress, registryHostname);
 }
 
 export function buildInitialInstallValues(
@@ -127,6 +128,7 @@ async function resolveManagedInstallState(
   input: KubernetesInstallDeploymentInput,
   foundationInstall: ExistingKubernetesInstall,
   publicIngress: KubernetesPublicIngress,
+  registryHostname: string,
 ): Promise<KubernetesInstallState> {
   assertManagedDomainIngressEndpoint(publicIngress.ingressEndpoint);
   const existingAllocation: ExistingManagedDomainAllocation | null = readExistingManagedAllocation(foundationInstall);
@@ -139,7 +141,7 @@ async function resolveManagedInstallState(
       async (): Promise<ManagedDomainAllocationResponse> =>
         await requestManagedDomainAllocation(input, foundationInstall, publicIngress, brokerUrl),
     ));
-  return buildManagedInstallState(input, foundationInstall, publicIngress, brokerUrl, allocation);
+  return buildManagedInstallState(input, foundationInstall, publicIngress, brokerUrl, allocation, registryHostname);
 }
 
 async function requestManagedDomainAllocation(
@@ -167,6 +169,7 @@ function buildManagedInstallState(
   publicIngress: KubernetesPublicIngress,
   brokerUrl: string,
   allocation: ExistingManagedDomainAllocation,
+  registryHostname: string,
 ): KubernetesInstallState {
   return {
     acmeEmail: foundationInstall.acmeEmail !== '' ? foundationInstall.acmeEmail : input.acmeEmail,
@@ -177,24 +180,17 @@ function buildManagedInstallState(
     managedDomainAcmeDnsToken: allocation.acmeDnsToken,
     ...publicIngress,
     publicProtocol: 'https',
-    registryHostname: resolveManagedRegistryHostname(input.registryHostname, allocation.baseDomain),
+    registryHostname,
     registryIssuerRef: input.registryIssuerRef,
     tlsMode: 'broker-dns01',
   };
-}
-
-function resolveManagedRegistryHostname(configuredHostname: string, baseDomain: string): string {
-  const hostname: string = configuredHostname !== '' ? configuredHostname : buildPrivateRegistryHost(baseDomain);
-  if (!isValidDnsHostname(hostname)) {
-    throw new Error(`The managed-domain allocation cannot form a valid private registry hostname: ${hostname}.`);
-  }
-  return hostname;
 }
 
 function resolveCustomInstallState(
   input: KubernetesInstallDeploymentInput,
   foundationInstall: ExistingKubernetesInstall,
   publicIngress: KubernetesPublicIngress,
+  registryHostname: string,
 ): KubernetesInstallState {
   return {
     acmeEmail: foundationInstall.acmeEmail !== '' ? foundationInstall.acmeEmail : input.acmeEmail,
@@ -207,7 +203,7 @@ function resolveCustomInstallState(
     publicProtocol: isReservedKubernetesInstallLocalhostDomain(input.baseDomain)
       ? foundationInstall.publicProtocol
       : 'https',
-    registryHostname: input.registryHostname,
+    registryHostname,
     registryIssuerRef: input.registryIssuerRef,
     tlsMode: foundationInstall.tlsMode,
   };

@@ -164,7 +164,7 @@ tenantRuntime:
         valuesPath: material.path,
       }),
     ).resolves.toMatchObject({
-      registryHostname: 'registry.apps.example.com',
+      registryHostname: '',
       registryIssuerRef: { kind: 'ClusterIssuer', name: 'letsencrypt-production' },
     });
     await expect(readKubernetesTlsIssuerReference(material.path)).resolves.toEqual({

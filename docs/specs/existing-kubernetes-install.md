@@ -141,16 +141,15 @@ The operator must provide:
 - a usable StorageClass;
 - a CNI that enforces the NetworkPolicy features used by Compartment;
 - working cluster DNS and node access to the registries that contain signed Compartment platform images;
-- node resolvers that return the private A record for the Compartment registry zone; resolvers with DNS-rebinding or
-  public-to-private answer protection require an operator allowlist such as dnsmasq `rebind-domain-ok`;
 - kube-proxy-based Service routing on every node. Kube-proxy-less Cilium is not supported because node-side
   container runtimes cannot reliably reach a registry `ClusterIP` in the proved topology.
 
 The Service-routing requirement remains a recorded prerequisite because the installer does not grade node networking.
-Once the retained registry-auth Service exists, the installer probes the resolver view of every eligible node and
-prints the exact required A or AAAA record when an answer differs from the retained Service addresses. The final
-per-node pull proof remains authoritative for Service-routing and container-runtime TLS behavior. See the
-[private registry node-pull proof](../proofs/registry-node-pull.md) for the evidence and rejected topology.
+Once the retained registry-auth Service exists, the installer uses its allocated ClusterIP directly as the registry
+host. No base-domain record, broker allocation, third-party wildcard DNS service, node host alias, or container-runtime
+mirror is involved. The registry Certificate carries that address in `spec.ipAddresses`; the selected issuer must
+produce a chain already trusted by every node runtime. Reinstalling creates a new Service address, so every install
+recomputes the registry host after the foundation stage rather than preserving a previous address.
 
 The installer performs non-persistent preflight checks for:
 
@@ -324,16 +323,19 @@ The endpoint must satisfy all of these constraints:
 - reachable by kubelet/containerd on every eligible worker node;
 - protected by repository-scoped authentication.
 
-The intended mechanism is a node-resolvable registry hostname whose DNS target is the retained cluster-only registry
-Service address. TLS must be publicly trusted or chain to a private CA that the operator explicitly confirms is
-distributed to every node and the CLI machine. Compartment never installs that CA. Before implementation continues
-beyond the registry phase, a focused proof must demonstrate that this works on every initially supported cluster
-topology.
+The registry host is the retained cluster-only registry Service IPv4 ClusterIP itself. The Certificate uses an IP SAN
+for that address and must be issued by an explicitly configured cert-manager CA Issuer whose CA the operator has
+already distributed to every node and the CLI machine. Public ACME issuers cannot issue certificates for private
+ClusterIPs. Compartment never installs the CA or mutates node host or container runtime configuration.
+
+This avoids the external DNS dependency and rebinding-policy failures of an address-encoding wildcard DNS name such
+as `<dashed-cluster-ip>.sslip.io`. The tradeoffs are that image references contain a non-semantic IP address and the
+operator must pre-provision node trust plus a CA issuer, rather than using the managed public ACME issuer. Ordinary
+Helm upgrades retain the Service and address; a reinstall allocates a new address and the installer deliberately
+derives a new registry identity and Certificate.
 
 The proof must explicitly cover:
 
-- node resolvers with DNS-rebinding protection, including dnsmasq, systemd-resolved, and representative corporate DNS
-  policies that reject public names resolving to private or cluster addresses;
 - kube-proxy-less Cilium eBPF clusters, where host-to-ClusterIP reachability does not use the conventional kube-proxy
   path;
 - every eligible node in a supported multi-node cluster, not only a Pod or the control-plane node.
@@ -345,7 +347,7 @@ must be approved.
 Installation verifies the completed path by:
 
 1. pushing a signed test image through the BuildKit/registry path;
-2. creating a temporary Pod whose image reference uses the private registry hostname;
+2. creating a temporary Pod whose image reference uses the private registry ClusterIP;
 3. waiting for kubelet to pull and start it;
 4. deleting the temporary workload;
 5. refusing to complete installation if the image cannot be pulled.
@@ -697,8 +699,7 @@ fix-forward procedure. Product rollback compatibility is not required for this u
 
 - Prove the private node-pull registry endpoint on k3s/Traefik and ingress-nginx test clusters.
 - Prove the same endpoint shape on the initially supported managed-cluster network model.
-- Prove node-pull behavior when DNS-rebinding protection rejects a public hostname resolving to a private or cluster
-  address.
+- Prove direct IPv4 ClusterIP node-pull behavior with a pre-distributed CA trust anchor.
 - Prove host-to-ClusterIP node pulls on a kube-proxy-less Cilium eBPF cluster.
 - Prove cert-manager DNS-01 through the managed-domain broker.
 - Confirm IPv4 and IPv6 allocation behavior and early managed-domain rejection for hostname ingress endpoints.
@@ -1139,7 +1140,6 @@ At minimum:
 - a topology whose Ingress status returns an IP;
 - a topology whose Ingress status returns a hostname;
 - a supported multi-node topology for the registry node-pull proof;
-- a node resolver with DNS-rebinding protection;
 - a kube-proxy-less Cilium eBPF cluster.
 
 ### End-to-end scenarios

@@ -83,10 +83,7 @@ function buildResumableState(
         : existingState.brokerUrl,
     ingressClassName: input.ingressClassName,
     installationId,
-    registryHostname:
-      input.domainMode === 'custom' || existingState.registryHostname === ''
-        ? input.registryHostname
-        : existingState.registryHostname,
+    registryHostname: input.registryHostname,
     registryIssuerRef:
       input.domainMode === 'custom' || existingState.registryIssuerRef.name === ''
         ? input.registryIssuerRef

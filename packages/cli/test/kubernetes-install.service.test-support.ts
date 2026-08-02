@@ -19,10 +19,8 @@ interface InstallValuesWithStorage extends KubernetesInstallSecretValues {
 }
 
 export interface KubernetesInstallServiceMocks {
-  assertRegistryDns: Mock<
-    (input: KubernetesInstallDeploymentInput, state: KubernetesInstallState) => Promise<string | null>
-  >;
   readChartValues: Mock<(chartPath: string) => Promise<JsonValue>>;
+  readRegistryServiceAddresses: Mock<() => Promise<string[]>>;
   runCommand: Mock<RunCommand>;
   usesOperatorTlsSecret: Mock<(valuesPath: string) => Promise<boolean>>;
   verifyRegistryNodePull: Mock<
