@@ -151,6 +151,28 @@ describe('canonical Kubernetes install input', (): void => {
     expect(readResources).toHaveBeenCalledOnce();
   });
 
+  it('reviews an interrupted retained managed install without showing an empty domain', async (): Promise<void> => {
+    const capture: CliCommandCapture = createCliCapture();
+    capture.stdin.end('\n\nClusterIssuer\nregistry-ca\ny\nowner@example.com\nAcme\ny\n');
+
+    await resolveCanonicalKubernetesInstallWizard(
+      capture.io,
+      { adminPassword: 'correct horse battery staple', output: 'text' },
+      { contexts: [{ apiServer: 'https://cluster.example.test', name: 'production' }] },
+      async (): Promise<KubernetesInstallResourceInventory> =>
+        await Promise.resolve({
+          ingressClasses: ['nginx'],
+          storageClasses: [{ default: true, name: 'fast' }],
+        }),
+      inspectPlatformAndRegistryIssuer,
+      async (): Promise<RetainedKubernetesInstallState> =>
+        await Promise.resolve({ ...retainedManagedState(), baseDomain: '' }),
+    );
+
+    expect(capture.stderr.join('')).toContain('Domain: not yet allocated (retained managed domain)');
+    expect(capture.stderr.join('')).not.toContain('Domain:  (');
+  });
+
   it('keeps operator-owned domain selection available without onboarding authorization', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
     capture.stdin.end('1\ny\n2\napps.example.com\n\nClusterIssuer\nregistry-ca\ny\ny\n');

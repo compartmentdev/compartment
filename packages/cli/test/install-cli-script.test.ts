@@ -371,6 +371,29 @@ describe('render-cli-install-script', (): void => {
     expect(result.urlLog).toEqual([]);
   });
 
+  it('reports that --values is only valid with init update when combined with init login', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      allowFailure: true,
+      args: [
+        '--version',
+        'main',
+        '--init-login',
+        '--api-url',
+        'https://api.example.test',
+        '--values',
+        '/tmp/values.yaml',
+      ],
+      pathEntries: [binDirectory],
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Use --values only with --init-update.');
+    expect(result.stderr).not.toContain('Use Kubernetes lifecycle options only');
+    expect(result.urlLog).toEqual([]);
+  });
+
   it('downloads explicitly pinned sha builds without resolving main', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const binDirectory: string = join(temporaryDirectory, '.local', 'bin');

@@ -140,7 +140,7 @@ async function runShardSuites(suites, env, ownerEnvironmentPath, signal) {
   }
 }
 
-async function prepareSystemUpdateBaseline(env, signal) {
+export async function prepareSystemUpdateBaseline(env, signal) {
   const valuesPath = join(repositoryRoot, env.COMPARTMENT_E2E_PLATFORM_VALUES_PATH);
   const updateValuesPath = join(repositoryRoot, env.COMPARTMENT_E2E_UPDATE_VALUES_PATH);
   const values = parse(readFileSync(valuesPath, 'utf8'));
@@ -163,7 +163,7 @@ async function prepareSystemUpdateBaseline(env, signal) {
       ) {
         throw new Error(`Expected a repository and digest for images.${imageName}.`);
       }
-      const localRepository = image.repository.replace(/^k3d-[^/]+/u, `localhost:${env.COMPARTMENT_E2E_REGISTRY_PORT}`);
+      const localRepository = resolveLocalBaselineRepository(image.repository, env.COMPARTMENT_E2E_REGISTRY_PORT);
       const baselineRef = `${localRepository}:e2e-initial`;
       await runInterruptibleCommand(
         'docker',
@@ -188,6 +188,13 @@ async function prepareSystemUpdateBaseline(env, signal) {
   } finally {
     rmSync(buildDirectory, { force: true, recursive: true });
   }
+}
+
+function resolveLocalBaselineRepository(repository, registryPort) {
+  if (!/^k3d-[^/]+\/.+/u.test(repository)) {
+    throw new Error(`Expected baseline image repository ${repository} to use the k3d-<registry>/<repository> format.`);
+  }
+  return repository.replace(/^k3d-[^/]+/u, `localhost:${registryPort}`);
 }
 
 function readPushedImageDigest(imageRef, env) {
