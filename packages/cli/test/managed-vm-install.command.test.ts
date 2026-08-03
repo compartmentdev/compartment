@@ -111,22 +111,31 @@ describe('managed VM install command boundary', (): void => {
   });
 
   it('runs confirmed root automation without sudo and preserves the owner password at the canonical boundary', async (): Promise<void> => {
-    const capture: CliCommandCapture = createCliCapture();
-    const { runCli } = await import('../src/app');
+    const getuid: GetUid | undefined = process.getuid;
+    if (getuid === undefined) {
+      throw new Error('This test requires process.getuid.');
+    }
+    process.getuid = (): number => 0;
+    try {
+      const capture: CliCommandCapture = createCliCapture();
+      const { runCli } = await import('../src/app');
 
-    expect(await runCli([...ownerInstallArgs(), '--yes'], capture.io)).toBe(0);
+      expect(await runCli([...ownerInstallArgs(), '--yes'], capture.io)).toBe(0);
 
-    expect(readCliStderr(capture).match(/Installation review/gu)).toHaveLength(1);
-    expect(mocks.execa).not.toHaveBeenCalled();
-    expect(mocks.provision).toHaveBeenCalledTimes(1);
-    expect(mocks.canonicalInstall).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        adminPassword: 'correct horse battery staple',
-        managedDomain: true,
-        values: '/etc/compartment/values.yaml',
-      }),
-    );
+      expect(readCliStderr(capture).match(/Installation review/gu)).toHaveLength(1);
+      expect(mocks.execa).not.toHaveBeenCalled();
+      expect(mocks.provision).toHaveBeenCalledTimes(1);
+      expect(mocks.canonicalInstall).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          adminPassword: 'correct horse battery staple',
+          managedDomain: true,
+          values: '/etc/compartment/values.yaml',
+        }),
+      );
+    } finally {
+      process.getuid = getuid;
+    }
   });
 
   it('hands a confirmed non-root install to sudo without putting the password in argv', async (): Promise<void> => {
