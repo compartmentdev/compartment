@@ -1,6 +1,6 @@
 import { and, asc, eq, gt, lt, or, sql, type SQL } from 'drizzle-orm';
 import type { ProjectProvisioningAction } from '@compartment/contracts';
-import { projectKubeProvisioning } from '../db/schema';
+import { projectKubeProvisioning, projects } from '../db/schema';
 import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { claimSelectedRow } from './claim-row.query.shared';
@@ -16,6 +16,7 @@ import type {
   ProjectKubeProvisioningState,
   ProjectProvisioningClaimPhase,
   ProjectProvisioningClaimRow,
+  ProjectProvisioningClaimSelection,
 } from './project-provisioning.query.types';
 
 export async function claimPendingProjectProvisioning(
@@ -34,12 +35,10 @@ async function claimPendingProjectProvisioningWithTransaction(
   const now: Date = new Date();
   return await claimSelectedRow(
     transaction,
-    async (tx: DeploymentTransaction): Promise<typeof projectKubeProvisioning.$inferSelect | undefined> =>
+    async (tx: DeploymentTransaction): Promise<ProjectProvisioningClaimSelection | undefined> =>
       await selectClaimableRow(tx, now, action),
-    async (
-      tx: DeploymentTransaction,
-      row: typeof projectKubeProvisioning.$inferSelect,
-    ): Promise<ProjectProvisioningClaimRow> => await leaseProjectProvisioning(tx, row, now),
+    async (tx: DeploymentTransaction, row: ProjectProvisioningClaimSelection): Promise<ProjectProvisioningClaimRow> =>
+      await leaseProjectProvisioning(tx, row, now),
     null,
   );
 }
@@ -49,6 +48,22 @@ export async function failExhaustedProjectTeardownLeases(): Promise<string[]> {
     async (transaction: DeploymentTransaction): Promise<string[]> =>
       await failExhaustedProjectTeardownLeasesWithTransaction(transaction, new Date()),
   );
+}
+
+export async function invalidateProjectProvisioningForRenameWithTransaction(
+  transaction: DeploymentTransaction,
+  projectId: string,
+  now: Date,
+): Promise<void> {
+  await transaction
+    .update(projectKubeProvisioning)
+    .set({ isolationVersion: projectIsolationVersion - 1, updatedAt: now })
+    .where(
+      and(
+        eq(projectKubeProvisioning.projectId, projectId),
+        or(eq(projectKubeProvisioning.state, 'succeeded'), eq(projectKubeProvisioning.state, 'running')),
+      ),
+    );
 }
 
 async function failExhaustedProjectTeardownLeasesWithTransaction(
@@ -79,10 +94,11 @@ async function selectClaimableRow(
   transaction: DeploymentTransaction,
   now: Date,
   action: ProjectProvisioningAction | 'any',
-): Promise<typeof projectKubeProvisioning.$inferSelect | undefined> {
-  const rows: (typeof projectKubeProvisioning.$inferSelect)[] = await transaction
-    .select()
+): Promise<ProjectProvisioningClaimSelection | undefined> {
+  const rows: ProjectProvisioningClaimSelection[] = await transaction
+    .select({ projectName: projects.name, provisioning: projectKubeProvisioning })
     .from(projectKubeProvisioning)
+    .innerJoin(projects, eq(projects.id, projectKubeProvisioning.projectId))
     .where(provisioningClaimableCondition(now, action))
     .orderBy(asc(projectKubeProvisioning.createdAt))
     .limit(1)
@@ -160,9 +176,10 @@ function claimableStateCondition(
 
 async function leaseProjectProvisioning(
   transaction: DeploymentTransaction,
-  row: typeof projectKubeProvisioning.$inferSelect,
+  selection: ProjectProvisioningClaimSelection,
   now: Date,
 ): Promise<ProjectProvisioningClaimRow> {
+  const row: typeof projectKubeProvisioning.$inferSelect = selection.provisioning;
   const leaseId: string = createId('kpl');
   const action: ProjectProvisioningAction = readProjectProvisioningAction(row.state);
   await transaction
@@ -170,13 +187,14 @@ async function leaseProjectProvisioning(
     .set({
       attempts: nextProvisioningAttempts(row),
       failureMessage: null,
+      isolationVersion: action === 'provision' ? projectIsolationVersion : row.isolationVersion,
       leaseExpiresAt: new Date(now.getTime() + projectProvisioningLeaseDuration(action)),
       leaseId,
       state: action === 'provision' ? 'running' : 'teardown_running',
       updatedAt: now,
     })
     .where(eq(projectKubeProvisioning.projectId, row.projectId));
-  return projectProvisioningClaim(action, leaseId, row.projectId);
+  return projectProvisioningClaim(action, leaseId, row.projectId, selection.projectName);
 }
 
 function nextProvisioningAttempts(row: typeof projectKubeProvisioning.$inferSelect): SQL {
@@ -193,8 +211,16 @@ function projectProvisioningClaim(
   action: ProjectProvisioningAction,
   leaseId: string,
   projectId: string,
+  projectName: string,
 ): ProjectProvisioningClaimRow {
-  return { action, isolationVersion: projectIsolationVersion, leaseId, namespaceId: projectId, projectId };
+  return {
+    action,
+    isolationVersion: projectIsolationVersion,
+    leaseId,
+    namespaceId: projectId,
+    projectId,
+    projectName,
+  };
 }
 
 function readProjectProvisioningAction(state: ProjectKubeProvisioningState): ProjectProvisioningAction {

@@ -6,6 +6,7 @@ import {
   renameProjectWithExecutor,
   setProjectArchivedAtWithExecutor,
 } from '../queries/projects.query';
+import { invalidateProjectProvisioningForRenameWithTransaction } from '../queries/project-provisioning.query';
 import type {
   ProjectRow,
   ProjectsMutationTransaction,
@@ -53,12 +54,15 @@ export async function renameAuthorizedProject(
   name: string,
 ): Promise<ProjectRow> {
   const project: ProjectRow = await requireMutableProject(transaction, organizationId, projectId);
-  return await renameProjectWithExecutor(transaction, {
+  const now: Date = new Date();
+  const renamedProject: ProjectRow = await renameProjectWithExecutor(transaction, {
     name,
     organizationId,
     projectId: project.id,
-    updatedAt: new Date(),
+    updatedAt: now,
   });
+  await invalidateProjectProvisioningForRenameWithTransaction(transaction, project.id, now);
+  return renamedProject;
 }
 
 export async function requireMutableProject(

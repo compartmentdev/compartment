@@ -14,9 +14,21 @@ describe('project provisioning contracts', (): void => {
           leaseId: 'kpl_1',
           namespaceId: 'prj_1',
           projectId: 'prj_1',
+          projectName: 'payments',
         },
       }).success,
     ).toBe(true);
+    expect(
+      workerClaimProjectProvisioningV2ResponseSchema.safeParse({
+        target: {
+          action: 'provision',
+          isolationVersion: 1,
+          leaseId: 'kpl_1',
+          namespaceId: 'prj_1',
+          projectId: 'prj_1',
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it('keeps cleanup inside the ordinary provisioning lease', (): void => {

@@ -17,7 +17,7 @@ kubernetesProvider:
     - apiVersion: v1
       kind: Secret
       metadata:
-        name: compartment-compartment
+        name: compartment
         namespace: default
       data:
         product-log-ingest-token: T0xE

@@ -143,7 +143,7 @@ async function persistProjectProvisioningCompletion(
       leaseExpiresAt: null,
       leaseId: null,
       state: completedState(input.action, input.status),
-      isolationVersion: completionIsolationVersion(input),
+      isolationVersion: projectKubeProvisioning.isolationVersion,
       updatedAt: new Date(),
     })
     .where(
@@ -165,14 +165,6 @@ function provisioningVersionCondition(input: CompleteProjectProvisioningInput): 
         eq(projectKubeProvisioning.isolationVersion, input.isolationVersion - 1),
         eq(projectKubeProvisioning.isolationVersion, input.isolationVersion),
       );
-}
-
-function completionIsolationVersion(
-  input: CompleteProjectProvisioningInput,
-): number | typeof projectKubeProvisioning.isolationVersion {
-  return input.action === 'provision' && input.status === 'succeeded'
-    ? input.isolationVersion
-    : projectKubeProvisioning.isolationVersion;
 }
 
 function runningState(action: ProjectProvisioningAction): 'running' | 'teardown_running' {

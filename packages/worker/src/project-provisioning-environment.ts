@@ -7,6 +7,7 @@ import type { RegistryCredential } from './registry-credentials.types';
 
 export interface ProjectProvisioningEnvironment {
   COMPARTMENT_EDGE_NAMESPACE: string;
+  COMPARTMENT_INSTALLATION_ID: string;
   COMPARTMENT_KUBE_POD_CIDR: string;
   COMPARTMENT_KUBE_SERVICE_CIDR: string;
   COMPARTMENT_PLATFORM_NAMESPACE: string;
@@ -16,6 +17,7 @@ export interface ProjectProvisioningEnvironment {
 
 export const projectProvisioningEnvironmentSchema: z.ZodType<ProjectProvisioningEnvironment> = z.object({
   COMPARTMENT_EDGE_NAMESPACE: z.string().min(1),
+  COMPARTMENT_INSTALLATION_ID: z.string().min(1),
   COMPARTMENT_KUBE_POD_CIDR: z.string().min(1),
   COMPARTMENT_KUBE_SERVICE_CIDR: z.string().min(1),
   COMPARTMENT_PLATFORM_NAMESPACE: z.string().min(1),
@@ -29,6 +31,7 @@ export interface ProjectProvisionerJobEnvironment extends ProjectProvisioningEnv
   COMPARTMENT_ARTIFACT_REGISTRY_PULL_DOCKER_CONFIG_JSON: string;
   COMPARTMENT_BOOTSTRAP_SERVICE_ACCOUNT_NAME: string;
   COMPARTMENT_PROJECT_ID: string;
+  COMPARTMENT_PROJECT_NAME: string;
 }
 
 export const projectProvisionerJobEnvironmentSchema: z.ZodType<ProjectProvisionerJobEnvironment> =
@@ -39,6 +42,7 @@ export const projectProvisionerJobEnvironmentSchema: z.ZodType<ProjectProvisione
       COMPARTMENT_ARTIFACT_REGISTRY_PULL_DOCKER_CONFIG_JSON: z.string().min(1),
       COMPARTMENT_BOOTSTRAP_SERVICE_ACCOUNT_NAME: z.string().min(1),
       COMPARTMENT_PROJECT_ID: z.string().min(1),
+      COMPARTMENT_PROJECT_NAME: z.string().min(1),
     }),
   );
 
@@ -48,10 +52,7 @@ export function projectProvisionerJobEnvironment(
   bootstrapServiceAccountName: string,
 ): ProjectProvisionerJobEnvironment {
   const registryUrl: URL = new URL(`http://${config.artifactRegistry.address}`);
-  const pullCredential: RegistryCredential = issueProjectPullCredential(
-    config.artifactRegistry.credentialSigningKey,
-    target.projectId,
-  );
+  const pullCredential: RegistryCredential = projectPullCredential(config, target.projectId);
   return {
     COMPARTMENT_ARTIFACT_REGISTRY_HOST: registryUrl.hostname,
     COMPARTMENT_ARTIFACT_REGISTRY_PORT: registryUrl.port,
@@ -60,11 +61,17 @@ export function projectProvisionerJobEnvironment(
     COMPARTMENT_EDGE_NAMESPACE: config.edgeNamespace,
     COMPARTMENT_KUBE_POD_CIDR: config.podCidr,
     COMPARTMENT_KUBE_SERVICE_CIDR: config.serviceCidr,
+    COMPARTMENT_INSTALLATION_ID: config.installationId,
     COMPARTMENT_PLATFORM_NAMESPACE: config.platformNamespace,
     COMPARTMENT_PROJECT_ID: target.projectId,
+    COMPARTMENT_PROJECT_NAME: target.projectName,
     COMPARTMENT_PROVISIONING_NAMESPACE: config.provisioningNamespace,
     COMPARTMENT_WORKER_SERVICE_ACCOUNT_NAME: config.workerServiceAccountName,
   };
+}
+
+function projectPullCredential(config: ProjectProvisionerConfig, projectId: string): RegistryCredential {
+  return issueProjectPullCredential(config.artifactRegistry.credentialSigningKey, projectId);
 }
 
 function buildDockerConfig(registryUrl: URL, credential: RegistryCredential): string {

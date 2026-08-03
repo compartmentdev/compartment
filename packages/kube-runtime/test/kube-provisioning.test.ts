@@ -78,7 +78,14 @@ describe('project namespace bootstrap provisioning', (): void => {
       'RoleBinding',
     ]);
 
-    expect(namespace).toMatchObject({ kind: 'Namespace', metadata: { name: kubeNamespaceName('prj-01jz') } });
+    expect(namespace).toMatchObject({
+      kind: 'Namespace',
+      metadata: {
+        annotations: { 'compartment.dev/project-name': 'payments' },
+        labels: { 'compartment.dev/installation-id': 'inst_1' },
+        name: kubeNamespaceName('prj-01jz'),
+      },
+    });
     expect(binding).toMatchObject({
       kind: 'RoleBinding',
       metadata: { name: 'compartment-project-bootstrap', namespace: kubeNamespaceName('prj-01jz') },
@@ -425,6 +432,7 @@ function provisioningRow(namespaceId: string): ProjectNamespaceProvisioningRow {
       name: kubeNamespaceName(namespaceId),
       namespace: 'compartment-project-provisioning',
     },
+    installationId: 'inst_1',
     namespaceId,
     networkPolicy: {
       applicationPodLabels: { app: 'application' },
@@ -437,6 +445,7 @@ function provisioningRow(namespaceId: string): ProjectNamespaceProvisioningRow {
       serviceCidr,
     },
     projectId: namespaceId,
+    projectName: 'payments',
     registryPullCredentials: {
       dockerConfigJson: '{"auths":{"registry.example":{"auth":"generated"}}}',
       secretId: `pull-${namespaceId}`,

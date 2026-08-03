@@ -63,10 +63,12 @@ function namespaceManifest(row: ProjectNamespaceProvisioningRow, namespace: stri
     apiVersion: 'v1',
     kind: 'Namespace',
     metadata: {
+      annotations: { 'compartment.dev/project-name': row.projectName },
       labels: {
         'app.kubernetes.io/managed-by': 'compartment',
         'compartment.dev/namespace-id': row.namespaceId,
         'compartment.dev/project-id': row.projectId,
+        'compartment.dev/installation-id': row.installationId,
         'pod-security.kubernetes.io/audit': 'restricted',
         'pod-security.kubernetes.io/audit-version': 'latest',
         'pod-security.kubernetes.io/enforce': 'restricted',

@@ -28,6 +28,8 @@ function projectProvisioningRow(environment: ProjectProvisionerJobEnvironment): 
     namespaceId: environment.COMPARTMENT_PROJECT_ID,
     networkPolicy: projectNetworkPolicy(environment, { applicationPorts: [], resourcePorts: [] }),
     projectId: environment.COMPARTMENT_PROJECT_ID,
+    projectName: environment.COMPARTMENT_PROJECT_NAME,
+    installationId: environment.COMPARTMENT_INSTALLATION_ID,
     registryPullCredentials: {
       dockerConfigJson: environment.COMPARTMENT_ARTIFACT_REGISTRY_PULL_DOCKER_CONFIG_JSON,
       secretId: environment.COMPARTMENT_PROJECT_ID,

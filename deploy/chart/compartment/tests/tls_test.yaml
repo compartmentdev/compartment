@@ -95,20 +95,20 @@ tests:
         documentIndex: 0
       - equal:
           path: spec.tls[0].secretName
-          value: compartment-compartment-wildcard-tls
+          value: compartment-wildcard-tls
         template: ingress.yaml
       - equal:
           path: spec.tls[1].secretName
-          value: compartment-compartment-wildcard-tls
+          value: compartment-wildcard-tls
         template: ingress.yaml
       - equal:
           path: spec.group
-          value: compartment-compartment.platform.dns01.compartment.dev
+          value: compartment.platform.dns01.compartment.dev
         template: managed-domain-dns01.yaml
         documentIndex: 13
       - equal:
           path: spec.acme.solvers[0].dns01.webhook.groupName
-          value: compartment-compartment.platform.dns01.compartment.dev
+          value: compartment.platform.dns01.compartment.dev
         template: managed-domain-dns01.yaml
         documentIndex: 14
       - equal:
@@ -118,7 +118,7 @@ tests:
         documentIndex: 14
       - equal:
           path: metadata.name
-          value: compartment-compartment-custom-domains
+          value: compartment-custom-domains
         template: managed-domain-dns01.yaml
         documentIndex: 15
       - equal:

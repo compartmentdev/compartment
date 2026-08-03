@@ -19,7 +19,7 @@ kubernetesProvider:
     - apiVersion: v1
       kind: Secret
       metadata:
-        name: compartment-compartment
+        name: compartment
         namespace: default
       data:
         tenant-secrets-kek: MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMQ==
@@ -135,7 +135,7 @@ tests:
             name: COMPARTMENT_TENANT_SECRETS_KEK
             valueFrom:
               secretKeyRef:
-                name: compartment-compartment
+                name: compartment
                 key: tenant-secrets-kek
         template: api-migrate.yaml
       - contains:
@@ -144,7 +144,7 @@ tests:
             name: COMPARTMENT_TENANT_SECRETS_PREVIOUS_KEK
             valueFrom:
               secretKeyRef:
-                name: compartment-compartment
+                name: compartment
                 key: tenant-secrets-previous-kek
         template: api-migrate.yaml
       - contains:
@@ -153,7 +153,7 @@ tests:
             name: COMPARTMENT_VARIABLES_MASTER_KEY
             valueFrom:
               secretKeyRef:
-                name: compartment-compartment
+                name: compartment
                 key: variables-master-key
         template: api-migrate.yaml
 
@@ -186,7 +186,7 @@ tests:
       - containsDocument:
           apiVersion: apps/v1
           kind: Deployment
-          name: compartment-compartment-api
+          name: compartment-api
           any: true
         template: api.yaml
       - equal:
