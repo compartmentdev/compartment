@@ -16,6 +16,7 @@ import {
   readPlatformK3dIngressNginxManifestUrl,
   readPlatformK3dEnvironment,
   renderManagedPlatformK3dValues,
+  renderPreviousPlatformK3dValues,
   renderPublicOperatorPlatformK3dValues,
   renderPlatformK3dValues,
   runKubectlWithTransientApiRetry,
@@ -418,11 +419,23 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).toContain('namespace: compartment-build');
     expect(values).toContain('clusterIP: 10.43.250.250');
     expect(values).not.toContain('hostname:');
-    expect(values).toContain('name: compartment-registry-test-issuer');
+    expect(values).toContain(
+      'registry:\n  clusterIP: 10.43.250.250\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer',
+    );
+    expect(values).not.toContain('tls:\n  issuerRef:');
     expect(values).toContain('repository: k3d-compartment-e2e-registry:15500/compartment-api');
     expect(values).toContain(`digest: sha256:${'a'.repeat(64)}`);
     expect(values).not.toContain('ports:\n  http: 18080');
     expect(values).not.toContain('startupStage:');
+  });
+
+  it('keeps registry TLS independent in previous-version upgrade values', () => {
+    const values = renderPreviousPlatformK3dValues();
+
+    expect(values).toContain(
+      'registry:\n  clusterIP: 10.43.250.250\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer',
+    );
+    expect(values).not.toContain('tls:\n  issuerRef:');
   });
 
   it('enables the gVisor RuntimeClass only for an opted-in e2e cluster', () => {
@@ -448,6 +461,9 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).toContain(`digest: sha256:${'d'.repeat(64)}`);
     expect(values).not.toContain('hostname:');
     expect(values).not.toContain('compartment.localhost');
+    expect(values).toContain(
+      'registry:\n  clusterIP: 10.43.250.250\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer',
+    );
   });
 
   it('writes public operator values with external TLS and a separate registry issuer', () => {
@@ -455,7 +471,9 @@ describe('platform k3d e2e command boundary', () => {
 
     expect(values).toContain('className: traefik');
     expect(values).toContain('storageClass: local-path');
-    expect(values).toContain('name: compartment-registry-test-issuer');
+    expect(values).toContain(
+      'registry:\n  clusterIP: 10.43.250.250\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer',
+    );
     expect(values).toContain('publicProtocol: http');
     expect(values).not.toContain('tls:\n  issuerRef:');
     expect(values).not.toContain('baseDomain:');
