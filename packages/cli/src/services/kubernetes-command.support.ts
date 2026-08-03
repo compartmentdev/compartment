@@ -57,12 +57,6 @@ export function buildKubernetesReleaseSelector(releaseName: string): string {
   return `app.kubernetes.io/instance=${releaseName}`;
 }
 
-export function formatKubernetesShellCommand(command: readonly string[]): string {
-  return command
-    .map((argument: string): string => (/^[A-Za-z0-9_./:=+-]+$/u.test(argument) ? argument : JSON.stringify(argument)))
-    .join(' ');
-}
-
 export function formatKubernetesCommandFailure(
   message: string,
   result: CommandResult,

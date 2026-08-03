@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { resolveKubernetesInstallRegistryConfiguration } from '../src/services/kubernetes-install-registry.service';
+import type { KubernetesInstallRegistryConfiguration } from '../src/services/kubernetes-install-registry.service.types';
 
 const temporaryDirectories: string[] = [];
 
@@ -15,7 +16,7 @@ describe('Kubernetes install registry values', (): void => {
     );
   });
 
-  it('derives the operator registry hostname and inherits the platform issuer', async (): Promise<void> => {
+  it('defers the custom registry address and inherits the platform issuer without using the base domain', async (): Promise<void> => {
     const valuesPath: string = await writeValues(
       'tls:\n  issuerRef:\n    kind: ClusterIssuer\n    name: letsencrypt-production\n',
     );
@@ -27,7 +28,7 @@ describe('Kubernetes install registry values', (): void => {
         valuesPath,
       }),
     ).resolves.toEqual({
-      registryHostname: 'registry.178-105-136-147.sslip.io',
+      registryHostname: '',
       registryIssuerRef: {
         group: 'cert-manager.io',
         kind: 'ClusterIssuer',
@@ -48,23 +49,34 @@ describe('Kubernetes install registry values', (): void => {
         valuesPath,
       }),
     ).resolves.toMatchObject({
-      registryHostname: 'registry.apps.example.com',
+      registryHostname: '',
       registryIssuerRef: { kind: 'Issuer', name: 'registry-issuer' },
     });
   });
 
-  it('rejects a registry hostname that diverges from the operator base domain', async (): Promise<void> => {
+  it('rejects a configured registry hostname in both domain modes', async (): Promise<void> => {
     const valuesPath: string = await writeValues(
       'tls:\n  issuerRef:\n    kind: Issuer\n    name: platform-issuer\nregistry:\n  hostname: registry.other.example\n',
     );
 
-    await expect(
+    const customResolution: Promise<KubernetesInstallRegistryConfiguration> =
       resolveKubernetesInstallRegistryConfiguration({
         baseDomain: 'apps.example.com',
         domainMode: 'custom',
         valuesPath,
-      }),
-    ).rejects.toThrow('registry.hostname must be registry.apps.example.com');
+      });
+    const managedResolution: Promise<KubernetesInstallRegistryConfiguration> =
+      resolveKubernetesInstallRegistryConfiguration({
+        domainMode: 'managed',
+        valuesPath,
+      });
+
+    await expect(customResolution).rejects.toThrow(
+      'registry.hostname is derived from the retained registry Service ClusterIP',
+    );
+    await expect(managedResolution).rejects.toThrow(
+      'registry.hostname is derived from the retained registry Service ClusterIP',
+    );
   });
 
   it('fails before cluster mutation when an interactive public operator install has no TLS ownership', async (): Promise<void> => {
@@ -93,7 +105,7 @@ describe('Kubernetes install registry values', (): void => {
     ).rejects.toThrow('registry.issuerRef is required in --values when operator TLS uses tls.existingSecret');
   });
 
-  it('defers a managed registry hostname until the broker allocates the base domain', async (): Promise<void> => {
+  it('requires a node-trusted registry CA issuer for managed mode', async (): Promise<void> => {
     const valuesPath: string = await writeValues('{}\n');
 
     await expect(
@@ -101,10 +113,7 @@ describe('Kubernetes install registry values', (): void => {
         domainMode: 'managed',
         valuesPath,
       }),
-    ).resolves.toEqual({
-      registryHostname: '',
-      registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'compartment-platform' },
-    });
+    ).rejects.toThrow('must reference a CA trusted by every Kubernetes node');
   });
 });
 

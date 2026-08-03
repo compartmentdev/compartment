@@ -162,11 +162,11 @@ tests:
         template: product-log-agent.yaml
         documentIndex: 4
 
-  - it: renders an operator-domain installation with the derived private registry hostname
+  - it: renders an operator-domain installation with the derived private registry address
     set:
       registry:
         clusterIP: 10.43.250.250
-        hostname: registry.apps.example.com
+        hostname: 10.43.250.250
         issuerRef:
           name: platform-issuer
       platform:
@@ -208,8 +208,8 @@ tests:
         template: registry-auth.yaml
         documentIndex: 0
       - equal:
-          path: spec.dnsNames[0]
-          value: registry.apps.example.com
+          path: spec.ipAddresses[0]
+          value: 10.43.250.250
         template: registry-auth.yaml
         documentIndex: 1
       - equal:
@@ -906,7 +906,7 @@ tests:
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_ARTIFACT_REGISTRY_HOST
-          value: registry.apps.example.com
+          value: 10.43.250.250
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_HOST
@@ -1446,7 +1446,7 @@ tests:
         template: edge.yaml
         documentIndex: 1
 
-  - it: wires managed DNS and TLS state without Caddy certificate mounts
+  - it: wires managed DNS and registry IP TLS state without Caddy certificate mounts
     set:
       platform: &managedPlatform
         startupStage: full
@@ -1457,7 +1457,7 @@ tests:
         tlsMode: broker-dns01
         acmeEmail: admin@example.com
       registry:
-        hostname: registry.managed.compartment.run
+        hostname: 10.43.250.250
         issuerRef:
           group: cert-manager.io
           kind: Issuer
@@ -1486,13 +1486,13 @@ tests:
         template: worker.yaml
         documentIndex: 0
       - hasDocuments:
-          count: 2
+          count: 3
         template: registry-auth.yaml
       - equal:
           path: spec.template.spec.volumes[1].secret.secretName
-          value: compartment-compartment-wildcard-tls
+          value: compartment-compartment-registry-tls
         template: registry-auth.yaml
-        documentIndex: 1
+        documentIndex: 2
       - notContains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
@@ -1501,12 +1501,12 @@ tests:
         template: api.yaml
         documentIndex: 1
 
-  - it: uses managed HTTP-01 for a registry host outside the wildcard depth
+  - it: issues the managed registry Certificate for the Service IP
     set:
       platform:
         <<: *managedPlatform
       registry:
-        hostname: deep.registry.managed.compartment.run
+        hostname: 10.43.250.250
         issuerRef:
           group: cert-manager.io
           kind: Issuer
@@ -1519,22 +1519,19 @@ tests:
           count: 3
         template: registry-auth.yaml
       - equal:
-          path: spec.issuerRef
-          value:
-            group: cert-manager.io
-            kind: Issuer
-            name: compartment-compartment-custom-domains
+          path: spec.ipAddresses[0]
+          value: 10.43.250.250
         template: registry-auth.yaml
         documentIndex: 1
 
-  - it: mounts an existing managed wildcard Secret for the default registry
+  - it: keeps registry TLS independent from an existing managed wildcard Secret
     set:
       platform:
         <<: *managedPlatform
       tls:
         existingSecret: managed-wildcard-tls
       registry:
-        hostname: registry.managed.compartment.run
+        hostname: 10.43.250.250
         issuerRef:
           group: cert-manager.io
           kind: Issuer
@@ -1545,9 +1542,9 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.volumes[1].secret.secretName
-          value: managed-wildcard-tls
+          value: compartment-compartment-registry-tls
         template: registry-auth.yaml
-        documentIndex: 1
+        documentIndex: 2
 
   - it: applies fullname override without renaming retained install state
     set:

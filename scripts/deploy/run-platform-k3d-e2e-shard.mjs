@@ -19,7 +19,6 @@ const diagnosticsScript = join(repositoryRoot, 'scripts/deploy/collect-platform-
 const networkPolicyGateScript = join(repositoryRoot, 'packages/kube-runtime/test/network-policy-enforcement-check.sh');
 const productLogGateScript = join(repositoryRoot, 'scripts/deploy/run-platform-k3d-product-log-gate.mjs');
 const retainedStateGateScript = join(repositoryRoot, 'scripts/deploy/run-platform-k3d-retained-state-gate.mjs');
-const previousKubernetesCommit = '5fe82b771fe061b2b3ff15bd42677ff86a3ca75e';
 async function runShard(shardName) {
   const env = buildPlatformK3dShardEnvironment(shardName);
   const platformEnvironment = readPlatformK3dEnvironment(env);
@@ -42,9 +41,6 @@ async function runShard(shardName) {
       cleanup,
       execute: async () => {
         await buildCliArtifact(env, commandAbortController.signal);
-        if (suites.includes('upgrade')) {
-          await installPreviousCli(env, commandAbortController.signal);
-        }
         await startPlatform(env, commandAbortController.signal);
         await runShardSuites(
           suites,
@@ -60,26 +56,6 @@ async function runShard(shardName) {
   } finally {
     unregisterSignals();
   }
-}
-
-async function installPreviousCli(env, signal) {
-  const binDirectory = join(repositoryRoot, `.compartment/platform-k3d-${env.COMPARTMENT_E2E_SHARD}/previous-cli`);
-  await runInterruptibleCommand(
-    'sh',
-    [
-      'install.sh',
-      '--channel',
-      'kubernetes',
-      '--version',
-      `sha-${previousKubernetesCommit}`,
-      '--bin-dir',
-      binDirectory,
-    ],
-    env,
-    signal,
-  );
-  env.COMPARTMENT_E2E_PREVIOUS_CLI_PATH = join(binDirectory, 'compartment');
-  env.COMPARTMENT_E2E_PREVIOUS_COMMIT = previousKubernetesCommit;
 }
 
 async function cleanShard(shardName) {
@@ -122,8 +98,6 @@ async function runShardSuites(suites, env, ownerEnvironmentPath, signal) {
       await runCliE2eSuite(env, 'test/platform-k3d-install.e2e.test.ts', signal);
       Object.assign(env, readOwnerEnvironment(ownerEnvironmentPath));
       await runInterruptibleCommand(process.execPath, [lifecycleScript, 'configure'], env, signal);
-    } else if (suite === 'upgrade') {
-      await runCliE2eSuite(env, 'test/platform-k3d-upgrade.e2e.test.ts', signal);
     } else if (suite === 'system-user') {
       await runCliE2eSuite(env, 'test/system-user-flow.e2e.test.ts', signal);
     } else if (suite === 'ha') {

@@ -54,8 +54,6 @@ const registryClusterHost = `k3d-${registryName}:${registryHostPort}`;
 const registryPushHost = `localhost:${registryHostPort}`;
 const bundledRegistryClusterIp = '10.43.250.250';
 const platformBaseDomain = 'compartment.localhost';
-const managedPlatformBaseDomain = 'managed-platform-e2e.managed.compartment.localhost';
-const publicOperatorBaseDomain = 'apps.example.test';
 const consoleHost = `console.${platformBaseDomain}`;
 const builderName = `${clusterName}-builder`;
 const imageCacheLockOwnerToken = `e2e-${clusterName}`;
@@ -740,12 +738,6 @@ export function buildPlatformK3dClusterCreateArgs() {
           '/etc/containerd/runsc.toml:/etc/containerd/runsc.toml@server:*;agent:*',
         ]
       : []),
-    '--host-alias',
-    `${bundledRegistryClusterIp}:registry.${platformBaseDomain}`,
-    '--host-alias',
-    `${bundledRegistryClusterIp}:registry.${publicOperatorBaseDomain}`,
-    '--host-alias',
-    `${bundledRegistryClusterIp}:registry.${managedPlatformBaseDomain}`,
     '--timeout',
     `${String(Math.floor(prerequisiteSetupBudgetMs / 1_000))}s`,
     '--wait',

@@ -157,7 +157,7 @@ tests:
                 key: variables-master-key
         template: api-migrate.yaml
 
-  - it: resolves every consumer from the retained Secret without mutating Values
+  - it: resolves stable consumers from retained state while rotating the registry address
     set:
       platform:
         startupStage: foundation
@@ -185,7 +185,7 @@ tests:
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_ARTIFACT_REGISTRY_HOST
-          value: registry.retained.example.com
+          value: 10.43.250.250
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_MANAGED_DOMAIN_BROKER_URL
@@ -221,7 +221,7 @@ tests:
         template: install-state-secret.yaml
       - equal:
           path: stringData.registry-hostname
-          value: registry.retained.example.com
+          value: 10.43.250.250
         template: install-state-secret.yaml
       - equal:
           path: stringData.registry-issuer-ref-kind
@@ -266,7 +266,7 @@ tests:
         template: install-state-secret.yaml
       - equal:
           path: stringData.registry-hostname
-          value: registry.test.example
+          value: 10.43.250.250
         template: install-state-secret.yaml
       - equal:
           path: stringData.registry-issuer-ref-name

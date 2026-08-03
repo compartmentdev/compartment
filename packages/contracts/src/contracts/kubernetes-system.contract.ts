@@ -23,12 +23,6 @@ export interface KubernetesSystemRestartResponse {
   status: KubernetesSystemStatusResponse;
 }
 
-export interface KubernetesSystemUpdateResponse {
-  status: KubernetesSystemStatusResponse;
-  updated: boolean;
-  version: string;
-}
-
 const kubernetesPlatformWorkloadStatusSchema: ContractSchema<KubernetesPlatformWorkloadStatus> = z
   .object({
     desiredReplicas: z.number().int().nonnegative(),
@@ -52,13 +46,5 @@ export const kubernetesSystemRestartResponseSchema: ContractSchema<KubernetesSys
   .object({
     restarted: z.boolean(),
     status: kubernetesSystemStatusResponseSchema,
-  })
-  .strict();
-
-export const kubernetesSystemUpdateResponseSchema: ContractSchema<KubernetesSystemUpdateResponse> = z
-  .object({
-    status: kubernetesSystemStatusResponseSchema,
-    updated: z.boolean(),
-    version: z.string().min(1),
   })
   .strict();

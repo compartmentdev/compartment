@@ -183,7 +183,7 @@ tests:
       tls:
         existingSecret: managed-wildcard-tls
       registry:
-        hostname: registry.managed.example.com
+        hostname: 10.43.250.250
         issuerRef:
           group: cert-manager.io
           kind: Issuer

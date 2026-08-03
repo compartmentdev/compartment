@@ -10,6 +10,7 @@
   "secretName" (printf "%s-console-tls" $fullname)
   "issuerRef" .Values.tls.issuerRef
   "host" (printf "console.%s" $baseDomain)
+  "ipAddress" ""
 ) }}
 ---
 {{- end -}}
@@ -20,5 +21,6 @@
   "secretName" (printf "%s-wildcard-tls" $fullname)
   "issuerRef" .Values.tls.issuerRef
   "host" (printf "*.%s" $baseDomain)
+  "ipAddress" ""
 ) }}
 {{- end }}

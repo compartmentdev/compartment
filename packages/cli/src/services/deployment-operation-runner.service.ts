@@ -1,6 +1,7 @@
 import type { DeployResponse, DeploymentStatusResponse, DeploymentSummary } from '@compartment/contracts';
 import {
   getDeploymentStatus,
+  isCompartmentRequestError,
   isRetryableTransportRequestError,
   type CompartmentRequester,
   type RequestTransportFailure,
@@ -87,7 +88,7 @@ async function pollDeploymentBatchWithTransientRetry(
     return await pollDeploymentBatch(request, context, deployments);
   } catch (error) {
     if (
-      !isRetryableTransportRequestError(error as RequestTransportFailure) ||
+      !isRetryableDeploymentPollError(error as RequestTransportFailure) ||
       transportFailureCount >= maxDeploymentPollTransportFailureCount
     ) {
       throw error;
@@ -95,6 +96,13 @@ async function pollDeploymentBatchWithTransientRetry(
 
     return null;
   }
+}
+
+function isRetryableDeploymentPollError(error: RequestTransportFailure): boolean {
+  return (
+    isRetryableTransportRequestError(error) ||
+    (error instanceof Error && isCompartmentRequestError(error) && error.statusCode >= 500)
+  );
 }
 
 function createDeploymentPollContext(response: DeployResponse, serviceName: string | undefined): DeploymentPollContext {

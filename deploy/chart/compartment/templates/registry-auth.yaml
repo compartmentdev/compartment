@@ -1,11 +1,6 @@
 {{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
 {{- $registry := $installState.effective.registry -}}
 {{- $registryIssuerRef := $installState.effective.registryIssuerRef -}}
-{{- $baseDomain := $installState.effective.platform.baseDomain -}}
-{{- $managedRegistry := eq $installState.effective.platform.domainMode "managed" -}}
-{{- $managedWildcardRegistry := and $managedRegistry (hasSuffix (printf ".%s" $baseDomain) $registry.hostname) (eq (len (splitList "." $registry.hostname)) (add1 (len (splitList "." $baseDomain)))) -}}
-{{- $managedBrokerIssuer := and $managedRegistry (eq $registryIssuerRef.name .Values.tls.issuerRef.name) (eq $registryIssuerRef.kind .Values.tls.issuerRef.kind) -}}
-{{- $registryCertificateIssuerRef := ternary (dict "group" "cert-manager.io" "kind" "Issuer" "name" (include "compartment.customDomainIssuerName" .)) $registryIssuerRef $managedBrokerIssuer -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -27,15 +22,16 @@ spec:
     - name: http-internal
       port: {{ .Values.ports.registryInternal }}
       targetPort: http-internal
-{{- if and (eq $installState.effective.platform.startupStage "full") (not $managedWildcardRegistry) (not (empty $registry.hostname)) (not (empty $registryIssuerRef.name)) }}
+{{- if and (eq $installState.effective.platform.startupStage "full") (not (empty $registry.hostname)) (not (empty $registryIssuerRef.name)) }}
 ---
 {{- $fullname := include "compartment.fullname" . -}}
 {{- include "compartment.certManagerCertificate" (dict
   "root" .
   "name" (printf "%s-registry" $fullname)
   "secretName" (printf "%s-registry-tls" $fullname)
-  "issuerRef" $registryCertificateIssuerRef
-  "host" $registry.hostname
+  "issuerRef" $registryIssuerRef
+  "host" ""
+  "ipAddress" $registry.hostname
 ) }}
 {{- end }}
 {{- if eq $installState.effective.platform.startupStage "full" }}
@@ -114,7 +110,7 @@ spec:
         {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
         - name: tls
           secret:
-            secretName: {{ if $managedWildcardRegistry }}{{ default (printf "%s-wildcard-tls" (include "compartment.fullname" .)) .Values.tls.existingSecret }}{{ else }}{{ include "compartment.fullname" . }}-registry-tls{{ end }}
+            secretName: {{ include "compartment.fullname" . }}-registry-tls
         - name: tmp
           emptyDir: {}
 {{- end }}

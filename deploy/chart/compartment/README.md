@@ -9,11 +9,16 @@ existing-cluster preflight before applying it.
 - Helm 4.x
 - an existing Ingress Controller
 - cert-manager
+- an existing cert-manager CA Issuer or ClusterIssuer whose CA is already trusted by every node container runtime
 - NetworkPolicy enforcement
 - persistent storage
 - installer access to the namespaced and cluster-scoped resources rendered by the chart
 
 The chart does not install or disable cluster infrastructure and does not mutate nodes.
+
+The registry uses its private Service ClusterIP directly in image references and requests a certificate with that IP
+address in its SAN. Public ACME issuers cannot issue certificates for private IP addresses. Installation therefore
+fails unless the configured `registry.issuerRef` selects a CA issuer whose CA is already in every node's trust store.
 
 gVisor is an optional build-isolation enhancement. By default, ephemeral source-build Pods use each build node's
 default container runtime. To add kernel-level sandboxing, install `runsc` on the build nodes, expose it through a
@@ -77,8 +82,7 @@ The chart runs `api`, `edge`, `caddy`, `worker`, and `project-provisioner` with 
 `kubernetes.io/hostname` topology spread constraint. The soft constraint preserves support for single-node clusters;
 multiple schedulable nodes are required for node-failure tolerance.
 
-API source archives are stored in PostgreSQL so either API replica can complete an in-flight deployment. During an
-upgrade from a chart that used the API PVC, the migration Job imports retained archives before the HA rollout.
+API source archives are stored in PostgreSQL so either API replica can complete an in-flight deployment.
 Authentication and app-access sessions are PostgreSQL-backed; edge resolves app-session cookies through the shared
 API contract, while each edge replica independently refreshes its route and authorization snapshot. Persistent edge
 snapshots and the optional API audit file sink are package-local recovery features and require their component to be
@@ -126,26 +130,23 @@ compartment install
 ```
 
 Source builds require `--chart ./deploy/chart/compartment`. Retry with the same context, namespace, release, and
-values after repairing a failed preflight or Helm condition. The retained install-state Secret and registry resources
-preserve installation identity across a supported reinstall.
+unchanged values after repairing a failed preflight or Helm condition. Platform replacements are fresh installations
+in an empty namespace.
 
 Direct Helm use is an operator recovery path and bypasses CLI artifact verification:
 
 ```bash
-helm upgrade --install compartment ./deploy/chart/compartment \
+helm install compartment ./deploy/chart/compartment \
   --namespace compartment \
   --create-namespace \
   --values compartment-values.yaml \
-  --force-conflicts \
   --wait \
   --wait-for-jobs \
   --timeout 15m
 ```
 
-Pin verified image digests when using this path.
-`--force-conflicts` transfers server-side-apply ownership of rendered chart fields to Helm; unlike
-`--force-replace`, it does not recreate resources. Prefer `compartment install`, which also records the previous
-revision and performs a standalone rollback when either installation stage fails.
+Pin verified image digests when using this path. Prefer `compartment install`, which also performs existing-cluster
+preflight and first-owner bootstrap.
 
 ## Registry and workload isolation
 

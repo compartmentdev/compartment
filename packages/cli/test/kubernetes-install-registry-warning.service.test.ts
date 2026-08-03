@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { CommandProgress, CommandProgressReportOptions } from '../src/commands/command.progress.types';
-import { RegistryNodePullDnsError } from '../src/services/kubernetes-install-registry-verification-error';
 import {
   reportKubernetesInstallWarning,
-  verifyKubernetesInstallRegistryNodePullWithManagedDnsGrace,
+  verifyKubernetesInstallRegistryNodePullForInstall,
 } from '../src/services/kubernetes-install-registry-warning.service';
 import type {
   KubernetesInstallDeploymentInput,
@@ -24,36 +23,20 @@ vi.mock('../src/services/kubernetes-install-registry-verification.service', (): 
   verifyKubernetesInstallRegistryNodePull: mocks.verifyRegistryNodePull,
 }));
 
-describe('managed registry node-pull warning policy', (): void => {
+describe('registry node-pull policy', (): void => {
   beforeEach((): void => {
     mocks.verifyRegistryNodePull.mockReset();
   });
 
-  it('continues only managed installs after a DNS-specific pull failure', async (): Promise<void> => {
-    mocks.verifyRegistryNodePull.mockRejectedValue(
-      new RegistryNodePullDnsError('Registry node pull failed: lookup registry.acme.compartment.run: no such host'),
-    );
-    const warning: string | null = await verifyKubernetesInstallRegistryNodePullWithManagedDnsGrace(
-      input(),
-      state('managed'),
-    );
-
-    expect(warning).toContain('WARNING: Registry node pull failed');
-    expect(warning).toContain('registry.acme.compartment.run');
-    expect(warning).toContain('Re-run compartment install after DNS resolves');
-  });
-
-  it('keeps custom-domain and non-DNS pull failures blocking', async (): Promise<void> => {
-    const dnsFailure: RegistryNodePullDnsError = new RegistryNodePullDnsError('no such host');
+  it('keeps node-pull failures blocking in both domain modes', async (): Promise<void> => {
+    const reachabilityFailure: Error = new Error('connection refused');
     const tlsFailure: Error = new Error('certificate signed by unknown authority');
 
-    mocks.verifyRegistryNodePull.mockRejectedValueOnce(dnsFailure).mockRejectedValueOnce(tlsFailure);
-    await expect(verifyKubernetesInstallRegistryNodePullWithManagedDnsGrace(input(), state('custom'))).rejects.toBe(
-      dnsFailure,
+    mocks.verifyRegistryNodePull.mockRejectedValueOnce(reachabilityFailure).mockRejectedValueOnce(tlsFailure);
+    await expect(verifyKubernetesInstallRegistryNodePullForInstall(input(), state('custom'))).rejects.toBe(
+      reachabilityFailure,
     );
-    await expect(verifyKubernetesInstallRegistryNodePullWithManagedDnsGrace(input(), state('managed'))).rejects.toBe(
-      tlsFailure,
-    );
+    await expect(verifyKubernetesInstallRegistryNodePullForInstall(input(), state('managed'))).rejects.toBe(tlsFailure);
   });
 
   it('renders warnings as explicit lines even when normal progress is hidden', (): void => {

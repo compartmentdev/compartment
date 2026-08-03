@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { CommandResult } from '../src/command-runner.types';
-import { RegistryNodePullDnsError } from '../src/services/kubernetes-install-registry-verification-error';
 import { verifyKubernetesInstallRegistryNodePull } from '../src/services/kubernetes-install-registry-verification.service';
 import type { KubernetesInstallDeploymentInput } from '../src/services/kubernetes-install.service.types';
 
@@ -92,10 +91,10 @@ describe('install registry node-pull verification', (): void => {
     const failure: Promise<void> = verifyKubernetesInstallRegistryNodePull(input(), input());
     await expect(failure).rejects.toThrow('waiting reason ImagePullBackOff');
     await expect(failure).rejects.toThrow(
-      `required DNS record registry.example.test A ${[10, 43, 251, 103].join('.')}`,
+      `retained Service address ${[10, 43, 251, 103].join('.')} must be reachable from the node`,
     );
     await expect(failure).rejects.toThrow(
-      'TLS certificate issued by Issuer/platform-issuer must be trusted by the node container runtime',
+      'certificate issued by Issuer/platform-issuer with that IP SAN must be trusted by the node container runtime',
     );
     await expect(failure).rejects.toThrow(
       'if it was added later, restart the runtime (k3s server: systemctl restart k3s; k3s agent: systemctl restart k3s-agent)',
@@ -163,9 +162,7 @@ describe('install registry node-pull verification', (): void => {
       )
       .mockResolvedValueOnce(ok('deleted'));
 
-    await expect(verifyKubernetesInstallRegistryNodePull(input(), input())).rejects.toBeInstanceOf(
-      RegistryNodePullDnsError,
-    );
+    await expect(verifyKubernetesInstallRegistryNodePull(input(), input())).rejects.toThrow('no such host');
   });
 
   it('reports a timed-out registry command even when kubectl emits no diagnostics', async (): Promise<void> => {
@@ -178,6 +175,7 @@ describe('install registry node-pull verification', (): void => {
 });
 
 function input(): KubernetesInstallDeploymentInput {
+  const registryClusterIp: string = [10, 43, 251, 103].join('.');
   return {
     acmeEmail: 'admin@example.com',
     clearConfiguredIngressEndpoint: false,
@@ -185,7 +183,7 @@ function input(): KubernetesInstallDeploymentInput {
     domainMode: 'custom',
     ingressClassName: 'traefik',
     namespace: 'compartment',
-    registryHostname: 'registry.example.test',
+    registryHostname: registryClusterIp,
     registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'platform-issuer' },
     releaseName: 'compartment',
     valuesPath: 'values.yaml',

@@ -60,9 +60,8 @@ describe('platform k3d e2e command boundary', () => {
         ),
       ),
     ).toBe(true);
-    expect(args).toContain('10.43.250.250:registry.compartment.localhost');
-    expect(args).toContain('10.43.250.250:registry.apps.example.test');
-    expect(args).toContain('10.43.250.250:registry.managed-platform-e2e.managed.compartment.localhost');
+    expect(args).not.toContain('--host-alias');
+    expect(args.join(' ')).not.toContain('10.43.250.250:registry.');
     expect(args).toContain('120s');
     expect(args.join(' ')).not.toContain('30443@server');
     expect(args.join(' ')).not.toContain('containerd-gvisor-config.toml.tmpl');

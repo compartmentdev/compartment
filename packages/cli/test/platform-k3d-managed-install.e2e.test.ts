@@ -83,7 +83,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       const brokerState: ManagedInstallBrokerState = await readManagedInstallBrokerState();
       expect(brokerState).toEqual({
         chartUrl: managedInstallBrokerUrl,
-        registryHostname: `registry.${managedInstallBaseDomain}`,
+        registryHostname: [10, 43, 250, 250].join('.'),
         retainedUrl: managedInstallBrokerUrl,
       });
 

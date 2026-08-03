@@ -17,7 +17,6 @@ export async function inspectKubernetesInstall(
       const release: ExistingKubernetesInstallRelease | null = await readExistingKubernetesInstallRelease(input);
       return {
         existingInstall: release?.install ?? null,
-        releaseRevision: release?.revision ?? null,
         releaseValues: release?.values ?? null,
         retainedState: await readRetainedKubernetesInstallState(input),
       };

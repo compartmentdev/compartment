@@ -32,6 +32,15 @@ export async function inspectOperatorIssuer(
   throw unavailableIssuerError(input.namespace, issuer, result);
 }
 
+export function assertRegistryIpIssuerAssessment(assessment: KubernetesOperatorIssuerAssessment): void {
+  if (assessment.trust === 'ca') {
+    return;
+  }
+  throw new Error(
+    `Private registry IP certificates require a cert-manager CA issuer whose CA is already trusted by every Kubernetes node runtime. ${assessment.detail}`,
+  );
+}
+
 async function readOperatorIssuer(
   input: Pick<KubernetesInstallDeploymentInput, 'kubeconfigPath' | 'kubeContext' | 'namespace'>,
   issuer: DomainIssuerReference,
@@ -91,7 +100,7 @@ function parseIssuer(output: string): KubernetesCertManagerIssuer | null {
 function selfSignedIssuerError(issuer: DomainIssuerReference): KubernetesExistingClusterPreflightError {
   return new KubernetesExistingClusterPreflightError(
     'cert-manager',
-    `${issuer.kind} ${issuer.name} uses spec.selfSigned and cannot satisfy an operator-owned installation. The private registry must present TLS trusted by every Kubernetes node, and the CLI public HTTPS probe must trust the platform certificate. Use an ACME issuer backed by a publicly trusted CA, tls.existingSecret with a publicly trusted certificate plus a trusted registry issuer, or a private CA distributed to every node and the operator machine.`,
+    `${issuer.kind} ${issuer.name} uses spec.selfSigned and cannot satisfy an operator-owned installation. Use a CA issuer whose CA is distributed to every node and the operator machine for the private registry. Public platform TLS may use a publicly trusted ACME issuer or tls.existingSecret.`,
   );
 }
 

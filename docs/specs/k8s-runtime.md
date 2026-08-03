@@ -164,8 +164,8 @@ workspace, then deletes that Pod after result capture; it does not create a sepa
 `buildkit.runtimeClassName` selects an operator-provided gVisor RuntimeClass, gVisor adds a userspace kernel sandbox
 between build processes and the node kernel. Without that value, builds use the node default container runtime and
 retain Pod, namespace, RBAC, NetworkPolicy, and ephemeral-storage isolation, but not gVisor's kernel boundary.
-Fresh installs and upgrades bind only the existing platform worker ServiceAccount to the namespaced Job, Secret, Pod,
-and Pod-log permissions required by `runJob`; no tenant or seeded product principal receives Kubernetes authority.
+Fresh installs bind only the existing platform worker ServiceAccount to the namespaced Job, Secret, Pod, and Pod-log
+permissions required by `runJob`; no tenant or seeded product principal receives Kubernetes authority.
 
 Each Job uses only `emptyDir` local cache and a project/service-scoped registry cache; no unencrypted cache volume is
 shared between tenants. The worker's existing limit of two concurrent builds now limits build pods. NetworkPolicy

@@ -3,22 +3,10 @@ import {
   buildDomainWildcardHost,
   type DomainDnsRecord,
   type IssuePasswordResetResponse,
-  type KubernetesSystemUpdateResponse,
   type SystemDomainMutationResponse,
   type SystemDomainPendingOperation,
   type SystemDomainStatusResponse,
 } from '@compartment/contracts';
-
-export function createKubernetesSystemUpdateMessage(
-  result: KubernetesSystemUpdateResponse,
-  cliVersion: string,
-  statusMessage: string,
-): string {
-  return `Platform image version selected by CLI ${cliVersion}: ${result.version}.
-To deploy a newer platform version, update the CLI with install.sh first, then run compartment system update.
-Platform update to ${result.version} ${result.updated ? 'completed' : 'finished without full readiness'}.
-${statusMessage}`;
-}
 
 export function createSystemDomainMutationMessage(result: SystemDomainMutationResponse): string {
   return createSystemDomainStatusMessage(result.status);

@@ -39,7 +39,7 @@ export async function resolveOperatorDomainTls(
   input: OperatorDomainTlsPromptInput,
 ): Promise<KubernetesInstallWizardDomain> {
   if (isReservedKubernetesInstallLocalhostDomain(input.baseDomain)) {
-    return { input: { baseDomain: input.baseDomain }, tlsReview: 'not required for reserved localhost domains' };
+    return await resolveLocalhostRegistryTls(io, input);
   }
   renderTlsChoices(io, input.namespace);
   const mode: string = await promptVisibleText(io, 'TLS', '1');
@@ -54,6 +54,18 @@ export async function resolveOperatorDomainTls(
     throw new Error(buildOperatorValuesInstructions(input));
   }
   throw new Error('TLS selection must be 1, 2, or 3.');
+}
+
+async function resolveLocalhostRegistryTls(
+  io: CliIo,
+  input: OperatorDomainTlsPromptInput,
+): Promise<KubernetesInstallWizardDomain> {
+  const registry: InstallWizardRegistryValues = await resolveRegistryIpTls(io, input);
+  return {
+    input: { baseDomain: input.baseDomain },
+    registry,
+    tlsReview: `public TLS not required; registry ${registry.issuerRef.kind}/${registry.issuerRef.name}`,
+  };
 }
 
 function renderTlsChoices(io: CliIo, namespace: string): void {
@@ -71,11 +83,14 @@ async function resolveIssuerTls(
   input: OperatorDomainTlsPromptInput,
 ): Promise<KubernetesInstallWizardDomain> {
   const issuerRef: InstallWizardIssuerReference = await promptIssuerReference(io, 'Platform TLS');
-  await inspectIssuerTrust(io, input, issuerRef);
+  const assessment: KubernetesOperatorIssuerAssessment = await inspectIssuerTrust(io, input, issuerRef);
+  const registry: InstallWizardRegistryValues =
+    assessment.trust === 'ca' ? { issuerRef } : await resolveRegistryIpTls(io, input);
   return {
     input: { baseDomain: input.baseDomain },
+    registry,
     tls: { issuerRef },
-    tlsReview: `${issuerRef.kind}/${issuerRef.name}`,
+    tlsReview: `${issuerRef.kind}/${issuerRef.name}; registry ${registry.issuerRef.kind}/${registry.issuerRef.name}`,
   };
 }
 
@@ -88,7 +103,7 @@ async function resolveExistingSecretTls(
     'Existing TLS Secret',
   );
   const issuerRef: InstallWizardIssuerReference = await promptIssuerReference(io, 'Private registry TLS');
-  await inspectIssuerTrust(io, input, issuerRef);
+  await assertRegistryIpIssuer(io, input, issuerRef);
   return {
     registry: { issuerRef },
     tls: { existingSecret },
@@ -96,18 +111,38 @@ async function resolveExistingSecretTls(
   };
 }
 
-async function inspectIssuerTrust(
+export async function resolveRegistryIpTls(
+  io: CliIo,
+  input: OperatorDomainTlsPromptInput,
+): Promise<InstallWizardRegistryValues> {
+  const issuerRef: InstallWizardIssuerReference = await promptIssuerReference(io, 'Private registry TLS');
+  await assertRegistryIpIssuer(io, input, issuerRef);
+  return { issuerRef };
+}
+
+async function assertRegistryIpIssuer(
   io: CliIo,
   input: OperatorDomainTlsPromptInput,
   issuerRef: InstallWizardIssuerReference,
 ): Promise<void> {
+  const assessment: KubernetesOperatorIssuerAssessment = await inspectIssuerTrust(io, input, issuerRef);
+  if (assessment.trust !== 'ca') {
+    throw new Error('Private registry IP certificates require a cert-manager CA issuer.');
+  }
+}
+
+async function inspectIssuerTrust(
+  io: CliIo,
+  input: OperatorDomainTlsPromptInput,
+  issuerRef: InstallWizardIssuerReference,
+): Promise<KubernetesOperatorIssuerAssessment> {
   const assessment: KubernetesOperatorIssuerAssessment = await input.inspectIssuer(
     input.kubeContext,
     input.namespace,
     issuerRef,
   );
   if (assessment.trust === 'acme') {
-    return;
+    return assessment;
   }
   io.stderr(`TLS trust warning: ${assessment.detail}\n`);
   if (assessment.trust === 'ca') {
@@ -116,6 +151,7 @@ async function inspectIssuerTrust(
   if (assessment.trust === 'unknown') {
     await confirmIssuerTrust(io, 'Confirm that the issued certificate chain is trusted by every node and this machine');
   }
+  return assessment;
 }
 
 async function confirmIssuerTrust(io: CliIo, message: string): Promise<void> {
@@ -149,6 +185,7 @@ function buildOperatorValuesInstructions(input: OperatorDomainTlsPromptInput): s
     'Operator-owned domain installation stopped before owner setup. Create compartment-values.yaml:\n' +
     `ingress:\n  className: ${input.ingressClass}\n` +
     'tls:\n  issuerRef:\n    kind: ClusterIssuer\n    name: <issuer-name>\n' +
+    'registry:\n  issuerRef:\n    kind: ClusterIssuer\n    name: <node-trusted-ca-issuer>\n' +
     `storage:\n  storageClass: ${input.storageClass}\n` +
     'Then replace the uppercase placeholders and run:\n' +
     `${adminPasswordEnvironmentName}='${ownerPasswordPlaceholder}' compartment install ` +

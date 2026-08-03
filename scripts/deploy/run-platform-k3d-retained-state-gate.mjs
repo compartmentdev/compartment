@@ -11,12 +11,10 @@ const release = 'restore2-state';
 const projectProvisioningNamespace = `${release}-compartment-project-provisioning`;
 const secretName = `${release}-install-state`;
 const registryAuthServiceName = `${release}-compartment-registry-auth`;
-const registryHelmArgs = [
-  '--set',
-  'registry.hostname=registry.retained.example.test',
-  '--set',
-  'registry.issuerRef.name=retained-registry-issuer',
-];
+const previousRegistryAddressServiceName = `${release}-previous-registry-address`;
+function registryHelmArgs(clusterIp) {
+  return ['--set', `registry.hostname=${clusterIp}`, '--set', 'registry.issuerRef.name=retained-registry-issuer'];
+}
 
 function helm(args) {
   runCommand('helm', [...args, '--kube-context', context], repositoryRoot);
@@ -75,6 +73,7 @@ async function runRetainedInstallStateGate() {
       '--set',
       'secrets.managedDomainAcmeDnsToken=retained-token',
     ]);
+    const registryClusterIp = readServiceClusterIp();
     helm([
       'upgrade',
       release,
@@ -87,14 +86,40 @@ async function runRetainedInstallStateGate() {
       `buildkit.namespace=${buildNamespace}`,
       '--set',
       'productLogs.enabled=false',
-      ...registryHelmArgs,
+      ...registryHelmArgs(registryClusterIp),
     ]);
-    const registryClusterIp = readServiceClusterIp();
     helm(['uninstall', release, '--namespace', namespace]);
     kubectl(['wait', '--for=delete', `namespace/${buildNamespace}`, '--timeout=60s']);
     kubectl(['wait', '--for=delete', `namespace/${projectProvisioningNamespace}`, '--timeout=60s']);
     kubectl(['--namespace', namespace, 'get', 'secret', secretName]);
     kubectl(['--namespace', namespace, 'get', 'service', registryAuthServiceName]);
+    kubectl(['--namespace', namespace, 'delete', 'service', registryAuthServiceName]);
+    kubectl([
+      '--namespace',
+      namespace,
+      'create',
+      'service',
+      'clusterip',
+      previousRegistryAddressServiceName,
+      `--clusterip=${registryClusterIp}`,
+      '--tcp=443:443',
+    ]);
+    helm([
+      'upgrade',
+      '--install',
+      release,
+      './deploy/chart/compartment',
+      '--namespace',
+      namespace,
+      '--set',
+      'platform.startupStage=foundation',
+      '--set',
+      `buildkit.namespace=${buildNamespace}`,
+      '--set',
+      'productLogs.enabled=false',
+      ...registryHelmArgs(registryClusterIp),
+    ]);
+    const reinstalledRegistryClusterIp = readServiceClusterIp();
     helm([
       'upgrade',
       '--install',
@@ -114,13 +139,13 @@ async function runRetainedInstallStateGate() {
       `buildkit.namespace=${buildNamespace}`,
       '--set',
       'productLogs.enabled=false',
+      ...registryHelmArgs(reinstalledRegistryClusterIp),
     ]);
     const installationId = readSecretValue('installation-id');
     const acmeDnsToken = readSecretValue('managed-domain-acme-dns-token');
     const brokerUrl = readSecretValue('managed-domain-broker-url');
     const registryHostname = readSecretValue('registry-hostname');
     const registryIssuerName = readSecretValue('registry-issuer-ref-name');
-    const reinstalledRegistryClusterIp = readServiceClusterIp();
     kubectl(['--namespace', namespace, 'get', 'deployment', `${release}-compartment-registry-auth`]);
     const runtimeBrokerUrl = captureKubectl([
       '--namespace',
@@ -135,12 +160,12 @@ async function runRetainedInstallStateGate() {
       installationId !== 'retained-installation' ||
       acmeDnsToken !== 'retained-token' ||
       brokerUrl !== 'https://broker.example.test' ||
-      registryHostname !== 'registry.retained.example.test' ||
+      registryHostname !== reinstalledRegistryClusterIp ||
       registryIssuerName !== 'retained-registry-issuer' ||
       runtimeBrokerUrl !== 'https://broker.example.test' ||
-      reinstalledRegistryClusterIp !== registryClusterIp
+      reinstalledRegistryClusterIp === registryClusterIp
     ) {
-      throw new Error('Retained install state or registry Service address changed during reinstall.');
+      throw new Error('Retained install state did not rotate to the replacement registry Service address.');
     }
   } finally {
     cleanup();

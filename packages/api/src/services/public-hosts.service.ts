@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import {
   buildControlPlaneHost,
   buildDomainWildcardHost,
-  buildPrivateRegistryHost,
   controlPlaneSubdomainLabel,
   defaultCompartmentEnvironmentName,
   type DnsRecordInstruction,
@@ -39,11 +38,7 @@ export function buildRuntimePublicSettings(config: RuntimePublicSettingsConfig):
 }
 
 export function buildCanonicalRouteHost(input: RouteCollisionInput): string {
-  const existingHosts: Set<string> = new Set<string>([
-    ...input.existingHosts,
-    buildControlPlaneHost(input.baseDomain),
-    buildPrivateRegistryHost(input.baseDomain),
-  ]);
+  const existingHosts: Set<string> = new Set<string>([...input.existingHosts, buildControlPlaneHost(input.baseDomain)]);
   const candidateHost: string = buildCanonicalRouteHostCandidate(input);
   if (!existingHosts.has(candidateHost)) {
     return candidateHost;

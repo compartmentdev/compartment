@@ -1,5 +1,4 @@
-import { buildPrivateRegistryHost, type DomainIssuerReference } from '@compartment/contracts';
-import { isValidDnsHostname } from '@compartment/utils';
+import type { DomainIssuerReference } from '@compartment/contracts';
 import { z } from 'zod';
 import { isReservedKubernetesInstallLocalhostDomain } from '../kubernetes-install-domain';
 import type { KubernetesInstallDomainMode } from './kubernetes-install.service.types';
@@ -28,12 +27,6 @@ interface ResolveKubernetesInstallRegistryInput {
   valuesPath: string;
 }
 
-const defaultPlatformIssuer: KubernetesInstallRegistryIssuerReference = {
-  group: 'cert-manager.io',
-  kind: 'Issuer',
-  name: 'compartment-platform',
-};
-
 const registryValuesSchema: z.ZodType<KubernetesInstallRegistrySourceValues> = z
   .object({
     registry: z
@@ -57,6 +50,7 @@ export async function resolveKubernetesInstallRegistryConfiguration(
     throw formatSchemaValidationError(result.error, input.valuesPath);
   }
   const values: KubernetesInstallRegistrySourceValues = result.data;
+  assertRegistryHostnameIsDerived(values.registry);
   if (input.domainMode === 'managed') {
     return readManagedRegistryConfiguration(values.registry);
   }
@@ -66,11 +60,9 @@ export async function resolveKubernetesInstallRegistryConfiguration(
 function readManagedRegistryConfiguration(
   registry: KubernetesInstallRegistryValueFields | undefined,
 ): KubernetesInstallRegistryConfiguration {
-  const hostname: string = (registry?.hostname ?? '').trim().toLowerCase();
   return {
-    registryHostname: hostname,
-    registryIssuerRef:
-      registry?.issuerRef === undefined ? defaultPlatformIssuer : requireRegistryIssuer(registry.issuerRef),
+    registryHostname: '',
+    registryIssuerRef: requireRegistryIssuer(registry?.issuerRef),
   };
 }
 
@@ -79,21 +71,19 @@ function readOperatorRegistryConfiguration(
   values: KubernetesInstallRegistrySourceValues,
 ): KubernetesInstallRegistryConfiguration {
   assertOperatorPlatformTlsConfiguration(baseDomain, values);
-  const hostname: string = buildPrivateRegistryHost(baseDomain);
-  if (!isValidDnsHostname(hostname)) {
-    throw new Error(`The operator-owned base domain cannot form a valid private registry hostname: ${hostname}.`);
-  }
-  const configuredHostname: string = (values.registry?.hostname ?? '').trim().toLowerCase();
-  if (configuredHostname !== '' && configuredHostname !== hostname) {
-    throw new Error(
-      `registry.hostname must be ${hostname} for the operator-owned base domain; remove the override and retry.`,
-    );
-  }
   const issuer: KubernetesInstallRegistryIssuerReference =
     values.registry?.issuerRef === undefined
       ? readPlatformIssuer(values.tls?.issuerRef)
       : requireRegistryIssuer(values.registry.issuerRef);
-  return { registryHostname: hostname, registryIssuerRef: issuer };
+  return { registryHostname: '', registryIssuerRef: issuer };
+}
+
+function assertRegistryHostnameIsDerived(registry: KubernetesInstallRegistryValueFields | undefined): void {
+  if ((registry?.hostname ?? '').trim() !== '') {
+    throw new Error(
+      'registry.hostname is derived from the retained registry Service ClusterIP and cannot be configured.',
+    );
+  }
 }
 
 function assertOperatorPlatformTlsConfiguration(
@@ -116,16 +106,19 @@ function assertOperatorPlatformTlsConfiguration(
 }
 
 function readPlatformIssuer(issuerRef: DomainIssuerReference | undefined): KubernetesInstallRegistryIssuerReference {
-  return issuerRef === undefined
-    ? defaultPlatformIssuer
-    : { group: 'cert-manager.io', kind: issuerRef.kind, name: issuerRef.name };
+  if (issuerRef === undefined) {
+    throw new Error('registry.issuerRef or tls.issuerRef must reference a CA trusted by every Kubernetes node.');
+  }
+  return { group: 'cert-manager.io', kind: issuerRef.kind, name: issuerRef.name };
 }
 
 function requireRegistryIssuer(
   issuerRef: KubernetesInstallRegistryIssuerValueFields | undefined,
 ): KubernetesInstallRegistryIssuerReference {
   if (issuerRef === undefined) {
-    throw new Error('registry.issuerRef.name and registry.issuerRef.kind are required in --values.');
+    throw new Error(
+      'registry.issuerRef.name and registry.issuerRef.kind are required in --values and must reference a CA trusted by every Kubernetes node.',
+    );
   }
   return { group: 'cert-manager.io', kind: issuerRef.kind, name: issuerRef.name };
 }
@@ -134,5 +127,5 @@ function requireOperatorBaseDomain(baseDomain: string | undefined): string {
   if (baseDomain !== undefined && baseDomain !== '') {
     return baseDomain;
   }
-  throw new Error('Cannot derive registry.hostname without an operator-owned base domain.');
+  throw new Error('Custom-domain install requires an operator-owned base domain.');
 }

@@ -28,7 +28,7 @@ describe('worker artifact cleanup', (): void => {
       [
         {
           artifactId: 'art_old',
-          imageRef: `registry.example/projects/prj_123/services/svc_123@sha256:${'a'.repeat(64)}`,
+          imageRef: `10.43.250.250:443/projects/prj_123/services/svc_123@sha256:${'a'.repeat(64)}`,
         },
       ],
       registry,

@@ -1,6 +1,7 @@
 import {
   buildCompartmentArtifactImageRepository,
   buildCompartmentArtifactImageTag,
+  retargetCompartmentArtifactImageDigestRef,
   gitDescriptorPlanResponseSchema,
   gitDescriptorPullRequestStatusResponseSchema,
   isDeployableCompartmentServiceKind,
@@ -40,6 +41,26 @@ describe('runtime invariants', (): void => {
     expect(buildCompartmentArtifactImageTag('127.0.0.1:5517', imageRepository, 'art_123')).toBe(
       '127.0.0.1:5517/projects/prj_123/services/svc_123:art_123',
     );
+  });
+
+  it('retargets a persisted artifact digest after the registry Service address changes', (): void => {
+    const imageRepository: string = buildCompartmentArtifactImageRepository('prj_123', 'svc_123');
+    const digest: string = `sha256:${'a'.repeat(64)}`;
+
+    expect(
+      retargetCompartmentArtifactImageDigestRef(
+        '10.43.199.7:443',
+        imageRepository,
+        `10.43.250.250:443/${imageRepository}@${digest}`,
+      ),
+    ).toBe(`10.43.199.7:443/${imageRepository}@${digest}`);
+    expect(
+      retargetCompartmentArtifactImageDigestRef(
+        '10.43.199.7:443',
+        imageRepository,
+        `10.43.250.250:443/projects/prj_other/services/svc_123@${digest}`,
+      ),
+    ).toBeNull();
   });
 
   it('resolves auto build execution from dockerfile presence', (): void => {

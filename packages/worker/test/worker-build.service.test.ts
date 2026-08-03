@@ -39,19 +39,19 @@ afterEach((): void => {
 });
 
 describe('buildReleaseImageFromSource', (): void => {
-  it('reuses an existing digest-pinned artifact without starting a build Job', async (): Promise<void> => {
+  it('retargets a reusable digest-pinned artifact after the registry Service address changes', async (): Promise<void> => {
     const request: CompartmentRequester = vi.fn() as CompartmentRequester;
     const deployment: WorkerClaimedDeployment = createClaimedDeployment({
       artifact: {
         id: 'art_123',
-        imageRef: `127.0.0.1:5517/projects/prj_123/services/svc_123@sha256:${'a'.repeat(64)}`,
+        imageRef: `10.43.250.250:443/projects/prj_123/services/svc_123@sha256:${'a'.repeat(64)}`,
         sourceDigest: 'sha256:source',
       },
     });
 
     await expect(
       buildReleaseImageFromSource(request, deployment, createWorkerConfig(), {} as KubeRuntime),
-    ).resolves.toBe(deployment.artifact.imageRef);
+    ).resolves.toBe(`127.0.0.1:5517/projects/prj_123/services/svc_123@sha256:${'a'.repeat(64)}`);
     expect(mocks.runWorkerBuildJob).not.toHaveBeenCalled();
   });
 

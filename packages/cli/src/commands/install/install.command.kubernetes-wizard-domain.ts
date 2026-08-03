@@ -2,13 +2,17 @@ import { isIP } from 'node:net';
 import type { CliIo } from '../../app.types';
 import { promptVisibleText } from '../../prompts/prompt';
 import { assertMutuallyExclusiveKubernetesInstallDomains } from './install.command.input';
-import { resolveOperatorDomainTls, type OperatorDomainTlsPromptInput } from './install.command.kubernetes-wizard-tls';
+import {
+  resolveOperatorDomainTls,
+  resolveRegistryIpTls,
+  type OperatorDomainTlsPromptInput,
+} from './install.command.kubernetes-wizard-tls';
 import type {
   InspectKubernetesInstallIssuer,
   KubernetesInstallWizardClusterSelection,
   KubernetesInstallWizardDomain,
 } from './install.command.kubernetes-wizard.types';
-import type { InstallCommandOptions } from './install.command.types';
+import type { InstallCommandOptions, InstallWizardRegistryValues } from './install.command.types';
 import { normalizeInstallBaseDomain } from './install.command.validation';
 
 export async function resolveKubernetesInstallWizardDomainForSelection(
@@ -33,7 +37,7 @@ async function resolveKubernetesInstallWizardDomain(
     if (managedDomainUnavailable) {
       throw hostnameManagedDomainError();
     }
-    return resolveManagedDomain();
+    return await resolveManagedDomain(io, options, selection, inspectIssuer);
   }
   if (options.baseDomain !== undefined) {
     return await resolveOperatorDomainTls(
@@ -61,7 +65,7 @@ async function promptDomainChoice(
   io.stderr('Domain:\n  1. Managed Compartment domain [default]\n  2. Operator-owned base domain\n');
   const mode: string = await promptVisibleText(io, 'Domain', '1');
   if (mode === '1') {
-    return resolveManagedDomain();
+    return await resolveManagedDomain(io, options, selection, inspectIssuer);
   }
   if (mode === '2') {
     return await promptOperatorDomain(io, options, selection, inspectIssuer);
@@ -85,6 +89,23 @@ function hostnameManagedDomainError(): Error {
   );
 }
 
+async function resolveManagedDomain(
+  io: CliIo,
+  options: InstallCommandOptions,
+  selection: KubernetesInstallWizardClusterSelection,
+  inspectIssuer: InspectKubernetesInstallIssuer,
+): Promise<KubernetesInstallWizardDomain> {
+  const registry: InstallWizardRegistryValues = await resolveRegistryIpTls(
+    io,
+    buildTlsPromptInput('managed.invalid', options, selection, inspectIssuer),
+  );
+  return {
+    input: { managedDomain: true },
+    registry,
+    tlsReview: `managed platform; registry ${registry.issuerRef.kind}/${registry.issuerRef.name}`,
+  };
+}
+
 function buildTlsPromptInput(
   baseDomain: string,
   options: InstallCommandOptions,
@@ -100,8 +121,4 @@ function buildTlsPromptInput(
     storageClass: selection.storageClass,
     inspectIssuer,
   };
-}
-
-function resolveManagedDomain(): KubernetesInstallWizardDomain {
-  return { input: { managedDomain: true }, tlsReview: 'managed by Compartment' };
 }
