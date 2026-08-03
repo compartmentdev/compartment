@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
-import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -11,8 +11,35 @@ import {
   runWithPlatformK3dCleanup,
 } from './platform-k3d-e2e-shard-support.mjs';
 import { platformK3dShardNames } from './platform-k3d-e2e-shards.mjs';
+import { prepareSystemUpdateBaseline } from './run-platform-k3d-e2e-shard.mjs';
 
 describe('platform k3d e2e shard runner', () => {
+  it('fails before a baseline push when an image repository is not owned by k3d', async () => {
+    const directory = await mkdtemp(join(process.cwd(), '.platform-k3d-baseline-'));
+    const valuesPath = join(directory, 'values.yaml');
+    const updateValuesPath = join(directory, 'update-values.yaml');
+    await writeFile(
+      valuesPath,
+      `images:\n  api:\n    repository: registry.example.com/compartment/api\n    digest: sha256:${'a'.repeat(64)}\n`,
+    );
+    try {
+      await expect(
+        prepareSystemUpdateBaseline(
+          {
+            COMPARTMENT_E2E_PLATFORM_VALUES_PATH: relative(process.cwd(), valuesPath),
+            COMPARTMENT_E2E_REGISTRY_PORT: '15500',
+            COMPARTMENT_E2E_UPDATE_VALUES_PATH: relative(process.cwd(), updateValuesPath),
+          },
+          globalThis.AbortSignal.timeout(1_000),
+        ),
+      ).rejects.toThrow(
+        'Expected baseline image repository registry.example.com/compartment/api to use the k3d-<registry>/<repository> format.',
+      );
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it('defines isolated names, ports, namespaces, and state for every shard', () => {
     const environments = platformK3dShardNames.map((shard) => buildPlatformK3dShardEnvironment(shard, {}));
 
@@ -28,6 +55,7 @@ describe('platform k3d e2e shard runner', () => {
       'COMPARTMENT_E2E_MANAGED_NAMESPACE',
       'COMPARTMENT_E2E_DIAGNOSTICS_PATH',
       'COMPARTMENT_E2E_PLATFORM_VALUES_PATH',
+      'COMPARTMENT_E2E_UPDATE_VALUES_PATH',
       'COMPARTMENT_E2E_PREVIOUS_PLATFORM_VALUES_PATH',
       'COMPARTMENT_E2E_MANAGED_VALUES_PATH',
       'COMPARTMENT_E2E_OWNER_ENV_PATH',
@@ -106,6 +134,7 @@ describe('platform k3d e2e shard runner', () => {
       'managed-install',
       'retained-state',
     ]);
+    expect(readPlatformK3dShardSuites('system-update')).toEqual(['install', 'system-update']);
   });
 
   it('cleans successful and failed runs by default while preserving the original failure', async () => {

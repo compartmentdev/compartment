@@ -19,6 +19,7 @@ version_argument="0"
 channel_argument="0"
 bin_dir=""
 init_install="0"
+init_update="0"
 init_login="0"
 init_api_url=""
 init_email=""
@@ -31,6 +32,7 @@ install_kube_context=""
 install_namespace=""
 install_release_name=""
 install_remote=""
+install_values_path=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -66,6 +68,10 @@ while [ "$#" -gt 0 ]; do
       init_install="1"
       shift
       ;;
+    --init-update)
+      init_update="1"
+      shift
+      ;;
     --init-login)
       init_login="1"
       shift
@@ -92,6 +98,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --base-domain)
       install_base_domain="$2"
+      shift 2
+      ;;
+    --values)
+      install_values_path="$2"
       shift 2
       ;;
     --chart)
@@ -125,11 +135,14 @@ init_mode_count=0
 if [ "$init_install" = "1" ]; then
   init_mode_count=$((init_mode_count + 1))
 fi
+if [ "$init_update" = "1" ]; then
+  init_mode_count=$((init_mode_count + 1))
+fi
 if [ "$init_login" = "1" ]; then
   init_mode_count=$((init_mode_count + 1))
 fi
 if [ "$init_mode_count" -gt 1 ]; then
-  printf 'Choose at most one of --init-install or --init-login.\n' >&2
+  printf 'Choose at most one of --init-install, --init-update, or --init-login.\n' >&2
   exit 1
 fi
 
@@ -138,18 +151,35 @@ if [ "$init_install" = "1" ]; then
     printf 'Use --onboarding-session only with --init-login.\n' >&2
     exit 1
   fi
+  if [ -n "$install_values_path" ]; then
+    printf 'Use --values only with --init-update.\n' >&2
+    exit 1
+  fi
+elif [ "$init_update" = "1" ]; then
+  if [ -z "$install_values_path" ]; then
+    printf 'Expected --values <path> with --init-update.\n' >&2
+    exit 1
+  fi
+  if [ -n "$init_api_url" ] || [ -n "$init_email" ] || [ -n "$init_organization" ] || [ -n "$init_organization_slug" ] || [ -n "$init_onboarding_session" ] || [ -n "$install_base_domain" ] || [ -n "$install_remote" ]; then
+    printf 'The provided owner, domain, remote, or login arguments are only valid with --init-install or --init-login.\n' >&2
+    exit 1
+  fi
 elif [ "$init_login" = "1" ]; then
   if [ -z "$init_api_url" ]; then
     printf 'Expected --api-url <url> with --init-login.\n' >&2
     exit 1
   fi
+  if [ -n "$install_values_path" ]; then
+    printf 'Use --values only with --init-update.\n' >&2
+    exit 1
+  fi
   if [ -n "$install_base_domain" ] || [ -n "$init_organization_slug" ] || [ -n "$install_chart_path" ] || [ -n "$install_kube_context" ] || [ -n "$install_namespace" ] || [ -n "$install_release_name" ] || [ -n "$install_remote" ]; then
-    printf 'Use Kubernetes lifecycle options only with --init-install.\n' >&2
+    printf 'Use Kubernetes lifecycle options only with --init-install or --init-update.\n' >&2
     exit 1
   fi
 else
-  if [ -n "$init_api_url" ] || [ -n "$init_email" ] || [ -n "$init_organization" ] || [ -n "$init_organization_slug" ] || [ -n "$init_onboarding_session" ] || [ -n "$install_base_domain" ] || [ -n "$install_chart_path" ] || [ -n "$install_kube_context" ] || [ -n "$install_namespace" ] || [ -n "$install_release_name" ] || [ -n "$install_remote" ]; then
-    printf 'Use install and login arguments only with --init-install or --init-login.\n' >&2
+  if [ -n "$init_api_url" ] || [ -n "$init_email" ] || [ -n "$init_organization" ] || [ -n "$init_organization_slug" ] || [ -n "$init_onboarding_session" ] || [ -n "$install_base_domain" ] || [ -n "$install_chart_path" ] || [ -n "$install_kube_context" ] || [ -n "$install_namespace" ] || [ -n "$install_release_name" ] || [ -n "$install_remote" ] || [ -n "$install_values_path" ]; then
+    printf 'Use install, update, and login arguments only with --init-install, --init-update, or --init-login.\n' >&2
     exit 1
   fi
 fi
@@ -694,6 +724,30 @@ run_init_install() {
   "$init_install_path" "$@" </dev/tty
 }
 
+run_init_update() {
+  init_update_path="$1"
+  init_update_values_path="$2"
+  init_update_kube_context="$3"
+  init_update_namespace="$4"
+  init_update_release_name="$5"
+  init_update_chart_path="$6"
+  set -- system update --values "$init_update_values_path"
+  if [ -n "$init_update_kube_context" ]; then
+    set -- "$@" --kube-context "$init_update_kube_context"
+  fi
+  if [ -n "$init_update_namespace" ]; then
+    set -- "$@" --namespace "$init_update_namespace"
+  fi
+  if [ -n "$init_update_release_name" ]; then
+    set -- "$@" --release-name "$init_update_release_name"
+  fi
+  if [ -n "$init_update_chart_path" ]; then
+    set -- "$@" --chart "$init_update_chart_path"
+  fi
+  printf 'Running Compartment Kubernetes platform update.\n'
+  "$init_update_path" "$@"
+}
+
 run_init_login() {
   init_login_path="$1"
   init_login_api_url="$2"
@@ -1029,6 +1083,11 @@ ensure_bin_directory_on_path "$bin_dir"
 
 if [ "$init_install" = "1" ]; then
   run_init_install "$install_path" "$init_api_url" "$install_base_domain" "$init_email" "$init_organization" "$init_organization_slug" "$install_kube_context" "$install_namespace" "$install_release_name" "$install_chart_path" "$install_remote"
+  exit 0
+fi
+
+if [ "$init_update" = "1" ]; then
+  run_init_update "$install_path" "$install_values_path" "$install_kube_context" "$install_namespace" "$install_release_name" "$install_chart_path"
   exit 0
 fi
 

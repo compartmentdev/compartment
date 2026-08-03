@@ -30,6 +30,9 @@ function buildDomainReview(
   retainedState: RetainedKubernetesInstallState | null,
 ): string {
   if (retainedState !== null) {
+    if (retainedState.domainMode === 'managed' && retainedState.baseDomain === '') {
+      return 'not yet allocated (retained managed domain)';
+    }
     return `${retainedState.baseDomain} (retained ${retainedState.domainMode} domain)`;
   }
   return input.managedDomain === true ? 'managed (allocated during installation)' : (input.baseDomain ?? '');

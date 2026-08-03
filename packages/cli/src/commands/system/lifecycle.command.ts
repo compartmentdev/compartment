@@ -1,15 +1,28 @@
 import type {
   KubernetesSystemRestartResponse,
   KubernetesSystemStatusResponse,
+  KubernetesSystemUpdateResponse,
   KubernetesPlatformWorkloadStatus,
 } from '@compartment/contracts';
 import type { Command } from 'commander';
+import { readCliVersion } from '../../cli-build-info';
 import { renderOutput } from '../../output/render';
-import { getKubernetesSystemStatus, restartKubernetesSystem } from '../../services/kubernetes-system-lifecycle.service';
+import {
+  getKubernetesSystemStatus,
+  restartKubernetesSystem,
+  updateKubernetesSystem,
+} from '../../services/kubernetes-system-lifecycle.service';
+import type { KubernetesOperatorTarget } from '../../services/kubernetes-operator.service.types';
 import { withResolvedKubernetesOperatorTarget } from '../../services/kubernetes-operator-target.service';
 import type { CliCommandDependencies } from '../command.types';
-import { addKubernetesOperatorTargetOptions, resolveKubernetesOperatorTarget } from './system.command.options';
-import type { KubernetesOperatorCommandOptions } from './system.command.types';
+import {
+  addKubernetesOperatorTargetOptions,
+  addKubernetesSystemUpdateOptions,
+  resolveKubernetesOperatorTarget,
+  resolveKubernetesSystemUpdateVersion,
+} from './system.command.options';
+import type { KubernetesOperatorCommandOptions, KubernetesSystemUpdateCommandOptions } from './system.command.types';
+import { createKubernetesSystemUpdateMessage } from './system.command.output';
 
 export function registerKubernetesSystemLifecycleCommands(
   program: Command,
@@ -17,6 +30,7 @@ export function registerKubernetesSystemLifecycleCommands(
 ): void {
   registerStatusCommand(program, dependencies);
   registerRestartCommand(program, dependencies);
+  registerUpdateCommand(program, dependencies);
 }
 
 function registerStatusCommand(program: Command, dependencies: CliCommandDependencies): void {
@@ -40,6 +54,32 @@ function registerRestartCommand(program: Command, dependencies: CliCommandDepend
       restartKubernetesSystem,
     );
     renderOutput(dependencies.io, options.output, result, createRestartMessage(result));
+  });
+}
+
+function registerUpdateCommand(program: Command, dependencies: CliCommandDependencies): void {
+  addKubernetesSystemUpdateOptions(
+    program
+      .command('update')
+      .description('Verify images, update the Kubernetes platform, and run database migrations')
+      .option('--version <version>', 'Platform image tag; defaults to the packaged CLI release'),
+  ).action(async (options: KubernetesSystemUpdateCommandOptions): Promise<void> => {
+    const version: string = resolveKubernetesSystemUpdateVersion(options.version);
+    const result: KubernetesSystemUpdateResponse = await withResolvedKubernetesOperatorTarget(
+      resolveKubernetesOperatorTarget(options),
+      async (target: KubernetesOperatorTarget): Promise<KubernetesSystemUpdateResponse> =>
+        await updateKubernetesSystem({
+          ...target,
+          valuesPath: options.values,
+          version,
+        }),
+    );
+    renderOutput(
+      dependencies.io,
+      options.output,
+      result,
+      createKubernetesSystemUpdateMessage(result, readCliVersion(), createStatusMessage(result.status)),
+    );
   });
 }
 

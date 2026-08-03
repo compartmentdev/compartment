@@ -1,7 +1,8 @@
-import { readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { parse, stringify } from 'yaml';
 
-import { runCommandAsync } from '../lib/command.mjs';
+import { captureCommand, runCommandAsync } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 import { readPlatformK3dEnvironment } from './platform-k3d-e2e.mjs';
@@ -27,7 +28,13 @@ async function runShard(shardName) {
   rmSync(diagnosticsPath, { force: true, recursive: true });
   let cleanupPromise;
   const cleanup = async () => {
-    cleanupPromise ??= runCommandAsync(process.execPath, [lifecycleScript, 'down'], repositoryRoot, env);
+    cleanupPromise ??= (async () => {
+      try {
+        await runCommandAsync(process.execPath, [lifecycleScript, 'down'], repositoryRoot, env);
+      } finally {
+        rmSync(join(repositoryRoot, env.COMPARTMENT_E2E_UPDATE_VALUES_PATH), { force: true });
+      }
+    })();
     await cleanupPromise;
   };
   const commandAbortController = new globalThis.AbortController();
@@ -42,6 +49,9 @@ async function runShard(shardName) {
       execute: async () => {
         await buildCliArtifact(env, commandAbortController.signal);
         await startPlatform(env, commandAbortController.signal);
+        if (suites.includes('system-update')) {
+          await prepareSystemUpdateBaseline(env, commandAbortController.signal);
+        }
         await runShardSuites(
           suites,
           env,
@@ -100,6 +110,8 @@ async function runShardSuites(suites, env, ownerEnvironmentPath, signal) {
       await runInterruptibleCommand(process.execPath, [lifecycleScript, 'configure'], env, signal);
     } else if (suite === 'system-user') {
       await runCliE2eSuite(env, 'test/system-user-flow.e2e.test.ts', signal);
+    } else if (suite === 'system-update') {
+      await runCliE2eSuite(env, 'test/platform-k3d-system-update.e2e.test.ts', signal);
     } else if (suite === 'ha') {
       await runCliE2eSuite(env, 'test/platform-k3d-ha.e2e.test.ts', signal);
     } else if (suite === 'network-policy') {
@@ -126,6 +138,77 @@ async function runShardSuites(suites, env, ownerEnvironmentPath, signal) {
       throw new Error(`Unknown platform k3d e2e suite: ${suite}`);
     }
   }
+}
+
+export async function prepareSystemUpdateBaseline(env, signal) {
+  const valuesPath = join(repositoryRoot, env.COMPARTMENT_E2E_PLATFORM_VALUES_PATH);
+  const updateValuesPath = join(repositoryRoot, env.COMPARTMENT_E2E_UPDATE_VALUES_PATH);
+  const values = parse(readFileSync(valuesPath, 'utf8'));
+  if (values?.images === undefined || typeof values.images !== 'object') {
+    throw new Error(`Expected platform image values in ${valuesPath}.`);
+  }
+  mkdirSync(dirname(updateValuesPath), { recursive: true });
+  writeFileSync(updateValuesPath, stringify(values), { mode: 0o600 });
+  const buildDirectory = join(dirname(valuesPath), 'baseline-image');
+  mkdirSync(buildDirectory, { recursive: true });
+  const dockerfilePath = join(buildDirectory, 'Dockerfile');
+  writeFileSync(dockerfilePath, 'ARG BASE_IMAGE\nFROM ${BASE_IMAGE}\n', { mode: 0o600 });
+  try {
+    for (const [imageName, image] of Object.entries(values.images)) {
+      if (
+        image === null ||
+        typeof image !== 'object' ||
+        typeof image.repository !== 'string' ||
+        typeof image.digest !== 'string'
+      ) {
+        throw new Error(`Expected a repository and digest for images.${imageName}.`);
+      }
+      const localRepository = resolveLocalBaselineRepository(image.repository, env.COMPARTMENT_E2E_REGISTRY_PORT);
+      const baselineRef = `${localRepository}:e2e-initial`;
+      await runInterruptibleCommand(
+        'docker',
+        [
+          'build',
+          '--build-arg',
+          `BASE_IMAGE=${localRepository}@${image.digest}`,
+          '--label',
+          `dev.compartment.e2e.baseline=${imageName}`,
+          '--tag',
+          baselineRef,
+          buildDirectory,
+        ],
+        env,
+        signal,
+      );
+      await runInterruptibleCommand('docker', ['push', baselineRef], env, signal);
+      image.tag = 'e2e-initial';
+      image.digest = readPushedImageDigest(baselineRef, env);
+    }
+    writeFileSync(valuesPath, stringify(values), { mode: 0o600 });
+  } finally {
+    rmSync(buildDirectory, { force: true, recursive: true });
+  }
+}
+
+function resolveLocalBaselineRepository(repository, registryPort) {
+  if (!/^k3d-[^/]+\/.+/u.test(repository)) {
+    throw new Error(`Expected baseline image repository ${repository} to use the k3d-<registry>/<repository> format.`);
+  }
+  return repository.replace(/^k3d-[^/]+/u, `localhost:${registryPort}`);
+}
+
+function readPushedImageDigest(imageRef, env) {
+  const repoDigests = JSON.parse(
+    captureCommand('docker', ['image', 'inspect', '--format={{json .RepoDigests}}', imageRef], repositoryRoot, env),
+  );
+  const digestRef = repoDigests.find((candidate) =>
+    candidate.startsWith(`${imageRef.slice(0, imageRef.lastIndexOf(':'))}@`),
+  );
+  const digest = digestRef?.slice(digestRef.lastIndexOf('@') + 1);
+  if (digest === undefined || !/^sha256:[a-f0-9]{64}$/u.test(digest)) {
+    throw new Error(`Expected a pushed baseline digest for ${imageRef}.`);
+  }
+  return digest;
 }
 
 async function runBuildMatrixPartition(env, partition, signal) {
