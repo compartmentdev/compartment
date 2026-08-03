@@ -459,18 +459,25 @@ describe('KubeRuntime Job primitive', (): void => {
     });
   });
 
-  it('rejoins the same Job after the worker is killed between creation and terminal observation', async (): Promise<void> => {
-    const spec: KubeJobSpec = jobSpec('release');
-    const jobName: string = kubeJobName(spec.id);
+  it('rejoins the same Job after leader loss even when registry-valued input changes', async (): Promise<void> => {
+    const originalSpec: KubeJobSpec = {
+      ...jobSpec('build'),
+      env: { REGISTRY_ADDRESS: 'registry.compartment.example' },
+    };
+    const recoveredSpec: KubeJobSpec = {
+      ...originalSpec,
+      env: { REGISTRY_ADDRESS: '10.43.250.250:443' },
+    };
+    const jobName: string = kubeJobName(originalSpec.id);
     const finalizeDelete: Mock = vi.fn(async (): Promise<void> => await Promise.resolve());
     createObservationMock.mockRejectedValueOnce(new Error('worker killed after create'));
     const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
 
-    await expect(runtime.runJob(spec)).rejects.toThrow('worker killed after create');
+    await expect(runtime.runJob(originalSpec)).rejects.toThrow('worker killed after create');
     expect(objectApi.delete).not.toHaveBeenCalled();
     objectApi.jobExists = true;
     createObservationMock.mockResolvedValueOnce(terminalObservation(jobName, true, 0, finalizeDelete));
-    const recovered: KubeJobResult = await runtime.runJob(spec);
+    const recovered: KubeJobResult = await runtime.runJob(recoveredSpec);
 
     expect(recovered).toMatchObject({ jobName, logs: 'done\n', status: 'succeeded' });
     expect(objectApi.patches.filter(([object]: KubePatchInvocation): boolean => object.kind === 'Job')).toHaveLength(1);
@@ -738,7 +745,7 @@ describe('KubeRuntime Job primitive', (): void => {
   });
 });
 
-function jobSpec(jobClass: 'operation' | 'release'): KubeJobSpec {
+function jobSpec(jobClass: 'build' | 'operation' | 'release'): KubeJobSpec {
   return {
     id: 'job-01jz',
     image: 'registry.example/release@sha256:abc',

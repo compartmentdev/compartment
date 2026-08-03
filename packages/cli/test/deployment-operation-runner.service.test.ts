@@ -41,6 +41,13 @@ interface TransportFailureError extends Error {
   };
 }
 
+interface HttpFailureError extends Error {
+  code: string;
+  method: 'GET';
+  statusCode: number;
+  url: string;
+}
+
 const mocks: DeploymentOperationRunnerMocks = vi.hoisted(
   (): DeploymentOperationRunnerMocks => ({
     getDeploymentStatus: vi.fn<GetDeploymentStatus>(),
@@ -129,6 +136,26 @@ describe('deployment operation runner service', (): void => {
     await completionAssertion;
   });
 
+  it('retries transient server responses while polling deployments', async (): Promise<void> => {
+    vi.useFakeTimers();
+    mocks.getDeploymentStatus
+      .mockRejectedValueOnce(createHttpFailure(503))
+      .mockResolvedValueOnce(createSucceededDeploymentStatusResponse());
+
+    const completionPromise: Promise<DeploymentStatusResponse> = waitForDeploymentOperationCompletion(
+      createRequester(),
+      createDeployResponse(),
+      undefined,
+    );
+    const completionAssertion: Promise<void> = expect(completionPromise).resolves.toEqual(
+      createSucceededDeploymentStatusResponse(),
+    );
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    await completionAssertion;
+  });
+
   it('fails after repeated transient transport failures while polling deployments', async (): Promise<void> => {
     vi.useFakeTimers();
     mocks.getDeploymentStatus.mockRejectedValue(createTransportFailure('ECONNREFUSED'));
@@ -181,6 +208,16 @@ function createTransportFailure(code: string): TransportFailureError {
         code,
       },
     },
+  });
+}
+
+function createHttpFailure(statusCode: number): HttpFailureError {
+  return Object.assign(new Error(`GET /v1/deployments/status failed with status ${statusCode.toString()}.`), {
+    code: 'service_unavailable',
+    method: 'GET' as const,
+    name: 'CompartmentRequestError',
+    statusCode,
+    url: 'http://console.compartment.localhost/v1/deployments/status',
   });
 }
 

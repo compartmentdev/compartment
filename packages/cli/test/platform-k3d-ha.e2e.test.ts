@@ -39,6 +39,7 @@ interface ActiveProbe {
 
 interface BuildJobIdentityMonitor {
   finish(): Promise<readonly string[]>;
+  waitForJob(): Promise<void>;
 }
 
 const execFileAsync: (file: string, args: readonly string[], options: { timeout: number }) => Promise<ExecResult> =
@@ -131,14 +132,14 @@ describeSelfHostedUserSetupE2e('platform k3d minimal HA gate', (): void => {
         cwd: appFixture.directory,
       });
       const leaderPod: string = await readLeaseHolder('compartment-worker');
+      const jobMonitor: BuildJobIdentityMonitor = await startBuildJobIdentityMonitor();
       const deployPromise: Promise<SelfHostedDeployCommandResponse> = admin.runJson(
         'deploy',
         deployCommandResponseParser,
         { cwd: appFixture.directory },
       );
       await waitForRunningDeployment();
-      await waitForBuildJob();
-      const jobMonitor: BuildJobIdentityMonitor = startBuildJobIdentityMonitor();
+      await jobMonitor.waitForJob();
       const killedAt: number = Date.now();
       await kubectl(['delete', `pod/${leaderPod}`, '--wait=false']);
       const replacementLeader: string = await waitForLeaseTakeover('compartment-worker', leaderPod);
@@ -319,24 +320,19 @@ async function waitForLeaseTakeover(leaseName: string, previousHolder: string): 
   throw new Error(`Lease ${leaseName} did not move away from ${previousHolder}.`);
 }
 
-async function waitForBuildJob(): Promise<void> {
-  for (let attempt: number = 0; attempt < 600; attempt += 1) {
-    if ((await listBuildJobUids()).length > 0) {
-      return;
-    }
-    await delay(100);
-  }
-  throw new Error('Build Job did not start before the worker leader kill.');
-}
-
-function startBuildJobIdentityMonitor(): BuildJobIdentityMonitor {
-  return new RunningBuildJobIdentityMonitor().start();
+async function startBuildJobIdentityMonitor(): Promise<BuildJobIdentityMonitor> {
+  return new RunningBuildJobIdentityMonitor(new Set(await listBuildJobUids())).start();
 }
 
 class RunningBuildJobIdentityMonitor implements BuildJobIdentityMonitor {
+  readonly #baseline: ReadonlySet<string>;
   readonly #observed: Set<string> = new Set<string>();
   #loop: Promise<void> = Promise.resolve();
   #stopped: boolean = false;
+
+  public constructor(baseline: ReadonlySet<string>) {
+    this.#baseline = baseline;
+  }
 
   public start(): BuildJobIdentityMonitor {
     this.#loop = this.run();
@@ -349,10 +345,22 @@ class RunningBuildJobIdentityMonitor implements BuildJobIdentityMonitor {
     return [...this.#observed];
   }
 
+  public async waitForJob(): Promise<void> {
+    for (let attempt: number = 0; attempt < 600; attempt += 1) {
+      if (this.#observed.size > 0) {
+        return;
+      }
+      await delay(100);
+    }
+    throw new Error('Build Job did not start before the worker leader kill.');
+  }
+
   private async run(): Promise<void> {
     while (!this.#stopped) {
       for (const uid of await listBuildJobUids()) {
-        this.#observed.add(uid);
+        if (!this.#baseline.has(uid)) {
+          this.#observed.add(uid);
+        }
       }
       await delay(50);
     }
