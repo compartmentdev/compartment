@@ -115,8 +115,6 @@ platform:
   baseDomain: localhost
   publicProtocol: http
   tlsMode: issuer
-  acmeIssuer: acme
-  acmeCaUrl: https://acme.zerossl.com/v2/DV90
   acmeEmail: ''
   managedDomainBrokerUrl: https://broker.compartment.run
   logLevel: info
