@@ -99,21 +99,21 @@ tests:
       - failedTemplate:
           errorPattern: ports.*additional properties.*https
 
-  - it: rejects a non-HTTPS ACME URL through the values schema
+  - it: rejects the removed Caddy ACME issuer value
     set:
       platform:
-        acmeCaUrl: http://acme.example.com/directory
+        acmeIssuer: acme
     asserts:
       - failedTemplate:
-          errorPattern: acmeCaUrl.*pattern
+          errorPattern: acmeIssuer.*false schema
 
-  - it: rejects an ACME URL without a host through the values schema
+  - it: rejects the removed Caddy ACME CA URL value
     set:
       platform:
-        acmeCaUrl: https://?
+        acmeCaUrl: https://acme.example.com/directory
     asserts:
       - failedTemplate:
-          errorPattern: acmeCaUrl.*pattern
+          errorPattern: acmeCaUrl.*false schema
 
   - it: rejects a malformed broker URL through the values schema
     set:

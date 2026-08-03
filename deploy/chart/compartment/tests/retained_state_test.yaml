@@ -202,10 +202,6 @@ tests:
           value: https://retained-broker.example
         template: configmap.yaml
       - equal:
-          path: data.COMPARTMENT_ACME_EMAIL
-          value: incoming@example.com
-        template: configmap.yaml
-      - equal:
           path: data.COMPARTMENT_INGRESS_TARGETS_JSON
           value: '[{"type":"A","value":"8.8.4.4"}]'
         template: configmap.yaml

@@ -216,8 +216,6 @@
         "baseDomain",
         "publicProtocol",
         "tlsMode",
-        "acmeIssuer",
-        "acmeCaUrl",
         "acmeEmail",
         "managedDomainBrokerUrl"
       ],
@@ -230,8 +228,8 @@
         "baseDomain": { "type": "string" },
         "publicProtocol": { "type": "string", "enum": ["http", "https"] },
         "tlsMode": { "type": "string", "enum": ["broker-dns01", "internal", "issuer"] },
-        "acmeIssuer": { "type": "string", "enum": ["acme"] },
-        "acmeCaUrl": { "type": "string", "pattern": "^https://[^/?#@]+(/[^?#]*)?$" },
+        "acmeIssuer": false,
+        "acmeCaUrl": false,
         "acmeEmail": {
           "type": "string",
           "oneOf": [{ "const": "" }, { "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$" }]
