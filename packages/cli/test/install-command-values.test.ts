@@ -31,7 +31,7 @@ describe('operator install values boundary', (): void => {
     const error: Error = await readFailure(readOperatorInstallInputValues(valuesPath, true));
 
     expect(error.message).toContain(`${valuesPath}: ingress: is required and must define className`);
-    expect(error.message).toContain(`${valuesPath}: registry.issuerRef: is required when tls.existingSecret is used`);
+    expect(error.message).toContain(`${valuesPath}: registry.issuerRef: is required because the private registry`);
     expect(error.message).not.toMatch(/ZodError|"code"|"expected"|"received"|at parse/u);
   });
 
@@ -48,13 +48,42 @@ describe('operator install values boundary', (): void => {
     expect(error.message).not.toMatch(/ZodError|"code"|"expected"|"received"|at parse/u);
   });
 
-  it('reports an invalid container and independently missing TLS in the same error', async (): Promise<void> => {
+  it('rejects a valid public issuer for an operator-owned domain', async (): Promise<void> => {
+    const valuesPath: string = await writeValues(
+      'ingress:\n  className: traefik\nregistry:\n  issuerRef:\n    kind: ClusterIssuer\n    name: registry-ca\ntls:\n  issuerRef:\n    kind: ClusterIssuer\n    name: public-acme\n',
+    );
+
+    await expect(readOperatorInstallInputValues(valuesPath, true)).rejects.toThrow(
+      'tls.issuerRef: is not supported for operator-owned domain TLS',
+    );
+  });
+
+  it.each([
+    [
+      'HTTPS without an existing Secret',
+      'platform:\n  publicProtocol: https\n',
+      'tls.existingSecret: is required when platform.publicProtocol is https',
+    ],
+    [
+      'HTTP with an existing Secret',
+      'platform:\n  publicProtocol: http\ntls:\n  existingSecret: platform-tls\n',
+      'tls.existingSecret: cannot be used when platform.publicProtocol is http',
+    ],
+  ])('rejects %s', async (_label: string, tlsValues: string, message: string): Promise<void> => {
+    const valuesPath: string = await writeValues(
+      `ingress:\n  className: traefik\nregistry:\n  issuerRef:\n    kind: ClusterIssuer\n    name: registry-ca\n${tlsValues}`,
+    );
+
+    await expect(readOperatorInstallInputValues(valuesPath, true)).rejects.toThrow(message);
+  });
+
+  it('reports an invalid container and independently missing registry issuer', async (): Promise<void> => {
     const valuesPath: string = await writeValues('ingress: traefik\n');
 
     const error: Error = await readFailure(readOperatorInstallInputValues(valuesPath, true));
 
     expect(error.message).toContain(`${valuesPath}: ingress: Expected object, received string`);
-    expect(error.message).toContain(`${valuesPath}: tls: must define either issuerRef or existingSecret`);
+    expect(error.message).toContain(`${valuesPath}: registry.issuerRef: is required because the private registry`);
   });
 
   it('keeps the reserved localhost path usable without public TLS values', async (): Promise<void> => {
@@ -88,10 +117,8 @@ ingress:
   endpoint:
     type: hostname
     value: ingress.apps.example.com
-tls:
-  issuerRef:
-    kind: ClusterIssuer
-    name: platform-ca
+platform:
+  publicProtocol: http
 registry:
   issuerRef:
     group: cert-manager.io
@@ -147,14 +174,16 @@ tenantRuntime:
   it('materializes the complete interactive operator values contract', async (): Promise<void> => {
     const material: MaterializedInstallWizardValues = await materializeInstallWizardValues({
       ingress: { className: 'traefik' },
+      platform: { publicProtocol: 'http' },
+      registry: { issuerRef: { kind: 'ClusterIssuer', name: 'registry-ca' } },
       storage: { storageClass: 'local-path' },
-      tls: { issuerRef: { kind: 'ClusterIssuer', name: 'letsencrypt-production' } },
     });
     temporaryDirectories.push(material.directory);
 
     await expect(readOperatorInstallInputValues(material.path, true)).resolves.toEqual({
       clearIngressEndpoint: false,
       ingressClass: 'traefik',
+      publicProtocol: 'http',
       storageClass: 'local-path',
     });
     await expect(
@@ -165,17 +194,15 @@ tenantRuntime:
       }),
     ).resolves.toMatchObject({
       registryHostname: '',
-      registryIssuerRef: { kind: 'ClusterIssuer', name: 'letsencrypt-production' },
+      registryIssuerRef: { kind: 'ClusterIssuer', name: 'registry-ca' },
     });
-    await expect(readKubernetesTlsIssuerReference(material.path)).resolves.toEqual({
-      kind: 'ClusterIssuer',
-      name: 'letsencrypt-production',
-    });
+    await expect(readKubernetesTlsIssuerReference(material.path)).rejects.toThrow('tls.issuerRef.name');
   });
 
   it('materializes an existing Secret and its required registry issuer through application readers', async (): Promise<void> => {
     const material: MaterializedInstallWizardValues = await materializeInstallWizardValues({
       ingress: { className: 'traefik' },
+      platform: { publicProtocol: 'https' },
       registry: { issuerRef: { kind: 'Issuer', name: 'registry-issuer' } },
       storage: { storageClass: 'local-path' },
       tls: { existingSecret: 'platform-tls' },
@@ -187,6 +214,7 @@ tenantRuntime:
       resolveKubernetesInstallRegistryConfiguration({
         baseDomain: 'apps.example.com',
         domainMode: 'custom',
+        publicProtocol: 'https',
         valuesPath: material.path,
       }),
     ).resolves.toMatchObject({

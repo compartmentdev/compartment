@@ -13,10 +13,10 @@ import type { EdgeConfig } from '../config';
 import type { EdgeAppAccessStateStore } from './app-access-state-store.service.types';
 import type { EdgeSnapshotMetrics } from './edge-snapshot-metrics.service.types';
 import type {
-  EdgeBootstrapFetchError,
   PersistedEdgeAccessStateEnvelope,
   PersistedEdgeAccessStateSnapshot,
 } from './edge-bootstrap.service.types';
+import { isEdgeSnapshotFallbackError, isRetryableEdgeBootstrapError } from './edge-bootstrap-error.service';
 
 const edgeBootstrapRetryIntervalMs: number = 1_000;
 const edgeAccessStateSyncIntervalMs: number = 5_000;
@@ -43,12 +43,15 @@ export async function bootstrapEdgeAccessStateUntilReady(
 
       return;
     } catch (error) {
-      if (!(error instanceof Error) || !isRetryableEdgeBootstrapError(error)) {
+      if (!(error instanceof Error)) {
         throw error;
       }
-
-      if (await restoreFreshPersistedSnapshot(config, store, metrics, logger)) {
+      if (isEdgeSnapshotFallbackError(error) && (await restoreFreshPersistedSnapshot(config, store, metrics, logger))) {
         return;
+      }
+
+      if (!isRetryableEdgeBootstrapError(error)) {
+        throw error;
       }
 
       logger.warn({ err: error }, 'Edge startup dependency is not ready yet. Retrying.');
@@ -257,16 +260,6 @@ function createEdgeRequester(config: EdgeConfig): CompartmentRequester {
     apiUrl: config.apiUrl,
     internalToken: config.edgeToken,
   });
-}
-
-function isRetryableEdgeBootstrapError(error: Error): boolean {
-  return readEdgeBootstrapCauseCode(error) === 'ECONNREFUSED';
-}
-
-function readEdgeBootstrapCauseCode(error: Error): string | null {
-  const fetchError: EdgeBootstrapFetchError = error as EdgeBootstrapFetchError;
-
-  return typeof fetchError.cause?.code === 'string' ? fetchError.cause.code : null;
 }
 
 async function waitForEdgeBootstrapRetry(): Promise<void> {

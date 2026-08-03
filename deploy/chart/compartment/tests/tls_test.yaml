@@ -8,36 +8,39 @@ release:
   name: compartment
   namespace: platform
 tests:
-  - it: references an operator Issuer without creating a ClusterIssuer
+  - it: serves operator-owned domains over HTTP without Ingress TLS or Certificates
+    set:
+      platform:
+        startupStage: full
+        publicProtocol: http
+        domainMode: custom
+        baseDomain: apps.example.com
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: managed-domain-dns01.yaml
+      - hasDocuments:
+          count: 0
+        template: platform-certificates.yaml
+      - notExists:
+          path: spec.tls
+        template: ingress.yaml
+
+  - it: never creates Certificates for custom mode even with HTTPS and an issuer
     set:
       platform:
         startupStage: full
         publicProtocol: https
         domainMode: custom
         baseDomain: apps.example.com
-        tlsMode: issuer
       tls:
         issuerRef:
-          name: customer-platform
+          name: unsupported-custom-issuer
           kind: ClusterIssuer
     asserts:
       - hasDocuments:
           count: 0
-        template: managed-domain-dns01.yaml
-      - hasDocuments:
-          count: 2
         template: platform-certificates.yaml
-      - isKind:
-          of: Certificate
-        template: platform-certificates.yaml
-        documentIndex: 0
-      - equal:
-          path: spec.issuerRef
-          value:
-            name: customer-platform
-            kind: ClusterIssuer
-        template: platform-certificates.yaml
-        documentIndex: 0
 
   - it: references an operator TLS Secret without creating Certificates or issuers
     set:

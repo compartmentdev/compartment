@@ -281,7 +281,7 @@ describe('install command boundary', (): void => {
       const stderr: string = readCliStderr(capture);
       expect(exitCode).toBe(1);
       expect(stderr).toContain(`${valuesPath}: ingress: is required and must define className`);
-      expect(stderr).toContain(`${valuesPath}: registry.issuerRef: is required when tls.existingSecret is used`);
+      expect(stderr).toContain(`${valuesPath}: registry.issuerRef: is required because the private registry`);
       expect(stderr).not.toMatch(/ZodError|"code"|"expected"|"received"|at parse/u);
     } finally {
       await rm(directory, { force: true, recursive: true });

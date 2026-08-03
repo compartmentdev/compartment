@@ -8,6 +8,7 @@ export function buildKubernetesInstallWizardValues(
 ): InstallWizardValues {
   return {
     ingress: { className: ingressClass },
+    ...(domain.input.publicProtocol === undefined ? {} : { platform: { publicProtocol: domain.input.publicProtocol } }),
     ...(domain.registry === undefined ? {} : { registry: domain.registry }),
     storage: { storageClass },
     ...(domain.tls === undefined ? {} : { tls: domain.tls }),

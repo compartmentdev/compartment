@@ -44,6 +44,18 @@ export function parseUnreadyPodReferences(output) {
     .map((pod) => ({ name: pod.metadata.name, namespace: pod.metadata.namespace }));
 }
 
+export function parseRestartedContainerReferences(output) {
+  return JSON.parse(output).items.flatMap((pod) =>
+    (pod.status?.containerStatuses ?? [])
+      .filter((container) => container.restartCount > 0)
+      .map((container) => ({
+        containerName: container.name,
+        podName: pod.metadata.name,
+        namespace: pod.metadata.namespace,
+      })),
+  );
+}
+
 function collectPlatformK3dDiagnostics(outputDirectory) {
   if (outputDirectory === undefined || outputDirectory.trim() === '') {
     throw new Error('Usage: node ./scripts/deploy/collect-platform-k3d-e2e-diagnostics.mjs <output-dir>');
@@ -96,6 +108,7 @@ function collectPlatformK3dDiagnostics(outputDirectory) {
 
   const unreadyDeployments = readUnreadyDeploymentReferences();
   const unreadyPods = readUnreadyPodReferences();
+  const restartedContainers = readRestartedContainerReferences();
   for (const deployment of unreadyDeployments) {
     capture(outputDirectory, `describe-${deployment.namespace}-${deployment.name}`, 'kubectl', [
       '--context',
@@ -129,6 +142,26 @@ function collectPlatformK3dDiagnostics(outputDirectory) {
       '--tail=100',
     ]);
   }
+  for (const container of restartedContainers) {
+    capture(
+      outputDirectory,
+      `logs-previous-${container.namespace}-${container.podName}-${container.containerName}`,
+      'kubectl',
+      [
+        '--context',
+        context,
+        '--namespace',
+        container.namespace,
+        'logs',
+        `pod/${container.podName}`,
+        '--container',
+        container.containerName,
+        '--previous',
+        '--prefix=true',
+        '--tail=100',
+      ],
+    );
+  }
 }
 
 function readUnreadyDeploymentReferences() {
@@ -148,6 +181,20 @@ function readUnreadyDeploymentReferences() {
 function readUnreadyPodReferences() {
   try {
     return parseUnreadyPodReferences(
+      captureCommand(
+        'kubectl',
+        ['--context', context, 'get', 'pods', '--all-namespaces', '-o', 'json'],
+        repositoryRoot,
+      ),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function readRestartedContainerReferences() {
+  try {
+    return parseRestartedContainerReferences(
       captureCommand(
         'kubectl',
         ['--context', context, 'get', 'pods', '--all-namespaces', '-o', 'json'],

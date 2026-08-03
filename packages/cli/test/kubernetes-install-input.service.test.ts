@@ -175,9 +175,7 @@ describe('canonical Kubernetes install input', (): void => {
 
   it('keeps operator-owned domain selection available without onboarding authorization', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
-    capture.stdin.end(
-      '1\ny\n2\napps.example.com\n1\nClusterIssuer\nletsencrypt-production\nClusterIssuer\nregistry-ca\ny\ny\n',
-    );
+    capture.stdin.end('1\ny\n2\napps.example.com\n\nClusterIssuer\nregistry-ca\ny\ny\n');
 
     const wizard: KubernetesInstallWizardResult = await resolveCanonicalKubernetesInstallWizard(
       capture.io,
@@ -196,19 +194,21 @@ describe('canonical Kubernetes install input', (): void => {
       inspectPlatformAndRegistryIssuer,
     );
 
-    expect(wizard.input).toMatchObject({ baseDomain: 'apps.example.com' });
+    expect(wizard.input).toMatchObject({ baseDomain: 'apps.example.com', publicProtocol: 'http' });
     expect(wizard.values).toMatchObject({
       ingress: { className: 'nginx' },
+      platform: { publicProtocol: 'http' },
+      registry: { issuerRef: { kind: 'ClusterIssuer', name: 'registry-ca' } },
       storage: { storageClass: 'fast' },
-      tls: { issuerRef: { kind: 'ClusterIssuer', name: 'letsencrypt-production' } },
     });
-    expect(capture.stderr.join('')).toContain('TLS: ClusterIssuer/letsencrypt-production');
+    expect(wizard.values).not.toHaveProperty('tls');
+    expect(capture.stderr.join('')).toContain('TLS: external TLS termination; platform HTTP');
     expect(capture.stderr.join('')).toContain('TLS trust warning: Registry CA issuer.');
   });
 
   it('rejects a self-signed issuer before owner prompts begin', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
-    capture.stdin.end('1\ny\n2\napps.example.com\n1\nClusterIssuer\nself-signed\n');
+    capture.stdin.end('1\ny\n2\napps.example.com\n\nClusterIssuer\nself-signed\n');
 
     await expect(
       resolveCanonicalKubernetesInstallWizard(
@@ -236,7 +236,7 @@ describe('canonical Kubernetes install input', (): void => {
 
   it('requires private CA trust confirmation before collecting owner input', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
-    capture.stdin.end('1\ny\n2\napps.example.com\n1\nIssuer\nprivate-ca\ny\ny\n');
+    capture.stdin.end('1\ny\n2\napps.example.com\n\nIssuer\nprivate-ca\ny\ny\n');
 
     await expect(
       resolveCanonicalKubernetesInstallWizard(
@@ -288,6 +288,7 @@ describe('canonical Kubernetes install input', (): void => {
     );
 
     expect(wizard.values).toMatchObject({
+      platform: { publicProtocol: 'https' },
       registry: { issuerRef: { kind: 'Issuer', name: 'registry-issuer' } },
       tls: { existingSecret: 'platform-tls' },
     });
@@ -319,34 +320,31 @@ describe('canonical Kubernetes install input', (): void => {
     expect(capture.stderr.join('')).toContain('TLS: public TLS not required; registry Issuer/registry-ca');
   });
 
-  it('stops before owner prompts with a complete values example when the operator declines TLS setup', async (): Promise<void> => {
+  it('uses external TLS termination by default and completes the wizard', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
-    capture.stdin.end('1\ny\n2\napps.example.com\n3\n');
+    capture.stdin.end('1\ny\n2\napps.example.com\n\nClusterIssuer\nregistry-ca\ny\nowner@example.com\nAcme\ny\n');
 
-    const failure: Error = await readWizardFailure(
-      resolveCanonicalKubernetesInstallWizard(
-        capture.io,
-        { adminPassword: 'correct horse battery staple', output: 'text' },
-        { contexts: [{ apiServer: 'https://cluster.example.test', name: 'production' }] },
-        async (): Promise<{ ingressClasses: string[]; storageClasses: { default: boolean; name: string }[] }> =>
-          await Promise.resolve({
-            ingressClasses: ['nginx'],
-            storageClasses: [{ default: true, name: 'fast' }],
-          }),
-        inspectPublicAcme,
-      ),
+    const wizard: KubernetesInstallWizardResult = await resolveCanonicalKubernetesInstallWizard(
+      capture.io,
+      { adminPassword: 'correct horse battery staple', output: 'text' },
+      { contexts: [{ apiServer: 'https://cluster.example.test', name: 'production' }] },
+      async (): Promise<{ ingressClasses: string[]; storageClasses: { default: boolean; name: string }[] }> =>
+        await Promise.resolve({
+          ingressClasses: ['nginx'],
+          storageClasses: [{ default: true, name: 'fast' }],
+        }),
+      async (): Promise<KubernetesOperatorIssuerAssessment> =>
+        await Promise.resolve({ detail: 'Registry CA issuer.', trust: 'ca' }),
     );
-    expect(failure.message).toContain('Operator-owned domain installation stopped before owner setup.');
-    expect(failure.message).toContain('ingress:\n  className: nginx');
-    expect(failure.message).toContain('tls:\n  issuerRef:');
-    expect(failure.message).toContain('storage:\n  storageClass: fast');
-    expect(failure.message).toContain('--base-domain apps.example.com');
-    expect(failure.message).toContain('--kube-context production');
-    expect(failure.message).toContain('--values compartment-values.yaml');
 
     const output: string = capture.stderr.join('');
-    expect(output).not.toContain('Email');
-    expect(output).not.toContain('Installation review:');
+    expect(wizard.input).toMatchObject({ baseDomain: 'apps.example.com', publicProtocol: 'http' });
+    expect(wizard.values).toMatchObject({ platform: { publicProtocol: 'http' } });
+    expect(output).toContain('Installation review:');
+    expect(output).toContain('Admin email');
+    expect(output).toContain('1. External TLS termination; platform serves HTTP [default]');
+    expect(output).toContain('2. Existing kubernetes.io/tls Secret');
+    expect(output).not.toContain('cert-manager Issuer or ClusterIssuer [default]');
   });
 
   it('discovers ingress and storage from the context selected by the operator', async (): Promise<void> => {
@@ -461,13 +459,4 @@ function nonInteractiveValues(): KubernetesInstallInputValues {
     storageClass: 'fast',
     valuesPath,
   };
-}
-
-async function readWizardFailure(promise: Promise<KubernetesInstallWizardResult>): Promise<Error> {
-  try {
-    await promise;
-  } catch (error) {
-    return error instanceof Error ? error : new Error('Expected the Kubernetes install wizard to fail.');
-  }
-  throw new Error('Expected the Kubernetes install wizard to fail.');
 }

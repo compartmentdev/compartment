@@ -131,7 +131,7 @@ function buildWizardInput(
   kubeContext: string,
   ingressClass: string,
   storageClass: string,
-  domain: Pick<InstallCommandOptions, 'baseDomain' | 'managedDomain'>,
+  domain: Pick<KubernetesInstallInputValues, 'baseDomain' | 'managedDomain' | 'publicProtocol'>,
   email: string,
   organization: string,
   password: string,

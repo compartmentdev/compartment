@@ -36,7 +36,7 @@ export interface KubernetesInstallWizardResult {
 }
 
 export interface KubernetesInstallWizardDomain {
-  input: Pick<KubernetesInstallInputValues, 'baseDomain' | 'managedDomain'>;
+  input: Pick<KubernetesInstallInputValues, 'baseDomain' | 'managedDomain' | 'publicProtocol'>;
   registry?: InstallWizardRegistryValues | undefined;
   tls?: InstallWizardTlsValues | undefined;
   tlsReview: string;

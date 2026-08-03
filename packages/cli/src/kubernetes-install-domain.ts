@@ -28,6 +28,23 @@ export function assertMatchingKubernetesInstallDomain(
       `The existing Helm release uses base domain ${existingInstall.baseDomain}, not ${input.baseDomain ?? ''}. Retry with the installed base domain or use a different release name.`,
     );
   }
+  assertMatchingOperatorProtocol(input, existingInstall);
+}
+
+function assertMatchingOperatorProtocol(
+  input: KubernetesInstallDeploymentInput,
+  existingInstall: ExistingKubernetesInstall,
+): void {
+  if (
+    input.domainMode === 'custom' &&
+    existingInstall.stage === 'full' &&
+    input.publicProtocol !== undefined &&
+    existingInstall.publicProtocol !== input.publicProtocol
+  ) {
+    throw new Error(
+      `The existing Helm release uses ${existingInstall.publicProtocol} for its operator-owned domain, not ${input.publicProtocol}. Retry with the original TLS selection or use a different release name.`,
+    );
+  }
 }
 
 function formatIncompleteInstallRemoval(input: KubernetesInstallDeploymentInput): string {
@@ -64,8 +81,12 @@ export function resolveKubernetesInstallControlPlaneUrl(
   if (configuredUrl === undefined) {
     return `${publicProtocol}://${expectedHostname}`;
   }
-  if (new URL(configuredUrl).hostname !== expectedHostname) {
+  const parsedUrl: URL = new URL(configuredUrl);
+  if (parsedUrl.hostname !== expectedHostname) {
     throw new Error(`--api-url must use the control-plane host ${expectedHostname}.`);
+  }
+  if (parsedUrl.protocol !== `${publicProtocol}:`) {
+    throw new Error(`--api-url must use ${publicProtocol} for the selected operator-domain TLS mode.`);
   }
   return configuredUrl;
 }

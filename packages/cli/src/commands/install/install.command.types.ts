@@ -31,9 +31,14 @@ export interface ResolvedInstallIdentityPrompts {
 
 export interface InstallWizardValues {
   ingress: InstallWizardIngressValues;
+  platform?: InstallWizardPlatformValues | undefined;
   registry?: InstallWizardRegistryValues | undefined;
   storage: InstallWizardStorageValues;
   tls?: InstallWizardTlsValues | undefined;
+}
+
+export interface InstallWizardPlatformValues {
+  publicProtocol: 'http' | 'https';
 }
 
 export interface InstallWizardIngressValues {

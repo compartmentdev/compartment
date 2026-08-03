@@ -232,9 +232,12 @@ async function waitForRequiredKubernetesPlatformCertificates(
   input: KubernetesInstallDeploymentInput,
   state: KubernetesInstallState,
 ): Promise<void> {
+  if (state.publicProtocol !== 'https') {
+    return;
+  }
   const usesOperatorTlsSecret: boolean =
     state.domainMode === 'custom' && (await usesOperatorOwnedKubernetesTlsSecret(input.valuesPath));
-  if (state.publicProtocol !== 'https' || usesOperatorTlsSecret) {
+  if (usesOperatorTlsSecret) {
     return;
   }
   await runObservableInstallStep(

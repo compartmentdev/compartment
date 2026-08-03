@@ -116,9 +116,9 @@ bundled PostgreSQL Service, Deployment, or PVC; the API and migration Job read t
 Managed-domain installations use the bundled ACME DNS token-scoped solver only for the public wildcard Certificate
 used by the console and application hosts. Project custom domains use a separate namespaced HTTP-01 Issuer, so their
 exact hostnames are never sent to the managed-domain broker. The private registry has a separate Certificate for its
-retained Service ClusterIP and the selected registry issuer. For an operator-owned domain, set `tls.issuerRef.name`
-and `tls.issuerRef.kind` to an existing Issuer or ClusterIssuer. `tls.existingSecret` may reference an existing
-`kubernetes.io/tls` Secret.
+retained Service ClusterIP and the selected `registry.issuerRef`. Operator-owned domains default to external TLS
+termination with platform HTTP. Alternatively, `tls.existingSecret` may reference an existing `kubernetes.io/tls`
+Secret in the release namespace. The chart does not create public Certificates for operator-owned domains.
 
 The selected Ingress and cert-manager path own public TLS. Compartment does not create, copy, or mount operator
 certificate material.
@@ -152,8 +152,8 @@ preflight and first-owner bootstrap.
 
 The registry is a private ClusterIP workload. The CLI reads the retained registry Service ClusterIP and writes that
 address to `registry.hostname`; it does not derive the registry address from the public base domain. The registry
-uses `registry.issuerRef`; operator-owned domain installs may fall back to the platform `tls.issuerRef`. The chart
-never changes container-runtime configuration or node trust.
+uses `registry.issuerRef`; it is required independently of the operator-owned public TLS mode. The chart never changes
+container-runtime configuration or node trust.
 The registry certificate must chain to a CA trusted by every node container runtime. The public platform certificate
 must also be trusted by the machine running the CLI; a cert-manager self-signed issuer does not satisfy this contract.
 
