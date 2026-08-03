@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   parseDeploymentReferences,
+  parseRestartedContainerReferences,
   parseUnreadyDeploymentReferences,
   parseUnreadyPodReferences,
 } from './collect-platform-k3d-e2e-diagnostics.mjs';
@@ -63,6 +64,27 @@ describe('platform k3d diagnostics and product-log gates', () => {
         }),
       ),
     ).toEqual([{ name: 'console-broken', namespace: 'compartment' }]);
+  });
+
+  it('selects restarted application containers for previous-log diagnostics', () => {
+    expect(
+      parseRestartedContainerReferences(
+        JSON.stringify({
+          items: [
+            {
+              metadata: { name: 'edge-broken', namespace: 'compartment' },
+              status: {
+                containerStatuses: [
+                  { name: 'edge', restartCount: 5 },
+                  { name: 'sidecar', restartCount: 0 },
+                ],
+              },
+            },
+            { metadata: { name: 'pending', namespace: 'compartment' }, status: {} },
+          ],
+        }),
+      ),
+    ).toEqual([{ containerName: 'edge', podName: 'edge-broken', namespace: 'compartment' }]);
   });
 
   it('accepts only non-negative integer command output', () => {

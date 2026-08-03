@@ -21,6 +21,7 @@ import type {
 const edgeBootstrapRetryIntervalMs: number = 1_000;
 const edgeAccessStateSyncIntervalMs: number = 5_000;
 const edgeRouteMissRefreshCooldownMs: number = 1_000;
+const retryableEdgeBootstrapCauseCodes: ReadonlySet<string> = new Set(['ECONNREFUSED', 'UND_ERR_CONNECT_TIMEOUT']);
 type EdgeRefreshError = Error | { message?: string } | null | undefined;
 const edgeRouteMissRefreshes: WeakMap<EdgeAppAccessStateStore, Promise<void>> = new WeakMap<
   EdgeAppAccessStateStore,
@@ -260,7 +261,8 @@ function createEdgeRequester(config: EdgeConfig): CompartmentRequester {
 }
 
 function isRetryableEdgeBootstrapError(error: Error): boolean {
-  return readEdgeBootstrapCauseCode(error) === 'ECONNREFUSED';
+  const causeCode: string | null = readEdgeBootstrapCauseCode(error);
+  return causeCode !== null && retryableEdgeBootstrapCauseCodes.has(causeCode);
 }
 
 function readEdgeBootstrapCauseCode(error: Error): string | null {
