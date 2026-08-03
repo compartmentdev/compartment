@@ -15,10 +15,12 @@ import type {
   KubernetesExistingClusterPreflightInput,
   KubernetesExistingClusterPreflightResult,
 } from './kubernetes-existing-cluster-preflight.service.types';
+import { assertKubernetesInstallAcmeEmail } from './kubernetes-install-email.service';
 
 export async function runKubernetesExistingClusterPreflight(
   input: KubernetesExistingClusterPreflightInput,
 ): Promise<KubernetesExistingClusterPreflightResult> {
+  assertKubernetesInstallAcmeEmail(input.install.owner.email);
   const kubernetesVersion: string = await assertClusterVersion(input.install);
   await assertRequiredApiResources(input.install);
   await assertPermissions(input.install);

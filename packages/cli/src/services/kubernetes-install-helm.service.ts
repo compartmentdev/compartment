@@ -184,6 +184,7 @@ function formatNotReadyPods(pods: KubernetesPodList): string {
   const descriptions: string[] = pods.items
     .filter(
       (pod: KubernetesPodListItem): boolean =>
+        pod.status?.phase !== 'Succeeded' &&
         pod.status?.conditions?.some(
           (condition: KubernetesPodStatusCondition): boolean =>
             condition.type === 'Ready' && condition.status === 'True',

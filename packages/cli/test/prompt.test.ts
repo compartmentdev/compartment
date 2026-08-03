@@ -1,7 +1,12 @@
 import type { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runCli } from '../src/app';
-import { promptActivationToken, promptNewPassword } from '../src/prompts/prompt';
+import {
+  promptActivationToken,
+  promptNewPassword,
+  promptRequiredVisibleText,
+  promptValidatedVisibleText,
+} from '../src/prompts/prompt';
 import { createCliCapture, readCliStderr, type CliCommandCapture } from './cli-test.harness';
 
 const adminPasswordEnvName: string = 'COMPARTMENT_ADMIN_PASSWORD';
@@ -54,6 +59,34 @@ describe.sequential('prompt input safety', (): void => {
     await answerInteractivePrompt(capture, 'Confirm password: ', 'supersecretpassword');
     await expect(resolution).resolves.toBe('supersecretpassword');
     expect(readCliStderr(capture)).toContain('Confirm password: ');
+    capture.stdin.end();
+  });
+
+  it('re-prompts an empty required wizard field without ending the process', async (): Promise<void> => {
+    const capture: CliCommandCapture = createInteractiveCliCapture();
+    const resolution: Promise<string> = promptRequiredVisibleText(capture.io, 'Private registry TLS issuer name');
+
+    await answerInteractivePrompt(capture, 'Private registry TLS issuer name: ', '');
+    await answerInteractivePrompt(capture, 'Private registry TLS issuer name: ', 'compartment-registry-ca', 2);
+
+    await expect(resolution).resolves.toBe('compartment-registry-ca');
+    expect(readCliStderr(capture)).toContain('Private registry TLS issuer name is required.');
+    capture.stdin.end();
+  });
+
+  it('re-prompts an invalid required wizard field without ending the process', async (): Promise<void> => {
+    const capture: CliCommandCapture = createInteractiveCliCapture();
+    const resolution: Promise<string> = promptValidatedVisibleText(
+      capture.io,
+      'Private registry TLS issuer name',
+      (value: string): string | undefined => (value.includes('_') ? 'Issuer name is invalid.' : undefined),
+    );
+
+    await answerInteractivePrompt(capture, 'Private registry TLS issuer name: ', 'invalid_name');
+    await answerInteractivePrompt(capture, 'Private registry TLS issuer name: ', 'compartment-registry-ca', 2);
+
+    await expect(resolution).resolves.toBe('compartment-registry-ca');
+    expect(readCliStderr(capture)).toContain('Issuer name is invalid.');
     capture.stdin.end();
   });
 

@@ -157,8 +157,18 @@ tests:
                 key: variables-master-key
         template: api-migrate.yaml
 
-  - it: resolves stable consumers from retained state while rotating the registry address
+  - it: applies fresh operator choices while retaining installation identity
     set:
+      ingress:
+        className: incoming-ingress
+        endpoint:
+          type: A
+          value: 8.8.4.4
+        targetsJson: '[{"type":"A","value":"8.8.4.4"}]'
+      tls:
+        issuerRef:
+          kind: Issuer
+          name: incoming-managed-issuer
       platform:
         startupStage: foundation
         installationId: incoming-install
@@ -192,28 +202,44 @@ tests:
           value: https://retained-broker.example
         template: configmap.yaml
       - equal:
+          path: data.COMPARTMENT_ACME_EMAIL
+          value: incoming@example.com
+        template: configmap.yaml
+      - equal:
           path: data.COMPARTMENT_INGRESS_TARGETS_JSON
-          value: '[{"type":"hostname","value":"lb.example.com"}]'
+          value: '[{"type":"A","value":"8.8.4.4"}]'
         template: configmap.yaml
       - equal:
           path: stringData.installation-id
           value: retained-install
         template: install-state-secret.yaml
       - equal:
+          path: stringData.startup-stage
+          value: full
+        template: install-state-secret.yaml
+      - equal:
           path: stringData.ingress-class-name
-          value: ingress-nginx
+          value: incoming-ingress
         template: install-state-secret.yaml
       - equal:
           path: stringData.ingress-endpoint-type
-          value: hostname
+          value: A
         template: install-state-secret.yaml
       - equal:
           path: stringData.ingress-endpoint-value
-          value: lb.example.com
+          value: 8.8.4.4
         template: install-state-secret.yaml
       - equal:
           path: stringData.domain-generation
           value: '7'
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.managed-base-domain
+          value: managed.example.com
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.acme-email
+          value: incoming@example.com
         template: install-state-secret.yaml
       - equal:
           path: stringData.managed-domain-acme-dns-token
@@ -225,11 +251,11 @@ tests:
         template: install-state-secret.yaml
       - equal:
           path: stringData.registry-issuer-ref-kind
-          value: Issuer
+          value: ClusterIssuer
         template: install-state-secret.yaml
       - equal:
           path: stringData.registry-issuer-ref-name
-          value: retained-registry-issuer
+          value: registry-test-issuer
         template: install-state-secret.yaml
       - equal:
           path: stringData.managed-issuer-ref-json

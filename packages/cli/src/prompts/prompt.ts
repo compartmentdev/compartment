@@ -165,7 +165,7 @@ async function promptSecretText(io: CliIo, label: string): Promise<string> {
   return value.trim();
 }
 
-async function promptValidatedVisibleText(
+export async function promptValidatedVisibleText(
   io: CliIo,
   label: string,
   validate: (value: string) => string | undefined,
@@ -179,6 +179,16 @@ async function promptValidatedVisibleText(
     }
 
     writePromptError(io, errorMessage);
+  }
+}
+
+export async function promptRequiredVisibleText(io: CliIo, label: string): Promise<string> {
+  for (;;) {
+    const value: string = await promptVisibleText(io, label);
+    if (value !== '') {
+      return value;
+    }
+    writePromptError(io, `${label} is required.`);
   }
 }
 
