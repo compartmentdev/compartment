@@ -8,6 +8,34 @@ release:
   name: compartment
   namespace: default
 tests:
+  - it: creates a revision-scoped migration Job for every Helm update
+    release:
+      revision: 7
+    set:
+      platform:
+        startupStage: full
+        installationId: test-installation
+      secrets:
+        installToken: test-install-token
+        postgresPassword: test-postgres-password
+        registryCredentialSigningKey: test-registry-signing-key-with-at-least-32-characters
+        edgeToken: test-edge-token
+        productLogIngestToken: test-product-log-token
+        runtimeControlToken: test-runtime-control-token
+        sessionSecret: test-session-secret
+        systemToken: test-system-token
+        tenantSecretsKek: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        variablesMasterKey: test-variables-master-key
+        managedDomainAcmeDnsToken: ''
+    asserts:
+      - equal:
+          path: metadata.name
+          value: compartment-compartment-api-migrate-7
+        template: api-migrate.yaml
+      - equal:
+          path: spec.template.spec.containers[0].command
+          value: ['node', 'dist/db/migrate.js']
+        template: api-migrate.yaml
   - it: renders only foundation resources during the foundation stage
     set:
       platform:

@@ -365,7 +365,9 @@ describe('render-cli-install-script', (): void => {
     });
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('Use install and login arguments only with --init-install or --init-login.');
+    expect(result.stderr).toContain(
+      'Use install, update, and login arguments only with --init-install, --init-update, or --init-login.',
+    );
     expect(result.urlLog).toEqual([]);
   });
 
@@ -707,6 +709,49 @@ describe('render-cli-install-script', (): void => {
       'install --api-url https://console.apps.example.com --base-domain apps.example.com --email admin@example.com --organization Acme Dev --organization-slug acme-dev --kube-context prod-eu --namespace compartment-prod --release-name compartment-prod --chart ./compartment-chart --remote prod-eu',
     ]);
     expect(result.sudoInvocations).toEqual([]);
+  });
+
+  it('runs the verified Kubernetes update through init update', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      args: [
+        '--version',
+        'main',
+        '--init-update',
+        '--values',
+        'compartment-values.yaml',
+        '--kube-context',
+        'prod-eu',
+        '--namespace',
+        'compartment-prod',
+        '--release-name',
+        'compartment-prod',
+        '--chart',
+        './compartment-chart',
+      ],
+      pathEntries: [binDirectory],
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.sudoInvocations).toEqual([]);
+    expect(result.compartmentInvocations).toEqual([
+      '--version',
+      'system update --values compartment-values.yaml --kube-context prod-eu --namespace compartment-prod --release-name compartment-prod --chart ./compartment-chart',
+    ]);
+  });
+
+  it('requires operator values for init update before downloading the CLI', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      allowFailure: true,
+      args: ['--version', 'main', '--init-update'],
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Expected --values <path> with --init-update.');
+    expect(result.urlLog).toEqual([]);
   });
 
   it('fails init login clearly when no installer terminal is available', async (): Promise<void> => {

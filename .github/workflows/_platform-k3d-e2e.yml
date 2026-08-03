@@ -29,6 +29,7 @@ jobs:
           - user-flow
           - console
           - managed-install
+          - system-update
     env:
       COMPARTMENT_E2E_IMAGE_ARCHIVE_DIR: ./.compartment/self-hosted-image-cache
       COMPARTMENT_E2E_GVISOR_ENABLED: ${{ matrix.shard == 'gvisor-build' && '1' || '0' }}

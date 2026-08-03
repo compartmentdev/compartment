@@ -1,26 +1,52 @@
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { KubernetesSystemRestartResponse, KubernetesSystemStatusResponse } from '@compartment/contracts';
+import type {
+  KubernetesSystemRestartResponse,
+  KubernetesSystemStatusResponse,
+  KubernetesSystemUpdateResponse,
+} from '@compartment/contracts';
 import type { CommandResult } from '../src/command-runner.types';
 import {
   getKubernetesSystemStatus,
   restartKubernetesSystem,
+  updateKubernetesSystem,
 } from '../src/services/kubernetes-system-lifecycle.service';
 import type { KubernetesOperatorTarget } from '../src/services/kubernetes-operator.service.types';
 
 type RunCommand = (command: readonly string[]) => Promise<CommandResult>;
 type RunCommandCall = [command: readonly string[]];
 
-interface LifecycleMocks {
-  runCommand: Mock<RunCommand>;
+interface VerifyUpdateInput {
+  operatorValuesPaths: readonly string[];
+  outputPath: string;
 }
 
-const mocks: LifecycleMocks = vi.hoisted((): LifecycleMocks => ({ runCommand: vi.fn<RunCommand>() }));
+interface CapturedUpdateValues {
+  images: { api: { digest: string; tag: string } };
+}
+
+type VerifyUpdateImages = (input: VerifyUpdateInput) => Promise<void>;
+
+interface LifecycleMocks {
+  runCommand: Mock<RunCommand>;
+  verifyUpdateImages: Mock<VerifyUpdateImages>;
+}
+
+const mocks: LifecycleMocks = vi.hoisted(
+  (): LifecycleMocks => ({ runCommand: vi.fn<RunCommand>(), verifyUpdateImages: vi.fn<VerifyUpdateImages>() }),
+);
 
 vi.mock('../src/command-runner', (): object => ({ runCommand: mocks.runCommand }));
+vi.mock('../src/services/kubernetes-image-trust.service', (): object => ({
+  writeVerifiedKubernetesReleaseImageValues: mocks.verifyUpdateImages,
+}));
 
 describe('Kubernetes system lifecycle', (): void => {
   afterEach((): void => {
     mocks.runCommand.mockReset();
+    mocks.verifyUpdateImages.mockReset();
   });
 
   it('combines Helm state with release-scoped Deployment and DaemonSet readiness', async (): Promise<void> => {
@@ -77,6 +103,99 @@ describe('Kubernetes system lifecycle', (): void => {
         expect.arrayContaining(['rollout', 'status', 'deployment']),
       ]),
     );
+  });
+
+  it('verifies target tags before Helm and places immutable digest values last', async (): Promise<void> => {
+    const directory: string = await mkdtemp(resolve(tmpdir(), 'compartment-update-test-'));
+    try {
+      const valuesPath: string = resolve(directory, 'values.yaml');
+      await writeFile(valuesPath, '{}');
+      const events: string[] = [];
+      mocks.verifyUpdateImages.mockImplementation(async (input: VerifyUpdateInput): Promise<void> => {
+        events.push('verify');
+        const updateValuesPath: string | undefined = input.operatorValuesPaths[1];
+        if (updateValuesPath === undefined) {
+          throw new Error('Expected update values path.');
+        }
+        const updateValues: CapturedUpdateValues = JSON.parse(
+          await readFile(updateValuesPath, 'utf8'),
+        ) as CapturedUpdateValues;
+        expect(updateValues.images.api).toEqual({ digest: '', tag: 'sha-target' });
+        await writeFile(input.outputPath, JSON.stringify({ images: { api: { digest: `sha256:${'a'.repeat(64)}` } } }));
+      });
+      mocks.runCommand.mockImplementation(async (command: readonly string[]): Promise<CommandResult> => {
+        if (command[0] === 'helm' && command[1] === 'upgrade') {
+          events.push('helm');
+          const valuesIndexes: number[] = command.flatMap((value: string, index: number): number[] =>
+            value === '--values' ? [index] : [],
+          );
+          const lastValuesPath: string | undefined = command[(valuesIndexes.at(-1) ?? -2) + 1];
+          expect(lastValuesPath).toContain('image-trust-values.json');
+          expect(command).toEqual(
+            expect.arrayContaining(['--rollback-on-failure', '--wait', '--wait-for-jobs', '--timeout', '15m']),
+          );
+          return successful('');
+        }
+        return await statusCommandHandler(true)(command);
+      });
+
+      const result: KubernetesSystemUpdateResponse = await updateKubernetesSystem({
+        ...target(),
+        chartPath: resolve(directory, 'chart'),
+        valuesPath,
+        version: 'sha-target',
+      });
+
+      expect(events).toEqual(['verify', 'helm']);
+      expect(result).toMatchObject({ updated: true, version: 'sha-target' });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it('stops before Helm when image trust verification fails', async (): Promise<void> => {
+    const directory: string = await mkdtemp(resolve(tmpdir(), 'compartment-update-test-'));
+    try {
+      const valuesPath: string = resolve(directory, 'values.yaml');
+      await writeFile(valuesPath, '{}');
+      mocks.verifyUpdateImages.mockRejectedValue(new Error('image signature rejected'));
+
+      await expect(
+        updateKubernetesSystem({
+          ...target(),
+          chartPath: resolve(directory, 'chart'),
+          valuesPath,
+          version: 'sha-target',
+        }),
+      ).rejects.toThrow('image signature rejected');
+      expect(mocks.runCommand).not.toHaveBeenCalled();
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it('surfaces Helm rollback-on-failure errors without compatibility fallback logic', async (): Promise<void> => {
+    const directory: string = await mkdtemp(resolve(tmpdir(), 'compartment-update-test-'));
+    try {
+      const valuesPath: string = resolve(directory, 'values.yaml');
+      await writeFile(valuesPath, '{}');
+      mocks.verifyUpdateImages.mockImplementation(
+        async (input: VerifyUpdateInput): Promise<void> => await writeFile(input.outputPath, '{}'),
+      );
+      mocks.runCommand.mockResolvedValue({ exitCode: 1, stderr: 'release rolled back', stdout: '' });
+
+      await expect(
+        updateKubernetesSystem({
+          ...target(),
+          chartPath: resolve(directory, 'chart'),
+          valuesPath,
+          version: 'sha-target',
+        }),
+      ).rejects.toThrow('Helm platform update failed: release rolled back');
+      expect(mocks.runCommand).toHaveBeenCalledWith(expect.arrayContaining(['--rollback-on-failure']));
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
   });
 });
 

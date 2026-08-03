@@ -1,6 +1,10 @@
 import { hasText, isValidDnsHostname, normalizeDnsHostname } from '@compartment/utils';
 import type { Command } from 'commander';
 import type { KubernetesOperatorTarget } from '../../services/kubernetes-operator.service.types';
+import {
+  readKubernetesPlatformImageTag,
+  resolvePackagedKubernetesPlatformVersion,
+} from '../../services/kubernetes-platform-version.service';
 import type {
   KubernetesOperatorCommandOptions,
   ResolvedSystemDomainVersionedCommand,
@@ -17,6 +21,12 @@ const kubernetesNamePattern: RegExp = /^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$/u;
 export function addKubernetesOperatorReleaseOptions(command: Command): Command {
   return addKubernetesOperatorTargetOptions(command)
     .option('--values <path>', 'Operator values file for the Compartment Helm chart')
+    .option('--chart <path>', 'Compartment Helm chart path for a source CLI build');
+}
+
+export function addKubernetesSystemUpdateOptions(command: Command): Command {
+  return addKubernetesOperatorTargetOptions(command)
+    .requiredOption('--values <path>', 'Operator values file for the Compartment Helm chart')
     .option('--chart <path>', 'Compartment Helm chart path for a source CLI build');
 }
 
@@ -57,6 +67,25 @@ export function readSystemDomainBaseDomain(value: string): string {
     throw new Error('--base-domain must be a public DNS base domain without a port.');
   }
   return normalized;
+}
+
+export function resolveKubernetesSystemUpdateVersion(value: string | undefined): string {
+  if (value !== undefined) {
+    return readSystemUpdateImageTag(value);
+  }
+  const packagedVersion: string | undefined = resolvePackagedKubernetesPlatformVersion();
+  if (packagedVersion !== undefined) {
+    return packagedVersion;
+  }
+  throw new Error('--version is required when system update runs from a source CLI build.');
+}
+
+function readSystemUpdateImageTag(value: string): string {
+  try {
+    return readKubernetesPlatformImageTag(value);
+  } catch {
+    throw new Error('--version must be a valid platform image tag.');
+  }
 }
 
 function readExpectedSetupVersion(value: string | undefined): number | undefined {
