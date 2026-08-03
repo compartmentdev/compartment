@@ -1,14 +1,6 @@
 import { isValidEmailAddress } from '@compartment/utils';
 
-const reservedAcmeDomains: readonly string[] = [
-  'example.com',
-  'example.net',
-  'example.org',
-  'invalid',
-  'local',
-  'localhost',
-  'test',
-];
+const reservedAcmeDomains: readonly string[] = ['example.com', 'example.net', 'example.org', 'invalid', 'localhost'];
 const emailLocalPartPattern: RegExp = /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*$/u;
 const emailDomainLabelPattern: RegExp = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/u;
 
