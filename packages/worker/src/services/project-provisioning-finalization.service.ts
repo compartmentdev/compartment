@@ -17,7 +17,7 @@ export function projectProvisioningCompletion(result: KubeJobResult): ProjectPro
 
 export async function finalizeProjectProvisioningJob(
   result: KubeJobResult,
-  cleanupAuthority: () => Promise<object>,
+  cleanupAuthority: () => Promise<void>,
 ): Promise<void> {
   const finalizationError: Error | null = await captureFinalizationError(result);
   try {

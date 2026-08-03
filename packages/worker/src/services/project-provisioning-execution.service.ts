@@ -65,11 +65,11 @@ async function executeProjectProvisioningWork(
     return projectProvisioningRequest(target, completion);
   }
   const result: KubeJobResult = await runtime.runJob(projectProvisioningJob(config, target, authority));
-  const completion: ProjectProvisioningResult = projectProvisioningCompletion(result);
-  const cleanupAuthority: () => Promise<KubeManifest[]> = async (): Promise<KubeManifest[]> =>
+  const cleanupAuthority: () => Promise<void> = async (): Promise<void> => {
     await cleanupProjectProvisioningAuthority(request, runtime, authority, target, logger);
+  };
   await finalizeProjectProvisioningJob(result, cleanupAuthority);
-  return projectProvisioningRequest(target, completion);
+  return projectProvisioningRequest(target, projectProvisioningCompletion(result));
 }
 
 async function executeProjectTeardown(

@@ -143,7 +143,6 @@ async function persistProjectProvisioningCompletion(
       leaseExpiresAt: null,
       leaseId: null,
       state: completedState(input.action, input.status),
-      isolationVersion: projectKubeProvisioning.isolationVersion,
       updatedAt: new Date(),
     })
     .where(

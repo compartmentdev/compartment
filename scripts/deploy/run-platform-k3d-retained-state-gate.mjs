@@ -11,7 +11,7 @@ const release = 'restore2-state';
 const platformName = `${release}-compartment`;
 const projectProvisioningNamespace = `${platformName}-project-provisioning`;
 const secretName = `${release}-install-state`;
-const registryAuthServiceName = `${platformName}-registry-auth`;
+const registryAuthName = `${platformName}-registry-auth`;
 const previousRegistryAddressServiceName = `${release}-previous-registry-address`;
 function registryHelmArgs(clusterIp) {
   return ['--set', `registry.hostname=${clusterIp}`, '--set', 'registry.issuerRef.name=retained-registry-issuer'];
@@ -106,8 +106,8 @@ async function runRetainedInstallStateGate() {
     kubectl(['wait', '--for=delete', `namespace/${buildNamespace}`, '--timeout=60s']);
     kubectl(['wait', '--for=delete', `namespace/${projectProvisioningNamespace}`, '--timeout=60s']);
     kubectl(['--namespace', namespace, 'get', 'secret', secretName]);
-    kubectl(['--namespace', namespace, 'get', 'service', registryAuthServiceName]);
-    kubectl(['--namespace', namespace, 'delete', 'service', registryAuthServiceName]);
+    kubectl(['--namespace', namespace, 'get', 'service', registryAuthName]);
+    kubectl(['--namespace', namespace, 'delete', 'service', registryAuthName]);
     kubectl([
       '--namespace',
       namespace,
@@ -168,7 +168,7 @@ async function runRetainedInstallStateGate() {
     const registryIssuerName = readSecretValue(secretName, 'registry-issuer-ref-name');
     kubectl(['--namespace', namespace, 'rollout', 'status', `deployment/${platformName}-postgres`, '--timeout=180s']);
     const retainedSentinel = readPostgresSentinel();
-    kubectl(['--namespace', namespace, 'get', 'deployment', registryAuthServiceName]);
+    kubectl(['--namespace', namespace, 'get', 'deployment', registryAuthName]);
     const runtimeBrokerUrl = captureKubectl([
       '--namespace',
       namespace,
@@ -252,7 +252,7 @@ function readServiceClusterIp() {
     namespace,
     'get',
     'service',
-    registryAuthServiceName,
+    registryAuthName,
     '--output',
     'jsonpath={.spec.clusterIP}',
   ]);
