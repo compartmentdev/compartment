@@ -28,6 +28,7 @@ describe('platform k3d e2e shard runner', () => {
       'COMPARTMENT_E2E_MANAGED_NAMESPACE',
       'COMPARTMENT_E2E_DIAGNOSTICS_PATH',
       'COMPARTMENT_E2E_PLATFORM_VALUES_PATH',
+      'COMPARTMENT_E2E_UPDATE_VALUES_PATH',
       'COMPARTMENT_E2E_PREVIOUS_PLATFORM_VALUES_PATH',
       'COMPARTMENT_E2E_MANAGED_VALUES_PATH',
       'COMPARTMENT_E2E_OWNER_ENV_PATH',
@@ -106,6 +107,7 @@ describe('platform k3d e2e shard runner', () => {
       'managed-install',
       'retained-state',
     ]);
+    expect(readPlatformK3dShardSuites('system-update')).toEqual(['install', 'system-update']);
   });
 
   it('cleans successful and failed runs by default while preserving the original failure', async () => {

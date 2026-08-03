@@ -23,6 +23,8 @@ Commands:
                                   readiness
   restart [options]               Restart platform workloads and wait for their
                                   rollout
+  update [options]                Verify images, update the Kubernetes platform,
+                                  and run database migrations
   help [command]                  display help for command
 ```
 
@@ -32,3 +34,4 @@ Commands:
 - [compartment system issue-password-reset](/reference/generated/cli/system/issue-password-reset/)
 - [compartment system status](/reference/generated/cli/system/status/)
 - [compartment system restart](/reference/generated/cli/system/restart/)
+- [compartment system update](/reference/generated/cli/system/update/)

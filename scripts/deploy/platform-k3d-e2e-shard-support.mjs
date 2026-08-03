@@ -47,6 +47,7 @@ export function buildPlatformK3dShardEnvironment(shardName, baseEnv = process.en
     COMPARTMENT_E2E_PLATFORM_MODE: 'k3d',
     COMPARTMENT_E2E_PLATFORM_NAMESPACE: baseEnv.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? `compartment-${shardName}`,
     COMPARTMENT_E2E_PLATFORM_VALUES_PATH: `${stateDirectory}/platform-values.yaml`,
+    COMPARTMENT_E2E_UPDATE_VALUES_PATH: `${stateDirectory}/update-values.yaml`,
     COMPARTMENT_E2E_PREVIOUS_PLATFORM_VALUES_PATH: `${stateDirectory}/previous-platform-values.yaml`,
     COMPARTMENT_E2E_REGISTRY_NAME: baseEnv.COMPARTMENT_E2E_REGISTRY_NAME ?? `${clusterName}-registry`,
     COMPARTMENT_E2E_REGISTRY_PORT: baseEnv.COMPARTMENT_E2E_REGISTRY_PORT ?? (15_500 + portOffset).toString(),

@@ -4,9 +4,11 @@ export { type HealthResponse, healthResponseSchema } from './contracts/health.co
 export {
   kubernetesSystemRestartResponseSchema,
   kubernetesSystemStatusResponseSchema,
+  kubernetesSystemUpdateResponseSchema,
   type KubernetesPlatformWorkloadStatus,
   type KubernetesSystemRestartResponse,
   type KubernetesSystemStatusResponse,
+  type KubernetesSystemUpdateResponse,
 } from './contracts/kubernetes-system.contract';
 export { type OperationStatus, type OperationSummary } from './contracts/operations.contract';
 export { compartmentDescriptorFileName } from './contracts/compartment-descriptor-guide.contract';
