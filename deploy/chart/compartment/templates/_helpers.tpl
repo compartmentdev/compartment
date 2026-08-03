@@ -208,11 +208,7 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- fail "platform.managedDomainBrokerUrl is required when secrets.managedDomainAcmeDnsToken is configured" -}}
 {{- end -}}
 {{- if eq $effective.platform.tlsMode "broker-dns01" -}}
-{{- if ne .Values.platform.acmeIssuer "acme" -}}
-{{- fail "platform.acmeIssuer must be acme for public TLS" -}}
-{{- end -}}
-{{- $_ := required "platform.acmeCaUrl is required for public TLS" .Values.platform.acmeCaUrl -}}
-{{- $_ = required "platform.acmeEmail is required for public TLS" $effective.platform.acmeEmail -}}
+{{- $_ := required "platform.acmeEmail is required for public TLS" $effective.platform.acmeEmail -}}
 {{- end -}}
 {{- if eq $effective.platform.tlsMode "broker-dns01" -}}
 {{- if ne $effective.platform.domainMode "managed" -}}
