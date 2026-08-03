@@ -1,5 +1,7 @@
 import type { JsonValue } from '@compartment/utils';
 
+export type KubernetesInstallKubeconfigFailureReason = 'context-not-found' | 'no-usable-cluster';
+
 export interface KubernetesKubeconfigResolutionInput {
   contextName?: string | undefined;
   env: NodeJS.ProcessEnv;

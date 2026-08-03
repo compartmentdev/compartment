@@ -33,6 +33,7 @@ install_namespace=""
 install_release_name=""
 install_remote=""
 install_values_path=""
+verbose="0"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -123,6 +124,10 @@ while [ "$#" -gt 0 ]; do
     --remote)
       install_remote="$2"
       shift 2
+      ;;
+    --verbose)
+      verbose="1"
+      shift
       ;;
     *)
       printf 'Unknown installer argument: %s\n' "$1" >&2
@@ -298,7 +303,9 @@ resolve_main_release_tag() {
   fi
 
   resolved_release_tag="sha-${main_commit_sha}"
-  printf 'Resolved main to %s\n' "$resolved_release_tag" >&2
+  if [ "$verbose" = "1" ]; then
+    printf 'Resolved main to %s\n' "$resolved_release_tag" >&2
+  fi
   printf '%s' "$resolved_release_tag"
 }
 
@@ -317,7 +324,9 @@ resolve_kubernetes_release_tag() {
   fi
 
   resolved_release_tag="sha-${kubernetes_commit_sha}"
-  printf 'Resolved kubernetes to %s\n' "$resolved_release_tag" >&2
+  if [ "$verbose" = "1" ]; then
+    printf 'Resolved kubernetes to %s\n' "$resolved_release_tag" >&2
+  fi
   printf '%s' "$resolved_release_tag"
 }
 
@@ -482,6 +491,9 @@ resolve_kubernetes_cli_digest_ref() {
   if ! cli_manifest_digest="$("$oras_command" resolve "$cli_tag_ref" 2>"$oras_resolve_error_path")"; then
     oras_resolve_error="$(cat "$oras_resolve_error_path")"
     rm -f "$oras_resolve_error_path"
+    if [ -n "$oras_resolve_error" ]; then
+      printf '%s\n' "$oras_resolve_error" >&2
+    fi
     case "$oras_resolve_error" in
       *"not found"* | *"manifest unknown"*)
         if [ "$channel" = "kubernetes" ] && [ "$version_argument" = "1" ]; then
@@ -524,15 +536,41 @@ resolve_kubernetes_cli_digest_ref() {
 verify_kubernetes_cli_artifact() {
   cli_digest_ref="$1"
   cli_workflow_sha="$2"
+  verification_output_path="${temp_directory}/cosign-verify.output"
   if ! "$cosign_command" verify \
     --new-bundle-format \
     --certificate-identity "$kubernetes_cli_certificate_identity" \
     --certificate-oidc-issuer "$kubernetes_cli_certificate_oidc_issuer" \
     --certificate-github-workflow-sha "$cli_workflow_sha" \
-    "$cli_digest_ref" >/dev/null; then
+    "$cli_digest_ref" >"$verification_output_path" 2>&1; then
+    cat "$verification_output_path" >&2
     printf 'Failed to verify Kubernetes CLI artifact %s\n' "$cli_digest_ref" >&2
     exit 1
   fi
+  if [ "$verbose" = "1" ]; then
+    cat "$verification_output_path" >&2
+    printf 'Verified OCI artifact %s\n' "$cli_digest_ref" >&2
+  fi
+  rm -f "$verification_output_path"
+  printf 'Verified signed Compartment CLI\n'
+}
+
+format_archive_size() {
+  archive_size_bytes="$(wc -c < "$1" | tr -d '[:space:]')"
+  awk -v bytes="$archive_size_bytes" 'BEGIN {
+    split("B KB MB GB", units, " ")
+    size = bytes
+    unit = 1
+    while (size >= 1000 && unit < 4) {
+      size /= 1000
+      unit += 1
+    }
+    if (unit == 1) {
+      printf "%d %s", size, units[unit]
+    } else {
+      printf "%.1f %s", size, units[unit]
+    }
+  }'
 }
 
 can_use_installer_terminal() {
@@ -1039,14 +1077,24 @@ if [ "$channel" = "kubernetes" ]; then
   cli_tag_ref="${cli_oci_repository}:${resolved_release_tag}"
   cli_digest_ref="$(resolve_kubernetes_cli_digest_ref "$cli_tag_ref")"
   verify_kubernetes_cli_artifact "$cli_digest_ref" "$resolved_kubernetes_commit_sha"
-  "$oras_command" pull \
+  oras_pull_output_path="${temp_directory}/oras-pull.output"
+  if ! "$oras_command" pull \
     --platform "${target_os}/${tools_upstream_arch}" \
     --output "$temp_directory" \
-    "$cli_digest_ref"
+    "$cli_digest_ref" >"$oras_pull_output_path" 2>&1; then
+    cat "$oras_pull_output_path" >&2
+    exit 1
+  fi
+  if [ "$verbose" = "1" ]; then
+    cat "$oras_pull_output_path" >&2
+  fi
+  rm -f "$oras_pull_output_path"
 else
   curl -fsSL -o "$artifact_path" "$artifact_url"
   curl -fsSL -o "$checksums_path" "$checksums_url"
 fi
+
+printf 'Downloaded CLI (%s)\n' "$(format_archive_size "$artifact_path")"
 
 expected_checksum_line="$(awk -v target="$artifact_name" '$2 == target { print $0 }' "$checksums_path")"
 if [ -z "$expected_checksum_line" ]; then
@@ -1055,7 +1103,15 @@ if [ -z "$expected_checksum_line" ]; then
 fi
 
 if command -v sha256sum >/dev/null 2>&1; then
-  printf '%s\n' "$expected_checksum_line" | (cd "$temp_directory" && sha256sum -c -)
+  checksum_output_path="${temp_directory}/checksum.output"
+  if ! printf '%s\n' "$expected_checksum_line" | (cd "$temp_directory" && sha256sum -c -) >"$checksum_output_path" 2>&1; then
+    cat "$checksum_output_path" >&2
+    exit 1
+  fi
+  if [ "$verbose" = "1" ]; then
+    cat "$checksum_output_path" >&2
+  fi
+  rm -f "$checksum_output_path"
 elif command -v shasum >/dev/null 2>&1; then
   expected_checksum="$(printf '%s\n' "$expected_checksum_line" | awk '{ print $1 }')"
   actual_checksum="$(shasum -a 256 "$artifact_path" | awk '{ print $1 }')"
@@ -1077,7 +1133,7 @@ tar -xzf "$artifact_path" -C "$temp_directory"
 install_path="${bin_dir}/compartment"
 install -m 0755 "${temp_directory}/compartment" "$install_path"
 
-printf 'Installed compartment to %s\n' "$install_path"
+printf 'Installed to %s\n' "$install_path"
 "$install_path" --version
 ensure_bin_directory_on_path "$bin_dir"
 
@@ -1095,5 +1151,3 @@ if [ "$init_login" = "1" ]; then
   run_init_login "$install_path" "$init_api_url" "$init_email" "$init_organization" "$init_onboarding_session"
   exit 0
 fi
-
-printf 'Compartment CLI installed. Run `compartment install` to set up the platform.\n'

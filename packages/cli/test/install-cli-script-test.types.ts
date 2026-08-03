@@ -41,6 +41,7 @@ export interface InstallerRunOptions {
   installerTerminalOutputPath?: string | undefined;
   installerTerminalPath?: string | undefined;
   orasResolveOutcome?: OrasResolveOutcome | undefined;
+  orasPullFailure?: boolean | undefined;
   osName?: string | undefined;
   pathEntries?: string[] | undefined;
   publishedFallbackOutcome?: PublishedFallbackOutcome | undefined;

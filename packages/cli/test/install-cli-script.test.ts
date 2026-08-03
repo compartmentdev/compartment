@@ -1,7 +1,6 @@
 import { execFile as execFileCallback } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import type { Stats } from 'node:fs';
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -33,6 +32,12 @@ import type {
   PublishedFallbackOutcome,
   ShellProfileCase,
 } from './install-cli-script-test.types';
+import {
+  isMissingFileError,
+  readExecFileOutput,
+  readOptionalText,
+  replaceInstallerTerminal,
+} from './install-cli-script-test.harness';
 
 const defaultPath: string = process.env.PATH ?? '/usr/bin:/bin';
 const execFile: (
@@ -63,14 +68,13 @@ describe('render-cli-install-script', (): void => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
-      args: ['--version', 'main'],
+      args: ['--version', 'main', '--verbose'],
       pathEntries: [binDirectory],
     });
 
     expect(result.stderr).toContain(`Resolved main to ${expectedMainReleaseTag}`);
-    expect(result.stdout).toContain(`Installed compartment to ${join(binDirectory, 'compartment')}`);
+    expect(result.stdout).toContain(`Installed to ${join(binDirectory, 'compartment')}`);
     expect(result.stdout).toContain(expectedInstalledVersion);
-    expect(result.stdout).toContain(createCliOnlyInstallMessage());
     expect(result.compartmentInvocations).toEqual(['--version']);
     expect(result.urlLog).toEqual([
       'https://api.github.com/repos/example/compartment/git/ref/heads/main',
@@ -87,8 +91,15 @@ describe('render-cli-install-script', (): void => {
       pathEntries: [binDirectory],
     });
 
-    expect(result.stderr).toContain(`Resolved kubernetes to ${expectedKubernetesReleaseTag}`);
-    expect(result.stdout).toContain(`Installed compartment to ${join(binDirectory, 'compartment')}`);
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toMatch(
+      new RegExp(
+        `^Verified signed Compartment CLI\\nDownloaded CLI \\(\\d+(?:\\.\\d)? (?:B|KB|MB|GB)\\)\\nInstalled to ${escapeRegExp(join(binDirectory, 'compartment'))}\\n${escapeRegExp(expectedInstalledVersion)}\\n$`,
+        'u',
+      ),
+    );
+    expect(result.stdout).not.toContain('Skipped pulling layers');
+    expect(result.stdout).not.toContain('sha256:');
     expect(result.compartmentInvocations).toEqual(['--version']);
     expect(result.urlLog).toEqual(['https://api.github.com/repos/example/compartment/git/ref/heads/kubernetes']);
     expect(result.cosignInvocations).toEqual([
@@ -100,6 +111,35 @@ describe('render-cli-install-script', (): void => {
     expect(result.orasInvocations[1]).toMatch(
       new RegExp(`^pull --platform linux/amd64 --output .+ ${expectedCliDigestRef}$`, 'u'),
     );
+  });
+
+  it('shows installer diagnostics on verbose Kubernetes success', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      args: ['--verbose'],
+      pathEntries: [binDirectory],
+    });
+
+    expect(result.stdout).toContain('Verified signed Compartment CLI');
+    expect(result.stderr).toContain(`Resolved kubernetes to ${expectedKubernetesReleaseTag}`);
+    expect(result.stderr).toContain('cosign verification internals');
+    expect(result.stderr).toContain(`Verified OCI artifact ${expectedCliDigestRef}`);
+    expect(result.stderr).toContain('Skipped pulling layers without selected files');
+    expect(result.stderr).toContain(`${expectedArtifactName}: OK`);
+  });
+
+  it('replays captured ORAS diagnostics when the CLI download fails', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      allowFailure: true,
+      args: [],
+      orasPullFailure: true,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('registry download interrupted after 42 MB');
+    expect(result.stdout).toBe('Verified signed Compartment CLI\n');
   });
 
   it.each([
@@ -186,7 +226,7 @@ describe('render-cli-install-script', (): void => {
     expect(result.stderr).toContain(
       `sh install.sh --channel kubernetes --version ${expectedPublishedKubernetesReleaseTag}`,
     );
-    expect(result.stderr).not.toContain('Error response from registry');
+    expect(result.stderr).toContain('Error response from registry');
     expect(result.orasInvocations).toEqual([
       `resolve ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}`,
       `resolve ghcr.io/compartmentdev/compartment-cli:${expectedPublishedKubernetesReleaseTag}`,
@@ -262,7 +302,7 @@ describe('render-cli-install-script', (): void => {
       `Failed to resolve Kubernetes CLI image ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}. Check registry access and retry.`,
     );
     expect(result.stderr).not.toContain('still publishing');
-    expect(result.stderr).not.toContain('registry unavailable');
+    expect(result.stderr).toContain('registry unavailable');
   });
 
   it.each([
@@ -316,7 +356,7 @@ describe('render-cli-install-script', (): void => {
       expect(result.orasInvocations[1]).toMatch(
         new RegExp(`^pull --platform ${expectedPlatform} --output .+ ${expectedCliDigestRef}$`, 'u'),
       );
-      expect(result.stdout).toContain(`Installed compartment to ${join(binDirectory, 'compartment')}`);
+      expect(result.stdout).toContain(`Installed to ${join(binDirectory, 'compartment')}`);
       expect(result.compartmentInvocations).toEqual(['--version']);
       expect(result.stderr).not.toContain(`Missing checksum entry for ${expectedPlatformArtifact}`);
     },
@@ -352,7 +392,7 @@ describe('render-cli-install-script', (): void => {
       pathEntries: [homeBinDirectory, localBinDirectory],
     });
 
-    expect(result.stdout).toContain(`Installed compartment to ${join(homeBinDirectory, 'compartment')}`);
+    expect(result.stdout).toContain(`Installed to ${join(homeBinDirectory, 'compartment')}`);
   });
 
   it('rejects init login arguments outside init login mode', async (): Promise<void> => {
@@ -405,7 +445,6 @@ describe('render-cli-install-script', (): void => {
 
     expect(result.stderr).not.toContain('Resolved main to');
     expect(result.stdout).toContain(expectedInstalledVersion);
-    expect(result.stdout).toContain(createCliOnlyInstallMessage());
     expect(result.compartmentInvocations).toEqual(['--version']);
     expect(result.urlLog).toEqual([
       `https://github.com/example/compartment/releases/download/${explicitReleaseTag}/${expectedArtifactName}`,
@@ -424,7 +463,6 @@ describe('render-cli-install-script', (): void => {
 
     expect(result.stderr).not.toContain('Resolved main to');
     expect(result.stdout).toContain(expectedInstalledVersion);
-    expect(result.stdout).toContain(createCliOnlyInstallMessage());
     expect(result.compartmentInvocations).toEqual(['--version']);
     expect(result.urlLog).toEqual([
       `https://github.com/example/compartment/releases/download/v${explicitReleaseVersion}/${expectedArtifactName}`,
@@ -460,7 +498,6 @@ describe('render-cli-install-script', (): void => {
 
     expect(result.stderr).not.toContain('Resolved main to');
     expect(result.stdout).toContain(expectedInstalledVersion);
-    expect(result.stdout).toContain(createCliOnlyInstallMessage());
     expect(result.compartmentInvocations).toEqual(['--version']);
     expect(result.urlLog).toEqual([
       `https://github.com/example/compartment/releases/download/v${defaultReleaseVersion}/${expectedArtifactName}`,
@@ -472,7 +509,7 @@ describe('render-cli-install-script', (): void => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
-      args: ['--channel', 'main'],
+      args: ['--channel', 'main', '--verbose'],
       defaultVersion: '0.8.0',
       pathEntries: [binDirectory],
     });
@@ -575,7 +612,7 @@ describe('render-cli-install-script', (): void => {
       shell: '/bin/zsh',
     });
 
-    expect(result.stdout).toContain(`Installed compartment to ${join(binDirectory, 'compartment')}`);
+    expect(result.stdout).toContain(`Installed to ${join(binDirectory, 'compartment')}`);
     expect(result.stdout).toContain(`${binDirectory} is not on PATH.`);
     expect(result.stdout).toContain(`Add it to ${join(temporaryDirectory, '.zshrc')}, or run for this shell:`);
     expect(result.stdout).toContain(`export PATH="${binDirectory}:$PATH"`);
@@ -880,14 +917,14 @@ describe('render-cli-install-script', (): void => {
   });
 });
 
-function createCliOnlyInstallMessage(): string {
-  return 'Compartment CLI installed. Run `compartment install` to set up the platform.';
-}
-
 async function createTemporaryDirectory(): Promise<string> {
   const temporaryDirectory: string = await mkdtemp(join(tmpdir(), 'compartment-cli-installer-'));
   temporaryDirectories.push(temporaryDirectory);
   return temporaryDirectory;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
 async function runInstallerScript(
@@ -913,6 +950,7 @@ async function runInstallerScript(
     COMPARTMENT_TEST_EXPECTED_ARTIFACT_NAME: fixture.artifactName,
     COMPARTMENT_TEST_EXPECTED_ORAS_PLATFORM: readExpectedOrasPlatform(options.osName, options.archName),
     COMPARTMENT_TEST_ORAS_RESOLVE_OUTCOME: options.orasResolveOutcome ?? 'valid',
+    COMPARTMENT_TEST_ORAS_PULL_OUTCOME: options.orasPullFailure === true ? 'failure' : 'success',
     COMPARTMENT_TEST_PUBLISHED_FALLBACK_OUTCOME: options.publishedFallbackOutcome ?? 'valid',
     COMPARTMENT_TEST_SIGNATURE_OUTCOME: options.signatureOutcome ?? 'valid',
     COMPARTMENT_TEST_STATE_DIR: stateDirectory,
@@ -1003,23 +1041,6 @@ async function renderInstallerScript(outputPath: string, options: InstallerRunOp
   }
 }
 
-async function replaceInstallerTerminal(
-  scriptText: string,
-  terminalPath: string,
-  terminalOutputPath: string,
-): Promise<string> {
-  try {
-    const terminalOutput: Stats = await stat(terminalOutputPath);
-    if (terminalOutput.isDirectory() || (terminalOutput.mode & 0o222) === 0) {
-      const rejectedWritePath: string = `${terminalPath}.write-denied/tty`;
-      return scriptText.replaceAll('</dev/tty', `<${terminalPath}`).replaceAll('>/dev/tty', `>${rejectedWritePath}`);
-    }
-  } catch {
-    return scriptText.replaceAll('</dev/tty', `<${terminalPath}`).replaceAll('>/dev/tty', `>>${terminalOutputPath}`);
-  }
-  return scriptText.replaceAll('</dev/tty', `<${terminalPath}`).replaceAll('>/dev/tty', `>>${terminalOutputPath}`);
-}
-
 async function createInstallerFixture(
   temporaryDirectory: string,
   osName?: string,
@@ -1069,37 +1090,4 @@ async function readLogLines(logPath: string): Promise<string[]> {
 
     throw error;
   }
-}
-
-async function readOptionalText(path: string | undefined): Promise<string> {
-  if (path === undefined) {
-    return '';
-  }
-
-  try {
-    return await readFile(path, 'utf8');
-  } catch (error) {
-    const caughtError: NodeJS.ErrnoException | Error = error as NodeJS.ErrnoException | Error;
-    if (isMissingFileError(caughtError) || isDirectoryReadError(caughtError)) {
-      return '';
-    }
-
-    throw error;
-  }
-}
-
-function isDirectoryReadError(error: NodeJS.ErrnoException | Error): boolean {
-  return error instanceof Error && (error as NodeJS.ErrnoException).code === 'EISDIR';
-}
-
-function readExecFileOutput(output: Buffer | string | undefined): string {
-  if (Buffer.isBuffer(output)) {
-    return output.toString('utf8');
-  }
-
-  return output ?? '';
-}
-
-function isMissingFileError(error: NodeJS.ErrnoException | Error): boolean {
-  return error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT';
 }

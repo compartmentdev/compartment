@@ -29,6 +29,7 @@ commit SHA. The installer verifies the pinned artifact with the same digest and 
 tip. If a new Kubernetes tip is still publishing, the installer prints a copyable command for the latest fully
 published and signed build after verifying it. If automatic discovery is unavailable, it links the successful
 publication runs and prints the command template to complete with that run's full commit SHA.
+Add `--verbose` to show Cosign, ORAS, and checksum diagnostics during installation.
 
 ## Prepare the cluster
 

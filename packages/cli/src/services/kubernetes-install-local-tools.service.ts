@@ -13,16 +13,16 @@ const kubectlInstallInstruction: string =
 
 const kubernetesInstallLocalTools: readonly KubernetesInstallLocalToolRequirement[] = [
   {
-    binary: 'helm',
-    installInstruction: helmInstallInstruction,
-    minimumVersion: '4.0.0',
-    versionCommand: ['helm', 'version', '--template', '{{.Version}}'],
-  },
-  {
     binary: 'kubectl',
     installInstruction: kubectlInstallInstruction,
     minimumVersion: '1.30.0',
     versionCommand: ['kubectl', 'version', '--client', '--output=json'],
+  },
+  {
+    binary: 'helm',
+    installInstruction: helmInstallInstruction,
+    minimumVersion: '4.0.0',
+    versionCommand: ['helm', 'version', '--template', '{{.Version}}'],
   },
 ];
 
