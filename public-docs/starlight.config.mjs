@@ -34,6 +34,10 @@ const docsSidebar = [
     ],
   },
   {
+    label: 'Operate',
+    items: ['guides/operate-managed-vm'],
+  },
+  {
     label: 'Reference',
     items: [
       'reference/cli-reference',
@@ -60,6 +64,11 @@ const docsLlmsCustomSets = [
     label: 'Manage Access',
     paths: ['manage-access/**'],
     description: 'login, activation, organizations, users, roles, groups, assignments, audit logs, and SSO',
+  },
+  {
+    label: 'Operate',
+    paths: ['guides/**'],
+    description: 'managed VM status, updates, diagnostics, recovery, and destructive reset',
   },
   {
     label: 'Reference',

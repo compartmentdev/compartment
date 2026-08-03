@@ -82,7 +82,7 @@ describe.sequential('production Kubernetes install', (): void => {
       const ownerPassword: string = `PlatformE2e-${randomBytes(24).toString('base64url')}!`;
       const installerCli: SelfHostedUserSetupCli = await createFreshCli(ownerPassword);
       const result: InstallResponse = await installerCli.runJson(
-        `install --api-url ${platformApiUrl} --base-domain ${platformBaseDomain} --values ${platformValuesPath} --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment --email ${ownerEmail} --organization "${platformOrganizationName}" --organization-slug ${platformOrganizationSlug}`,
+        `install --target kubernetes --api-url ${platformApiUrl} --base-domain ${platformBaseDomain} --values ${platformValuesPath} --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment --email ${ownerEmail} --organization "${platformOrganizationName}" --organization-slug ${platformOrganizationSlug}`,
         installResponseSchema,
       );
 

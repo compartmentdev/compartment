@@ -1,0 +1,115 @@
+import { describe, expect, it } from 'vitest';
+import { assertManagedVmPreflight, evaluateManagedVmPreflight } from '../src/services/managed-vm-preflight.service';
+import type {
+  ManagedVmHostInventory,
+  ManagedVmObservedState,
+  ManagedVmPreflightCheck,
+  ManagedVmPreflightResult,
+  ManagedVmStateClassification,
+} from '../src/services/managed-vm-provisioning.types';
+
+describe('managed VM preflight', (): void => {
+  it.each([
+    [{ foreignPaths: [], ownedConfigMatches: false, provisionerStateExists: false }, 'fresh'],
+    [{ foreignPaths: [], ownedConfigMatches: true, provisionerStateExists: true }, 'resume'],
+    [
+      { foreignPaths: ['/etc/kubernetes/admin.conf'], ownedConfigMatches: false, provisionerStateExists: false },
+      'foreign',
+    ],
+    [{ foreignPaths: [], ownedConfigMatches: false, provisionerStateExists: true }, 'inconsistent'],
+    [{ foreignPaths: [], lockOwner: '42', ownedConfigMatches: true, provisionerStateExists: true }, 'locked'],
+  ] satisfies readonly [ManagedVmObservedState, ManagedVmStateClassification][])(
+    'classifies host state without adoption',
+    (state: ManagedVmObservedState, result: ManagedVmStateClassification): void => {
+      expect(evaluateManagedVmPreflight(supportedInventory(), state, publicAddress()).classification).toBe(result);
+    },
+  );
+
+  it('accepts the narrow supported clean host contract', (): void => {
+    const result: ManagedVmPreflightResult = evaluateManagedVmPreflight(
+      supportedInventory(),
+      freshState(),
+      publicAddress(),
+    );
+    expect(result.checks.every((check: ManagedVmPreflightCheck): boolean => check.passed)).toBe(true);
+    expect((): void => assertManagedVmPreflight(result)).not.toThrow();
+    expect(result.metadata.k3sChannel).toBe('compartment-stable-1.36');
+  });
+
+  it('reports resource, port, route, address, and foreign-state failures together', (): void => {
+    const inventory: ManagedVmHostInventory = {
+      ...supportedInventory(),
+      cpuCount: 1,
+      portsInUse: [{ owner: 'nginx', port: 443 }],
+      routeCidrs: [`10.${String(42)}.0.0/16`],
+    };
+    const result: ManagedVmPreflightResult = evaluateManagedVmPreflight(
+      inventory,
+      { foreignPaths: ['/etc/kubernetes/admin.conf'], ownedConfigMatches: false, provisionerStateExists: false },
+      `192.${String(168)}.1.5`,
+    );
+    expect((): void => assertManagedVmPreflight(result)).toThrow(
+      /cpu.*ports.*network-cidrs.*public-ipv4.*host-state/su,
+    );
+  });
+
+  it('accepts managed listeners and routes while resuming retained owned state', (): void => {
+    const result: ManagedVmPreflightResult = evaluateManagedVmPreflight(
+      {
+        ...supportedInventory(),
+        portsInUse: [{ owner: 'k3s', port: 443 }],
+        routeCidrs: [managedPodCidr()],
+      },
+      { foreignPaths: [], ownedConfigMatches: true, provisionerStateExists: true },
+      publicAddress(),
+    );
+
+    expect(result.checks.every((check: ManagedVmPreflightCheck): boolean => check.passed)).toBe(true);
+  });
+
+  it('rejects a foreign listener while resuming managed state', (): void => {
+    const result: ManagedVmPreflightResult = evaluateManagedVmPreflight(
+      { ...supportedInventory(), portsInUse: [{ owner: 'nginx', port: 443 }] },
+      { foreignPaths: [], ownedConfigMatches: true, provisionerStateExists: true },
+      publicAddress(),
+    );
+
+    expect(result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'ports')?.passed).toBe(false);
+  });
+});
+
+function supportedInventory(): ManagedVmHostInventory {
+  return {
+    architecture: 'x86_64',
+    cgroupV2: true,
+    clockSynchronized: true,
+    cpuCount: 4,
+    freeBytes: 80 * 1024 * 1024 * 1024,
+    freeInodes: 1_000_000,
+    firewall: 'nftables',
+    hostname: 'compartment-vm',
+    localIpv4Addresses: [publicAddress()],
+    memoryBytes: 8 * 1024 * 1024 * 1024,
+    osId: 'ubuntu',
+    osVersion: '24.04',
+    portsInUse: [],
+    publicInterface: 'ens3',
+    routeCidrs: ['default'],
+    requiredKernelModules: true,
+    reachableEndpoints: ['1', '2', '3', '4', '5', '6'],
+    systemd: true,
+    sudoAvailable: true,
+  };
+}
+
+function freshState(): ManagedVmObservedState {
+  return { foreignPaths: [], ownedConfigMatches: false, provisionerStateExists: false };
+}
+
+function publicAddress(): string {
+  return `203.0.${String(113)}.10`;
+}
+
+function managedPodCidr(): string {
+  return `10.${String(42)}.0.0/16`;
+}

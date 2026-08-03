@@ -6,7 +6,7 @@ or remove Kubernetes, an Ingress Controller, cert-manager, a CNI, or a StorageCl
 ## Supported installation channel
 
 The existing-Kubernetes installer is the supported self-hosted installation channel. The public bootstrap at
-`https://compartment.dev/k/install.sh` redirects to the root installer on the `kubernetes` branch. That installer
+`https://compartment.dev/install.sh` serves the root installer approved for the `kubernetes` channel. That installer
 resolves the current branch commit and matching immutable CLI OCI artifact by digest, then verifies its Cosign
 identity, OIDC issuer, and workflow commit before pulling it. No channel flag or raw branch URL is required.
 
@@ -25,20 +25,13 @@ Ingress Controller plus cert-manager setup has a 120-second wall-time budget in 
 measures and enforces that budget, and the shard owner is the suite named above. A shard reuses the same prerequisite
 installation for all of its scenarios.
 
-The initial supported release matrix is exact:
-
-| Kubernetes distribution | Topology                 | Ingress Controller                                               | cert-manager |
-| ----------------------- | ------------------------ | ---------------------------------------------------------------- | ------------ |
-| k3s v1.33.2+k3s1        | one server               | bundled Traefik v3.3.6                                           | v1.21.0      |
-| k3s v1.33.2+k3s1        | one server and one agent | ingress-nginx controller v1.13.3, with Traefik v3.3.6 coexisting | v1.21.0      |
-
-Versions or controllers outside this matrix are not part of the supported channel until they are added to the
-release gate. The CLI may accept other Kubernetes 1.30+ clusters during preflight, but that does not expand this
-published compatibility matrix.
+The supported contract is the current and previous tested Kubernetes minors plus the required capability checks.
+CI currently exercises Kubernetes 1.36 and 1.35. Exact k3s builds remain reproducible CI inputs and managed-VM
+installation evidence, not a customer-facing compatibility pin.
 
 ## Required cluster capabilities
 
-Provide a cluster from the supported matrix, a working kube context, the listed installed and ready Ingress
+Provide a cluster from the supported minor window, a working kube context, an installed and ready Ingress
 Controller with an IngressClass, cert-manager v1.21.0 with its CRDs and controller components ready, a usable
 StorageClass, and a CNI that enforces the NetworkPolicy features used by Compartment.
 

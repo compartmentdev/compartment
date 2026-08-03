@@ -32,10 +32,16 @@ Options:
   --release-name <name>         Helm release name; defaults to compartment
   --email <email>               First admin email
   --admin-password <password>   First admin password (automation only)
+  --admin-password-file <path>  Read the first admin password from a protected
+                                file
   --organization <name>         First organization name
   --organization-slug <slug>
   --remote <name>               Remote name for the saved CLI session
   --output <format>             text or json (default: "text")
+  --target <target>             Installation target: vm or kubernetes
+  --check                       Run read-only target preflight without making
+                                changes
+  --yes                         Accept the rendered mutation review
   --ingress-class <name>        IngressClass used for public Compartment hosts
   --storage-class <name>        StorageClass used for persistent platform data
   --ingress-endpoint <address>  Explicit ingress address when status is not

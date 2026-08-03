@@ -22,7 +22,7 @@ import {
   resolveCanonicalKubernetesInstallInput,
 } from './install.command.input';
 import type { KubernetesInstallInputValues } from './install.command.input.types';
-import { readConfiguredInstallAdminPassword } from './install.command.identity';
+import { readBoundaryInstallAdminPassword } from './install.command.identity';
 import { resolveCanonicalKubernetesInstallWizard } from './install.command.kubernetes-wizard';
 import type {
   InspectKubernetesInstallIssuer,
@@ -88,7 +88,12 @@ async function readBoundaryValues(
     options.values === undefined
       ? undefined
       : await readOperatorInstallInputValues(options.values, requiresPublicOperatorTls(options.baseDomain));
-  const values: Omit<KubernetesInstallInputValues, 'valuesPath'> = mergeOperatorBoundaryValues(options, operatorValues);
+  const password: string | undefined = await readBoundaryInstallAdminPassword(dependencies, options);
+  const values: Omit<KubernetesInstallInputValues, 'valuesPath'> = mergeOperatorBoundaryValues(
+    options,
+    operatorValues,
+    password,
+  );
   resolveCanonicalKubernetesInstallInput({ ...values, valuesPath: '<pending>' }, '<pending>');
   return values;
 }
@@ -96,9 +101,10 @@ async function readBoundaryValues(
 function mergeOperatorBoundaryValues(
   options: InstallCommandOptions,
   operatorValues: OperatorInstallInputValues | undefined,
+  password: string | undefined,
 ): Omit<KubernetesInstallInputValues, 'valuesPath'> {
   return {
-    ...readNonInteractiveValues(options),
+    ...readNonInteractiveValues(options, password),
     ...(options.ingressEndpoint === undefined && operatorValues?.clearIngressEndpoint === true
       ? { clearIngressEndpoint: true }
       : {}),
@@ -229,9 +235,10 @@ async function cleanCanonicalMaterial(material: MaterializedInstallWizardValues 
   }
 }
 
-function readNonInteractiveValues(options: InstallCommandOptions): Omit<KubernetesInstallInputValues, 'valuesPath'> {
-  const password: string | undefined = options.adminPassword ?? readConfiguredInstallAdminPassword();
-
+function readNonInteractiveValues(
+  options: InstallCommandOptions,
+  password: string | undefined,
+): Omit<KubernetesInstallInputValues, 'valuesPath'> {
   return {
     ...(options.baseDomain === undefined ? {} : { baseDomain: options.baseDomain }),
     ...(options.email === undefined ? {} : { email: options.email }),

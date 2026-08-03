@@ -57,6 +57,7 @@ vi.mock('../src/commands/install/install.command.identity', (): object => ({
     organizationName: prompts.organizationName,
   }),
   readConfiguredInstallAdminPassword: (): undefined => undefined,
+  readBoundaryInstallAdminPassword: async (): Promise<undefined> => await Promise.resolve(undefined),
   resolveInstallIdentityPrompts: mocks.resolveIdentity,
 }));
 vi.mock('../src/commands/install/install.command.session', (): object => ({
@@ -89,7 +90,7 @@ describe('install command boundary', (): void => {
     );
     const capture: CliCommandCapture = createCliCapture({ isTTY: true });
 
-    const exitCode: number = await runCli(['install'], capture.io);
+    const exitCode: number = await runCli(['install', '--target', 'kubernetes'], capture.io);
 
     expect(exitCode).toBe(1);
     expect(readCliStderr(capture)).toBe(
@@ -104,7 +105,10 @@ describe('install command boundary', (): void => {
     );
     const capture: CliCommandCapture = createCliCapture({ isTTY: true });
 
-    const exitCode: number = await runCli(['install', '--kube-context', 'production'], capture.io);
+    const exitCode: number = await runCli(
+      ['install', '--target', 'kubernetes', '--kube-context', 'production'],
+      capture.io,
+    );
 
     expect(exitCode).toBe(1);
     expect(readCliStderr(capture)).toContain('No usable Kubernetes cluster found.');
@@ -115,7 +119,7 @@ describe('install command boundary', (): void => {
     mocks.assertLocalTools.mockRejectedValueOnce(new Error('helm not found on PATH. Install Helm >= 4.0.0.'));
     const capture: CliCommandCapture = createCliCapture({ isTTY: true });
 
-    const exitCode: number = await runCli(['install'], capture.io);
+    const exitCode: number = await runCli(['install', '--target', 'kubernetes'], capture.io);
 
     expect(exitCode).toBe(1);
     expect(readCliStderr(capture)).toContain('✓ kubeconfig: /etc/rancher/k3s/k3s.yaml (k3s)');
@@ -133,7 +137,7 @@ describe('install command boundary', (): void => {
     mocks.assertLocalTools.mockRejectedValueOnce(new Error('kubectl not found on PATH.'));
     const capture: CliCommandCapture = createCliCapture({ isTTY: true });
 
-    expect(await runCli(['install'], capture.io)).toBe(1);
+    expect(await runCli(['install', '--target', 'kubernetes'], capture.io)).toBe(1);
     await expect(stat(materializedDirectory)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
@@ -145,7 +149,7 @@ describe('install command boundary', (): void => {
     );
     const capture: CliCommandCapture = createCliCapture({ isTTY: true });
 
-    const exitCode: number = await runCli(['install'], capture.io);
+    const exitCode: number = await runCli(['install', '--target', 'kubernetes'], capture.io);
 
     expect(exitCode).toBe(1);
     expect(readCliStderr(capture)).toContain('helm not found on PATH');
@@ -161,7 +165,7 @@ describe('install command boundary', (): void => {
     );
     const capture: CliCommandCapture = createCliCapture();
 
-    const exitCode: number = await runCli(['install', '--output', 'json'], capture.io);
+    const exitCode: number = await runCli(['install', '--target', 'kubernetes', '--output', 'json'], capture.io);
 
     expect(exitCode).toBe(1);
     expect(readCliStderr(capture)).toContain('Missing required install input');
@@ -173,7 +177,7 @@ describe('install command boundary', (): void => {
   it('reports the first missing canonical input at the non-interactive CLI boundary', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
 
-    const exitCode: number = await runCli(['install', '--output', 'json'], capture.io);
+    const exitCode: number = await runCli(['install', '--target', 'kubernetes', '--output', 'json'], capture.io);
 
     expect(exitCode).toBe(1);
     expect(readCliStderr(capture)).toContain('Missing required install input: --managed-domain or --base-domain.');
@@ -183,7 +187,10 @@ describe('install command boundary', (): void => {
   it('accepts a managed domain without onboarding authorization', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
 
-    const exitCode: number = await runCli(['install', '--managed-domain', '--output', 'json'], capture.io);
+    const exitCode: number = await runCli(
+      ['install', '--target', 'kubernetes', '--managed-domain', '--output', 'json'],
+      capture.io,
+    );
 
     expect(exitCode).toBe(1);
     expect(readCliStderr(capture)).toContain('Missing required install input: --email.');
@@ -195,7 +202,7 @@ describe('install command boundary', (): void => {
     const capture: CliCommandCapture = createCliCapture();
 
     const exitCode: number = await runCli(
-      ['install', '--managed-domain', '--base-domain', 'apps.example.com'],
+      ['install', '--target', 'kubernetes', '--managed-domain', '--base-domain', 'apps.example.com'],
       capture.io,
     );
 
@@ -262,6 +269,8 @@ describe('install command boundary', (): void => {
       const exitCode: number = await runCli(
         [
           'install',
+          '--target',
+          'kubernetes',
           '--base-domain',
           'apps.example.com',
           '--email',

@@ -2,6 +2,7 @@ import type { OutputFormat } from '../../output/output.types';
 import type { DomainIssuerReference } from '@compartment/contracts';
 
 export interface InstallCommandOptions {
+  adminPasswordFile?: string | undefined;
   adminPassword?: string | undefined;
   apiUrl?: string | undefined;
   baseDomain?: string | undefined;
@@ -17,16 +18,25 @@ export interface InstallCommandOptions {
   organization?: string | undefined;
   organizationSlug?: string | undefined;
   output: OutputFormat;
+  check?: boolean | undefined;
+  privilegedVmInstall?: boolean | undefined;
+  privilegedVmHandoff?: string | undefined;
   releaseName?: string | undefined;
   remote?: string | undefined;
   storageClass?: string | undefined;
+  target?: 'kubernetes' | 'vm' | undefined;
   values?: string | undefined;
+  yes?: boolean | undefined;
 }
 
 export interface ResolvedInstallIdentityPrompts {
   adminEmail: string;
   adminPassword: string;
   organizationName: string;
+}
+
+export interface InstallInputStream extends NodeJS.ReadableStream {
+  isTTY?: boolean | undefined;
 }
 
 export interface InstallWizardValues {

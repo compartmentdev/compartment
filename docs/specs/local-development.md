@@ -50,6 +50,7 @@ To retain a failed stand for investigation, set `COMPARTMENT_E2E_KEEP_ON_FAILURE
 CI uses the same opt-in through the `COMPARTMENT_E2E_KEEP_ON_FAILURE` Actions variable; leave it unset for the clean
 default.
 
-All shards pin k3s v1.33.2+k3s1 and cert-manager v1.21.0. `build-matrix-b` adds one agent and pins ingress-nginx
-controller v1.13.3 while leaving bundled Traefik v3.3.6 available; the other shards use bundled Traefik. Controller
-plus cert-manager setup is measured once per cluster and must finish within 120 seconds.
+The shards use explicit reproducible k3s images. Most exercise the current supported Kubernetes minor; `build-matrix-b`
+exercises the previous supported minor while also adding one agent and ingress-nginx. All shards pin cert-manager and
+leave bundled Traefik available. Controller plus cert-manager setup is measured once per cluster and must finish
+within 120 seconds.
