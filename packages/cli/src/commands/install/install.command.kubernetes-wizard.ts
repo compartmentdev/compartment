@@ -12,16 +12,20 @@ import type {
   KubernetesContextChoice,
   KubernetesInstallWizardDomain,
   KubernetesInstallWizardInventory,
+  KubernetesInstallWizardClusterSelection,
   KubernetesInstallWizardOwner,
   KubernetesInstallWizardResult,
   KubernetesStorageClassChoice,
   ReadKubernetesInstallResourceInventory,
+  ReadKubernetesInstallRetainedState,
   InspectKubernetesInstallIssuer,
   ResolvedKubernetesInstallWizardReview,
 } from './install.command.kubernetes-wizard.types';
-import type { InstallCommandOptions, InstallWizardValues } from './install.command.types';
+import type { InstallCommandOptions } from './install.command.types';
 import { confirmKubernetesInstall, renderKubernetesInstallReview } from './install.command.kubernetes-wizard-review';
 import { resolveKubernetesInstallWizardDomainForSelection } from './install.command.kubernetes-wizard-domain';
+import type { RetainedKubernetesInstallState } from '../../services/kubernetes-install.service.types';
+import { buildKubernetesInstallWizardValues } from './install.command.kubernetes-wizard-values';
 
 export async function resolveCanonicalKubernetesInstallWizard(
   io: CliIo,
@@ -29,13 +33,21 @@ export async function resolveCanonicalKubernetesInstallWizard(
   inventory: KubernetesInstallWizardInventory,
   readResources: ReadKubernetesInstallResourceInventory,
   inspectIssuer: InspectKubernetesInstallIssuer,
+  readRetainedState: ReadKubernetesInstallRetainedState = async (): Promise<null> => await Promise.resolve(null),
 ): Promise<KubernetesInstallWizardResult> {
   const context: KubernetesContextChoice = await selectContext(io, options.kubeContext, inventory.contexts);
   await confirmTarget(io, context);
   const resources: KubernetesInstallResourceInventory = await readResources(context.name);
+  const namespace: string = options.namespace ?? 'compartment';
+  const releaseName: string = options.releaseName ?? 'compartment';
+  const retainedState: RetainedKubernetesInstallState | null = await readRetainedState(
+    context.name,
+    namespace,
+    releaseName,
+  );
   const ingressClass: string = await selectIngressClass(io, options.ingressClass, resources.ingressClasses);
   const storageClass: string = await selectStorageClass(io, options.storageClass, resources.storageClasses);
-  return await finishWizard(io, options, context, ingressClass, storageClass, inspectIssuer);
+  return await finishWizard(io, options, context, ingressClass, storageClass, inspectIssuer, retainedState);
 }
 
 async function finishWizard(
@@ -45,6 +57,7 @@ async function finishWizard(
   ingressClass: string,
   storageClass: string,
   inspectIssuer: InspectKubernetesInstallIssuer,
+  retainedState: RetainedKubernetesInstallState | null,
 ): Promise<KubernetesInstallWizardResult> {
   const resolved: ResolvedKubernetesInstallWizardReview = await resolveWizardReview(
     io,
@@ -53,10 +66,14 @@ async function finishWizard(
     ingressClass,
     storageClass,
     inspectIssuer,
+    retainedState,
   );
-  renderKubernetesInstallReview(io, resolved.input, context.apiServer, resolved.domain.tlsReview);
+  renderKubernetesInstallReview(io, resolved.input, context.apiServer, resolved.domain.tlsReview, retainedState);
   await confirmKubernetesInstall(io);
-  return { input: resolved.input, values: buildWizardValues(resolved.domain, ingressClass, storageClass) };
+  return {
+    input: resolved.input,
+    values: buildKubernetesInstallWizardValues(resolved.domain, ingressClass, storageClass),
+  };
 }
 
 async function resolveWizardReview(
@@ -66,38 +83,33 @@ async function resolveWizardReview(
   ingressClass: string,
   storageClass: string,
   inspectIssuer: InspectKubernetesInstallIssuer,
+  retainedState: RetainedKubernetesInstallState | null,
 ): Promise<ResolvedKubernetesInstallWizardReview> {
+  const selection: KubernetesInstallWizardClusterSelection = { ingressClass, kubeContext, storageClass };
   const domain: KubernetesInstallWizardDomain = await resolveKubernetesInstallWizardDomainForSelection(
     io,
     options,
-    { ingressClass, kubeContext, storageClass },
+    selection,
     inspectIssuer,
+    retainedState,
   );
-  const owner: KubernetesInstallWizardOwner = await resolveWizardOwner(io, options);
-  const input: Omit<KubernetesInstallInputValues, 'valuesPath'> = buildResolvedWizardInput(
-    options,
-    kubeContext,
-    ingressClass,
-    storageClass,
+  return {
     domain,
-    owner,
-  );
-  return { domain, input };
+    input: buildResolvedWizardInput(options, selection, domain, await resolveWizardOwner(io, options)),
+  };
 }
 
 function buildResolvedWizardInput(
   options: InstallCommandOptions,
-  kubeContext: string,
-  ingressClass: string,
-  storageClass: string,
+  selection: KubernetesInstallWizardClusterSelection,
   domain: KubernetesInstallWizardDomain,
   owner: KubernetesInstallWizardOwner,
 ): Omit<KubernetesInstallInputValues, 'valuesPath'> {
   return buildWizardInput(
     options,
-    kubeContext,
-    ingressClass,
-    storageClass,
+    selection.kubeContext,
+    selection.ingressClass,
+    selection.storageClass,
     domain.input,
     owner.email,
     owner.organization,
@@ -111,19 +123,6 @@ async function resolveWizardOwner(io: CliIo, options: InstallCommandOptions): Pr
     email,
     organization: await promptRegisterOrganization(io, email, options.organization),
     password: options.adminPassword ?? (await promptNewPassword(io)),
-  };
-}
-
-function buildWizardValues(
-  domain: KubernetesInstallWizardDomain,
-  ingressClass: string,
-  storageClass: string,
-): InstallWizardValues {
-  return {
-    ingress: { className: ingressClass },
-    ...(domain.registry === undefined ? {} : { registry: domain.registry }),
-    storage: { storageClass },
-    ...(domain.tls === undefined ? {} : { tls: domain.tls }),
   };
 }
 

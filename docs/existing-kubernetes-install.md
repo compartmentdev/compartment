@@ -65,6 +65,63 @@ sudo k3s kubectl --namespace cert-manager wait deployment --all \
   --for=condition=Available --timeout=5m
 ```
 
+For this test VM only, create a private registry CA and a ClusterIssuer backed by it:
+
+```bash
+sudo k3s kubectl apply -f - <<'EOF'
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-bootstrap
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: compartment-registry-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: compartment-registry-ca
+  secretName: compartment-registry-ca
+  issuerRef:
+    kind: ClusterIssuer
+    name: selfsigned-bootstrap
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: compartment-registry-ca
+spec:
+  ca:
+    secretName: compartment-registry-ca
+EOF
+sudo k3s kubectl --namespace cert-manager wait certificate/compartment-registry-ca \
+  --for=condition=Ready --timeout=2m
+sudo k3s kubectl wait clusterissuer/compartment-registry-ca \
+  --for=condition=Ready --timeout=2m
+```
+
+Install the generated CA certificate into the operating-system trust store on every k3s node. On the server node:
+
+```bash
+sudo k3s kubectl --namespace cert-manager get secret compartment-registry-ca \
+  --output 'jsonpath={.data.ca\.crt}' \
+  | base64 --decode \
+  | sudo tee /usr/local/share/ca-certificates/compartment-registry-ca.crt >/dev/null
+sudo update-ca-certificates
+sudo systemctl restart k3s
+```
+
+For a multi-node test cluster, securely copy `compartment-registry-ca.crt` to the same trust-store path on every other
+server and every agent. Run `sudo update-ca-certificates` everywhere, then restart `k3s` on every server and
+`k3s-agent` on every agent before installing.
+Select `ClusterIssuer/compartment-registry-ca` when the wizard asks for the private registry TLS issuer.
+
+This self-signed bootstrap is a test-only convenience. Production clusters must use an organization-managed CA whose
+certificate is distributed and governed through the organization's normal node trust process.
+
 Make the k3s kube context available to the CLI, then run:
 
 ```bash

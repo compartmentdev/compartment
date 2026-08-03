@@ -78,23 +78,23 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 - secretKey: ingress-class-name
   valuesSection: ingress
   valueKey: className
-  policy: stable
+  policy: mutable
 - secretKey: ingress-endpoint-type
   valuesSection: ingressEndpoint
   valueKey: type
-  policy: stable
+  policy: mutable
 - secretKey: ingress-endpoint-value
   valuesSection: ingressEndpoint
   valueKey: value
-  policy: stable
+  policy: mutable
 - secretKey: ingress-targets-json
   valuesSection: ingress
   valueKey: targetsJson
-  policy: deferred
+  policy: mutable
 - secretKey: acme-email
   valuesSection: platform
   valueKey: acmeEmail
-  policy: stable
+  policy: operator
 - secretKey: managed-domain-broker-url
   valuesSection: platform
   valueKey: managedDomainBrokerUrl
@@ -118,11 +118,11 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 - secretKey: registry-issuer-ref-kind
   valuesSection: registryIssuerRef
   valueKey: kind
-  policy: stable
+  policy: mutable
 - secretKey: registry-issuer-ref-name
   valuesSection: registryIssuerRef
   valueKey: name
-  policy: stable
+  policy: mutable
 {{- end }}
 
 {{- define "compartment.persistedSecretValue" -}}
@@ -151,13 +151,13 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- $retainedValue := $encodedRetainedValue | b64dec -}}
 {{- $useRetainedValue := and $hasRetainedValue (not (and (eq $field.policy "deferred") (eq $retainedValue "[]"))) -}}
 {{- if $useRetainedValue -}}
-{{- if or (eq $field.policy "stable") (eq $field.policy "deferred") (and (eq $field.policy "domain") $useRetainedDomain) -}}
+{{- if or (eq $field.policy "stable") (eq $field.policy "deferred") (and (eq $field.policy "operator") (empty $incomingValue)) (and (eq $field.policy "domain") $useRetainedDomain) -}}
 {{- $_ := set (get $effective $field.valuesSection) $field.valueKey $retainedValue -}}
 {{- end -}}
 {{- end -}}
 {{- if and (eq $field.policy "domain") (not $useIncomingPersistedDomain) -}}
 {{- $_ := set (get $persisted $field.valuesSection) $field.valueKey (ternary $retainedValue $incomingValue $hasPersistedRetainedValue) -}}
-{{- else if and (or (eq $field.policy "stable") (eq $field.policy "deferred")) $useRetainedValue -}}
+{{- else if and (or (eq $field.policy "stable") (eq $field.policy "deferred") (and (eq $field.policy "operator") (empty $incomingValue))) $useRetainedValue -}}
 {{- $_ := set (get $persisted $field.valuesSection) $field.valueKey $retainedValue -}}
 {{- end -}}
 {{- end -}}

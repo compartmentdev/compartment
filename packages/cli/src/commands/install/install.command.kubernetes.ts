@@ -44,6 +44,7 @@ import { withKubernetesLocalTools } from '../../services/kubernetes-local-tools.
 import { inspectOperatorIssuer } from '../../services/kubernetes-operator-issuer-trust.service';
 import type { KubernetesOperatorIssuerAssessment } from '../../services/kubernetes-operator-issuer-trust.service.types';
 import { resolveInstallManagedDomainBrokerUrl } from './install.command.options';
+import { createKubernetesInstallRetainedStateReader } from './install.command.kubernetes-wizard-retained-state';
 
 interface ResolvedInstallValuesPath {
   material?: MaterializedInstallWizardValues | undefined;
@@ -172,6 +173,7 @@ async function resolveValues(
     async (contextName: string): Promise<KubernetesInstallResourceInventory> =>
       await readKubernetesInstallResourceInventory({ resolvedKubeconfig: kubeconfig }, contextName),
     createIssuerInspector(kubeconfig),
+    createKubernetesInstallRetainedStateReader(kubeconfig),
   );
   return { input: wizard.input, wizardValues: wizard.values };
 }

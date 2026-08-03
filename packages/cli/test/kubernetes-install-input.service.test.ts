@@ -14,10 +14,13 @@ import type {
 import type { KubernetesInstallInput } from '../src/services/kubernetes-install-input.service.types';
 import type { KubernetesInstallResourceInventory } from '../src/services/kubernetes-install-inventory.service.types';
 import type { KubernetesOperatorIssuerAssessment } from '../src/services/kubernetes-operator-issuer-trust.service.types';
+import type { RetainedKubernetesInstallState } from '../src/services/kubernetes-install.service.types';
 import { createCliCapture, type CliCommandCapture } from './cli-test.harness';
 
 const kubeconfigPath: string = '/tmp/kubeconfig';
 const valuesPath: string = '/tmp/values.yaml';
+const retainedIngressIp: string = [8, 8, 8, 8].join('.');
+const retainedRegistryIp: string = [10, 43, 0, 10].join('.');
 const inspectPublicAcme: InspectKubernetesInstallIssuer = async (): Promise<KubernetesOperatorIssuerAssessment> =>
   await Promise.resolve({ detail: 'Public ACME issuer.', trust: 'acme' });
 const inspectPlatformAndRegistryIssuer: InspectKubernetesInstallIssuer = async (
@@ -120,9 +123,9 @@ describe('canonical Kubernetes install input', (): void => {
     ).rejects.toThrow('--managed-domain cannot be combined with --base-domain.');
   });
 
-  it('uses the default managed domain without onboarding authorization', async (): Promise<void> => {
+  it('uses and reviews a retained managed domain without prompting for a new domain', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
-    capture.stdin.end('\n\n\nClusterIssuer\nregistry-ca\ny\nowner@example.com\nAcme\ny\n');
+    capture.stdin.end('\n\nClusterIssuer\nregistry-ca\ny\nowner@example.com\nAcme\ny\n');
     const readResources: Mock<ReadKubernetesInstallResourceInventory> = vi.fn(
       async (): Promise<KubernetesInstallResourceInventory> => {
         return await Promise.resolve({
@@ -138,10 +141,12 @@ describe('canonical Kubernetes install input', (): void => {
       { contexts: [{ apiServer: 'https://cluster.example.test', name: 'production' }] },
       readResources,
       inspectPlatformAndRegistryIssuer,
+      async (): Promise<RetainedKubernetesInstallState> => await Promise.resolve(retainedManagedState()),
     );
 
     expect(wizard.input).toMatchObject({ managedDomain: true });
-    expect(capture.stderr.join('')).toContain('Domain:');
+    expect(capture.stderr.join('')).toContain('Domain: acme.compartment.run (retained managed domain)');
+    expect(capture.stderr.join('')).not.toContain('Managed Compartment domain [default]');
     expect(capture.stderr.join('')).toContain('Installation review:');
     expect(readResources).toHaveBeenCalledOnce();
   });
@@ -402,6 +407,24 @@ describe('canonical Kubernetes install input', (): void => {
     ).toThrow('--ingress-endpoint must be an IP address or DNS hostname.');
   });
 });
+
+function retainedManagedState(): RetainedKubernetesInstallState {
+  return {
+    acmeEmail: 'previous@compartment.run',
+    baseDomain: 'acme.compartment.run',
+    brokerUrl: 'https://broker.compartment.run',
+    domainMode: 'managed',
+    ingressClassName: 'nginx',
+    ingressEndpoint: { type: 'A', value: retainedIngressIp },
+    ingressTargets: [{ type: 'A', value: retainedIngressIp }],
+    installationId: 'installation-123',
+    managedDomainAcmeDnsToken: 'retained-token',
+    publicProtocol: 'https',
+    registryHostname: retainedRegistryIp,
+    registryIssuerRef: { group: 'cert-manager.io', kind: 'ClusterIssuer', name: 'registry-ca' },
+    tlsMode: 'broker-dns01',
+  };
+}
 
 function nonInteractiveValues(): KubernetesInstallInputValues {
   return {

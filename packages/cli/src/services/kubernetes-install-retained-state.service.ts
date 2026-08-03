@@ -37,7 +37,7 @@ const domainIssuerReferenceSchema: z.ZodType<DomainIssuerReference> = z
   .strict();
 
 export async function readRetainedKubernetesInstallState(
-  input: KubernetesInstallDeploymentInput,
+  input: Pick<KubernetesInstallDeploymentInput, 'kubeconfigPath' | 'kubeContext' | 'namespace' | 'releaseName'>,
 ): Promise<RetainedKubernetesInstallState | null> {
   const result: CommandResult = await runCommandWithTimeout(
     buildRetainedStateSecretCommand(input),

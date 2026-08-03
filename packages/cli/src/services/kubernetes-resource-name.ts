@@ -9,10 +9,10 @@ export const kubernetesResourceNameSchema: z.ZodString = z
   .max(253, 'must be at most 253 characters')
   .regex(kubernetesResourceNamePattern, 'must be a valid Kubernetes resource name');
 
-export function assertKubernetesResourceName(value: string, label: string): string {
+export function validateKubernetesResourceName(value: string, label: string): string | undefined {
   const result: z.SafeParseReturnType<string, string> = kubernetesResourceNameSchema.safeParse(value);
   if (!result.success) {
-    throw new Error(`${label} ${result.error.issues[0]?.message ?? 'is invalid'}.`);
+    return `${label} ${result.error.issues[0]?.message ?? 'is invalid'}.`;
   }
-  return result.data;
+  return undefined;
 }

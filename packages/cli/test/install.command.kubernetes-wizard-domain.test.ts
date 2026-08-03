@@ -11,24 +11,28 @@ import type { OperatorDomainTlsPromptInput } from '../src/commands/install/insta
 import { createCliCapture, readCliStderr, type CliCommandCapture } from './cli-test.harness';
 
 type PromptVisibleText = (io: CliIo, label: string, defaultValue?: string) => Promise<string>;
+type PromptRequiredVisibleText = (io: CliIo, label: string) => Promise<string>;
 type ResolveOperatorDomainTls = (
   io: CliIo,
   input: OperatorDomainTlsPromptInput,
 ) => Promise<KubernetesInstallWizardDomain>;
 
 interface WizardDomainMocks {
+  promptRequiredVisibleText: Mock<PromptRequiredVisibleText>;
   promptVisibleText: Mock<PromptVisibleText>;
   resolveOperatorDomainTls: Mock<ResolveOperatorDomainTls>;
 }
 
 const mocks: WizardDomainMocks = vi.hoisted(
   (): WizardDomainMocks => ({
+    promptRequiredVisibleText: vi.fn<PromptRequiredVisibleText>(),
     promptVisibleText: vi.fn<PromptVisibleText>(),
     resolveOperatorDomainTls: vi.fn<ResolveOperatorDomainTls>(),
   }),
 );
 
 vi.mock('../src/prompts/prompt', (): object => ({
+  promptRequiredVisibleText: mocks.promptRequiredVisibleText,
   promptVisibleText: mocks.promptVisibleText,
 }));
 vi.mock('../src/commands/install/install.command.kubernetes-wizard-tls', (): object => ({
@@ -60,7 +64,7 @@ describe('Kubernetes install wizard domain selection', (): void => {
   });
 
   it('skips the managed choice and prompts only for an operator-owned domain for a hostname endpoint', async (): Promise<void> => {
-    mocks.promptVisibleText.mockResolvedValueOnce('apps.example.com');
+    mocks.promptRequiredVisibleText.mockResolvedValueOnce('apps.example.com');
     mocks.resolveOperatorDomainTls.mockResolvedValueOnce({
       input: { baseDomain: 'apps.example.com' },
       tlsReview: 'ClusterIssuer/public-acme',
@@ -79,8 +83,8 @@ describe('Kubernetes install wizard domain selection', (): void => {
     );
 
     expect(result.input).toEqual({ baseDomain: 'apps.example.com' });
-    expect(mocks.promptVisibleText).toHaveBeenCalledOnce();
-    expect(mocks.promptVisibleText).toHaveBeenCalledWith(capture.io, 'Operator-owned base domain');
+    expect(mocks.promptRequiredVisibleText).toHaveBeenCalledOnce();
+    expect(mocks.promptRequiredVisibleText).toHaveBeenCalledWith(capture.io, 'Operator-owned base domain');
     expect(mocks.resolveOperatorDomainTls).toHaveBeenCalledWith(
       capture.io,
       expect.objectContaining({ baseDomain: 'apps.example.com' }),

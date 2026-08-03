@@ -1,7 +1,7 @@
 import type { CliIo } from '../../app.types';
 import { quoteShellArgumentWhenNeeded } from '@compartment/utils';
-import { promptVisibleText } from '../../prompts/prompt';
-import { assertKubernetesResourceName } from '../../services/kubernetes-resource-name';
+import { promptValidatedVisibleText, promptVisibleText } from '../../prompts/prompt';
+import { validateKubernetesResourceName } from '../../services/kubernetes-resource-name';
 import { isReservedKubernetesInstallLocalhostDomain } from '../../kubernetes-install-domain';
 import type {
   InstallWizardIssuerReference,
@@ -98,9 +98,10 @@ async function resolveExistingSecretTls(
   io: CliIo,
   input: OperatorDomainTlsPromptInput,
 ): Promise<ExistingSecretTlsValues> {
-  const existingSecret: string = assertKubernetesResourceName(
-    await promptRequiredValue(io, 'Existing TLS Secret'),
+  const existingSecret: string = await promptValidatedVisibleText(
+    io,
     'Existing TLS Secret',
+    (value: string): string | undefined => validateKubernetesResourceName(value, 'Existing TLS Secret'),
   );
   const issuerRef: InstallWizardIssuerReference = await promptIssuerReference(io, 'Private registry TLS');
   await assertRegistryIpIssuer(io, input, issuerRef);
@@ -168,16 +169,10 @@ async function promptIssuerReference(io: CliIo, label: string): Promise<InstallW
   }
   return {
     kind: kindValue,
-    name: assertKubernetesResourceName(await promptRequiredValue(io, `${label} issuer name`), `${label} issuer name`),
+    name: await promptValidatedVisibleText(io, `${label} issuer name`, (value: string): string | undefined =>
+      validateKubernetesResourceName(value, `${label} issuer name`),
+    ),
   };
-}
-
-async function promptRequiredValue(io: CliIo, label: string): Promise<string> {
-  const value: string = (await promptVisibleText(io, label)).trim();
-  if (value === '') {
-    throw new Error(`${label} is required.`);
-  }
-  return value;
 }
 
 function buildOperatorValuesInstructions(input: OperatorDomainTlsPromptInput): string {

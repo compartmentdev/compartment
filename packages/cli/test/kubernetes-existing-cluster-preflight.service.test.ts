@@ -37,6 +37,24 @@ afterEach((): void => {
 });
 
 describe('existing Kubernetes non-persistent preflight', (): void => {
+  it.each([
+    'not-an-email',
+    '.operator@compartment.run',
+    'operator@foo..com',
+    'operator@-foo.com',
+    'operator@foo_.com',
+    'operator@example.com',
+    'operator@service.test',
+    'operator@localhost',
+  ])('rejects invalid ACME admin email %s before contacting Kubernetes', async (email: string): Promise<void> => {
+    const input: KubernetesExistingClusterPreflightInput = preflightInput();
+    input.install.owner.email = email;
+
+    await expect(runKubernetesExistingClusterPreflight(input)).rejects.toThrow('Admin email');
+    expect(mockedRunCommand).not.toHaveBeenCalled();
+    expect(mockedRunCommandWithInput).not.toHaveBeenCalled();
+  });
+
   it('does not expose a partial retained identity Secret in preflight failures', async (): Promise<void> => {
     const encodedSecret: string = Buffer.from('install-token').toString('base64');
     mockedRunCommand.mockResolvedValue({
@@ -418,7 +436,7 @@ function preflightInput(): KubernetesExistingClusterPreflightInput {
       kubeconfigPath: '/tmp/kubeconfig',
       namespace: 'compartment',
       owner: {
-        email: 'owner@example.com',
+        email: 'owner@compartment.run',
         organizationName: 'Acme',
         password: 'correct horse battery staple',
       },

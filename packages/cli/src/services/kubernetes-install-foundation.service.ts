@@ -77,6 +77,7 @@ function buildResumableState(
 ): KubernetesInstallState {
   return applyKubernetesConfiguredIngressState(input, {
     ...existingState,
+    acmeEmail: input.acmeEmail,
     brokerUrl:
       input.domainMode === 'managed' && existingState.brokerUrl.trim() === ''
         ? requireManagedBrokerUrl(input.brokerUrl)
@@ -84,10 +85,7 @@ function buildResumableState(
     ingressClassName: input.ingressClassName,
     installationId,
     registryHostname: input.registryHostname,
-    registryIssuerRef:
-      input.domainMode === 'custom' || existingState.registryIssuerRef.name === ''
-        ? input.registryIssuerRef
-        : existingState.registryIssuerRef,
+    registryIssuerRef: input.registryIssuerRef,
   });
 }
 

@@ -172,7 +172,7 @@ function buildManagedInstallState(
   registryHostname: string,
 ): KubernetesInstallState {
   return {
-    acmeEmail: foundationInstall.acmeEmail !== '' ? foundationInstall.acmeEmail : input.acmeEmail,
+    acmeEmail: input.acmeEmail,
     baseDomain: allocation.baseDomain,
     brokerUrl,
     domainMode: 'managed',
@@ -193,7 +193,7 @@ function resolveCustomInstallState(
   registryHostname: string,
 ): KubernetesInstallState {
   return {
-    acmeEmail: foundationInstall.acmeEmail !== '' ? foundationInstall.acmeEmail : input.acmeEmail,
+    acmeEmail: input.acmeEmail,
     baseDomain: requireCustomBaseDomain(input.baseDomain),
     brokerUrl: '',
     domainMode: 'custom',

@@ -357,12 +357,19 @@ describe('Kubernetes install deployment', (): void => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(deployAndWaitForKubernetesInstall(managedDeploymentInput)).resolves.toMatchObject({
+    await expect(
+      deployAndWaitForKubernetesInstall({ ...managedDeploymentInput, acmeEmail: 'ops@compartment.run' }),
+    ).resolves.toMatchObject({
       baseDomain: 'acme.compartment.run',
       installToken: 'existing-install-token',
     });
-    expect(readHelmStages()).toEqual(['foundation', 'foundation', 'full']);
-    expect(state.events).toEqual(['helm:foundation', 'helm:foundation', 'helm:full', 'kubectl:certificate']);
+    expect(readResolvedInstallValues(state).platform.acmeEmail).toBe('ops@compartment.run');
+    expect(state.retainedState).toMatchObject({
+      acmeEmail: 'ops@compartment.run',
+      baseDomain: 'acme.compartment.run',
+      installationId: 'installation-123',
+      managedDomainAcmeDnsToken: 'acme-dns-token',
+    });
   });
 
   it('backfills registry identity while resuming a legacy operator foundation release', async (): Promise<void> => {
@@ -788,6 +795,7 @@ describe('Kubernetes Helm install timeout diagnostics', (): void => {
         successfulCommandResult(
           JSON.stringify({
             items: [
+              { metadata: { name: 'completed-migration' }, status: { phase: 'Succeeded' } },
               {
                 metadata: { name: 'compartment-api-123' },
                 status: { conditions: [{ status: 'False', type: 'Ready' }], phase: 'Pending' },
@@ -806,8 +814,11 @@ describe('Kubernetes Helm install timeout diagnostics', (): void => {
         '/tmp/image-trust.yaml',
         'full',
       ),
-    ).rejects.toThrow(
-      'Non-Ready pods: compartment-api-123 (Pending). Check with `kubectl get pods -n compartment` and re-run install to resume.',
+    ).rejects.toSatisfy(
+      (error: Error): boolean =>
+        error.message.includes(
+          'Non-Ready pods: compartment-api-123 (Pending). Check with `kubectl get pods -n compartment` and re-run install to resume.',
+        ) && !error.message.includes('completed-migration'),
     );
     expect(mocks.runCommand.mock.calls[0]?.[0]).toEqual(expect.arrayContaining(['--timeout', '8m']));
     expect(mocks.runCommand.mock.calls[0]?.[0]).toContain('--rollback-on-failure');
