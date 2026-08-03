@@ -1,6 +1,11 @@
 import type { ProjectProvisioningAction, ProjectProvisioningTargetV2 } from '@compartment/contracts';
+import type { projectKubeProvisioning } from '../db/schema';
 
 export type ProjectProvisioningClaimRow = ProjectProvisioningTargetV2;
+export interface ProjectProvisioningClaimSelection {
+  projectName: string;
+  provisioning: typeof projectKubeProvisioning.$inferSelect;
+}
 export type ProjectProvisioningCompletionStatus = 'failed' | 'running' | 'succeeded';
 export type ProjectProvisioningClaimPhase = 'failed' | 'pending' | 'running';
 export type ProjectKubeProvisioningState =

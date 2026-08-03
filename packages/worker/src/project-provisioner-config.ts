@@ -31,6 +31,7 @@ export function readProjectProvisionerConfig(env: NodeJS.ProcessEnv = process.en
     artifactRegistry: worker.artifactRegistry,
     edgeNamespace: parsed.COMPARTMENT_EDGE_NAMESPACE,
     image: parsed.COMPARTMENT_PROJECT_PROVISIONER_IMAGE,
+    installationId: parsed.COMPARTMENT_INSTALLATION_ID,
     leaderElection,
     logLevel: worker.logLevel,
     platformNamespace: parsed.COMPARTMENT_PLATFORM_NAMESPACE,

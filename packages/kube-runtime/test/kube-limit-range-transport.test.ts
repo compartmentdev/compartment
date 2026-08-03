@@ -78,6 +78,7 @@ function provisioningRow(): ProjectNamespaceProvisioningRow {
   const serviceAccount: ProjectProvisioningServiceAccount = { name: 'worker', namespace: 'platform' };
   return {
     bootstrapServiceAccount: { name: 'bootstrap', namespace: 'platform' },
+    installationId: 'inst_1',
     namespaceId: 'project',
     networkPolicy: {
       applicationPodLabels: { app: 'application' },
@@ -90,6 +91,7 @@ function provisioningRow(): ProjectNamespaceProvisioningRow {
       serviceCidr,
     },
     projectId: 'project',
+    projectName: 'payments',
     registryPullCredentials: { dockerConfigJson: '{}', secretId: 'pull-secret' },
     workerServiceAccount: serviceAccount,
   };

@@ -6,7 +6,7 @@ import type { KubernetesInstallDeploymentInput } from './kubernetes-install.serv
 import type { RegistryService } from './kubernetes-install-registry-service.service.types';
 
 export async function readRegistryServiceAddresses(input: KubernetesInstallDeploymentInput): Promise<string[]> {
-  const serviceName: string = `${input.releaseName}-compartment-registry-auth`;
+  const serviceName: string = `${input.chartFullname}-registry-auth`;
   const result: CommandResult = await runCommand(
     buildKubectlCommand(input, [
       '--request-timeout=5s',

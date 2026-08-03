@@ -164,6 +164,74 @@ describe('projects service', (): void => {
     ]);
   });
 
+  it('reprojects a renamed project through its immutable Kubernetes namespace identity', async (): Promise<void> => {
+    mocks.resolveActiveProjectScope.mockResolvedValue(
+      createResolvedProjectScope({ projectId: 'prj_plain', projectName: 'plain' }),
+    );
+
+    await expect(
+      renameProjectForPrincipal({
+        nextProjectName: 'plain-renamed',
+        organizationSlug: 'acme-dev',
+        principalId: 'prn_git_sources',
+        projectName: 'plain',
+      }),
+    ).resolves.toMatchObject({ id: 'prj_plain', name: 'plain-renamed' });
+
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toMatchObject({
+      action: 'provision',
+      projectId: 'prj_plain',
+      projectName: 'plain-renamed',
+    });
+  });
+
+  it('reprojects a rename that races with active Kubernetes provisioning', async (): Promise<void> => {
+    await db
+      .update(projectKubeProvisioning)
+      .set({ isolationVersion: 0 })
+      .where(eq(projectKubeProvisioning.projectId, 'prj_plain'));
+    const originalClaim: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning('provision');
+    if (originalClaim === null) {
+      throw new Error('Expected the original project provisioning claim.');
+    }
+    mocks.resolveActiveProjectScope.mockResolvedValue(
+      createResolvedProjectScope({ projectId: 'prj_plain', projectName: 'plain' }),
+    );
+
+    await renameProjectForPrincipal({
+      nextProjectName: 'plain-renamed',
+      organizationSlug: 'acme-dev',
+      principalId: 'prn_git_sources',
+      projectName: 'plain',
+    });
+    await expect(
+      completeProjectProvisioning({
+        action: 'provision',
+        failureMessage: null,
+        isolationVersion: originalClaim.isolationVersion,
+        leaseId: originalClaim.leaseId,
+        projectId: originalClaim.projectId,
+        status: 'running',
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      completeProjectProvisioning({
+        action: 'provision',
+        failureMessage: null,
+        isolationVersion: originalClaim.isolationVersion,
+        leaseId: originalClaim.leaseId,
+        projectId: originalClaim.projectId,
+        status: 'succeeded',
+      }),
+    ).resolves.toBe(true);
+
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toMatchObject({
+      action: 'provision',
+      projectId: 'prj_plain',
+      projectName: 'plain-renamed',
+    });
+  });
+
   it('fails closed when an authorized organization context targets another organization project id', async (): Promise<void> => {
     mocks.resolveActiveProjectScope.mockResolvedValue(
       createResolvedProjectScope({

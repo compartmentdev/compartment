@@ -42,6 +42,8 @@ Compartment installs into an existing Kubernetes cluster. The initial supported 
 
 Versions or controllers outside this exact matrix are not supported until they are added to the release gate. The
 CLI can preflight Kubernetes 1.30+ clusters, but a successful preflight does not expand the supported matrix.
+A single-node installation is not highly available: a node outage interrupts the control plane and any tenant
+workloads scheduled on that node.
 
 Before installation, also provide:
 
@@ -209,6 +211,16 @@ unchanged intended values. Platform replacements are installed fresh in an empty
 After owner creation has completed, rerunning the same command authenticates that original owner and returns a fresh
 CLI session instead of attempting to initialize the installation again. The base domain, organization name and slug,
 owner email, and owner password must still match the existing installation.
+
+## Uninstall and reinstall
+
+Helm uninstall removes the Compartment control plane. It does not delete project namespaces, tenant workloads, or
+the retained platform state needed to reconnect them. To restore the control plane, reinstall with the same release
+name and namespace. Treat those release coordinates as part of the retained installation identity; retained state is
+not a portable backup for installing under a different release name or namespace.
+
+Back up retained platform state and project data according to your storage provider's procedures before uninstalling.
+Helm uninstall is not a project-data purge workflow.
 
 ## Public routing and TLS
 

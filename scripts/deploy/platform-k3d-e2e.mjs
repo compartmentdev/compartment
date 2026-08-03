@@ -952,7 +952,7 @@ async function assertPrivateRegistryNodePull() {
         '--namespace',
         platformNamespace,
         'exec',
-        'deployment/compartment-compartment-worker',
+        'deployment/compartment-worker',
         '--',
         'node',
         'dist/registry-install-verifier.js',

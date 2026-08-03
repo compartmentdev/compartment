@@ -24,7 +24,7 @@ export async function runKubernetesExistingClusterPreflight(
   const kubernetesVersion: string = await assertClusterVersion(input.install);
   await assertRequiredApiResources(input.install);
   await assertPermissions(input.install);
-  await assertReleaseOwnership(input.install);
+  await assertReleaseOwnership(input.install, input.chartFullname);
   await assertIngressClass(input.install);
   await assertCertManager(input.install);
   await assertStorageClass(input.install);

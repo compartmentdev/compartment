@@ -141,7 +141,7 @@ async function readHelmRevision(): Promise<number> {
 }
 
 async function expectMigrationCompleted(revision: number): Promise<void> {
-  const jobName: string = `${releaseName}-compartment-api-migrate-${revision.toString()}`;
+  const jobName: string = `${releaseName}-api-migrate-${revision.toString()}`;
   const result: SelfHostedUserSetupCommandResult = await runRequired([
     'kubectl',
     '--context',
@@ -182,7 +182,7 @@ async function readApiImage(): Promise<string> {
     '--namespace',
     platformNamespace,
     'get',
-    `deployment/${releaseName}-compartment-api`,
+    `deployment/${releaseName}-api`,
     '--output=jsonpath={.spec.template.spec.containers[0].image}',
   ]);
   return result.stdout.trim();

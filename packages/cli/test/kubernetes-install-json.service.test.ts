@@ -18,6 +18,7 @@ vi.mock('../src/command-runner', (): object => ({ runCommandWithTimeout }));
 
 const input: KubernetesInstallDeploymentInput = {
   acmeEmail: 'owner@example.com',
+  chartFullname: 'compartment',
   clearConfiguredIngressEndpoint: false,
   configuredIngressEndpoint: null,
   domainMode: 'custom',

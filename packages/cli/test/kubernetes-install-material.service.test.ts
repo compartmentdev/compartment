@@ -138,6 +138,7 @@ async function runInstallStage(
 function installInput(directory: string, valuesPath: string): KubernetesInstallDeploymentInput {
   return {
     acmeEmail: '',
+    chartFullname: 'compartment',
     baseDomain: 'compartment.localhost',
     chartPath: resolve(directory, 'chart'),
     clearConfiguredIngressEndpoint: false,

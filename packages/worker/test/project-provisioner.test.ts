@@ -42,8 +42,17 @@ describe('project provisioning execution', (): void => {
   });
 
   it('cleans exact live authority objects under a current lease and preserves Job success', async (): Promise<void> => {
-    const finalize: Mock = vi.fn<() => Promise<void>>();
-    const apply: Mock = vi.fn<() => Promise<KubeManifest[]>>().mockResolvedValue([]);
+    let finalized: boolean = false;
+    const finalize: Mock = vi.fn(async (): Promise<void> => {
+      finalized = true;
+      await Promise.resolve();
+    });
+    const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
+      if (bundle.deleteAfterApply !== undefined) {
+        expect(finalized).toBe(true);
+      }
+      return await Promise.resolve([]);
+    });
     const runJob: Mock = vi.fn(async (): Promise<KubeJobResult> => await Promise.resolve(succeededJob(finalize)));
     const logger: Logger = loggerStub();
 
@@ -63,7 +72,7 @@ describe('project provisioning execution', (): void => {
       status: 'succeeded',
     });
     expect(apply).toHaveBeenCalledTimes(2);
-    expect(finalize).not.toHaveBeenCalled();
+    expect(finalize).toHaveBeenCalledOnce();
     expect(logger.warn).not.toHaveBeenCalled();
     const cleanup: ApplyBundle = apply.mock.calls[1]?.[0] as ApplyBundle;
     expect(cleanup.deleteAfterApply).toHaveLength(4);
@@ -123,6 +132,77 @@ describe('project provisioning execution', (): void => {
     expect(apply).toHaveBeenCalledTimes(4);
   });
 
+  it('still cleans authority and retries when terminal Job finalization fails', async (): Promise<void> => {
+    const apply: Mock = vi.fn<() => Promise<KubeManifest[]>>().mockResolvedValue([]);
+    const finalizeError: Error = new Error('Job finalization failed');
+    const finalize: Mock = vi.fn<() => Promise<void>>().mockRejectedValue(finalizeError);
+    const runJob: Mock = vi.fn(async (): Promise<KubeJobResult> => await Promise.resolve(succeededJob(finalize)));
+
+    await expect(
+      executeProjectProvisioning(requester(true, true), runtimeStub(apply, runJob), config(), target, loggerStub()),
+    ).rejects.toBe(finalizeError);
+
+    expect(finalize).toHaveBeenCalledOnce();
+    expect(apply).toHaveBeenCalledTimes(2);
+  });
+
+  it('finalizes a failed terminal Job before cleanup and preserves its failure', async (): Promise<void> => {
+    let finalized: boolean = false;
+    const finalize: Mock = vi.fn(async (): Promise<void> => {
+      finalized = true;
+      await Promise.resolve();
+    });
+    const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
+      if (bundle.deleteAfterApply !== undefined) {
+        expect(finalized).toBe(true);
+      }
+      return await Promise.resolve([]);
+    });
+    const failedJob: KubeJobResult = {
+      ...succeededJob(finalize),
+      exitCode: 1,
+      logs: 'namespace projection rejected',
+      status: 'failed',
+    };
+    const runJob: Mock = vi.fn(async (): Promise<KubeJobResult> => await Promise.resolve(failedJob));
+
+    await expect(
+      executeProjectProvisioning(requester(true, true), runtimeStub(apply, runJob), config(), target, loggerStub()),
+    ).resolves.toMatchObject({ message: 'namespace projection rejected', status: 'failed' });
+
+    expect(finalize).toHaveBeenCalledOnce();
+    expect(apply).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserves finalization and authority cleanup errors together', async (): Promise<void> => {
+    const finalizationError: Error = new Error('Job finalization failed');
+    const cleanupError: Error = new Error('authority cleanup failed');
+    const apply: Mock = vi
+      .fn<() => Promise<KubeManifest[]>>()
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(cleanupError);
+    const runJob: Mock = vi.fn(
+      async (): Promise<KubeJobResult> =>
+        await Promise.resolve(succeededJob(vi.fn<() => Promise<void>>().mockRejectedValue(finalizationError))),
+    );
+
+    let failure: Error | null = null;
+    try {
+      await executeProjectProvisioning(
+        requester(true, true),
+        runtimeStub(apply, runJob),
+        config(),
+        target,
+        loggerStub(),
+      );
+    } catch (error) {
+      failure = error instanceof Error ? error : null;
+    }
+
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect((failure as AggregateError | null)?.errors).toEqual([finalizationError, cleanupError]);
+  });
+
   it('preserves a live Job after a transient failure until terminal cleanup', async (): Promise<void> => {
     const apply: Mock = vi.fn<() => Promise<KubeManifest[]>>().mockResolvedValue([]);
     const runJob: Mock = vi
@@ -178,6 +258,10 @@ describe('project provisioning execution', (): void => {
 
     const job: KubeJobSpec = runJob.mock.calls[0]?.[0] as KubeJobSpec;
     expect(projectProvisionerJobEnvironmentSchema.parse(job.env)).toEqual(job.env);
+    expect(job.env).toMatchObject({
+      COMPARTMENT_INSTALLATION_ID: 'inst_1',
+      COMPARTMENT_PROJECT_NAME: 'payments',
+    });
   });
 
   it('acknowledges teardown only after the immutable project namespace is absent', async (): Promise<void> => {
@@ -516,6 +600,7 @@ const target: ProjectProvisioningTargetV2 = {
   leaseId: 'lease_1',
   namespaceId: 'prj_1',
   projectId: 'prj_1',
+  projectName: 'payments',
 };
 const podCidr: string = ['10', '42', '0', '0/16'].join('.');
 const serviceCidr: string = ['10', '43', '0', '0/16'].join('.');
@@ -530,6 +615,7 @@ function config(tenantScheduling?: KubeWorkloadScheduling): ProjectProvisionerCo
     },
     edgeNamespace: 'compartment',
     image: 'ghcr.io/compartmentdev/compartment-worker:test',
+    installationId: 'inst_1',
     leaderElection: {
       identity: 'project-provisioner-1',
       leaseDurationMs: 15_000,

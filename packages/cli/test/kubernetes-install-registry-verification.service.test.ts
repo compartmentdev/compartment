@@ -178,6 +178,7 @@ function input(): KubernetesInstallDeploymentInput {
   const registryClusterIp: string = [10, 43, 251, 103].join('.');
   return {
     acmeEmail: 'admin@example.com',
+    chartFullname: 'compartment',
     clearConfiguredIngressEndpoint: false,
     configuredIngressEndpoint: null,
     domainMode: 'custom',

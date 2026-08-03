@@ -64,7 +64,7 @@ async function pushRegistryAcceptanceImage(
   const result: CommandResult = await runCommandWithTimeout(
     buildKubectlCommand(input, [
       'exec',
-      `deployment/${input.releaseName}-compartment-worker`,
+      `deployment/${input.chartFullname}-worker`,
       '--',
       'node',
       'dist/registry-install-verifier.js',

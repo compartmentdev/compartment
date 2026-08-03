@@ -39,10 +39,9 @@ import {
 } from './kubernetes-install.service.test-support';
 
 type RunCommand = (command: readonly string[]) => Promise<CommandResult>;
-type ReadChartValues = (chartPath: string) => Promise<JsonValue>;
 const mocks: KubernetesInstallServiceMocks = vi.hoisted(
   (): KubernetesInstallServiceMocks => ({
-    readChartValues: vi.fn<ReadChartValues>().mockResolvedValue({}),
+    readChartValues: vi.fn<(chartPath: string) => Promise<JsonValue>>().mockResolvedValue({}),
     readRegistryServiceAddresses: vi.fn(async (): Promise<string[]> => await Promise.resolve([])),
     runCommand: vi.fn<RunCommand>(),
     verifyRegistryNodePull: vi.fn(async (): Promise<void> => await Promise.resolve()),
@@ -76,9 +75,9 @@ vi.mock('../src/services/kubernetes-install-registry-service.service', (): objec
 vi.mock('../src/services/kubernetes-install-tls.service', (): object => ({
   usesOperatorOwnedKubernetesTlsSecret: mocks.usesOperatorTlsSecret,
 }));
-
 const managedDeploymentInput: KubernetesInstallDeploymentInput = {
   acmeEmail: 'admin@example.com',
+  chartFullname: 'compartment',
   brokerUrl: 'https://broker.compartment.run',
   chartPath: '/tmp/compartment-chart',
   clearConfiguredIngressEndpoint: false,
@@ -92,7 +91,6 @@ const managedDeploymentInput: KubernetesInstallDeploymentInput = {
   releaseName: 'compartment',
   valuesPath: '/tmp/compartment-values.yaml',
 };
-
 describe('Kubernetes install deployment', (): void => {
   beforeAll(async (): Promise<void> => {
     operatorValuesDirectory = await mkdtemp(resolve(tmpdir(), 'compartment-resume-values-test-'));

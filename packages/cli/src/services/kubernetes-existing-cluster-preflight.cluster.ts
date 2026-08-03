@@ -82,9 +82,9 @@ export async function assertPermissions(input: KubernetesInstallInput): Promise<
   }
 }
 
-export async function assertReleaseOwnership(input: KubernetesInstallInput): Promise<void> {
+export async function assertReleaseOwnership(input: KubernetesInstallInput, chartFullname: string): Promise<void> {
   await assertNamespaceOwnership(input);
-  for (const target of readClusterOwnedTargets(input.releaseName)) {
+  for (const target of readClusterOwnedTargets(chartFullname)) {
     await assertClusterResourceOwnership(input, target);
   }
 }

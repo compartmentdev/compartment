@@ -209,6 +209,10 @@ describe('KubeRuntime Job primitive', (): void => {
     );
     expect(result).toMatchObject({ exitCode: 0, jobName, logs: 'done\n', podName: 'job-pod', status: 'succeeded' });
     expect(objectApi.patches.at(-1)![0].spec).toMatchObject({ ttlSecondsAfterFinished: 300 });
+    const finalizedSecret: KubeManifest | undefined = objectApi.deletes.find(
+      (deleted: KubeManifest): boolean => deleted.kind === 'Secret',
+    );
+    expect(finalizedSecret?.metadata).toMatchObject({ name: kubeSecretName(spec.id), namespace: spec.namespace });
     expect(stop).toHaveBeenCalledOnce();
   });
 
@@ -761,6 +765,7 @@ function jobSpec(jobClass: 'build' | 'operation' | 'release'): KubeJobSpec {
 function provisioningRow(namespaceId: string): ProjectNamespaceProvisioningRow {
   return {
     bootstrapServiceAccount: { name: 'compartment-project-bootstrap', namespace: 'compartment' },
+    installationId: 'inst_1',
     namespaceId,
     networkPolicy: {
       applicationPodLabels: { app: 'application' },
@@ -773,6 +778,7 @@ function provisioningRow(namespaceId: string): ProjectNamespaceProvisioningRow {
       serviceCidr: ['10', '43', '0', '0/16'].join('.'),
     },
     projectId: namespaceId,
+    projectName: 'payments',
     registryPullCredentials: {
       dockerConfigJson: '{"auths":{"registry.example":{"auth":"generated"}}}',
       secretId: `pull-${namespaceId}`,

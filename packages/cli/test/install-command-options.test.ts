@@ -54,6 +54,7 @@ describe('managed-domain broker URL resolution', (): void => {
 function managedDeploymentInput(brokerUrl: string): KubernetesInstallDeploymentInput {
   return {
     acmeEmail: 'admin@example.com',
+    chartFullname: 'compartment',
     brokerUrl,
     clearConfiguredIngressEndpoint: false,
     configuredIngressEndpoint: null,

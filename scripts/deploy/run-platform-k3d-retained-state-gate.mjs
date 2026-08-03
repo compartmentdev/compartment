@@ -8,9 +8,10 @@ const shard = process.env.COMPARTMENT_E2E_SHARD ?? 'default';
 const namespace = `retained-state-${shard}`;
 const buildNamespace = `${namespace}-build`;
 const release = 'restore2-state';
-const projectProvisioningNamespace = `${release}-compartment-project-provisioning`;
+const platformName = `${release}-compartment`;
+const projectProvisioningNamespace = `${platformName}-project-provisioning`;
 const secretName = `${release}-install-state`;
-const registryAuthServiceName = `${release}-compartment-registry-auth`;
+const registryAuthName = `${platformName}-registry-auth`;
 const previousRegistryAddressServiceName = `${release}-previous-registry-address`;
 function registryHelmArgs(clusterIp) {
   return ['--set', `registry.hostname=${clusterIp}`, '--set', 'registry.issuerRef.name=retained-registry-issuer'];
@@ -86,14 +87,27 @@ async function runRetainedInstallStateGate() {
       `buildkit.namespace=${buildNamespace}`,
       '--set',
       'productLogs.enabled=false',
+      '--set',
+      'api.replicas=1',
+      '--set',
+      'edge.replicas=1',
+      '--set',
+      'edge.snapshots.enabled=true',
       ...registryHelmArgs(registryClusterIp),
     ]);
+    kubectl(['--namespace', namespace, 'rollout', 'status', `deployment/${platformName}-postgres`, '--timeout=180s']);
+    writePostgresSentinel();
+    const postgresPvcUid = readPvcUid('postgres');
+    const apiPvcUid = readPvcUid('api');
+    const edgeSnapshotsPvcUid = readPvcUid('edge-snapshots');
+    const postgresPassword = readSecretValue(platformName, 'postgres-password');
+    const tenantSecretsKek = readSecretValue(platformName, 'tenant-secrets-kek');
     helm(['uninstall', release, '--namespace', namespace]);
     kubectl(['wait', '--for=delete', `namespace/${buildNamespace}`, '--timeout=60s']);
     kubectl(['wait', '--for=delete', `namespace/${projectProvisioningNamespace}`, '--timeout=60s']);
     kubectl(['--namespace', namespace, 'get', 'secret', secretName]);
-    kubectl(['--namespace', namespace, 'get', 'service', registryAuthServiceName]);
-    kubectl(['--namespace', namespace, 'delete', 'service', registryAuthServiceName]);
+    kubectl(['--namespace', namespace, 'get', 'service', registryAuthName]);
+    kubectl(['--namespace', namespace, 'delete', 'service', registryAuthName]);
     kubectl([
       '--namespace',
       namespace,
@@ -139,20 +153,28 @@ async function runRetainedInstallStateGate() {
       `buildkit.namespace=${buildNamespace}`,
       '--set',
       'productLogs.enabled=false',
+      '--set',
+      'api.replicas=1',
+      '--set',
+      'edge.replicas=1',
+      '--set',
+      'edge.snapshots.enabled=true',
       ...registryHelmArgs(reinstalledRegistryClusterIp),
     ]);
-    const installationId = readSecretValue('installation-id');
-    const acmeDnsToken = readSecretValue('managed-domain-acme-dns-token');
-    const brokerUrl = readSecretValue('managed-domain-broker-url');
-    const registryHostname = readSecretValue('registry-hostname');
-    const registryIssuerName = readSecretValue('registry-issuer-ref-name');
-    kubectl(['--namespace', namespace, 'get', 'deployment', `${release}-compartment-registry-auth`]);
+    const installationId = readSecretValue(secretName, 'installation-id');
+    const acmeDnsToken = readSecretValue(secretName, 'managed-domain-acme-dns-token');
+    const brokerUrl = readSecretValue(secretName, 'managed-domain-broker-url');
+    const registryHostname = readSecretValue(secretName, 'registry-hostname');
+    const registryIssuerName = readSecretValue(secretName, 'registry-issuer-ref-name');
+    kubectl(['--namespace', namespace, 'rollout', 'status', `deployment/${platformName}-postgres`, '--timeout=180s']);
+    const retainedSentinel = readPostgresSentinel();
+    kubectl(['--namespace', namespace, 'get', 'deployment', registryAuthName]);
     const runtimeBrokerUrl = captureKubectl([
       '--namespace',
       namespace,
       'get',
       'configmap',
-      `${release}-compartment`,
+      platformName,
       '--output',
       'jsonpath={.data.COMPARTMENT_MANAGED_DOMAIN_BROKER_URL}',
     ]);
@@ -163,6 +185,12 @@ async function runRetainedInstallStateGate() {
       registryHostname !== reinstalledRegistryClusterIp ||
       registryIssuerName !== 'retained-registry-issuer' ||
       runtimeBrokerUrl !== 'https://broker.example.test' ||
+      retainedSentinel !== 'retained-state-sentinel' ||
+      readPvcUid('postgres') !== postgresPvcUid ||
+      readPvcUid('api') !== apiPvcUid ||
+      readPvcUid('edge-snapshots') !== edgeSnapshotsPvcUid ||
+      readSecretValue(platformName, 'postgres-password') !== postgresPassword ||
+      readSecretValue(platformName, 'tenant-secrets-kek') !== tenantSecretsKek ||
       reinstalledRegistryClusterIp === registryClusterIp
     ) {
       throw new Error('Retained install state did not rotate to the replacement registry Service address.');
@@ -172,25 +200,71 @@ async function runRetainedInstallStateGate() {
   }
 }
 
+function writePostgresSentinel() {
+  kubectl([
+    '--namespace',
+    namespace,
+    'exec',
+    `deployment/${platformName}-postgres`,
+    '--',
+    'psql',
+    '-U',
+    'postgres',
+    '-d',
+    'compartment',
+    '-c',
+    "CREATE TABLE IF NOT EXISTS lifecycle_retention_gate (value text NOT NULL); TRUNCATE lifecycle_retention_gate; INSERT INTO lifecycle_retention_gate VALUES ('retained-state-sentinel');",
+  ]);
+}
+
+function readPostgresSentinel() {
+  return captureKubectl([
+    '--namespace',
+    namespace,
+    'exec',
+    `deployment/${platformName}-postgres`,
+    '--',
+    'psql',
+    '-U',
+    'postgres',
+    '-d',
+    'compartment',
+    '-Atc',
+    'SELECT value FROM lifecycle_retention_gate LIMIT 1;',
+  ]);
+}
+
+function readPvcUid(suffix) {
+  return captureKubectl([
+    '--namespace',
+    namespace,
+    'get',
+    'persistentvolumeclaim',
+    `${platformName}-${suffix}`,
+    '--output',
+    'jsonpath={.metadata.uid}',
+  ]);
+}
+
 function readServiceClusterIp() {
   return captureKubectl([
     '--namespace',
     namespace,
     'get',
     'service',
-    registryAuthServiceName,
+    registryAuthName,
     '--output',
     'jsonpath={.spec.clusterIP}',
   ]);
 }
 
-function readSecretValue(key) {
+function readSecretValue(name, key) {
   const encodedValue = captureKubectl([
     '--namespace',
     namespace,
     'get',
     'secret',
-    secretName,
+    name,
     '--output',
     `jsonpath={.data.${key}}`,
   ]);

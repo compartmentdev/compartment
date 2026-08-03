@@ -19,6 +19,7 @@ describe('readProjectProvisionerConfig', (): void => {
       },
       edgeNamespace: 'compartment',
       image: 'registry.internal/compartment-worker@sha256:worker',
+      installationId: 'inst_1',
       leaderElection: {
         identity: 'project-provisioner-1',
         leaseDurationMs: 15000,
@@ -66,6 +67,7 @@ function projectProvisionerEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL: 'http://compartment-registry:5000',
     COMPARTMENT_ARTIFACT_REGISTRY_PORT: '443',
     COMPARTMENT_EDGE_NAMESPACE: 'compartment',
+    COMPARTMENT_INSTALLATION_ID: 'inst_1',
     COMPARTMENT_KUBE_POD_CIDR: podCidr,
     COMPARTMENT_KUBE_SERVICE_CIDR: serviceCidr,
     COMPARTMENT_LOG_LEVEL: 'info',

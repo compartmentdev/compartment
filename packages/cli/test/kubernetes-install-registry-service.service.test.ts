@@ -3,7 +3,9 @@ import type { CommandResult } from '../src/command-runner.types';
 import { readRegistryServiceAddresses } from '../src/services/kubernetes-install-registry-service.service';
 import type { KubernetesInstallDeploymentInput } from '../src/services/kubernetes-install.service.types';
 
-const runCommand: Mock<() => Promise<CommandResult>> = vi.hoisted((): Mock<() => Promise<CommandResult>> => vi.fn());
+const runCommand: Mock<(command: readonly string[]) => Promise<CommandResult>> = vi.hoisted(
+  (): Mock<(command: readonly string[]) => Promise<CommandResult>> => vi.fn(),
+);
 
 vi.mock('../src/command-runner', (): object => ({ runCommand }));
 
@@ -22,6 +24,7 @@ describe('registry Service address discovery', (): void => {
     });
 
     await expect(readRegistryServiceAddresses(input())).resolves.toEqual([ipv4Address]);
+    expect(runCommand.mock.calls[0]?.[0]).toContain('service/compartment-registry-auth');
   });
 
   it('rejects a Service without an IPv4 ClusterIP', async (): Promise<void> => {
@@ -38,6 +41,7 @@ describe('registry Service address discovery', (): void => {
 function input(): KubernetesInstallDeploymentInput {
   return {
     acmeEmail: 'admin@example.com',
+    chartFullname: 'compartment',
     clearConfiguredIngressEndpoint: false,
     configuredIngressEndpoint: null,
     domainMode: 'managed',
