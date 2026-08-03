@@ -156,7 +156,7 @@ jobs:
       - name: Register local control-plane host
         run: |
           echo '127.0.0.1 console.compartment.localhost' | sudo tee -a /etc/hosts >/dev/null
-          echo '127.0.0.1 console.managed.compartment.localhost managed-domain-broker' | sudo tee -a /etc/hosts >/dev/null
+          echo '127.0.0.1 console.managed-platform-e2e.managed.compartment.test managed-domain-broker' | sudo tee -a /etc/hosts >/dev/null
           echo '127.0.0.1 console.apps.example.test' | sudo tee -a /etc/hosts >/dev/null
 
       - name: Restore self-hosted image cache

@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { isIP } from 'node:net';
 import { join } from 'node:path';
 import {
   installResponseSchema,
@@ -24,6 +25,7 @@ import {
   managedInstallValuesPath,
   prepareManagedInstallFixture,
   readManagedInstallBrokerState,
+  readManagedInstallPublicDnsAddresses,
   renewManagedInstallWildcardCertificate,
   waitForManagedDomainBrokerObservation,
   type ManagedDomainAuditObservation,
@@ -86,6 +88,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
         registryHostname: [10, 43, 250, 250].join('.'),
         retainedUrl: managedInstallBrokerUrl,
       });
+      expect(isIP(brokerState.registryHostname)).toBe(4);
 
       const installedIdentity: WhoAmICommandResponse = await installerCli.runJson(
         'whoami',
@@ -109,6 +112,21 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
         requestedLabelSource: organizationSlug,
         targets: [{ type: 'A', value: managedIngressIpv4 }],
       });
+      const unresolvedDomainIndex: number = broker.audit.findIndex(
+        (event: ManagedDomainAuditObservation): boolean => event.event === 'domain_initially_unresolved',
+      );
+      const publishedDomainIndex: number = broker.audit.findIndex(
+        (event: ManagedDomainAuditObservation): boolean => event.event === 'domain_published_after_initial_nxdomain',
+      );
+      expect(unresolvedDomainIndex).toBeGreaterThanOrEqual(0);
+      expect(publishedDomainIndex).toBeGreaterThan(unresolvedDomainIndex);
+      expect(broker.audit[unresolvedDomainIndex]?.name).toBe(`console.${managedInstallBaseDomain}`);
+      expect(broker.audit[publishedDomainIndex]?.name).toBe(`console.${managedInstallBaseDomain}`);
+      expect(broker.audit).toContainEqual({
+        event: 'challenge_initially_unresolved',
+        name: `_acme-challenge.${managedInstallBaseDomain}`,
+      });
+      await expect(readManagedInstallPublicDnsAddresses()).resolves.toContain(managedIngressIpv4);
       expect(
         broker.audit.some((event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_presented'),
       ).toBe(true);

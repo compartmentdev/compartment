@@ -15,7 +15,7 @@ spec:
       containers:
         - name: challtestsrv
           image: ghcr.io/letsencrypt/pebble-challtestsrv@sha256:12ce21884def456bcf9786542113949e1f19dc7738d2c70e156c2d0c38a1405b
-          args: ['-defaultIPv6', '', '-http01', '', '-https01', '', '-tlsalpn01', '']
+          args: ['-defaultIPv4', '', '-defaultIPv6', '', '-http01', '', '-https01', '', '-tlsalpn01', '']
           ports:
             - { name: dns-tcp, containerPort: 8053, protocol: TCP }
             - { name: dns-udp, containerPort: 8053, protocol: UDP }
@@ -73,9 +73,11 @@ data:
   Corefile: |
     .:53 {
       errors
+      log
+      cache 15
       template IN SOA {
-        match ^(?:.*\.)?managed\.compartment\.localhost\.$
-        answer "managed.compartment.localhost. 60 IN SOA ns.managed.compartment.localhost. hostmaster.managed.compartment.localhost. 1 7200 3600 1209600 60"
+        match ^(?:.*\.)?managed\.compartment\.test\.$
+        answer "managed.compartment.test. 60 IN SOA ns.managed.compartment.test. hostmaster.managed.compartment.test. 1 7200 3600 1209600 60"
       }
       forward . 127.0.0.1:8053
     }
@@ -138,8 +140,9 @@ spec:
           image: public.ecr.aws/docker/library/node@sha256:f22d6a1f082c02f292e86929b5b0442ac2e5eaf438a5dea9b1566601c3e05940
           command: ['node', '/fixture/broker.mjs']
           env:
-            - { name: MANAGED_DOMAIN_BASE_DOMAIN, value: managed.compartment.localhost }
+            - { name: MANAGED_DOMAIN_BASE_DOMAIN, value: managed.compartment.test }
             - { name: MANAGED_DOMAIN_CHALLENGE_SERVER_URL, value: 'http://challtestsrv:8055' }
+            - { name: MANAGED_DOMAIN_PUBLIC_DNS_SERVER, value: managed-dns-public-resolvers }
             - { name: MANAGED_DOMAIN_STATE_PATH, value: /state/broker.json }
           ports:
             - { name: http, containerPort: 3000 }

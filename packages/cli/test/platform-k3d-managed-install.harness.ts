@@ -22,8 +22,8 @@ let managedBrokerPortForward: ChildProcessWithoutNullStreams | undefined;
 type PromiseReject = (reason?: Error) => void;
 type PromiseResolveVoid = (value: void | PromiseLike<void>) => void;
 
-export const managedInstallApiUrl: string = `https://console.managed-platform-e2e.managed.compartment.localhost:${process.env.COMPARTMENT_E2E_HTTPS_PORT ?? '18443'}`;
-export const managedInstallBaseDomain: string = 'managed-platform-e2e.managed.compartment.localhost';
+export const managedInstallApiUrl: string = `https://console.managed-platform-e2e.managed.compartment.test:${process.env.COMPARTMENT_E2E_HTTPS_PORT ?? '18443'}`;
+export const managedInstallBaseDomain: string = 'managed-platform-e2e.managed.compartment.test';
 export const managedInstallBrokerUrl: string = `http://managed-domain-broker:${managedBrokerServicePort.toString()}`;
 export const managedInstallCertificateAuthorityPath: string = resolve(
   repositoryRoot,
@@ -110,52 +110,7 @@ export async function prepareManagedInstallFixture(): Promise<void> {
     'wait for managed install fixtures',
   );
   await writeManagedInstallCertificateAuthority();
-  await installManagedInstallNodeCertificateTrust();
   await startManagedBrokerPortForward();
-}
-
-async function installManagedInstallNodeCertificateTrust(): Promise<void> {
-  const nodes: SelfHostedUserSetupCommandResult = await runKubectl([
-    'get',
-    'nodes',
-    '--output',
-    'jsonpath={range .items[*]}{.metadata.name}{"\\n"}{end}',
-  ]);
-  expectSuccessfulCommand(nodes, 'read managed install node names');
-  const nodeNames: string[] = nodes.stdout
-    .split('\n')
-    .map((name: string): string => name.trim())
-    .filter((name: string): boolean => name !== '');
-  if (nodeNames.length === 0) {
-    throw new Error('Managed install fixture requires at least one Kubernetes node.');
-  }
-  for (const nodeName of nodeNames) {
-    const registryServer: string = `https://registry.${managedInstallBaseDomain}:443`;
-    const containerdRegistryDirectory: string = `/var/lib/rancher/k3s/agent/etc/containerd/certs.d/registry.${managedInstallBaseDomain}:443`;
-    const nodeCertificateAuthorityPath: string = `${containerdRegistryDirectory}/ca.crt`;
-    const createRegistryDirectory: SelfHostedUserSetupCommandResult = await runCommand({
-      argv: ['docker', 'exec', nodeName, 'mkdir', '-p', containerdRegistryDirectory],
-      timeoutMs: kubernetesTimeoutMs,
-    });
-    expectSuccessfulCommand(createRegistryDirectory, `create the managed registry trust directory on ${nodeName}`);
-    const installCertificateAuthority: SelfHostedUserSetupCommandResult = await runCommand({
-      argv: ['docker', 'cp', managedInstallCertificateAuthorityPath, `${nodeName}:${nodeCertificateAuthorityPath}`],
-      timeoutMs: kubernetesTimeoutMs,
-    });
-    expectSuccessfulCommand(installCertificateAuthority, `install the managed certificate authority on ${nodeName}`);
-    const installRegistryTrustConfiguration: SelfHostedUserSetupCommandResult = await runCommand({
-      argv: [
-        'docker',
-        'exec',
-        nodeName,
-        'sh',
-        '-c',
-        `printf '%s\\n' 'server = "${registryServer}"' '[host."${registryServer}"]' '  capabilities = ["pull", "resolve"]' '  ca = "${nodeCertificateAuthorityPath}"' > ${containerdRegistryDirectory}/hosts.toml`,
-      ],
-      timeoutMs: kubernetesTimeoutMs,
-    });
-    expectSuccessfulCommand(installRegistryTrustConfiguration, `configure managed registry trust on ${nodeName}`);
-  }
 }
 
 async function configureCertManagerRecursiveDns(): Promise<void> {
@@ -172,6 +127,21 @@ async function configureCertManagerRecursiveDns(): Promise<void> {
   if (isIP(dnsServiceIp) === 0) {
     throw new Error(`Managed install DNS service returned an invalid clusterIP: ${dnsServiceIp}`);
   }
+  const certManagerArgsResult: SelfHostedUserSetupCommandResult = await runKubectl([
+    '--namespace',
+    'cert-manager',
+    'get',
+    'deployment/cert-manager',
+    '--output',
+    'jsonpath={.spec.template.spec.containers[0].args}',
+  ]);
+  expectSuccessfulCommand(certManagerArgsResult, 'read cert-manager arguments');
+  const certManagerArgs: string[] = JSON.parse(certManagerArgsResult.stdout) as string[];
+  const recursiveDnsArgs: string[] = certManagerArgs.filter(
+    (argument: string): boolean =>
+      argument !== '--dns01-recursive-nameservers-only' && !argument.startsWith('--dns01-recursive-nameservers='),
+  );
+  recursiveDnsArgs.push('--dns01-recursive-nameservers-only', `--dns01-recursive-nameservers=${dnsServiceIp}:53`);
   await expectSuccessfulKubectl(
     [
       '--namespace',
@@ -182,14 +152,9 @@ async function configureCertManagerRecursiveDns(): Promise<void> {
       '--patch',
       JSON.stringify([
         {
-          op: 'add',
-          path: '/spec/template/spec/containers/0/args/-',
-          value: '--dns01-recursive-nameservers-only',
-        },
-        {
-          op: 'add',
-          path: '/spec/template/spec/containers/0/args/-',
-          value: `--dns01-recursive-nameservers=${dnsServiceIp}:53`,
+          op: 'replace',
+          path: '/spec/template/spec/containers/0/args',
+          value: recursiveDnsArgs,
         },
       ]),
     ],
@@ -371,6 +336,43 @@ export async function readManagedInstallBrokerState(): Promise<ManagedInstallBro
     registryHostname: values.registry?.hostname ?? '',
     retainedUrl: Buffer.from(retainedUrl.stdout, 'base64').toString('utf8'),
   };
+}
+
+export async function readManagedInstallPublicDnsAddresses(): Promise<readonly string[]> {
+  const dnsService: SelfHostedUserSetupCommandResult = await runKubectl([
+    '--namespace',
+    managedInstallNamespace,
+    'get',
+    'service/managed-dns-public-resolvers',
+    '--output',
+    'jsonpath={.spec.clusterIP}',
+  ]);
+  expectSuccessfulCommand(dnsService, 'read managed install public DNS service address');
+  const dnsServiceIp: string = dnsService.stdout.trim();
+  if (isIP(dnsServiceIp) !== 4) {
+    throw new Error(`Managed install public DNS service returned an invalid IPv4 address: ${dnsServiceIp}`);
+  }
+  const publicHostname: string = `console.${managedInstallBaseDomain}`;
+  const script: string =
+    `import { Resolver } from 'node:dns/promises';` +
+    `const resolver = new Resolver({ timeout: 1000, tries: 2 });` +
+    `resolver.setServers(['${dnsServiceIp}']);` +
+    `process.stdout.write(JSON.stringify(await resolver.resolve4('${publicHostname}')));`;
+  const result: SelfHostedUserSetupCommandResult = await runKubectl([
+    '--namespace',
+    managedInstallNamespace,
+    'exec',
+    'deployment/managed-domain-broker',
+    '--container',
+    'broker',
+    '--',
+    'node',
+    '--input-type=module',
+    '--eval',
+    script,
+  ]);
+  expectSuccessfulCommand(result, `resolve published managed public hostname ${publicHostname}`);
+  return JSON.parse(result.stdout) as readonly string[];
 }
 
 export async function renewManagedInstallWildcardCertificate(): Promise<void> {

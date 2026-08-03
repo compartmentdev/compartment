@@ -113,12 +113,12 @@ bundled PostgreSQL Service, Deployment, or PVC; the API and migration Job read t
 
 ## TLS
 
-Managed-domain installations use the bundled ACME DNS token-scoped solver only for one wildcard Certificate. The
-console and the default `registry.<base-domain>` host reuse that wildcard Secret. Project custom domains use a
-separate namespaced HTTP-01 Issuer, so their exact hostnames are never sent to the managed-domain broker. A managed
-registry hostname outside the wildcard depth also uses that HTTP-01 Issuer unless it has an explicit different
-issuer. For an operator-owned domain, set `tls.issuerRef.name` and `tls.issuerRef.kind` to an existing Issuer or
-ClusterIssuer. `tls.existingSecret` may reference an existing `kubernetes.io/tls` Secret.
+Managed-domain installations use the bundled ACME DNS token-scoped solver only for the public wildcard Certificate
+used by the console and application hosts. Project custom domains use a separate namespaced HTTP-01 Issuer, so their
+exact hostnames are never sent to the managed-domain broker. The private registry has a separate Certificate for its
+retained Service ClusterIP and the selected registry issuer. For an operator-owned domain, set `tls.issuerRef.name`
+and `tls.issuerRef.kind` to an existing Issuer or ClusterIssuer. `tls.existingSecret` may reference an existing
+`kubernetes.io/tls` Secret.
 
 The selected Ingress and cert-manager path own public TLS. Compartment does not create, copy, or mount operator
 certificate material.
@@ -150,14 +150,12 @@ preflight and first-owner bootstrap.
 
 ## Registry and workload isolation
 
-The registry is a private ClusterIP workload. For an operator-owned base domain, the CLI derives
-`registry.<base-domain>` and uses `registry.issuerRef` when explicitly set, otherwise the platform `tls.issuerRef`.
-The hostname must resolve from every node to the retained registry Service. The chart never changes
-container-runtime configuration or node trust.
+The registry is a private ClusterIP workload. The CLI reads the retained registry Service ClusterIP and writes that
+address to `registry.hostname`; it does not derive the registry address from the public base domain. The registry
+uses `registry.issuerRef`; operator-owned domain installs may fall back to the platform `tls.issuerRef`. The chart
+never changes container-runtime configuration or node trust.
 The registry certificate must chain to a CA trusted by every node container runtime. The public platform certificate
 must also be trusted by the machine running the CLI; a cert-manager self-signed issuer does not satisfy this contract.
-Resolvers with DNS-rebinding protection must allowlist the operator base domain so the public registry name may
-resolve to the retained cluster-only Service address.
 
 Registry storage defaults to the retained PVC backend. Set `registry.storage.backend: s3` with the bucket, region,
 optional regional endpoint, and path-style setting under `registry.storage.s3` to use S3-compatible object storage.

@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { Resolver, lookup } from 'node:dns/promises';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { isIP } from 'node:net';
@@ -8,8 +9,11 @@ const managedDomainPath = '/v1/managed-domains';
 const acmeDnsTxtPath = '/v1/managed-domains/acme-dns/txt';
 const brokerBaseDomain = normalizeName(readRequiredEnvironment('MANAGED_DOMAIN_BASE_DOMAIN'));
 const challengeServerUrl = new URL(readRequiredEnvironment('MANAGED_DOMAIN_CHALLENGE_SERVER_URL'));
+const publicDnsServerHost = readRequiredEnvironment('MANAGED_DOMAIN_PUBLIC_DNS_SERVER');
 const statePath = readRequiredEnvironment('MANAGED_DOMAIN_STATE_PATH');
 const port = Number(process.env.PORT ?? '3000');
+const dnsQueryTimeoutMs = 1_000;
+const dnsQueryTries = 2;
 const state = await readPersistedState();
 let persistenceQueue = Promise.resolve();
 
@@ -65,9 +69,25 @@ async function allocateDomain(request, response) {
   }
   if (allocation === undefined) {
     const ipVersion = isIP(body.publicIp);
+    const baseDomain = `${requestedLabel}.${brokerBaseDomain}`;
+    const publicHostname = `console.${baseDomain}`;
+    const publicDnsResolver = await createPublicDnsResolver();
+    const challengeName = `_acme-challenge.${baseDomain}`;
+    const resolvePublishedAddress =
+      ipVersion === 4
+        ? () => publicDnsResolver.resolve4(publicHostname)
+        : () => publicDnsResolver.resolve6(publicHostname);
+    await assertDnsNameMissing(
+      resolvePublishedAddress,
+      `Managed public hostname ${publicHostname} resolved before the broker published it.`,
+    );
+    await assertDnsNameMissing(
+      () => publicDnsResolver.resolveTxt(challengeName),
+      `Managed challenge ${challengeName} resolved before cert-manager presented it.`,
+    );
     allocation = {
       acmeDnsToken: randomBytes(24).toString('base64url'),
-      baseDomain: `${requestedLabel}.${brokerBaseDomain}`,
+      baseDomain,
       txtRecords: [],
       installationId: body.installationId,
       publicIp: body.publicIp,
@@ -76,17 +96,55 @@ async function allocateDomain(request, response) {
       targets: [{ type: ipVersion === 4 ? 'A' : 'AAAA', value: body.publicIp }],
     };
     state.managedDomains.push(allocation);
+    state.audit.push({ event: 'domain_initially_unresolved', name: publicHostname });
+    state.audit.push({ event: 'challenge_initially_unresolved', name: challengeName });
     state.audit.push({ event: 'domain_allocated', installationId: body.installationId });
     await persistState();
-    await challengeRequest(ipVersion === 4 ? '/add-a' : '/add-aaaa', {
-      addresses: [body.publicIp],
-      host: allocation.baseDomain,
-    });
+    await publishAllocationAddresses(allocation);
+    state.audit.push({ event: 'domain_published_after_initial_nxdomain', name: publicHostname });
+    await persistState();
+  } else {
+    await publishAllocationAddresses(allocation);
   }
   writeJson(response, 200, {
     acmeDnsToken: allocation.acmeDnsToken,
     baseDomain: allocation.baseDomain,
   });
+}
+
+async function publishAllocationAddresses(allocation) {
+  const recordPath = isIP(allocation.publicIp) === 4 ? '/add-a' : '/add-aaaa';
+  for (const host of [allocation.baseDomain, `console.${allocation.baseDomain}`]) {
+    await challengeRequest(recordPath, { addresses: [allocation.publicIp], host });
+  }
+}
+
+async function createPublicDnsResolver() {
+  const resolver = new Resolver({ timeout: dnsQueryTimeoutMs, tries: dnsQueryTries });
+  const directServerMatch = /^(\d{1,3}(?:\.\d{1,3}){3}):(\d+)$/u.exec(publicDnsServerHost);
+  if (directServerMatch !== null && isIP(directServerMatch[1]) === 4) {
+    resolver.setServers([publicDnsServerHost]);
+    return resolver;
+  }
+  const dnsServer = await lookup(publicDnsServerHost, { family: 4 });
+  resolver.setServers([dnsServer.address]);
+  return resolver;
+}
+
+async function assertDnsNameMissing(resolveName, resolvedErrorMessage) {
+  try {
+    await resolveName();
+  } catch (error) {
+    if (isDnsNameMissingError(error)) {
+      return;
+    }
+    throw error;
+  }
+  throw new Error(resolvedErrorMessage);
+}
+
+function isDnsNameMissingError(error) {
+  return isRecord(error) && (error.code === 'ENODATA' || error.code === 'ENOTFOUND');
 }
 
 async function updateTxtRecord(request, response) {

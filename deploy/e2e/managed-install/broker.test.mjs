@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { createSocket } from 'node:dgram';
 import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
@@ -8,6 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const processes = [];
 const servers = [];
+const sockets = [];
 const temporaryDirectories = [];
 
 afterEach(async () => {
@@ -20,6 +22,10 @@ afterEach(async () => {
   for (const server of servers.splice(0)) {
     server.close();
     await once(server, 'close');
+  }
+  for (const socket of sockets.splice(0)) {
+    socket.close();
+    await once(socket, 'close');
   }
   await Promise.all(
     temporaryDirectories.splice(0).map(async (path) => await rm(path, { force: true, recursive: true })),
@@ -48,6 +54,18 @@ describe('managed-install broker contract fixture', () => {
       body: { addresses: ['1.2.3.4'], host: 'main-contract.managed.example.test' },
       path: '/add-a',
     });
+    expect(fixture.dnsWrites).toContainEqual({
+      body: { addresses: ['1.2.3.4'], host: 'console.main-contract.managed.example.test' },
+      path: '/add-a',
+    });
+    const stateResponse = await fetch(`${fixture.brokerUrl}/__test/state`);
+    const state = await stateResponse.json();
+    expect(state.audit.slice(0, 4)).toEqual([
+      { event: 'domain_initially_unresolved', name: 'console.main-contract.managed.example.test' },
+      { event: 'challenge_initially_unresolved', name: '_acme-challenge.main-contract.managed.example.test' },
+      { event: 'domain_allocated', installationId: 'install-main-contract' },
+      { event: 'domain_published_after_initial_nxdomain', name: 'console.main-contract.managed.example.test' },
+    ]);
   });
 
   it('uses PUT and DELETE acme-dns TXT requests with Bearer authorization and 204 responses', async () => {
@@ -118,6 +136,18 @@ describe('managed-install broker contract fixture', () => {
 });
 
 async function startFixture() {
+  const publicDnsServer = createSocket('udp4');
+  publicDnsServer.on('message', (request, remote) => {
+    const response = buildDnsNameErrorResponse(request);
+    publicDnsServer.send(response, remote.port, remote.address);
+  });
+  sockets.push(publicDnsServer);
+  publicDnsServer.bind(0, '127.0.0.1');
+  await once(publicDnsServer, 'listening');
+  const publicDnsAddress = publicDnsServer.address();
+  if (typeof publicDnsAddress === 'string') {
+    throw new Error('Expected public DNS fixture UDP address.');
+  }
   const dnsWrites = [];
   const dnsServer = createServer(async (request, response) => {
     const chunks = [];
@@ -144,6 +174,7 @@ async function startFixture() {
       ...process.env,
       MANAGED_DOMAIN_BASE_DOMAIN: 'managed.example.test',
       MANAGED_DOMAIN_CHALLENGE_SERVER_URL: `http://127.0.0.1:${dnsAddress.port.toString()}`,
+      MANAGED_DOMAIN_PUBLIC_DNS_SERVER: `127.0.0.1:${publicDnsAddress.port.toString()}`,
       MANAGED_DOMAIN_STATE_PATH: join(stateDirectory, 'broker.json'),
       PORT: brokerPort.toString(),
     },
@@ -152,4 +183,17 @@ async function startFixture() {
   processes.push(broker);
   await once(broker.stdout, 'data');
   return { brokerUrl: `http://127.0.0.1:${brokerPort.toString()}`, dnsWrites };
+}
+
+function buildDnsNameErrorResponse(request) {
+  let questionEnd = 12;
+  while (questionEnd < request.length && request[questionEnd] !== 0) {
+    questionEnd += request[questionEnd] + 1;
+  }
+  questionEnd += 5;
+  const header = Buffer.alloc(12);
+  request.copy(header, 0, 0, 2);
+  header.writeUInt16BE(0x8183, 2);
+  header.writeUInt16BE(1, 4);
+  return Buffer.concat([header, request.subarray(12, questionEnd)]);
 }
