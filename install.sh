@@ -169,7 +169,11 @@ elif [ "$init_login" = "1" ]; then
     printf 'Expected --api-url <url> with --init-login.\n' >&2
     exit 1
   fi
-  if [ -n "$install_base_domain" ] || [ -n "$install_values_path" ] || [ -n "$init_organization_slug" ] || [ -n "$install_chart_path" ] || [ -n "$install_kube_context" ] || [ -n "$install_namespace" ] || [ -n "$install_release_name" ] || [ -n "$install_remote" ]; then
+  if [ -n "$install_values_path" ]; then
+    printf 'Use --values only with --init-update.\n' >&2
+    exit 1
+  fi
+  if [ -n "$install_base_domain" ] || [ -n "$init_organization_slug" ] || [ -n "$install_chart_path" ] || [ -n "$install_kube_context" ] || [ -n "$install_namespace" ] || [ -n "$install_release_name" ] || [ -n "$install_remote" ]; then
     printf 'Use Kubernetes lifecycle options only with --init-install or --init-update.\n' >&2
     exit 1
   fi
