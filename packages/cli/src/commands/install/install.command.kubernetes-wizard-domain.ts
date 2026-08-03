@@ -169,11 +169,8 @@ function buildTlsPromptInput(
 ): OperatorDomainTlsPromptInput {
   return {
     baseDomain: normalizeInstallBaseDomain(baseDomain),
-    ingressClass: selection.ingressClass,
     kubeContext: selection.kubeContext,
     namespace: options.namespace ?? 'compartment',
-    releaseName: options.releaseName ?? 'compartment',
-    storageClass: selection.storageClass,
     inspectIssuer,
   };
 }

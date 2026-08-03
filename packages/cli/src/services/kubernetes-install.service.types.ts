@@ -21,6 +21,7 @@ export interface KubernetesInstallDeploymentInput extends KubernetesInstallRegis
   managedDomainRequestedLabelSource?: string | undefined;
   namespace: string;
   progress?: KubernetesInstallProgressReporter | undefined;
+  publicProtocol?: KubernetesPublicProtocol | undefined;
   releaseName: string;
   valuesPath: string;
 }

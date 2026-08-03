@@ -55,7 +55,11 @@ function buildInstallInput(
 function readDomain(values: KubernetesInstallInputValues): KubernetesInstallDomainInput {
   return values.managedDomain === true
     ? { mode: 'managed' }
-    : { baseDomain: normalizeInstallBaseDomain(requireInput(values.baseDomain, '--base-domain')), mode: 'operator' };
+    : {
+        baseDomain: normalizeInstallBaseDomain(requireInput(values.baseDomain, '--base-domain')),
+        mode: 'operator',
+        publicProtocol: values.publicProtocol ?? 'http',
+      };
 }
 
 function readOwner(required: RequiredKubernetesInstallInputValues): KubernetesInstallOwnerInput {

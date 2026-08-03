@@ -34,7 +34,6 @@ describe('platform k3d e2e shard runner', () => {
       'COMPARTMENT_E2E_OWNER_ENV_PATH',
       'COMPARTMENT_E2E_PEBBLE_CA_PATH',
       'COMPARTMENT_E2E_PEBBLE_ROOT_PATH',
-      'COMPARTMENT_E2E_PUBLIC_OPERATOR_CA_PATH',
       'COMPARTMENT_E2E_PUBLIC_OPERATOR_VALUES_PATH',
     ]) {
       expect(new Set(environments.map((env) => env[name])), name).toHaveLength(platformK3dShardNames.length);

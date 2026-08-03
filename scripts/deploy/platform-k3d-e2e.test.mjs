@@ -450,13 +450,14 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).not.toContain('compartment.localhost');
   });
 
-  it('writes public operator values with explicit ingress, storage, and certificate issuers', () => {
+  it('writes public operator values with external TLS and a separate registry issuer', () => {
     const values = renderPublicOperatorPlatformK3dValues(createTestImageDigests());
 
     expect(values).toContain('className: traefik');
     expect(values).toContain('storageClass: local-path');
-    expect(values).toContain('name: compartment-public-operator-test-issuer');
     expect(values).toContain('name: compartment-registry-test-issuer');
+    expect(values).toContain('publicProtocol: http');
+    expect(values).not.toContain('tls:\n  issuerRef:');
     expect(values).not.toContain('baseDomain:');
     expect(values).not.toContain('hostname:');
   });

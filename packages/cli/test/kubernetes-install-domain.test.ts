@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { assertMatchingKubernetesInstallDomain } from '../src/kubernetes-install-domain';
+import {
+  assertMatchingKubernetesInstallDomain,
+  resolveKubernetesInstallControlPlaneUrl,
+} from '../src/kubernetes-install-domain';
 import type {
   ExistingKubernetesInstall,
   KubernetesInstallDeploymentInput,
@@ -17,6 +20,21 @@ describe('Kubernetes install domain matching', (): void => {
     expect((): void => assertMatchingKubernetesInstallDomain(input(), install('full'))).toThrow(
       'Retry with the original domain selection or use a different release name.',
     );
+  });
+
+  it('rejects changing the TLS mode of a complete operator-owned installation', (): void => {
+    expect((): void =>
+      assertMatchingKubernetesInstallDomain(
+        { ...input(), publicProtocol: 'http' },
+        { ...install('full'), baseDomain: 'apps.example.com', domainMode: 'custom', publicProtocol: 'https' },
+      ),
+    ).toThrow('uses https for its operator-owned domain, not http');
+  });
+
+  it('rejects a configured control-plane URL with the opposite scheme', (): void => {
+    expect((): string =>
+      resolveKubernetesInstallControlPlaneUrl('https://console.apps.example.com', 'apps.example.com', 'http'),
+    ).toThrow('--api-url must use http for the selected operator-domain TLS mode.');
   });
 });
 

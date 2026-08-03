@@ -144,28 +144,6 @@ export function existingInstallValuesWithStorage(
   return JSON.stringify(values);
 }
 
-export function existingLocalhostInstallValues(): string {
-  return JSON.stringify({
-    ingress: { className: 'traefik', endpoint: { type: '', value: '' }, targetsJson: '[]' },
-    platform: {
-      acmeEmail: 'admin@example.com',
-      baseDomain: 'compartment.localhost',
-      domainGeneration: 1,
-      domainMode: 'custom',
-      installationId: 'installation-localhost',
-      managedDomainBrokerUrl: '',
-      publicProtocol: 'http',
-      startupStage: 'full',
-      tlsMode: 'issuer',
-    },
-    registry: {
-      hostname: 'registry.compartment.localhost',
-      issuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'compartment-platform' },
-    },
-    secrets: { installToken: 'existing-install-token', managedDomainAcmeDnsToken: '' },
-  });
-}
-
 export function legacyOperatorFoundationValues(): string {
   const values: KubernetesInstallSecretValues & { registry?: KubernetesInstallRegistryValues } = JSON.parse(
     existingInstallValues('foundation', 'custom'),

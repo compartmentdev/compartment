@@ -44,7 +44,6 @@ const {
   platformOwnerEnvironmentPath,
   previousPlatformValuesPath,
   platformValuesPath,
-  publicOperatorCaPath,
   publicOperatorValuesPath,
   registryHostPort,
   registryName,
@@ -123,11 +122,6 @@ export function readPlatformK3dEnvironment(env) {
       env,
       'COMPARTMENT_E2E_PLATFORM_VALUES_PATH',
       '.compartment/platform-k3d-e2e-values.yaml',
-    ),
-    publicOperatorCaPath: readStatePathEnv(
-      env,
-      'COMPARTMENT_E2E_PUBLIC_OPERATOR_CA_PATH',
-      '.compartment/platform-k3d-public-operator-ca.crt',
     ),
     publicOperatorValuesPath: readStatePathEnv(
       env,
@@ -278,7 +272,7 @@ export function renderPublicOperatorPlatformK3dValues(
   imageDigestsByServiceName,
   gvisorEnabled = platformEnvironment.gvisorEnabled,
 ) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorEnabled)}ingress:\n  className: ${ingressClassName}\nstorage:\n  storageClass: local-path\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\ntls:\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-public-operator-test-issuer\nbuildkit:\n  namespace: ${managedNamespace}-public-operator-build\n${renderBuildRuntimeValues(gvisorEnabled)}`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorEnabled)}ingress:\n  className: ${ingressClassName}\nstorage:\n  storageClass: local-path\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\nplatform:\n  publicProtocol: http\nbuildkit:\n  namespace: ${managedNamespace}-public-operator-build\n${renderBuildRuntimeValues(gvisorEnabled)}`;
 }
 
 function renderSandboxRuntimeValues(gvisorEnabled) {
@@ -313,7 +307,6 @@ async function upPlatform(command) {
       managedPlatformValuesPath,
       pebbleCaPath,
       pebbleRootPath,
-      publicOperatorCaPath,
       publicOperatorValuesPath,
     ]) {
       mkdirSync(dirname(statePath), { recursive: true });
@@ -420,9 +413,6 @@ async function createCluster() {
   await waitForCertManager(prerequisiteSetupStartedAt, prerequisiteSetupDeadline);
   reportPrerequisiteSetupCost(performance.now() - prerequisiteSetupStartedAt);
   await installRegistryTestIssuer();
-  if (shouldExtractPebbleCa) {
-    await installPublicOperatorTestIssuer();
-  }
 }
 
 function installGvisorRuntimeClass() {
@@ -573,75 +563,6 @@ async function installRegistryTestIssuer() {
   );
   runCommand('kubectl', ['--context', contextName, 'apply', '--filename', issuerPath], repositoryRoot);
   rmSync(issuerPath, { force: true });
-}
-
-async function installPublicOperatorTestIssuer() {
-  const issuerPath = join(dirname(platformValuesPath), `${clusterName}-public-operator-test-issuer.yaml`);
-  writeFileSync(
-    issuerPath,
-    `apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: compartment-public-operator-test-selfsigned
-spec:
-  selfSigned: {}
----
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: compartment-public-operator-test-ca
-  namespace: cert-manager
-spec:
-  isCA: true
-  commonName: Compartment public operator k3d test CA
-  secretName: compartment-public-operator-test-ca
-  issuerRef:
-    kind: ClusterIssuer
-    name: compartment-public-operator-test-selfsigned
----
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: compartment-public-operator-test-issuer
-spec:
-  ca:
-    secretName: compartment-public-operator-test-ca
-`,
-    { mode: 0o600 },
-  );
-  try {
-    runCommand('kubectl', ['--context', contextName, 'apply', '--filename', issuerPath], repositoryRoot);
-    runCommand(
-      'kubectl',
-      [
-        '--context',
-        contextName,
-        '--namespace',
-        'cert-manager',
-        'wait',
-        'certificate/compartment-public-operator-test-ca',
-        '--for=condition=Ready',
-        `--timeout=${kubernetesReadinessTimeout}`,
-      ],
-      repositoryRoot,
-    );
-    const certificate = captureCommand(
-      'kubectl',
-      [
-        '--context',
-        contextName,
-        '--namespace',
-        'cert-manager',
-        'get',
-        'secret/compartment-public-operator-test-ca',
-        '--output=jsonpath={.data.tls\\.crt}',
-      ],
-      repositoryRoot,
-    );
-    writeFileSync(publicOperatorCaPath, Buffer.from(certificate, 'base64'), { mode: 0o600 });
-  } finally {
-    rmSync(issuerPath, { force: true });
-  }
 }
 
 export async function runKubectlWithTransientApiRetry(args, options = {}) {
@@ -909,7 +830,6 @@ function cleanPlatformState(cleanupErrors) {
     pebbleRootPath,
     platformOwnerEnvironmentPath,
     previousPlatformValuesPath,
-    publicOperatorCaPath,
     publicOperatorValuesPath,
     registryTestCaKeyPath,
     registryTestCaPath,

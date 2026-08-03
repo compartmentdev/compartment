@@ -24,7 +24,6 @@ import {
   deployedReleaseList,
   existingInstallValues,
   existingInstallValuesWithStorage,
-  existingLocalhostInstallValues,
   helmReleaseList,
   type ImageTrustWriteInput,
   type InstallHarnessState,
@@ -614,22 +613,17 @@ describe('Kubernetes install deployment', (): void => {
     expect(readHelmStages()).toEqual([]);
   });
 
-  it('derives an HTTP Console URL for a retained localhost installation', async (): Promise<void> => {
-    const releaseValues: string = existingLocalhostInstallValues();
-    const state: InstallHarnessState = createInstallHarnessState(releaseValues);
-    mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
+  it('uses HTTP for an externally terminated operator domain and skips platform Certificates', async (): Promise<void> => {
+    const state: InstallHarnessState = createInstallHarnessState();
+    mocks.runCommand.mockImplementation(createInstallCommandHandler(state, configuredPublicIpv4));
     vi.stubGlobal(
       'fetch',
       vi.fn(async (): Promise<Response> => await Promise.resolve(readyControlPlaneResponse())),
     );
-    const customInput: KubernetesInstallDeploymentInput = customDeploymentInput({
-      apiUrl: undefined,
-      baseDomain: 'compartment.localhost',
-    });
-
-    await expect(deployAndWaitForKubernetesInstall(customInput)).resolves.toMatchObject({
-      apiUrl: 'http://console.compartment.localhost',
-    });
+    await expect(
+      deployAndWaitForKubernetesInstall(customDeploymentInput({ apiUrl: undefined, publicProtocol: 'http' })),
+    ).resolves.toMatchObject({ apiUrl: 'http://console.apps.example.com' });
+    expect(mocks.usesOperatorTlsSecret).not.toHaveBeenCalled();
   });
 
   it('preserves a custom ingress address and skips Certificate wait for an operator TLS Secret', async (): Promise<void> => {
@@ -641,6 +635,7 @@ describe('Kubernetes install deployment', (): void => {
       vi.fn(async (): Promise<Response> => await Promise.resolve(readyControlPlaneResponse())),
     );
     const customInput: KubernetesInstallDeploymentInput = customDeploymentInput({
+      publicProtocol: 'https',
       registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'customer-platform' },
     });
 
@@ -886,6 +881,7 @@ function customDeploymentInput(
     brokerUrl: undefined,
     domainMode: 'custom',
     managedDomainRequestedLabelSource: undefined,
+    publicProtocol: 'https',
     registryHostname: '',
     ...overrides,
   };

@@ -108,6 +108,7 @@ function mergeOperatorBoundaryValues(
     ...(options.storageClass === undefined && operatorValues !== undefined
       ? { storageClass: operatorValues.storageClass }
       : {}),
+    ...(operatorValues?.publicProtocol === undefined ? {} : { publicProtocol: operatorValues.publicProtocol }),
   };
 }
 

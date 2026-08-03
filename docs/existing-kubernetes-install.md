@@ -46,6 +46,16 @@ The private registry uses the retained Service IPv4 ClusterIP directly and requi
 is already trusted by every node container runtime. The installer does not configure registry DNS or mutate node
 host/runtime files. Public ACME issuers cannot issue the private IP certificate.
 
+For an operator-owned base domain, the installation wizard offers exactly two public TLS modes:
+
+- `external` is the default. Compartment serves `console.<base-domain>` and `*.<base-domain>` over HTTP, and the
+  operator terminates TLS outside the platform.
+- `existingSecret` references an existing `kubernetes.io/tls` Secret in the release namespace. The Ingress uses that
+  Secret and Compartment does not create public Certificates.
+
+In both modes, point `console.<base-domain>` and `*.<base-domain>` at the Ingress endpoint. The private registry still
+requires its separate cert-manager CA Issuer because it is addressed through its ClusterIP.
+
 Kube-proxy-based Service routing is required on every node. Kube-proxy-less Cilium is not supported.
 
 The installer checks API reachability and version, required APIs and permissions, release ownership, IngressClass and
