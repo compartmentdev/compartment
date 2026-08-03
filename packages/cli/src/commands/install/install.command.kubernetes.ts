@@ -60,17 +60,20 @@ export async function executeCanonicalKubernetesInstallCommand(
   dependencies: CliCommandDependencies,
   options: InstallCommandOptions,
 ): Promise<void> {
-  await withKubernetesLocalTools(async (): Promise<void> => {
-    const boundaryValues: Omit<KubernetesInstallInputValues, 'valuesPath'> | undefined = await readBoundaryValues(
-      dependencies,
-      options,
-    );
-    const kubeconfig: ResolvedKubernetesKubeconfig = await resolvePreflightKubeconfig(
-      dependencies,
-      options.kubeContext,
-    );
-    await executeWithKubeconfig(dependencies, options, kubeconfig, boundaryValues);
-  });
+  const boundaryValues: Omit<KubernetesInstallInputValues, 'valuesPath'> | undefined = await readBoundaryValues(
+    dependencies,
+    options,
+  );
+  const kubeconfig: ResolvedKubernetesKubeconfig = await resolvePreflightKubeconfig(dependencies, options.kubeContext);
+  try {
+    await withKubernetesLocalTools(async (): Promise<void> => {
+      await executeWithKubeconfig(dependencies, options, kubeconfig, boundaryValues);
+    });
+  } finally {
+    if (kubeconfig.materializedDirectory !== undefined) {
+      await rm(kubeconfig.materializedDirectory, { force: true, recursive: true });
+    }
+  }
 }
 
 async function readBoundaryValues(
@@ -136,7 +139,7 @@ async function executeWithKubeconfig(
     await runCanonicalInstall(dependencies, options, kubeconfig, values.input, resolvedValuesPath.path, progress);
   } finally {
     progress.stop();
-    await cleanCanonicalMaterial(material, kubeconfig);
+    await cleanCanonicalMaterial(material);
   }
 }
 
@@ -219,15 +222,9 @@ async function runCanonicalInstall(
   renderInstallResult(dependencies.io, options.output, result.install, false);
 }
 
-async function cleanCanonicalMaterial(
-  material: MaterializedInstallWizardValues | undefined,
-  kubeconfig: ResolvedKubernetesKubeconfig,
-): Promise<void> {
+async function cleanCanonicalMaterial(material: MaterializedInstallWizardValues | undefined): Promise<void> {
   if (material !== undefined) {
     await rm(material.directory, { force: true, recursive: true });
-  }
-  if (kubeconfig.materializedDirectory !== undefined) {
-    await rm(kubeconfig.materializedDirectory, { force: true, recursive: true });
   }
 }
 

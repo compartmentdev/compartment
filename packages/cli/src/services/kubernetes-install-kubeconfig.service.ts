@@ -4,6 +4,10 @@ import { delimiter, dirname, join, resolve } from 'node:path';
 import type { JsonValue } from '@compartment/utils';
 import { parse } from 'yaml';
 import { absolutizeKubeconfigFileReferences, mergeKubeconfigDocuments } from './kubernetes-kubeconfig-merge.support';
+import {
+  buildKubernetesInstallKubeconfigResolutionError,
+  KubernetesInstallKubeconfigResolutionError,
+} from './kubernetes-install-kubeconfig.error';
 import type {
   KubernetesKubeconfigCandidate,
   KubernetesKubeconfigCandidateResult,
@@ -25,18 +29,31 @@ export async function resolveKubernetesInstallKubeconfig(
   if (input.env.KUBECONFIG !== undefined) {
     return await resolveConfiguredKubeconfig(input.env.KUBECONFIG, input.contextName);
   }
+  return await resolveDefaultKubeconfig(input);
+}
+
+async function resolveDefaultKubeconfig(
+  input: KubernetesKubeconfigResolutionInput,
+): Promise<ResolvedKubernetesKubeconfig> {
   const candidates: KubernetesKubeconfigCandidate[] = buildDefaultCandidates(input);
   const checked: string[] = [];
   let requestedContextFound: boolean = false;
+  let discoverableClusterFound: boolean = false;
   for (const candidate of candidates) {
     const result: KubernetesKubeconfigCandidateResult = await readKubeconfigCandidate(candidate, input.contextName);
     if (result.resolved !== null) {
       return result.resolved;
     }
     requestedContextFound ||= hasRequestedContext(result.document, input.contextName);
+    discoverableClusterFound ||= hasDiscoverableCluster(result.document, candidate);
     checked.push(formatCheckedCandidate(candidate, result.reason));
   }
-  throw new Error(buildMissingKubeconfigMessage(checked, input.contextName, false, !requestedContextFound));
+  throw buildKubernetesInstallKubeconfigResolutionError(
+    checked,
+    input.contextName,
+    false,
+    !requestedContextFound && discoverableClusterFound,
+  );
 }
 
 async function resolveConfiguredKubeconfig(
@@ -125,9 +142,22 @@ function requireResolvedKubeconfig(
   const resolved: ResolvedKubernetesKubeconfig | null = parseKubeconfig(merged, path, undefined, contextName);
   if (resolved === null) {
     const contextMissing: boolean = contextName !== undefined && !hasKubeconfigContext(merged, contextName);
-    throw new Error(buildMissingKubeconfigMessage(checked, contextName, true, contextMissing));
+    const discoverableClusterFound: boolean = parseKubeconfig(merged, path, undefined, undefined) !== null;
+    throw buildKubernetesInstallKubeconfigResolutionError(
+      checked,
+      contextName,
+      true,
+      contextMissing && discoverableClusterFound,
+    );
   }
   return resolved;
+}
+
+function hasDiscoverableCluster(
+  document: KubernetesKubeconfigDocument | null,
+  candidate: KubernetesKubeconfigCandidate,
+): boolean {
+  return document !== null && parseKubeconfig(document, candidate.path, candidate.label, undefined) !== null;
 }
 
 function parseKubeconfig(
@@ -215,31 +245,16 @@ function readErrorCode(error: Error): string | undefined {
   return 'code' in error && typeof error.code === 'string' ? error.code : undefined;
 }
 
-function buildMissingKubeconfigMessage(
-  checked: readonly string[],
-  contextName?: string,
-  configured: boolean = false,
-  contextMissing: boolean = false,
-): string {
-  const prefix: string =
-    contextName !== undefined && contextMissing ? `context "${contextName}" not found.` : 'No usable kubeconfig found.';
-  const environmentChecked: string = configured ? '' : '$KUBECONFIG (not set), ';
-  const checkedMessage: string = ` Checked: ${environmentChecked}${checked.join(', ')}.`;
-  if (checked.some((value: string): boolean => value.includes('run with sudo or export KUBECONFIG'))) {
-    return `${prefix}${checkedMessage}`;
-  }
-  return configured
-    ? `${prefix}${checkedMessage} Fix the configured path or context; no fallback kubeconfig was used.`
-    : `${prefix}${checkedMessage} If you have a cluster, point KUBECONFIG at it. If not, install one first and keep its Ingress Controller enabled.`;
-}
-
 function formatCheckedCandidate(candidate: KubernetesKubeconfigCandidate, reason: string): string {
   return candidate.configured ? `$KUBECONFIG (${candidate.path}: ${reason})` : `${candidate.displayPath} (${reason})`;
 }
 
 function assertConfiguredPaths(paths: readonly string[]): void {
   if (paths.length === 0) {
-    throw new Error('No usable kubeconfig found. $KUBECONFIG is set but contains no paths.');
+    throw new KubernetesInstallKubeconfigResolutionError(
+      'No usable kubeconfig found. $KUBECONFIG is set but contains no paths.',
+      'no-usable-cluster',
+    );
   }
 }
 
