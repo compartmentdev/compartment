@@ -438,6 +438,7 @@ function passingFixture(): PreflightFixture {
 function preflightInput(): KubernetesExistingClusterPreflightInput {
   return {
     apiHosts: ['console.apps.example.com'],
+    chartFullname: 'compartment',
     install: {
       clearIngressEndpoint: false,
       domain: { baseDomain: 'apps.example.com', mode: 'operator' },

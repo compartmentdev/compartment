@@ -24,6 +24,7 @@ describe('Kubernetes platform Certificate readiness', (): void => {
     await expect(
       waitForKubernetesPlatformCertificates({
         acmeEmail: 'admin@example.com',
+        chartFullname: 'compartment',
         clearConfiguredIngressEndpoint: false,
         configuredIngressEndpoint: null,
         domainMode: 'managed',

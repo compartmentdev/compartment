@@ -47,7 +47,7 @@ const execFileAsync: (file: string, args: readonly string[], options: { timeout:
 const kubeContext: string = process.env.COMPARTMENT_E2E_KUBE_CONTEXT ?? 'k3d-compartment-e2e';
 const platformNamespace: string = process.env.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? 'compartment';
 const buildNamespace: string = `${platformNamespace}-build`;
-const platformName: string = 'compartment-compartment';
+const platformName: string = 'compartment';
 const probeIntervalMs: number = 100;
 const probeRequestTimeoutMs: number = 1_000;
 const settleMs: number = 1_000;

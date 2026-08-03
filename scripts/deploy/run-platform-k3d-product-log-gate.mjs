@@ -6,7 +6,7 @@ import { runMain } from '../lib/run-main.mjs';
 
 const context = process.env.COMPARTMENT_E2E_KUBE_CONTEXT ?? 'k3d-compartment-e2e';
 const platformNamespace = process.env.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? 'compartment';
-const platformName = 'compartment-compartment';
+const platformName = 'compartment';
 const observabilityNamespace = `${platformName}-observability`;
 const agentName = `${platformName}-log-agent`;
 const quotaMaxBytes = 1_073_741_824;

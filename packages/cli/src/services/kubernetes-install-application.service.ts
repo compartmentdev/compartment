@@ -4,6 +4,7 @@ import type { DomainIssuerReference } from '@compartment/contracts';
 import { installKubernetesOwner } from '../install';
 import type { CliInstallResult } from '../install.types';
 import { runKubernetesExistingClusterPreflight } from './kubernetes-existing-cluster-preflight.service';
+import { readCompartmentChartFullname } from './kubernetes-chart-name';
 import {
   assertOperatorRegistryIssuer,
   assertOperatorTlsSecret,
@@ -18,6 +19,7 @@ import { deployAndWaitForKubernetesInstall } from './kubernetes-install.service'
 import type {
   KubernetesInstallDeploymentInput,
   KubernetesInstallDeploymentResult,
+  KubernetesResolvedDeploymentProperties,
   KubernetesInstallDomainMode,
   KubernetesInstallHelmMaterial,
   KubernetesIngressEndpoint,
@@ -56,6 +58,7 @@ async function runCanonicalPreflight(
     await verifyOperatorCertificateSources(deploymentInput);
     await runKubernetesExistingClusterPreflight({
       apiHosts: readExpectedIngressHosts(input),
+      chartFullname: deploymentInput.chartFullname,
       install: input,
     });
     const runtimeClassName: string = await verifyInstallImages(deploymentInput);
@@ -137,13 +140,17 @@ async function buildDeploymentInput(
     domainMode,
     valuesPath: input.valuesPath,
   });
-  return buildResolvedDeploymentInput(input, domainMode, registry);
+  const resolved: KubernetesResolvedDeploymentProperties = {
+    ...registry,
+    chartFullname: await readCompartmentChartFullname(input.releaseName, input.valuesPath),
+  };
+  return buildResolvedDeploymentInput(input, domainMode, resolved);
 }
 
 function buildResolvedDeploymentInput(
   input: KubernetesInstallApplicationInput,
   domainMode: KubernetesInstallDomainMode,
-  registry: KubernetesInstallRegistryConfiguration,
+  resolved: KubernetesResolvedDeploymentProperties,
 ): KubernetesInstallDeploymentInput {
   return {
     acmeEmail: input.owner.email,
@@ -160,7 +167,7 @@ function buildResolvedDeploymentInput(
     managedDomainRequestedLabelSource: resolveManagedDomainLabel(input),
     namespace: input.namespace,
     progress: input.progress,
-    ...registry,
+    ...resolved,
     releaseName: input.releaseName,
     valuesPath: input.valuesPath,
   };

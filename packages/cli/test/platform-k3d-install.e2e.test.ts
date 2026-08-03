@@ -160,7 +160,7 @@ async function expectOperatorRegistryInstallValues(): Promise<void> {
   const expectedHostname: string = [10, 43, 250, 250].join('.');
   const configuredHostname: SelfHostedUserSetupCommandResult = await runKubectl([
     'get',
-    'configmap/compartment-compartment',
+    'configmap/compartment',
     '--output=jsonpath={.data.COMPARTMENT_ARTIFACT_REGISTRY_HOST}',
   ]);
   expectSuccessfulCommand(configuredHostname, 'read the worker registry hostname');
@@ -176,7 +176,7 @@ async function expectOperatorRegistryInstallValues(): Promise<void> {
 
   const certificateHostname: SelfHostedUserSetupCommandResult = await runKubectl([
     'get',
-    'certificate/compartment-compartment-registry',
+    'certificate/compartment-registry',
     '--output=jsonpath={.spec.ipAddresses[0]}',
   ]);
   expectSuccessfulCommand(certificateHostname, 'read the registry Certificate hostname');
@@ -184,7 +184,7 @@ async function expectOperatorRegistryInstallValues(): Promise<void> {
 
   const ingressHosts: SelfHostedUserSetupCommandResult = await runKubectl([
     'get',
-    'ingress/compartment-compartment',
+    'ingress/compartment',
     '--output=jsonpath={.spec.rules[*].host}',
   ]);
   expectSuccessfulCommand(ingressHosts, 'read public Ingress hosts');
@@ -193,7 +193,7 @@ async function expectOperatorRegistryInstallValues(): Promise<void> {
 
 async function expectCleanControllerStartup(): Promise<void> {
   for (const workload of startupWorkloads) {
-    const deploymentName: string = `compartment-compartment-${workload.component}`;
+    const deploymentName: string = `compartment-${workload.component}`;
     const rollout: SelfHostedUserSetupCommandResult = await runKubectl([
       'rollout',
       'status',
@@ -228,7 +228,7 @@ async function expectPlatformRuntime(): Promise<void> {
   }
   const version: SelfHostedUserSetupCommandResult = await runKubectl([
     'exec',
-    'deployment/compartment-compartment-api',
+    'deployment/compartment-api',
     '--',
     'cat',
     '/proc/version',
@@ -263,7 +263,7 @@ async function expectRegistryPodRecovery(): Promise<void> {
     return;
   }
 
-  const registryName: string = 'compartment-compartment-registry';
+  const registryName: string = 'compartment-registry';
   const originalClaimUid: SelfHostedUserSetupCommandResult = await runKubectl([
     'get',
     `persistentvolumeclaim/${registryName}`,
@@ -335,7 +335,7 @@ async function expectRetainedDomainGenerationProtection(): Promise<void> {
     await expectSuccessfulHelmDomainUpgrade(generation, 'stale-restore3.localhost', true);
     const renderedDomain: SelfHostedUserSetupCommandResult = await runKubectl([
       'get',
-      'configmap/compartment-compartment',
+      'configmap/compartment',
       '--output=jsonpath={.data.COMPARTMENT_BASE_DOMAIN}',
     ]);
     expectSuccessfulCommand(renderedDomain, 'read runtime domain after stale apply');
@@ -384,8 +384,8 @@ async function expectForwardedMetadataSpoofingRejected(): Promise<void> {
   const ingressName: string = 'forwarded-metadata-ingress';
   const testBaseDomain: string = 'forwarded.compartment.localhost';
   const testHost: string = `console.${testBaseDomain}`;
-  const apiImage: string = await readDeploymentImage('compartment-compartment-api');
-  const caddyImage: string = await readDeploymentImage('compartment-compartment-caddy');
+  const apiImage: string = await readDeploymentImage('compartment-api');
+  const caddyImage: string = await readDeploymentImage('compartment-caddy');
   const echoProgram: string =
     "require('node:http').createServer((request,response)=>{response.setHeader('content-type','application/json');response.end(JSON.stringify({headers:request.headers}));}).listen(3999,'0.0.0.0')";
   try {

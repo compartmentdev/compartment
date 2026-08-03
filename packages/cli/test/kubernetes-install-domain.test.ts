@@ -23,6 +23,7 @@ describe('Kubernetes install domain matching', (): void => {
 function input(): KubernetesInstallDeploymentInput {
   return {
     acmeEmail: 'owner@example.com',
+    chartFullname: 'compartment',
     baseDomain: 'apps.example.com',
     clearConfiguredIngressEndpoint: false,
     configuredIngressEndpoint: null,

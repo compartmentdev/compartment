@@ -48,8 +48,7 @@ export const requiredPermissions: readonly KubernetesPermissionRequirement[] = [
   ['get', 'secrets', 'default'],
 ];
 
-export function readClusterOwnedTargets(releaseName: string): KubernetesOwnedResourceTarget[] {
-  const fullname: string = `${releaseName}-compartment`;
+export function readClusterOwnedTargets(fullname: string): KubernetesOwnedResourceTarget[] {
   return [
     target('ClusterRole', 'compartment-controller', 'clusterroles.rbac.authorization.k8s.io'),
     target('ClusterRole', 'compartment-project-bootstrap', 'clusterroles.rbac.authorization.k8s.io'),

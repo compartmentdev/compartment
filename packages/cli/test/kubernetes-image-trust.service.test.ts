@@ -353,6 +353,7 @@ async function createInstallInput(directory: string): Promise<KubernetesInstallD
   await writeFile(valuesPath, '{}');
   return {
     acmeEmail: '',
+    chartFullname: 'compartment',
     apiUrl: 'http://console.compartment.localhost',
     baseDomain: 'compartment.localhost',
     chartPath: resolve(directory, 'chart'),

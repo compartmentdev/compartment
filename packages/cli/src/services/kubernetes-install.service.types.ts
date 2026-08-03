@@ -11,6 +11,7 @@ export interface KubernetesInstallDeploymentInput extends KubernetesInstallRegis
   apiUrl?: string | undefined;
   baseDomain?: string | undefined;
   brokerUrl?: string | undefined;
+  chartFullname: string;
   chartPath?: string | undefined;
   clearConfiguredIngressEndpoint: boolean;
   configuredIngressEndpoint: KubernetesIngressEndpoint | null;
@@ -23,6 +24,10 @@ export interface KubernetesInstallDeploymentInput extends KubernetesInstallRegis
   progress?: KubernetesInstallProgressReporter | undefined;
   releaseName: string;
   valuesPath: string;
+}
+
+export interface KubernetesResolvedDeploymentProperties extends KubernetesInstallRegistryConfiguration {
+  chartFullname: string;
 }
 
 export interface KubernetesInstallDeploymentResult {
