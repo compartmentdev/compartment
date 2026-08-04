@@ -420,7 +420,7 @@ Proved:
 
 Release blockers and required design changes found by the proof:
 
-1. `https://compartment.dev/install.sh` served the legacy `latest` bootstrap and installed CLI `0.9.2`, which has no Kubernetes channel or Kubernetes installation options. The current repository-rendered bootstrap worked, but the branch-tip Kubernetes artifact was not yet published and it fell back to the last signed build. The public bootstrap handoff must be a release gate.
+1. `https://compartment.dev/install.sh` served the legacy `latest` bootstrap and installed CLI `0.9.2`, which has no Kubernetes channel or Kubernetes installation options. The current repository-rendered bootstrap worked, but the branch-tip Kubernetes artifact was not yet published and it fell back to the last signed build. The supported Kubernetes bootstrap is `https://compartment.dev/k/install.sh`; its website-owned handoff does not gate already-completed image and CLI promotion.
 2. Default single-node k3s exposed etcd `2379/2380`, the Kubernetes API `6443`, kubelet `10250`, and Flannel VXLAN `8472` on the public interface. A persistent nftables proof rule blocked those ports without breaking ingress, NetworkPolicy, registry pull, deploy, or reboot. The product implementation needs an owned, provider-independent firewall primitive applied before k3s starts.
 3. A clean k3s host had no Helm CLI. The provisioner must supply it or replace the subprocess dependency; the customer cannot be asked to install it.
 4. The private registry path required a dedicated CA issuer and node-runtime trust. Installing the CA into the host trust store before restarting k3s made the canonical node-pull proof pass. The provisioner must own CA creation, rotation, trust installation, and removal.

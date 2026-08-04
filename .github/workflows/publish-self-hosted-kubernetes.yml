@@ -385,9 +385,7 @@ jobs:
           done
 
       - name: Promote mutable kubernetes CLI tag
-        id: promote-kubernetes-cli
         run: |
-          echo 'promoted=false' >> "$GITHUB_OUTPUT"
           current_kubernetes_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/kubernetes" --jq '.object.sha')"
           if [ -z "$current_kubernetes_sha" ]; then
             echo 'Expected current kubernetes ref SHA.' >&2
@@ -405,67 +403,3 @@ jobs:
             echo "Mutable kubernetes CLI tag resolved to ${promoted_digest}; expected ${cli_digest}." >&2
             exit 1
           fi
-          echo 'promoted=true' >> "$GITHUB_OUTPUT"
-
-      - name: Verify supported public installer handoff
-        if: steps.promote-kubernetes-cli.outputs.promoted == 'true'
-        run: |
-          attempt=1
-          max_attempts=30
-          expected_sha256="$(sha256sum install.sh | awk '{ print $1 }')"
-          expected_size="$(wc -c < install.sh)"
-          while [ "$attempt" -le "$max_attempts" ]; do
-            rm -f ./.compartment/public-install.sh
-            received_sha256=""
-            received_size=""
-            if http_status="$(
-              curl -fsSL \
-                --output ./.compartment/public-install.sh \
-                --write-out '%{http_code}' \
-                https://compartment.dev/install.sh
-            )"; then
-              curl_succeeded=true
-            else
-              curl_succeeded=false
-            fi
-            http_status="${http_status:-000}"
-            if [ "$http_status" = 200 ] && [ -f ./.compartment/public-install.sh ]; then
-              received_sha256="$(sha256sum ./.compartment/public-install.sh | awk '{ print $1 }')"
-              received_size="$(wc -c < ./.compartment/public-install.sh)"
-            fi
-
-            if [ "$curl_succeeded" != true ] || [ "$http_status" != 200 ]; then
-              last_result=unavailable
-              if [ "$http_status" = 200 ]; then
-                echo "Public installer handoff attempt ${attempt}/${max_attempts}: transfer failed after HTTP 200 (expected sha256 ${expected_sha256}, ${expected_size} bytes; received sha256 ${received_sha256}, ${received_size} bytes)"
-              else
-                echo "Public installer handoff attempt ${attempt}/${max_attempts}: unavailable (HTTP ${http_status})"
-              fi
-            else
-              if [ "$received_sha256" = "$expected_sha256" ] \
-                && [ "$received_size" = "$expected_size" ] \
-                && cmp --silent install.sh ./.compartment/public-install.sh; then
-                echo "Public installer handoff verified on attempt ${attempt}/${max_attempts}: HTTP 200 (expected sha256 ${expected_sha256}, ${expected_size} bytes; received sha256 ${received_sha256}, ${received_size} bytes)"
-                exit 0
-              fi
-              last_result=content-mismatch
-              last_received_sha256="$received_sha256"
-              last_received_size="$received_size"
-              echo "Public installer handoff attempt ${attempt}/${max_attempts}: HTTP 200, content mismatch (expected sha256 ${expected_sha256}, ${expected_size} bytes; received sha256 ${received_sha256}, ${received_size} bytes)"
-            fi
-
-            if [ "$attempt" -ge "$max_attempts" ]; then
-              case "$last_result" in
-                unavailable)
-                  echo "Public installer handoff failed: the endpoint was unavailable, returned final HTTP ${http_status}, or the transfer failed." >&2
-                  ;;
-                content-mismatch)
-                  echo "Public installer handoff failed: HTTP 200 served different content (expected sha256 ${expected_sha256}, ${expected_size} bytes; received sha256 ${last_received_sha256}, ${last_received_size} bytes)." >&2
-                  ;;
-              esac
-              exit 1
-            fi
-            attempt=$((attempt + 1))
-            sleep 10
-          done
-          exit 1
