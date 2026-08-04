@@ -12,7 +12,6 @@ import {
   importVariableGroupResponseSchema,
   importVariablesResponseSchema,
   logoutResponseSchema,
-  organizationAuthSettingsResponseSchema,
   organizationListResponseSchema,
   organizationSettingsResponseSchema,
   projectListResponseSchema,
@@ -42,7 +41,6 @@ import {
   type ImportVariableGroupResponse,
   type ImportVariablesResponse,
   type LogoutResponse,
-  type OrganizationAuthSettingsResponse,
   type OrganizationListResponse,
   type OrganizationSettingsResponse,
   type OrganizationSummary,
@@ -117,6 +115,7 @@ import {
 } from './system-user-flow.e2e.harness';
 import {
   createSystemUserFlowContext,
+  configureSystemUserFlowAuthSettings,
   loginSystemUserFlowAdmin,
   prepareSystemUserFlowAppDeployment,
   prepareSystemUserFlowVariables,
@@ -232,23 +231,7 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
     'case 2/8: configures auth and organization settings through the CLI',
     async (): Promise<void> => {
       expectSelfHostedUserSetupStepCompleted(completedCaseCount, 1);
-      const authSettings: OrganizationAuthSettingsResponse = await admin.runJson(
-        'auth settings get',
-        organizationAuthSettingsResponseSchema,
-      );
-      expect(typeof authSettings.settings.localPasswordEnabled).toBe('boolean');
-
-      const updatedAuthSettings: OrganizationAuthSettingsResponse = await admin.runJson(
-        'auth settings set --password enabled',
-        organizationAuthSettingsResponseSchema,
-      );
-      expect(updatedAuthSettings.settings.localPasswordEnabled).toBe(true);
-
-      const persistedAuthSettings: OrganizationAuthSettingsResponse = await admin.runJson(
-        'auth settings get',
-        organizationAuthSettingsResponseSchema,
-      );
-      expect(persistedAuthSettings.settings.localPasswordEnabled).toBe(true);
+      await configureSystemUserFlowAuthSettings(admin);
 
       const organizationSettings: OrganizationSettingsResponse = await admin.runJson(
         'org settings get',

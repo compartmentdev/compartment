@@ -2,6 +2,8 @@ import { expect } from 'vitest';
 import {
   type DeploymentReadSummary,
   type DeploymentStatusResponse,
+  type OrganizationAuthSettingsResponse,
+  organizationAuthSettingsResponseSchema,
   projectShowResponseSchema,
   resourceResponseSchema,
   type ProjectShowResponse,
@@ -99,6 +101,26 @@ export async function loginSystemUserFlowAdmin(context: SystemUserFlowContext): 
     },
     { requestOrigin: runtime.apiUrl },
   );
+}
+
+export async function configureSystemUserFlowAuthSettings(admin: SelfHostedUserSetupCli): Promise<void> {
+  const authSettings: OrganizationAuthSettingsResponse = await admin.runJson(
+    'auth settings get',
+    organizationAuthSettingsResponseSchema,
+  );
+  expect(typeof authSettings.settings.localPasswordEnabled).toBe('boolean');
+
+  const updatedAuthSettings: OrganizationAuthSettingsResponse = await admin.runJson(
+    'auth settings set --password enabled',
+    organizationAuthSettingsResponseSchema,
+  );
+  expect(updatedAuthSettings.settings.localPasswordEnabled).toBe(true);
+
+  const persistedAuthSettings: OrganizationAuthSettingsResponse = await admin.runJson(
+    'auth settings get',
+    organizationAuthSettingsResponseSchema,
+  );
+  expect(persistedAuthSettings.settings.localPasswordEnabled).toBe(true);
 }
 
 export async function prepareSystemUserFlowVariables(
