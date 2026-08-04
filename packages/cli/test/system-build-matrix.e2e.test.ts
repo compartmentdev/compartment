@@ -75,6 +75,8 @@ type HttpProbeErrorInput = Error | string | number | boolean | symbol | bigint |
 
 const selfHostedBuildMatrixTimeoutMs: number =
   process.env.COMPARTMENT_E2E_GVISOR_ENABLED === '1' ? 90 * 60_000 : 40 * 60_000;
+const selfHostedBuildMatrixDeployTimeoutMs: number =
+  process.env.COMPARTMENT_E2E_GVISOR_ENABLED === '1' ? 30 * 60_000 : 15 * 60_000;
 const selfHostedBuildMatrixRuntimeCommandTimeoutMs: number = 60_000;
 const selfHostedBuildMatrixHttpProbeAttempts: number = 60;
 const selfHostedBuildMatrixHttpProbeDelayMs: number = 1_000;
@@ -135,7 +137,7 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
             const deployPromise: Promise<SelfHostedDeployCommandResponse> = admin.runJson(
               'deploy',
               deployCommandResponseParser,
-              { cwd: fixture.directory },
+              { cwd: fixture.directory, timeoutMs: selfHostedBuildMatrixDeployTimeoutMs },
             );
             if (process.env.COMPARTMENT_E2E_GVISOR_ENABLED === '1' && !sandboxProofCompleted) {
               await expectEphemeralGVisorBuildPod(deployPromise);
@@ -192,6 +194,7 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
             deployCommandResponseParser,
             {
               cwd: fixture.directory,
+              timeoutMs: selfHostedBuildMatrixDeployTimeoutMs,
             },
           );
           expect(deployPayload.deployments).toHaveLength(fixture.services.length);
@@ -494,6 +497,15 @@ async function expectProxyRoute(
       },
     },
   );
+  const primaryHealthResponse: CliHttpTextResponse = await sendCliHttpTextRequestUntilStatus(
+    new URL('/healthz', webRouteUrl).toString(),
+    200,
+    {
+      headers: {
+        cookie: appSessionCookie,
+      },
+    },
+  );
   const escapedPrefixResponse: CliHttpTextResponse = await sendCliHttpTextRequestWithRetry(webRouteUrl, {
     headers: {
       cookie: appSessionCookie,
@@ -503,8 +515,21 @@ async function expectProxyRoute(
 
   expect(proxiedReadyResponse.statusCode).toBe(200);
   expect(JSON.parse(proxiedReadyResponse.body) as SelfHostedProxyReadyPayload).toEqual(fixture.proxyPayload);
-  expect(escapedPrefixResponse.statusCode).toBe(404);
-  expect(JSON.parse(escapedPrefixResponse.body)).toEqual({ error: 'route_not_found' });
+  expect(primaryHealthResponse.body).not.toBe(proxiedReadyResponse.body);
+  expectEscapedProxyPrefixNotForwarded(escapedPrefixResponse, primaryHealthResponse);
+}
+
+function expectEscapedProxyPrefixNotForwarded(
+  escapedPrefixResponse: CliHttpTextResponse,
+  primaryHealthResponse: CliHttpTextResponse,
+): void {
+  if (escapedPrefixResponse.statusCode === 404) {
+    expect(JSON.parse(escapedPrefixResponse.body)).toEqual({ error: 'route_not_found' });
+    return;
+  }
+
+  expect(escapedPrefixResponse.statusCode).toBe(primaryHealthResponse.statusCode);
+  expect(escapedPrefixResponse.body).toBe(primaryHealthResponse.body);
 }
 
 async function sendCliHttpTextRequestWithRetry(

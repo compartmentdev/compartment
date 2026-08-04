@@ -1,3 +1,5 @@
+import { setTimeout as delay } from 'node:timers/promises';
+
 import { captureCommand, runCommand } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
@@ -13,6 +15,8 @@ const projectProvisioningNamespace = `${platformName}-project-provisioning`;
 const secretName = `${release}-install-state`;
 const registryAuthName = `${platformName}-registry-auth`;
 const previousRegistryAddressServiceName = `${release}-previous-registry-address`;
+const deploymentConvergenceAttempts = 180;
+const deploymentConvergenceDelayMs = 1_000;
 function registryHelmArgs(clusterIp) {
   return ['--set', `registry.hostname=${clusterIp}`, '--set', 'registry.issuerRef.name=retained-registry-issuer'];
 }
@@ -95,8 +99,8 @@ async function runRetainedInstallStateGate() {
       'edge.snapshots.enabled=true',
       ...registryHelmArgs(registryClusterIp),
     ]);
-    kubectl(['--namespace', namespace, 'rollout', 'status', `deployment/${platformName}-postgres`, '--timeout=180s']);
-    writePostgresSentinel();
+    const postgresPodName = await waitForDeploymentPod(`${platformName}-postgres`, 'postgres');
+    writePostgresSentinel(postgresPodName);
     const postgresPvcUid = readPvcUid('postgres');
     const apiPvcUid = readPvcUid('api');
     const edgeSnapshotsPvcUid = readPvcUid('edge-snapshots');
@@ -166,8 +170,8 @@ async function runRetainedInstallStateGate() {
     const brokerUrl = readSecretValue(secretName, 'managed-domain-broker-url');
     const registryHostname = readSecretValue(secretName, 'registry-hostname');
     const registryIssuerName = readSecretValue(secretName, 'registry-issuer-ref-name');
-    kubectl(['--namespace', namespace, 'rollout', 'status', `deployment/${platformName}-postgres`, '--timeout=180s']);
-    const retainedSentinel = readPostgresSentinel();
+    const reinstalledPostgresPodName = await waitForDeploymentPod(`${platformName}-postgres`, 'postgres');
+    const retainedSentinel = readPostgresSentinel(reinstalledPostgresPodName);
     kubectl(['--namespace', namespace, 'get', 'deployment', registryAuthName]);
     const runtimeBrokerUrl = captureKubectl([
       '--namespace',
@@ -200,12 +204,12 @@ async function runRetainedInstallStateGate() {
   }
 }
 
-function writePostgresSentinel() {
+function writePostgresSentinel(podName) {
   kubectl([
     '--namespace',
     namespace,
     'exec',
-    `deployment/${platformName}-postgres`,
+    `pod/${podName}`,
     '--',
     'psql',
     '-U',
@@ -217,12 +221,12 @@ function writePostgresSentinel() {
   ]);
 }
 
-function readPostgresSentinel() {
+function readPostgresSentinel(podName) {
   return captureKubectl([
     '--namespace',
     namespace,
     'exec',
-    `deployment/${platformName}-postgres`,
+    `pod/${podName}`,
     '--',
     'psql',
     '-U',
@@ -232,6 +236,63 @@ function readPostgresSentinel() {
     '-Atc',
     'SELECT value FROM lifecycle_retention_gate LIMIT 1;',
   ]);
+}
+
+async function waitForDeploymentPod(deploymentName, component) {
+  let lastDeployment = '';
+  for (let attempt = 1; attempt <= deploymentConvergenceAttempts; attempt += 1) {
+    lastDeployment = captureKubectl([
+      '--namespace',
+      namespace,
+      'get',
+      'deployment',
+      deploymentName,
+      '--output',
+      'json',
+    ]);
+    if (isDeploymentConverged(lastDeployment)) {
+      const podName = findReadyNonTerminatingPodName(
+        captureKubectl([
+          '--namespace',
+          namespace,
+          'get',
+          'pods',
+          '--selector',
+          `app.kubernetes.io/instance=${release},app.kubernetes.io/component=${component}`,
+          '--output',
+          'json',
+        ]),
+      );
+      if (podName !== undefined) {
+        return podName;
+      }
+    }
+    await delay(deploymentConvergenceDelayMs);
+  }
+  throw new Error(`Deployment ${deploymentName} did not converge on a Ready pod. Last state: ${lastDeployment}`);
+}
+
+export function isDeploymentConverged(output) {
+  const deployment = JSON.parse(output);
+  const desiredReplicas = deployment.spec?.replicas ?? 1;
+  return (
+    deployment.status?.observedGeneration === deployment.metadata?.generation &&
+    deployment.status?.replicas === desiredReplicas &&
+    deployment.status?.updatedReplicas === desiredReplicas &&
+    deployment.status?.readyReplicas === desiredReplicas &&
+    deployment.status?.availableReplicas === desiredReplicas &&
+    (deployment.status?.unavailableReplicas ?? 0) === 0
+  );
+}
+
+export function findReadyNonTerminatingPodName(output) {
+  const pods = JSON.parse(output).items.filter(
+    (pod) =>
+      pod.metadata?.deletionTimestamp === undefined &&
+      pod.status?.phase === 'Running' &&
+      pod.status?.conditions?.some((condition) => condition.type === 'Ready' && condition.status === 'True'),
+  );
+  return pods.length === 1 ? pods[0].metadata?.name : undefined;
 }
 
 function readPvcUid(suffix) {
