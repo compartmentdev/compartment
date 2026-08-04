@@ -29,7 +29,7 @@ import type {
   ResolvedInstallIdentityPrompts,
 } from './install.command.types';
 
-const observationUrl: string = 'https://compartment.dev/cdn-cgi/trace';
+const observationUrl: string = 'https://1.1.1.1/cdn-cgi/trace';
 
 export async function resolveInstallCommandTarget(
   dependencies: CliCommandDependencies,

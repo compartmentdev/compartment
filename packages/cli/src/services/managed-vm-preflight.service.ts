@@ -66,13 +66,34 @@ function createNetworkChecks(
       inventory.reachableEndpoints.length === 6,
       `${String(inventory.reachableEndpoints.length)}/6 endpoints reachable`,
     ),
-    check('public-ipv4', isGloballyRoutableIpv4(publicAddress), publicAddress),
+    ...createPublicAddressChecks(inventory, publicAddress),
+    check('host-state', classification === 'fresh' || classification === 'resume', classification),
+  ];
+}
+
+function createPublicAddressChecks(
+  inventory: ManagedVmHostInventory,
+  publicAddress: string,
+): ManagedVmPreflightCheck[] {
+  const isPublicIpv4: boolean = isGloballyRoutableIpv4(publicAddress);
+  const matchesHost: boolean = inventory.localIpv4Addresses.includes(publicAddress);
+  const localAddresses: string =
+    inventory.localIpv4Addresses.length === 0 ? 'none' : inventory.localIpv4Addresses.join(', ');
+  return [
+    check(
+      'public-ipv4',
+      isPublicIpv4,
+      isPublicIpv4
+        ? `public IPv4 ${publicAddress}`
+        : `observed address ${publicAddress} is not a globally routable IPv4 address`,
+    ),
     check(
       'public-address-match',
-      inventory.localIpv4Addresses.includes(publicAddress),
-      'local and observed IPv4 agree',
+      matchesHost,
+      matchesHost
+        ? `local and observed IPv4 agree (${publicAddress})`
+        : `observed public IPv4 ${publicAddress} is not assigned to this host; local IPv4 addresses: ${localAddresses}`,
     ),
-    check('host-state', classification === 'fresh' || classification === 'resume', classification),
   ];
 }
 

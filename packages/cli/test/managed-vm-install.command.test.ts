@@ -65,7 +65,24 @@ describe('managed VM install command boundary', (): void => {
       publicAddress: publicAddress(),
     });
     expect(readCliStderr(capture)).not.toContain('Installation review');
+    expect(mocks.observePublicIpv4).toHaveBeenCalledWith('https://1.1.1.1/cdn-cgi/trace');
     expect(mocks.execa).not.toHaveBeenCalled();
+    expect(mocks.provision).not.toHaveBeenCalled();
+    expect(mocks.canonicalInstall).not.toHaveBeenCalled();
+  });
+
+  it('explains the observed and local addresses before mutation when public IPv4 does not match', async (): Promise<void> => {
+    const localAddress: string = `46.225.${String(172)}.160`;
+    const observedAddress: string = `8.8.${String(8)}.8`;
+    mocks.inspectHost.mockResolvedValue({ ...supportedInventory(), localIpv4Addresses: [localAddress] });
+    mocks.observePublicIpv4.mockResolvedValue(`ip=${observedAddress}\n`);
+    const capture: CliCommandCapture = createCliCapture();
+    const { runCli } = await import('../src/app');
+
+    expect(await runCli(['install', '--target', 'vm', '--check'], capture.io)).toBe(1);
+
+    expect(readCliStderr(capture)).toContain(`observed public IPv4 ${observedAddress}`);
+    expect(readCliStderr(capture)).toContain(`local IPv4 addresses: ${localAddress}`);
     expect(mocks.provision).not.toHaveBeenCalled();
     expect(mocks.canonicalInstall).not.toHaveBeenCalled();
   });
