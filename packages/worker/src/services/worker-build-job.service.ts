@@ -20,7 +20,8 @@ export async function runWorkerBuildJob(
   input: RunWorkerBuildJobInput,
 ): Promise<DockerBuildImageResult> {
   const progress: BuildProgressStream = new BuildProgressStream(input.onProgressLine);
-  const options: KubeRunJobOptions = new WorkerBuildJobRunOptions(progress);
+  const options: KubeRunJobOptions | undefined =
+    input.onProgressLine === undefined ? undefined : new WorkerBuildJobRunOptions(progress);
   const capture: KubeJobResult = await runtime.runJob(buildKubeJobSpec(config, input), undefined, options);
   try {
     await progress.drain();

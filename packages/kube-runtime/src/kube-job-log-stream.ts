@@ -102,15 +102,15 @@ async function openLogOutputWithRetry(
 
 async function waitForRetry(signal: AbortSignal): Promise<void> {
   await new Promise<void>((resolve: () => void, reject: (error: Error) => void): void => {
-    const timer: NodeJS.Timeout = setTimeout(resolve, 250);
-    signal.addEventListener(
-      'abort',
-      (): void => {
-        clearTimeout(timer);
-        reject(jobLogAbortError(signal, 'log retry'));
-      },
-      { once: true },
-    );
+    const abort: () => void = (): void => {
+      clearTimeout(timer);
+      reject(jobLogAbortError(signal, 'log retry'));
+    };
+    const timer: NodeJS.Timeout = setTimeout((): void => {
+      signal.removeEventListener('abort', abort);
+      resolve();
+    }, 250);
+    signal.addEventListener('abort', abort, { once: true });
   });
 }
 

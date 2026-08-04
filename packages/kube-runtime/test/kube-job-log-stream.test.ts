@@ -1,4 +1,5 @@
 import { Log, type LogOptions } from '@kubernetes/client-node';
+import { getEventListeners } from 'node:events';
 import type { Writable } from 'node:stream';
 import { describe, expect, it, vi, type MockInstance } from 'vitest';
 import { followJobLogs } from '../src/kube-job-log-stream';
@@ -55,6 +56,7 @@ describe('Kubernetes Job log stream', (): void => {
     vi.useFakeTimers();
     const observation: PodObservation = new PodObservation();
     observation.complete();
+    const controller: AbortController = new AbortController();
     const followLog: MockInstance<FollowLog> = vi
       .spyOn(Log.prototype, 'log')
       .mockRejectedValueOnce(new Error('container starting'))
@@ -75,7 +77,7 @@ describe('Kubernetes Job log stream', (): void => {
       observation,
       'ns',
       'job-name',
-      new AbortController().signal,
+      controller.signal,
       vi.fn(),
     );
 
@@ -83,6 +85,7 @@ describe('Kubernetes Job log stream', (): void => {
 
     await expect(pending).resolves.toBeUndefined();
     expect(followLog).toHaveBeenCalledTimes(3);
+    expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
     vi.useRealTimers();
   });
 

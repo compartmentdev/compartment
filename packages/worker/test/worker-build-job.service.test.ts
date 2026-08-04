@@ -124,13 +124,17 @@ describe('runWorkerBuildJob', (): void => {
       return await Promise.resolve(successfulResult(finalize, '#4 done'));
     });
 
-    await expect(runWorkerBuildJob({ runJob }, buildConfig(), buildInput())).rejects.toThrow('log connection failed');
+    await expect(runWorkerBuildJob({ runJob }, buildConfig(), buildInput(vi.fn()))).rejects.toThrow(
+      'log connection failed',
+    );
     expect(finalize).toHaveBeenCalledOnce();
   });
 
   it('runs a deterministic gVisor Job with an ephemeral rootless BuildKit sidecar and deletes it after capture', async (): Promise<void> => {
     const finalize: Mock<() => Promise<void>> = vi.fn(async (): Promise<void> => await Promise.resolve());
-    const runJob: Mock<(spec: KubeJobSpec) => Promise<KubeJobResult>> = vi.fn(
+    const runJob: Mock<
+      (spec: KubeJobSpec, persisted?: undefined, options?: KubeRunJobOptions) => Promise<KubeJobResult>
+    > = vi.fn(
       async (): Promise<KubeJobResult> =>
         await Promise.resolve({
           completedAt: new Date(),
@@ -168,6 +172,7 @@ describe('runWorkerBuildJob', (): void => {
     });
 
     const spec: KubeJobSpec = runJob.mock.calls[0]![0];
+    expect(runJob.mock.calls[0]![2]).toBeUndefined();
     expect(spec).toMatchObject({
       cleanupPolicy: 'delete',
       id: 'art_123',
