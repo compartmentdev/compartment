@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createSourceArchive } from '@compartment/source-archive';
+import { createSourceArchive, type CreatedSourceArchive } from '@compartment/source-archive';
 import {
   type CompartmentAuthoredDescriptor,
   type CompartmentRoutesFile,
@@ -20,6 +20,7 @@ export interface ResolvedGitSourceSnapshot {
   descriptor: CompartmentAuthoredDescriptor;
   normalizedArchive: Buffer;
   routes?: CompartmentRoutesFile | undefined;
+  sourceDigest: string;
 }
 
 export async function resolveGitSourceSnapshot(
@@ -51,12 +52,13 @@ async function resolveGitSourceSnapshotInDirectory(
     task.descriptorPath,
   );
   requireMatchingDescriptorProjectName(descriptorFiles.descriptor, task.projectName, task.descriptorPath);
-  const sourceArchive: Buffer = await readNormalizedSourceArchive(repositoryRoot, task, descriptorFiles);
+  const sourceArchive: CreatedSourceArchive = await readNormalizedSourceArchive(repositoryRoot, task, descriptorFiles);
 
   return {
     descriptor: descriptorFiles.descriptor,
-    normalizedArchive: sourceArchive,
+    normalizedArchive: sourceArchive.sourceArchive,
     ...(descriptorFiles.routes !== undefined ? { routes: descriptorFiles.routes } : {}),
+    sourceDigest: sourceArchive.sourceDigest,
   };
 }
 
@@ -64,13 +66,11 @@ async function readNormalizedSourceArchive(
   repositoryRoot: string,
   task: WorkerClaimedGitSourceResolutionTask,
   descriptorFiles: ParsedGitSourceDescriptorFiles,
-): Promise<Buffer> {
-  return (
-    await createSourceArchive({
-      descriptor: descriptorFiles.descriptor,
-      descriptorFilePath: join(repositoryRoot, task.descriptorPath),
-      repositoryBoundaryDirectory: repositoryRoot,
-      ...(descriptorFiles.routes !== undefined ? { routes: descriptorFiles.routes } : {}),
-    })
-  ).sourceArchive;
+): Promise<CreatedSourceArchive> {
+  return await createSourceArchive({
+    descriptor: descriptorFiles.descriptor,
+    descriptorFilePath: join(repositoryRoot, task.descriptorPath),
+    repositoryBoundaryDirectory: repositoryRoot,
+    ...(descriptorFiles.routes !== undefined ? { routes: descriptorFiles.routes } : {}),
+  });
 }

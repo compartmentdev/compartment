@@ -160,6 +160,7 @@ function createApiConfig(): ApiConfig {
     usageMeteringIntervalMs: 60_000,
     usageRetentionDays: 400,
     auditRetentionDays: 90,
+    builderProfileDigest: 'sha256:' + 'e'.repeat(64),
     baseDomain: 'localhost',
     bindHost: '127.0.0.1',
     tlsMode: 'internal',

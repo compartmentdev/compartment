@@ -24,8 +24,9 @@ export async function deployProject(
   request: CompartmentRequester,
   body: DeployProjectInput,
   sourceArchive: Uint8Array,
+  sourceDigest: string,
 ): Promise<DeployResponse> {
-  const sourceUpload: SourceUploadSummary = await createSourceUpload(request, sourceArchive, {
+  const sourceUpload: SourceUploadSummary = await createSourceUpload(request, sourceArchive, sourceDigest, {
     ...(body.environmentName !== undefined ? { environmentName: body.environmentName } : {}),
     projectName: body.projectName,
   });

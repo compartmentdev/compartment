@@ -100,6 +100,13 @@ describe('platform k3d e2e shard runner', () => {
     expect(buildPlatformK3dShardEnvironment('user-flow', {}).COMPARTMENT_E2E_INGRESS_CLASS).toBe('traefik');
   });
 
+  it('assigns build performance to an isolated shard', () => {
+    expect(readPlatformK3dShardSuites('build-performance')).toEqual(['install', 'build-performance']);
+    const environment = buildPlatformK3dShardEnvironment('build-performance', {});
+    expect(environment.COMPARTMENT_E2E_SHARD).toBe('build-performance');
+    expect(environment.COMPARTMENT_E2E_CLUSTER_NAME).toBe('compartment-e2e-build-perf');
+  });
+
   it('assigns a unique port range to the minimal gVisor build shard', () => {
     expect(buildPlatformK3dShardEnvironment('gvisor-build', {})).toMatchObject({
       COMPARTMENT_E2E_GVISOR_ENABLED: '1',

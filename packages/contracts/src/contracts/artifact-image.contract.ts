@@ -25,9 +25,14 @@ export function retargetCompartmentArtifactImageDigestRef(
   if (repositoryIndex < 1) {
     return null;
   }
-  const digest: string = imageRef.slice(repositoryIndex + repositoryDigestSuffix.length);
-  if (!/^sha256:[a-f0-9]{64}$/u.test(digest)) {
+  const digest: string | null = readCompartmentArtifactImageDigest(imageRef);
+  if (digest === null) {
     return null;
   }
   return `${registryAddress}/${imageRepository}@${digest}`;
+}
+
+export function readCompartmentArtifactImageDigest(imageRef: string): string | null {
+  const digest: string | undefined = /@(sha256:[a-f0-9]{64})$/u.exec(imageRef)?.[1];
+  return digest ?? null;
 }

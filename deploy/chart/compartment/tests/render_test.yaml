@@ -180,6 +180,10 @@ tests:
           pattern: '^moby/buildkit@sha256:[a-f0-9]{64}$'
         template: configmap.yaml
       - matchRegex:
+          path: data.COMPARTMENT_BUILDER_PROFILE_DIGEST
+          pattern: '^sha256:[a-f0-9]{64}$'
+        template: configmap.yaml
+      - matchRegex:
           path: spec.template.spec.initContainers[0].image
           pattern: '^registry.k8s.io/kubectl@sha256:[a-f0-9]{64}$'
         template: api.yaml
@@ -189,6 +193,38 @@ tests:
           pattern: '^timberio/vector@sha256:[a-f0-9]{64}$'
         template: product-log-agent.yaml
         documentIndex: 4
+
+  - it: derives the builder profile from the resolved BuildKit image
+    set:
+      images:
+        buildkit:
+          digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    asserts:
+      - equal:
+          path: data.COMPARTMENT_BUILDER_PROFILE_DIGEST
+          value: sha256:cf188f20b2f11adc6a1560466aa1377dfe9e65067ff064e7402f0323a267204f
+        template: configmap.yaml
+
+  - it: derives the builder profile from the resolved worker image
+    set:
+      images:
+        worker:
+          digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    asserts:
+      - equal:
+          path: data.COMPARTMENT_BUILDER_PROFILE_DIGEST
+          value: sha256:090efd6c79cda839b86b7bb2ddd2f7121abfc479cf29fa6f039fc61cd6545b45
+        template: configmap.yaml
+
+  - it: keeps unrelated settings out of the builder profile
+    set:
+      platform:
+        logLevel: debug
+    asserts:
+      - equal:
+          path: data.COMPARTMENT_BUILDER_PROFILE_DIGEST
+          value: sha256:5979c9a469e71c5234de6d3d4cd2f86c48bc99e34447ee13a2bafd169282a3da
+        template: configmap.yaml
 
   - it: renders an operator-domain installation with the derived private registry address
     set:
@@ -959,7 +995,7 @@ tests:
           path: spec.template.spec.containers[0].env
           content:
             name: COMPARTMENT_WORKER_IMAGE
-            value: ghcr.io/compartmentdev/compartment-worker:latest
+            value: ghcr.io/compartmentdev/compartment-worker@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
           any: true
         template: api.yaml
         documentIndex: 1

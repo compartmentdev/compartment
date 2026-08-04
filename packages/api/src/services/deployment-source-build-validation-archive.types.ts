@@ -14,6 +14,7 @@ export type SourceArchiveTarEntryKind =
   | 'long-path';
 
 export interface ReadSourceArchiveResult {
+  logicalEntryPaths: string[];
   metadataFileContents: string;
 }
 
@@ -32,6 +33,7 @@ export interface PaxRecord {
 
 export interface SourceArchiveReaderState {
   entryCount: number;
+  logicalEntryPaths: Set<string>;
   metadataFileContents: string | null;
   nextPathOverride: string | null;
   pendingBuffer: Buffer;

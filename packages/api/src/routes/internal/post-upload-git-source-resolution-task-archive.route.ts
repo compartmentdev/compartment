@@ -2,14 +2,20 @@ import {
   buildFastifyResponseSchemas,
   type FastifyResponseSchemas,
   workerUploadGitSourceResolutionTaskArchiveResponseSchema,
+  workerUploadGitSourceResolutionTaskArchiveQuerySchema,
   workerUploadGitSourceResolutionTaskArchivePathnameTemplate,
   type WorkerUploadGitSourceResolutionTaskArchiveResponse,
+  type WorkerUploadGitSourceResolutionTaskArchiveQuery,
 } from '@compartment/contracts';
 import { hasText } from '@compartment/utils';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiApp } from '../../app.types';
 import { ApiBoundaryError } from '../../errors/api-boundary-error';
-import { storeSourceResolutionTaskArchive } from '../../services/git-source/source-resolution-task-archive-storage.service';
+import {
+  SourceResolutionTaskArchiveDigestMismatchError,
+  storeVerifiedSourceResolutionTaskArchive,
+} from '../../services/git-source/source-resolution-task-archive-storage.service';
+import { parseRequestValue } from '../../http/validation';
 
 interface GitSourceResolutionTaskArchiveRouteParams {
   taskId: string;
@@ -30,18 +36,44 @@ export function registerPostUploadGitSourceResolutionTaskArchiveRoute(
     workerUploadGitSourceResolutionTaskArchivePathnameTemplate,
     readUploadGitSourceResolutionTaskArchiveRouteOptions(sourceArchiveMaxBytes),
     async (
-      request: FastifyRequest<{ Params: GitSourceResolutionTaskArchiveRouteParams }>,
+      request: FastifyRequest<{
+        Params: GitSourceResolutionTaskArchiveRouteParams;
+        Querystring: WorkerUploadGitSourceResolutionTaskArchiveQuery;
+      }>,
       reply: FastifyReply,
     ): Promise<FastifyReply> => {
-      const taskId: string = requireTaskId(request.params.taskId);
-      const sourceArchive: Buffer = requireSourceArchiveBuffer(request);
-      await storeSourceResolutionTaskArchive(taskId, sourceArchive);
+      await storeRequestSourceArchive(request);
 
       const response: WorkerUploadGitSourceResolutionTaskArchiveResponse =
         workerUploadGitSourceResolutionTaskArchiveResponseSchema.parse({ success: true });
       return await reply.send(response);
     },
   );
+}
+
+async function storeRequestSourceArchive(
+  request: FastifyRequest<{
+    Params: GitSourceResolutionTaskArchiveRouteParams;
+    Querystring: WorkerUploadGitSourceResolutionTaskArchiveQuery;
+  }>,
+): Promise<void> {
+  const query: WorkerUploadGitSourceResolutionTaskArchiveQuery = parseRequestValue(
+    workerUploadGitSourceResolutionTaskArchiveQuerySchema,
+    request.query,
+    'invalid_worker_git_source_resolution_task_archive',
+  );
+  try {
+    await storeVerifiedSourceResolutionTaskArchive(
+      requireTaskId(request.params.taskId),
+      requireSourceArchiveBuffer(request),
+      query.sourceDigest,
+    );
+  } catch (error) {
+    if (error instanceof SourceResolutionTaskArchiveDigestMismatchError) {
+      throw new ApiBoundaryError(400, 'invalid_worker_git_source_resolution_task_archive', error.message);
+    }
+    throw error;
+  }
 }
 
 function readUploadGitSourceResolutionTaskArchiveRouteOptions(

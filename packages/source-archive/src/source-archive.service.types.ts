@@ -15,5 +15,6 @@ export interface SourceArchiveBuilderInput {
 export interface CreatedSourceArchive {
   archiveRoot: string;
   sourceArchive: Buffer;
+  sourceDigest: string;
   sourcePackageMetadata: CompartmentSourcePackageMetadata;
 }

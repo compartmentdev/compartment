@@ -123,6 +123,7 @@ describe('deployment progress services', (): void => {
     mocks.createSourceArchive.mockResolvedValue({
       archiveRoot: '/tmp/smoke-web',
       sourceArchive: Buffer.from('archive'),
+      sourceDigest: `v1:sha256:${'a'.repeat(64)}`,
       sourcePackageMetadata: {
         descriptorDirectoryRelativePath: '.',
         version: 1,

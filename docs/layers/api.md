@@ -12,6 +12,7 @@ Owns:
 May depend on:
 
 - `contracts`;
+- `source-archive`, only to verify the canonical logical digest of an accepted source archive;
 - `console`, only to resolve and serve the built control-plane assets from the owning package;
 - `sdk`;
 - `utils`.

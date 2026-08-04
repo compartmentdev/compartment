@@ -1,4 +1,3 @@
-import { createHash, type Hash } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -33,21 +32,21 @@ export function buildRailpackSecretArgs(secretFiles: readonly RailpackSecretFile
   ]);
 }
 
-export function buildRailpackSecretsHash(buildEnv: Record<string, string> | undefined): string | null {
+export function requireRailpackSecretsFingerprint(
+  buildEnv: Record<string, string> | undefined,
+  fingerprint: string | undefined,
+): string | null {
   if (buildEnv === undefined || Object.keys(buildEnv).length === 0) {
     return null;
   }
-
-  const hash: Hash = createHash('sha256');
-
-  for (const [name, value] of Object.entries(buildEnv).sort(compareBuildEnvEntries)) {
-    hash.update(name);
-    hash.update('\0');
-    hash.update(value);
-    hash.update('\0');
+  if (fingerprint === undefined || !isKeyedSha256Fingerprint(fingerprint)) {
+    throw new Error('A keyed build secret fingerprint is required when build secrets are present.');
   }
+  return fingerprint;
+}
 
-  return hash.digest('hex');
+export function isKeyedSha256Fingerprint(value: string): boolean {
+  return /^[a-f0-9]{64}$/u.test(value);
 }
 
 function compareBuildEnvEntries(left: [string, string], right: [string, string]): number {

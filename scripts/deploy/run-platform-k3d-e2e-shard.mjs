@@ -130,6 +130,8 @@ async function runShardSuites(suites, env, ownerEnvironmentPath, signal) {
       await runBuildMatrixPartition(env, 'b', signal);
     } else if (suite === 'gvisor-build') {
       await runBuildMatrixPartition(env, 'gvisor', signal);
+    } else if (suite === 'build-performance') {
+      await runCliE2eSuite(env, 'test/system-build-performance.e2e.test.ts', signal);
     } else if (suite === 'g1') {
       await runCliE2eSuite(env, 'test/platform-k3d-g1.e2e.test.ts', signal);
     } else if (suite === 'product-log') {

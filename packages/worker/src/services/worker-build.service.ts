@@ -1,3 +1,4 @@
+import { createHmac, type Hmac } from 'node:crypto';
 import {
   buildCompartmentArtifactImageRepository,
   buildCompartmentArtifactImageTag,
@@ -14,9 +15,10 @@ import {
 } from './worker-deployment-event.service';
 import type { WorkerDeploymentEventContext } from './worker-deployment-event.types';
 import { readWorkerArtifactRegistryInternalHost } from '../worker-artifact-registry';
+import { isManifestDigest } from '../registry-manifest-reference';
 import type { WorkerArtifactRegistryConfig } from '../worker-artifact-registry.types';
 import type { WorkerConfig } from '../config';
-import { buildCacheTag, issueBuildPushCredential } from '../registry-credentials';
+import { buildCacheTag, issueBuildPullCredential, issueBuildPushCredential } from '../registry-credentials';
 import type { RegistryCredential } from '../registry-credentials.types';
 import { decryptTenantSecretEnvironment } from '../tenant-secret-environment';
 import { runWorkerBuildJob } from './worker-build-job.service';
@@ -80,7 +82,7 @@ async function buildPreparedSourceImage(input: ReleaseImageBuildContext, build: 
       await runWorkerBuildJob(input.runtime, input.config.buildSandbox, {
         build: buildSourceJobInput(input, build),
         id: input.deployment.artifact.id,
-        internalToken: input.config.runtimeControlToken,
+        jobToken: input.deployment.buildJobToken,
         onProgressLine: createBuildProgressReporter(input.eventContext),
       }),
     startMessage: 'image build started',
@@ -120,10 +122,11 @@ function buildDockerJobInput(
 ): WorkerBuildJobDockerInput {
   const registry: WorkerArtifactRegistryConfig = input.config.artifactRegistry;
   return {
+    buildCacheKey: buildTenantCacheKey(input),
     ...(Object.keys(buildEnv).length === 0 ? {} : { buildEnv }),
+    buildSecretFingerprint: buildTenantSecretFingerprint(input, buildEnv),
     cacheImageRef: `${readWorkerArtifactRegistryInternalHost(registry)}/${repository}:${buildCacheTag}`,
     imageTag: build.imageTag,
-    labels: buildReleaseImageLabels(input.deployment),
     pushImageInsecureRegistry: new URL(registry.internalUrl).protocol === 'http:',
     pushImageTag: build.pushImageTag,
     pushRegistryCredentials: buildPushRegistryCredentials(
@@ -132,7 +135,47 @@ function buildDockerJobInput(
       input.deployment,
       repository,
     ),
+    scanRegistryCredentials: buildScanRegistryCredentials(input, repository),
   };
+}
+
+function buildTenantCacheKey(input: ReleaseImageBuildContext): string {
+  return createHmac('sha256', input.config.tenantSecretsKek.current)
+    .update('compartment:build-cache-key:v1')
+    .update('\0')
+    .update(input.deployment.projectId)
+    .update('\0')
+    .update(input.deployment.service.id)
+    .digest('hex');
+}
+
+function buildScanRegistryCredentials(input: ReleaseImageBuildContext, repository: string): DockerRegistryCredentials {
+  const credential: RegistryCredential = issueBuildPullCredential(
+    input.config.artifactRegistry.credentialSigningKey,
+    input.deployment.projectId,
+    repository,
+  );
+  return {
+    password: credential.password,
+    serverAddress: input.config.artifactRegistry.internalAddress,
+    username: credential.username,
+  };
+}
+
+function buildTenantSecretFingerprint(input: ReleaseImageBuildContext, buildEnv: Record<string, string>): string {
+  const fingerprint: Hmac = createHmac('sha256', input.config.tenantSecretsKek.current)
+    .update('compartment:build-cache-secret:v1')
+    .update('\0')
+    .update(input.deployment.projectId)
+    .update('\0')
+    .update(JSON.stringify(input.deployment.service.build))
+    .update('\0');
+  for (const [name, value] of Object.entries(buildEnv).sort(
+    ([left]: [string, string], [right]: [string, string]): number => left.localeCompare(right),
+  )) {
+    fingerprint.update(name).update('\0').update(value).update('\0');
+  }
+  return fingerprint.digest('hex');
 }
 
 function buildPushRegistryCredentials(
@@ -154,19 +197,11 @@ function buildPushRegistryCredentials(
   };
 }
 
-function createBuildProgressReporter(context: WorkerDeploymentEventContext): (line: DockerProgressLine) => void {
-  return (line: DockerProgressLine): void => {
-    void appendDeploymentLogLineSafely(context, 'building_image', line.stream, line.message, 'info');
-  };
-}
-
-function buildReleaseImageLabels(deployment: WorkerClaimedDeployment): Record<string, string> {
-  return {
-    'compartment.artifactId': deployment.artifact.id,
-    'compartment.environment': deployment.environmentName,
-    'compartment.project': deployment.projectName,
-    'compartment.service': deployment.service.name,
-  };
+function createBuildProgressReporter(
+  context: WorkerDeploymentEventContext,
+): (line: DockerProgressLine) => Promise<void> {
+  return async (line: DockerProgressLine): Promise<void> =>
+    await appendDeploymentLogLineSafely(context, 'building_image', line.stream, line.message, 'info');
 }
 
 function readPushedPreparedSourceImageRef(buildResult: DockerBuildImageResult, imageTag: string): string {
@@ -190,7 +225,7 @@ function readReusableArtifactImageRef(
   artifactRegistry: WorkerArtifactRegistryConfig,
 ): string | null {
   const imageRef: string | null = deployment.artifact.imageRef;
-  if (imageRef === null) {
+  if (deployment.artifact.buildState !== 'ready' || imageRef === null) {
     return null;
   }
   return retargetCompartmentArtifactImageDigestRef(
@@ -205,5 +240,6 @@ function buildReleaseImageRepository(deployment: WorkerClaimedDeployment): strin
 }
 
 function isDigestPinnedImageRef(imageRef: string): boolean {
-  return /@sha256:[a-f0-9]{64}$/u.test(imageRef);
+  const separatorIndex: number = imageRef.lastIndexOf('@');
+  return separatorIndex > 0 && isManifestDigest(imageRef.slice(separatorIndex + 1));
 }

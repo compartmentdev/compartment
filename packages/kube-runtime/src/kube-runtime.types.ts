@@ -11,7 +11,9 @@ import type { KubeToleration } from './kube-workload-scheduling.types';
 export type { KubeJobVolumeMount, KubePodVolume, KubeVolumeMount } from './kube-volume.types';
 export type {
   KubeJobEmptyDirVolume,
+  KubeJobInitializer,
   KubeJobResult,
+  KubeJobLogReporter,
   KubeJobSidecar,
   KubeJobSpec,
   KubeLogReference,
@@ -142,11 +144,14 @@ export interface KubeProjectedSidecarContainer extends Omit<KubeProjectedContain
   restartPolicy: 'Always';
 }
 
+export type KubeProjectedInitializerContainer = Omit<KubeProjectedContainer, 'env'>;
+
 export interface KubeProjectedPodSpec {
   automountServiceAccountToken: false;
   containers: KubeProjectedContainer[];
+  hostUsers?: false | undefined;
   imagePullSecrets?: KubeLocalObjectReference[] | undefined;
-  initContainers?: KubeProjectedSidecarContainer[] | undefined;
+  initContainers?: (KubeProjectedInitializerContainer | KubeProjectedSidecarContainer)[] | undefined;
   nodeSelector?: Readonly<Record<string, string>> | undefined;
   priorityClassName?: string | undefined;
   restartPolicy?: 'Never' | 'OnFailure' | undefined;

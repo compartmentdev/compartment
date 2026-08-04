@@ -320,8 +320,11 @@ function createDeployment(
 
   return {
     artifact: {
+      buildOwnerDeploymentId: null,
+      buildState: 'ready',
       createdAt,
       createdByPrincipalId: 'prn_123',
+      fingerprint: `sha256:fingerprint-${deploymentId}`,
       id: `art_${deploymentId}`,
       imageRef: `127.0.0.1:39461/repo/${deploymentId}@sha256:${deploymentId}`,
       imageRepository: `repo/${deploymentId}`,
@@ -331,6 +334,7 @@ function createDeployment(
       projectServiceId: 'svc_web',
       resolvedBuildEnvJson: '{}',
       resolvedBuildJson: '{}',
+      sbomDigest: `sha256:${deploymentId}`,
       sourceDigest: `sha256:${deploymentId}`,
       sourceUploadId: null,
       updatedAt: createdAt,

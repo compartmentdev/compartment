@@ -8,6 +8,8 @@ import type { WorkerClaimedDeploymentInput } from '../../services/presenter.type
 import type { ClaimedDeploymentBuildQueueResult } from '../../services/deployment-worker-claim.service.types';
 import { parseSerializedCompartmentRoutes } from '../../services/compartment-routes.service';
 import { parseResolvedBuild } from '../../services/deployment-build.service';
+import { getApiConfig } from '../../runtime/runtime-access';
+import { createBuildJobAccessToken } from './build-job-access-token';
 
 export function buildWorkerClaimDeploymentResponse(
   claimed: ClaimedDeploymentBuildQueueResult,
@@ -21,6 +23,11 @@ export function buildWorkerClaimDeploymentResponse(
 function buildWorkerClaimedDeployment(claimed: WorkerClaimedDeploymentInput): WorkerClaimedDeployment {
   return {
     artifact: buildWorkerArtifactSummary(claimed),
+    buildJobToken: createBuildJobAccessToken({
+      artifactId: claimed.deployment.artifact.id,
+      deploymentId: claimed.deployment.deployment.id,
+      secret: getApiConfig().runtimeControlToken,
+    }),
     buildEnv: claimed.buildEnv,
     deploymentId: claimed.deployment.deployment.id,
     deploymentRunId: claimed.deployment.deployment.deploymentRunId,
@@ -38,6 +45,7 @@ function buildWorkerClaimedDeployment(claimed: WorkerClaimedDeploymentInput): Wo
 
 function buildWorkerArtifactSummary(claimed: WorkerClaimedDeploymentInput): WorkerBuildArtifactSummary {
   return {
+    buildState: claimed.deployment.artifact.buildState,
     id: claimed.deployment.artifact.id,
     imageRef: claimed.deployment.artifact.imageRef,
     sourceDigest: claimed.deployment.artifact.sourceDigest,

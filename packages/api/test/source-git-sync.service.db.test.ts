@@ -36,6 +36,7 @@ import { claimSourceSyncTaskForTest } from './source-sync-task-test.fixtures';
 const { testDatabaseUrl } = readDatabaseTestMode();
 const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'git_source_sync_service');
 const apiConfig: ApiConfig = {
+  builderProfileDigest: 'sha256:' + 'e'.repeat(64),
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
   tlsMode: 'internal',

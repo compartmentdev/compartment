@@ -149,6 +149,7 @@ const otherGitSourceOrganizationId: string = 'org_other_git_sources';
 const { testDatabaseUrl } = readDatabaseTestMode();
 const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'git_source_bootstrap_service');
 const apiConfig: ApiConfig = {
+  builderProfileDigest: 'sha256:' + 'e'.repeat(64),
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
   tlsMode: 'internal',

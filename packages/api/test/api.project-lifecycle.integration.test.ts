@@ -813,7 +813,7 @@ describe('Phase 0 API integration project lifecycle', (): void => {
     const deployment: DeploymentSummary = requireDeployResponseDeployment(
       deployResponseSchema.parse((await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev')).json()),
     );
-    await claimNextQueuedDeployment(app);
+    const claimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
     const [project] = await db.select({ id: projects.id }).from(projects).where(eq(projects.name, 'smoke-web'));
     await db
       .update(projectKubeProvisioning)
@@ -867,7 +867,7 @@ describe('Phase 0 API integration project lifecycle', (): void => {
       imageRetentionState: 'available',
     });
     const sourceArchiveResponse: LightMyRequestResponse = await app.inject({
-      headers: { authorization: 'Bearer test-runtime-control-token' },
+      headers: { authorization: `Bearer ${claimedDeployment.buildJobToken}` },
       method: 'GET',
       url: `/internal/artifacts/${storedDeployment?.buildArtifactId ?? ''}/source-archive`,
     });
@@ -916,7 +916,7 @@ describe('Phase 0 API integration project lifecycle', (): void => {
 
     const sourceArchiveResponse: LightMyRequestResponse = await app.inject({
       headers: {
-        authorization: 'Bearer test-runtime-control-token',
+        authorization: `Bearer ${claimedDeployment.buildJobToken}`,
       },
       method: 'GET',
       url: `/internal/artifacts/${claimedDeployment.artifact.id}/source-archive`,

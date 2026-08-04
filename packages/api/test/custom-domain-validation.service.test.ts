@@ -99,6 +99,7 @@ describe('custom domain validation service', (): void => {
 
     const unsupportedRuntimeConfig: ApiConfig = {
       ...createApiConfig(),
+      builderProfileDigest: 'sha256:' + 'e'.repeat(64),
       baseDomain: 'customer.example.com',
       tlsMode: 'issuer',
     };
@@ -115,6 +116,7 @@ describe('custom domain validation service', (): void => {
 
     const operatorConfig: ApiConfig = {
       ...createApiConfig(),
+      builderProfileDigest: 'sha256:' + 'e'.repeat(64),
       baseDomain: 'customer.example.com',
       tlsMode: 'issuer',
       controlPlaneHost: 'console.customer.example.com',
@@ -135,6 +137,7 @@ function configureValidationRuntime(config: ApiConfig): void {
 
 function createApiConfig(): ApiConfig {
   return {
+    builderProfileDigest: 'sha256:' + 'e'.repeat(64),
     baseDomain: 'example.compartment.run',
     bindHost: '127.0.0.1',
     tlsMode: 'broker-dns01',

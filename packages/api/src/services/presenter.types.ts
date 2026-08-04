@@ -21,6 +21,7 @@ export interface DeployResponseInput {
 }
 
 export interface DeploymentArtifactSummaryInput {
+  buildState: 'building' | 'failed' | 'pending' | 'ready';
   id: string;
   imageRef: string | null;
   imageRetentionState: 'available' | 'cleaned';

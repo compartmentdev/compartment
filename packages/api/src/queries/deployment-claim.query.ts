@@ -1,5 +1,12 @@
 import { and, eq, lte, notExists, sql, type SQL } from 'drizzle-orm';
-import { deployments, deploymentKubeReferences, environments, projectServices, projects } from '../db/schema';
+import {
+  buildArtifacts,
+  deployments,
+  deploymentKubeReferences,
+  environments,
+  projectServices,
+  projects,
+} from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { requirePersistedRow } from './persisted-row.query.shared';
 import { toDeploymentRow } from './deployment-row.mapper';
@@ -63,8 +70,18 @@ const queuedBuildCandidateSelection: SQL = sql`
     inner join ${environments} on ${deployments.environmentId} = ${environments.id}
     inner join ${projects} on ${environments.projectId} = ${projects.id}
     inner join ${projectServices} on ${deployments.projectServiceId} = ${projectServices.id}
+    inner join ${buildArtifacts} on ${deployments.buildArtifactId} = ${buildArtifacts.id}
     where ${deployments.status} = ${'queued'}
       and ${projects.archivedAt} is null
+      and (
+        ${buildArtifacts.buildState} = ${'ready'}
+        or not exists (
+          select 1
+          from ${deployments} artifact_owner
+          where artifact_owner.build_artifact_id = ${deployments.buildArtifactId}
+            and artifact_owner.status = ${'running'}
+        )
+      )
   ) as candidate
   left join active_builds on active_builds.project_id = candidate.project_id
   cross join total_active_builds
@@ -118,8 +135,17 @@ function fairQueuedDeploymentClaimQuery(
       ${activeBuildsCommonTableExpression}
       ${totalActiveBuildsCommonTableExpression}
     ${queuedBuildCandidateSelection}
-    where total_active_builds.active_build_count < ${maximumConcurrentBuilds}
-      and coalesce(active_builds.active_build_count, 0) < ${maximumConcurrentBuildsPerProject}
+    where (
+      exists (
+        select 1 from ${buildArtifacts} reusable_artifact
+        where reusable_artifact.id = locked_deployment.build_artifact_id
+          and reusable_artifact.build_state = ${'ready'}
+      )
+      or (
+        total_active_builds.active_build_count < ${maximumConcurrentBuilds}
+        and coalesce(active_builds.active_build_count, 0) < ${maximumConcurrentBuildsPerProject}
+      )
+    )
     ${fairBuildCandidateOrder}
   `;
 }
@@ -145,6 +171,17 @@ export async function markQueuedDeploymentRunningWithExecutor(
     .returning();
 
   return rows[0] === undefined ? undefined : toDeploymentRow(requirePersistedRow(rows[0], 'deployment'));
+}
+
+export async function claimBuildArtifactOwnershipWithExecutor(
+  tx: DeploymentTransaction,
+  deployment: DeploymentRow,
+  now: Date,
+): Promise<void> {
+  await tx
+    .update(buildArtifacts)
+    .set({ buildOwnerDeploymentId: deployment.id, buildState: 'building', updatedAt: now })
+    .where(and(eq(buildArtifacts.id, deployment.buildArtifactId), sql`${buildArtifacts.buildState} <> ${'ready'}`));
 }
 
 export async function requeueOrphanedDeploymentBuildClaims(staleBefore: Date): Promise<number> {

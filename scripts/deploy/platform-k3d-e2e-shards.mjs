@@ -12,6 +12,11 @@ export const platformK3dShardDefinitions = Object.freeze({
     suites: Object.freeze(['public-operator-install', 'managed-install', 'retained-state']),
   }),
   'system-update': Object.freeze({ index: 6, suites: Object.freeze(['install', 'system-update']) }),
+  'build-performance': Object.freeze({
+    clusterName: 'compartment-e2e-build-perf',
+    index: 7,
+    suites: Object.freeze(['install', 'build-performance']),
+  }),
 });
 
 export const platformK3dShardNames = Object.freeze(Object.keys(platformK3dShardDefinitions));

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   authorizeRegistryRequest,
+  issueBuildPullCredential,
   issueBuildPushCredential,
   issueProjectPullCredential,
   verifyRegistryCredential,
@@ -11,6 +12,20 @@ const signingKey: string = 'registry-signing-key-with-at-least-32-characters';
 const repository: string = 'projects/prj_123/services/svc_123';
 
 describe('project-scoped registry credentials', (): void => {
+  it('limits build scan credentials to pull access in one repository and expires them', (): void => {
+    const credential: RegistryCredentialPayload = authenticate(
+      issueBuildPullCredential(signingKey, 'prj_123', repository, 100),
+    );
+
+    expect(authorizeRegistryRequest(credential, 'GET', `/v2/${repository}/manifests/art_123`, 101)).not.toBeNull();
+    expect(
+      authorizeRegistryRequest(credential, 'GET', '/v2/projects/prj_123/services/svc_other/manifests/art_123', 101),
+    ).toBeNull();
+    expect(authorizeRegistryRequest(credential, 'PUT', `/v2/${repository}/manifests/art_123`, 101)).toBeNull();
+    expect(authorizeRegistryRequest(credential, 'GET', `/v2/${repository}/manifests/art_123`, 3_700)).not.toBeNull();
+    expect(authorizeRegistryRequest(credential, 'GET', `/v2/${repository}/manifests/art_123`, 3_701)).toBeNull();
+  });
+
   it('rejects cross-project pull before registry access', (): void => {
     const credential: RegistryCredentialPayload = authenticate(issueProjectPullCredential(signingKey, 'prj_123'));
 

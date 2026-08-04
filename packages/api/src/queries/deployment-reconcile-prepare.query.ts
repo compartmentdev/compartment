@@ -1,4 +1,5 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, or, type SQL } from 'drizzle-orm';
+import { readCompartmentArtifactImageDigest } from '@compartment/contracts';
 import { buildArtifacts, deploymentKubeReferences, deployments, environments, projects } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { ensureDeploymentRouteWithExecutor } from './deployment-route-persistence.query';
@@ -18,6 +19,10 @@ import type {
   PrepareDeploymentReconcileResult,
   PrepareDeploymentRow,
 } from './deployment-reconcile.query.types';
+
+interface PersistedSbomMarker {
+  id: string;
+}
 
 export async function prepareDeploymentReconcileReference(
   input: PrepareDeploymentReconcileInput,
@@ -72,10 +77,57 @@ async function updateBuildArtifact(
   deployment: PrepareDeploymentRow,
   now: Date,
 ): Promise<void> {
-  await tx
+  const imageDigest: string = requireImageDigest(input.imageRef);
+  const [artifact] = await tx
     .update(buildArtifacts)
-    .set({ imageCleanedAt: null, imageRef: input.imageRef, imageRetentionState: 'available', updatedAt: now })
-    .where(eq(buildArtifacts.id, deployment.buildArtifactId));
+    .set({
+      buildOwnerDeploymentId: null,
+      buildState: 'ready',
+      imageCleanedAt: null,
+      imageRef: input.imageRef,
+      imageRetentionState: 'available',
+      updatedAt: now,
+    })
+    .where(requirePersistedSbomFilter(deployment.buildArtifactId, input.deploymentId, input.imageRef, imageDigest))
+    .returning({ id: buildArtifacts.id });
+  requirePersistedArtifactSbom(artifact);
+}
+
+function requirePersistedSbomFilter(
+  artifactId: string,
+  deploymentId: string,
+  imageRef: string,
+  imageDigest: string,
+): SQL | undefined {
+  return and(
+    eq(buildArtifacts.id, artifactId),
+    or(
+      eq(buildArtifacts.buildOwnerDeploymentId, deploymentId),
+      and(
+        isNull(buildArtifacts.buildOwnerDeploymentId),
+        eq(buildArtifacts.buildState, 'ready'),
+        eq(buildArtifacts.imageRef, imageRef),
+        eq(buildArtifacts.imageRetentionState, 'available'),
+      ),
+    ),
+    eq(buildArtifacts.sbomImageDigest, imageDigest),
+    isNotNull(buildArtifacts.sbomDigest),
+    isNotNull(buildArtifacts.sbomJson),
+  );
+}
+
+function requireImageDigest(imageRef: string): string {
+  const digest: string | null = readCompartmentArtifactImageDigest(imageRef);
+  if (digest === null) {
+    throw new Error('Build artifact readiness requires a digest-pinned image.');
+  }
+  return digest;
+}
+
+function requirePersistedArtifactSbom(artifact: PersistedSbomMarker | undefined): void {
+  if (artifact === undefined) {
+    throw new Error('Build artifact readiness requires a persisted SBOM.');
+  }
 }
 
 async function insertDesiredReference(

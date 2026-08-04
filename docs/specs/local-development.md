@@ -10,8 +10,9 @@ curl -sSL https://railpack.com/install.sh | sh
 ```
 
 - `pnpm dev` expects `caddy`, `docker`, and `railpack` on `PATH`.
-- Source builds require a configured Kubernetes context and build namespace; each build starts its own rootless
-  BuildKit Job. A gVisor RuntimeClass is optional and can be selected for additional kernel isolation.
+- Source builds require a configured Kubernetes context and build namespace. Each new artifact starts one BuildKit
+  Job inside a private Kubernetes user namespace; identical concurrent deploys join it and ready unchanged artifacts
+  start none. A gVisor RuntimeClass is optional and can be selected for additional kernel isolation.
 - The `docker` CLI must reach a Docker-compatible daemon for the loopback artifact registry container.
 - Local development uses env-configured PostgreSQL, not Docker-managed infra for the control plane.
 
@@ -38,6 +39,7 @@ pnpm platform:e2e:run managed-install
 pnpm platform:e2e:run user-flow
 pnpm platform:e2e:run build-matrix-a
 pnpm platform:e2e:run build-matrix-b
+pnpm platform:e2e:run build-performance
 pnpm platform:e2e:run console
 ```
 

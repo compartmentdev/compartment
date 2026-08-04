@@ -57,6 +57,7 @@ const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'git
 const webhookSecretParts: readonly [string, string] = ['webhook', 'secret'];
 const webhookSecret: string = webhookSecretParts.join('-');
 const apiConfig: ApiConfig = {
+  builderProfileDigest: 'sha256:' + 'e'.repeat(64),
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
   tlsMode: 'internal',

@@ -17,7 +17,7 @@ import {
   deploymentStatusResponseSchema,
 } from '@compartment/contracts';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
-import { deployments, organizations, projects } from '../src/db/schema';
+import { buildArtifacts, deployments, organizations, projects } from '../src/db/schema';
 import { recoverOrphanedDeploymentBuildClaims } from '../src/services/deployment-worker.service';
 import { createApp } from '../src/app';
 import type { ApiApp } from '../src/app.types';
@@ -41,6 +41,17 @@ interface IdentifiedRow {
   id: string;
 }
 
+interface PendingArtifactSource {
+  createdByPrincipalId: string | null;
+  imageRepository: string;
+  projectId: string;
+  projectServiceId: string;
+  resolvedBuildEnvJson: string;
+  resolvedBuildJson: string;
+  sourceDigest: string;
+  sourceUploadId: string | null;
+}
+
 interface AppAccessEdgeServiceModule {
   invalidateEdgeAppAccessSessions: () => Promise<void>;
   synchronizeEdgeAppAccessState: () => Promise<void>;
@@ -60,6 +71,7 @@ const variablesMasterKey: Buffer = parseVariablesMasterKey('11'.repeat(32));
 const deploymentRuntimeMovementTimeoutMs: number = 20_000;
 const apiConfig: ApiConfig = {
   bindHost: '127.0.0.1',
+  builderProfileDigest: 'sha256:' + 'e'.repeat(64),
   baseDomain: 'localhost',
   tlsMode: 'internal',
   controlPlaneHost: 'console.localhost',
@@ -144,13 +156,17 @@ describe('deployment runtime movement claim order integration', (): void => {
         organizationSlug: 'beta-dev',
       });
 
+      const queuedBuilds: DeploymentSummary[] = [];
       for (let index: number = 0; index < 10; index += 1) {
-        await queuePromotion(installPayload, {
-          sourceEnvironmentName: 'staging',
-          targetEnvironmentName: `preview-${index.toString()}`,
-        });
+        queuedBuilds.push(
+          await queuePromotion(installPayload, {
+            sourceEnvironmentName: 'staging',
+            targetEnvironmentName: `preview-${index.toString()}`,
+          }),
+        );
       }
-      await queuePromotion(installPayload, { organizationSlug: 'beta-dev' });
+      queuedBuilds.push(await queuePromotion(installPayload, { organizationSlug: 'beta-dev' }));
+      await Promise.all(queuedBuilds.map(clonePendingBuildArtifactForDeployment));
 
       const acmeProjectId: string = await findProjectIdForOrganization('smoke-web', 'acme-dev');
       const betaProjectId: string = await findProjectIdForOrganization('smoke-web', 'beta-dev');
@@ -347,6 +363,41 @@ async function queuePromotion(
   expect(response.statusCode).toBe(200);
   const payload: DeployResponse = deployResponseSchema.parse(response.json());
   return requireDeployResponseDeployment(payload);
+}
+
+async function clonePendingBuildArtifactForDeployment(deployment: DeploymentSummary): Promise<void> {
+  const [sourceArtifact]: PendingArtifactSource[] = await db
+    .select({
+      createdByPrincipalId: buildArtifacts.createdByPrincipalId,
+      imageRepository: buildArtifacts.imageRepository,
+      projectId: buildArtifacts.projectId,
+      projectServiceId: buildArtifacts.projectServiceId,
+      resolvedBuildEnvJson: buildArtifacts.resolvedBuildEnvJson,
+      resolvedBuildJson: buildArtifacts.resolvedBuildJson,
+      sourceDigest: buildArtifacts.sourceDigest,
+      sourceUploadId: buildArtifacts.sourceUploadId,
+    })
+    .from(deployments)
+    .innerJoin(buildArtifacts, eq(buildArtifacts.id, deployments.buildArtifactId))
+    .where(eq(deployments.id, deployment.id));
+  if (sourceArtifact === undefined) {
+    throw new Error(`Expected build artifact for queued deployment ${deployment.id}.`);
+  }
+  const artifactId: string = `bar_fair_${deployment.id}`;
+  await db.insert(buildArtifacts).values({
+    buildOwnerDeploymentId: null,
+    buildState: 'pending',
+    createdByPrincipalId: sourceArtifact.createdByPrincipalId,
+    id: artifactId,
+    imageRepository: sourceArtifact.imageRepository,
+    projectId: sourceArtifact.projectId,
+    projectServiceId: sourceArtifact.projectServiceId,
+    resolvedBuildEnvJson: sourceArtifact.resolvedBuildEnvJson,
+    resolvedBuildJson: sourceArtifact.resolvedBuildJson,
+    sourceDigest: sourceArtifact.sourceDigest,
+    sourceUploadId: sourceArtifact.sourceUploadId,
+  });
+  await db.update(deployments).set({ buildArtifactId: artifactId }).where(eq(deployments.id, deployment.id));
 }
 
 async function injectPromoteRequest(

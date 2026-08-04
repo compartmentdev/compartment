@@ -140,6 +140,8 @@ compartment variable remove DATABASE_URL --service api
 ```
 
 Descriptor connections and CLI resource-output bindings resolve at runtime only. They cannot be selected in `build.env`.
+Build-time variables are supported by Railpack builds. Dockerfile builds reject `build.env` because passing those
+values as Docker build arguments would expose them in process arguments and image or cache metadata.
 
 After removing a resource from `compartment.yml`, you can still clean up its scoped variables and group bindings with
 `compartment variable remove --resource <name>` and `compartment variable unbind --resource <name>`.

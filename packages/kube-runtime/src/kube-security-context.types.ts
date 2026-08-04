@@ -1,13 +1,35 @@
 export interface KubeContainerSecurityContext {
   allowPrivilegeEscalation?: boolean | undefined;
-  appArmorProfile?: { type: 'Unconfined' } | undefined;
-  capabilities?: { drop: ['ALL'] } | undefined;
+  capabilities?:
+    | {
+        add?: KubeBuildKitCapabilitySet;
+        drop: ['ALL'];
+      }
+    | undefined;
   privileged?: false | undefined;
   readOnlyRootFilesystem?: true | undefined;
   runAsGroup?: number | undefined;
-  runAsNonRoot?: true | undefined;
+  runAsNonRoot?: boolean | undefined;
   runAsUser?: number | undefined;
 }
+
+export type KubeBuildKitCapabilitySet = [
+  'SYS_ADMIN',
+  'CHOWN',
+  'SETUID',
+  'SETGID',
+  'DAC_OVERRIDE',
+  'FOWNER',
+  'FSETID',
+  'SETFCAP',
+  'SETPCAP',
+  'SYS_CHROOT',
+  'MKNOD',
+  'KILL',
+  'AUDIT_WRITE',
+  'NET_BIND_SERVICE',
+  'NET_RAW',
+];
 
 export interface KubePodSecurityContext {
   fsGroup?: number | undefined;
@@ -15,5 +37,5 @@ export interface KubePodSecurityContext {
   runAsGroup?: number | undefined;
   runAsNonRoot?: true | undefined;
   runAsUser?: number | undefined;
-  seccompProfile?: { type: 'RuntimeDefault' | 'Unconfined' } | undefined;
+  seccompProfile?: { type: 'RuntimeDefault' } | undefined;
 }

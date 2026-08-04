@@ -469,6 +469,7 @@ function createReadInput(): DisconnectGitSourceInput {
 
 function createApiConfig(): ApiConfig {
   return {
+    builderProfileDigest: 'sha256:' + 'e'.repeat(64),
     baseDomain: 'localhost',
     bindHost: '127.0.0.1',
     tlsMode: 'internal',

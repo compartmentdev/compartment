@@ -26,6 +26,7 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_API_PORT: z.coerce.number().int().positive(),
   ...auditFileSinkConfigEnvSchema,
   COMPARTMENT_BASE_DOMAIN: z.string().min(1),
+  COMPARTMENT_BUILDER_PROFILE_DIGEST: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
   COMPARTMENT_TLS_MODE: z.enum(['broker-dns01', 'internal', 'issuer']),
   COMPARTMENT_DATABASE_URL: z.string().min(1),
   COMPARTMENT_EDGE_INTERNAL_HOST: z.string().min(1),
@@ -65,6 +66,7 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
 export interface ApiConfig {
   auditFileSink: AuditFileSinkConfig;
   baseDomain: string;
+  builderProfileDigest: string;
   bindHost: string;
   tlsMode: 'broker-dns01' | 'internal' | 'issuer';
   controlPlaneHost: string;
@@ -115,6 +117,7 @@ type ApiRuntimeConfig = Pick<
   ApiConfig,
   | 'auditFileSink'
   | 'auditRetentionDays'
+  | 'builderProfileDigest'
   | 'auditRetentionCleanupBatchSize'
   | 'auditRetentionCleanupCron'
   | 'auditRetentionCleanupMaxBatches'
@@ -229,6 +232,7 @@ function readApiRuntimeConfig(parsed: ApiConfigEnv): ApiRuntimeConfig {
     ),
     auditRetentionCleanupMaxBatches: parsed.COMPARTMENT_AUDIT_RETENTION_CLEANUP_MAX_BATCHES,
     auditRetentionDays: parsed.COMPARTMENT_AUDIT_RETENTION_DAYS,
+    builderProfileDigest: parsed.COMPARTMENT_BUILDER_PROFILE_DIGEST,
     usageMeteringIntervalMs: parsed.COMPARTMENT_USAGE_METERING_INTERVAL_MS,
     usageRetentionDays: parsed.COMPARTMENT_USAGE_RETENTION_DAYS,
     rollbackRetentionLimit: parseOptionalPositiveInt(

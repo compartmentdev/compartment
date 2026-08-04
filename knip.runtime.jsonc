@@ -18,7 +18,7 @@
     // Browser-safe utils entry is consumed through the Vite alias in packages/console/vite.config.ts.
     "packages/utils/src/browser.ts",
   ],
-  "ignoreBinaries": ["astro", "dotenv"],
+  "ignoreBinaries": ["astro", "dotenv", "syft"],
   "ignoreDependencies": ["dotenv-cli"],
   "ignoreIssues": {
     // These broker request schemas are public contract validators for broker implementations outside this workspace.
@@ -26,6 +26,8 @@
     // DNS-01 presentation and replay are public SDK operations consumed by the solver and external broker clients.
     "packages/sdk/src/index.ts": ["exports"],
     "packages/sdk/src/services/managed-domain.service.ts": ["exports"],
+    // The API consumes the logical digest through the source-archive package entrypoint.
+    "packages/source-archive/src/index.ts": ["exports"],
   },
   "ignoreWorkspaces": ["packages/test-support", "packages/eslint-config", "packages/eslint-plugin"],
   "workspaces": {

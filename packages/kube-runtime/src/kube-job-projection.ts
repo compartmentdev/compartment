@@ -2,22 +2,20 @@ import type {
   KubeJobManifest,
   KubeJobManifestSpec,
   KubeJobSpec,
-  KubeJobSidecar,
   KubeJobVolumeMount,
-  KubeLiteralEnvVariable,
   KubeManifest,
   KubeObservedManifest,
   KubePodVolume,
   KubeProjectedContainer,
-  KubeProjectedSidecarContainer,
   KubeProjectedPodSpec,
   KubeSecretEnvVariable,
   KubeVolumeMount,
 } from './kube-runtime.types';
 import { compareKubeKey } from './kube-key-order';
+import { projectJobInitContainers } from './kube-job-init-container-projection';
 import { kubeSecretName } from './kube-naming';
 import { secretChecksum } from './kube-secret-projection';
-import type { KubeContainerSecurityContext, KubePodSecurityContext } from './kube-security-context.types';
+import type { KubePodSecurityContext } from './kube-security-context.types';
 import {
   projectPodSecurityContext,
   projectVolumeSecurityContext,
@@ -83,9 +81,10 @@ function jobSpec(spec: KubeJobSpec, labels: Record<string, string>): KubeJobMani
   const podSpec: KubeProjectedPodSpec = {
     automountServiceAccountToken: false,
     containers: [jobContainer(spec)],
+    ...(spec.sidecars === undefined || spec.sidecars.length === 0 ? {} : { hostUsers: false }),
     imagePullSecrets:
       spec.imagePullSecretId === undefined ? undefined : [{ name: kubeSecretName(spec.imagePullSecretId) }],
-    ...(spec.sidecars === undefined ? {} : { initContainers: spec.sidecars.map(projectSidecar) }),
+    ...projectJobInitContainers(spec),
     ...projectTenantScheduling(spec.scheduling),
     ...(spec.priorityClassName === undefined ? {} : { priorityClassName: spec.priorityClassName }),
     restartPolicy: 'Never',
@@ -108,7 +107,7 @@ function jobPodSecurityContext(spec: KubeJobSpec): KubePodSecurityContext | unde
     return {
       fsGroup: 1000,
       fsGroupChangePolicy: 'OnRootMismatch',
-      seccompProfile: { type: 'Unconfined' },
+      seccompProfile: { type: 'RuntimeDefault' },
     };
   }
   const volumeGroupContext: KubePodSecurityContext =
@@ -123,38 +122,6 @@ function jobPodSecurityContext(spec: KubeJobSpec): KubePodSecurityContext | unde
     return { ...resourcePodSecurityContext(spec.image), ...volumeGroupContext };
   }
   return Object.keys(volumeGroupContext).length === 0 ? undefined : volumeGroupContext;
-}
-
-function projectSidecar(sidecar: KubeJobSidecar): KubeProjectedSidecarContainer {
-  const env: KubeLiteralEnvVariable[] = Object.entries(sidecar.env)
-    .sort(([leftName]: [string, string], [rightName]: [string, string]): number => leftName.localeCompare(rightName))
-    .map(
-      ([name, value]: [string, string]): KubeLiteralEnvVariable => ({
-        name,
-        value,
-      }),
-    );
-  return {
-    args: sidecar.args,
-    env,
-    image: sidecar.image,
-    name: sidecar.name,
-    resources: sidecar.resources,
-    restartPolicy: 'Always',
-    securityContext: rootlessBuildKitSecurityContext(),
-    volumeMounts: sidecar.volumeMounts,
-  };
-}
-
-function rootlessBuildKitSecurityContext(): KubeContainerSecurityContext {
-  return {
-    allowPrivilegeEscalation: true,
-    appArmorProfile: { type: 'Unconfined' },
-    readOnlyRootFilesystem: true,
-    runAsGroup: 1000,
-    runAsNonRoot: true,
-    runAsUser: 1000,
-  };
 }
 
 function jobContainer(spec: KubeJobSpec): KubeProjectedContainer {

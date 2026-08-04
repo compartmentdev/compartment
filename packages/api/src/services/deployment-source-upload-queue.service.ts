@@ -1,6 +1,7 @@
 import { consumeSourceUploadAndCreateQueuedDeploymentBatch } from '../queries/deployment-batch.query';
 import type {
   ConsumeSourceUploadAndCreateQueuedDeploymentBatchInput,
+  ConsumeSourceUploadAndCreateQueuedDeploymentBatchResult,
   CreateQueuedDeploymentBatchItem,
   DeploymentRow,
 } from '../queries/deployments.query.types';
@@ -13,7 +14,7 @@ import {
 } from './deployment-creation.service.access';
 import { buildQueuedDeploymentBatchItem } from './deployment-creation.service.helpers';
 import type { PreparedQueuedDeploymentState } from './deployment-creation.service.types';
-import { requireDeployableSourceUpload } from './source-uploads.service';
+import { cleanupConsumedSourceUpload, requireDeployableSourceUpload } from './source-uploads.service';
 
 export async function requireAuthorizedSubmitSourceUpload(
   input: DeployInputContext,
@@ -47,10 +48,17 @@ export async function queuePreparedDeployments(
   label: string | undefined,
 ): Promise<DeploymentRow[]> {
   const consumedAt: Date = new Date();
-  const queuedDeployments: DeploymentRow[] | undefined = await consumeSourceUploadAndCreateQueuedDeploymentBatch(
-    buildQueuedDeploymentBatchInput(preparedStates, sourceUploadScope, label, consumedAt),
-  );
-  return queuedDeployments ?? (await throwSourceUploadNoLongerDeployableError(sourceUploadScope));
+  const result: ConsumeSourceUploadAndCreateQueuedDeploymentBatchResult | undefined =
+    await consumeSourceUploadAndCreateQueuedDeploymentBatch(
+      buildQueuedDeploymentBatchInput(preparedStates, sourceUploadScope, label, consumedAt),
+    );
+  if (result === undefined) {
+    return await throwSourceUploadNoLongerDeployableError(sourceUploadScope);
+  }
+  if (result.redundantSourceUploadId !== null) {
+    await cleanupConsumedSourceUpload(result.redundantSourceUploadId);
+  }
+  return result.deployments;
 }
 
 async function requireDeployableSubmitSourceUpload(input: DeployInputContext): Promise<SourceUploadRow> {

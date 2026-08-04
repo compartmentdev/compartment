@@ -5,6 +5,7 @@ import type { ContractSchema } from './schema.types';
 
 export const compartmentSourceUploadsPathname: string = '/v1/source-uploads';
 export const sourceUploadArchiveMultipartFieldName: string = 'sourceArchive';
+export const sourceUploadDigestMultipartFieldName: string = 'sourceDigest';
 
 export interface SourceUploadSummary {
   byteSize: number;
@@ -21,6 +22,7 @@ export interface SourceUploadCreateQuery {
 }
 
 export const sourceUploadIdSchema: ContractSchema<string> = z.string().min(1);
+export const logicalSourceDigestSchema: ContractSchema<string> = z.string().regex(/^v1:sha256:[a-f0-9]{64}$/u);
 
 export const sourceUploadCreateQuerySchema: ContractSchema<SourceUploadCreateQuery> = z
   .object({
@@ -41,6 +43,6 @@ export const sourceUploadSummarySchema: ContractSchema<SourceUploadSummary> = z
     createdAt: z.string().datetime(),
     expiresAt: z.string().datetime(),
     id: sourceUploadIdSchema,
-    sourceDigest: z.string().min(1),
+    sourceDigest: logicalSourceDigestSchema,
   })
   .strict();

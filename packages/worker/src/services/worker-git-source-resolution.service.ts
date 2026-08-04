@@ -37,7 +37,12 @@ async function resolveClaimedGitSourceResolutionTask(
 ): Promise<void> {
   try {
     const snapshot: ResolvedGitSourceSnapshot = await resolveGitSourceSnapshot(task);
-    await uploadGitSourceResolutionTaskArchive(rawRequest, task.taskId, snapshot.normalizedArchive);
+    await uploadGitSourceResolutionTaskArchive(
+      rawRequest,
+      task.taskId,
+      snapshot.normalizedArchive,
+      snapshot.sourceDigest,
+    );
     await completeGitSourceResolutionTask(request, {
       descriptor: snapshot.descriptor,
       ...(snapshot.routes !== undefined ? { routes: snapshot.routes } : {}),

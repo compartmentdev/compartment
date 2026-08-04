@@ -24,6 +24,7 @@ import {
   type ResolvedCompartmentServiceRunConfig,
 } from './service-run.contract';
 import { tenantSecretEnvironmentSchema, type TenantSecretEnvironment } from './internal-tenant-secret.contract';
+import { logicalSourceDigestSchema } from './source-uploads.contract';
 
 export interface WorkerProjectServiceSummary {
   build: ResolvedCompartmentServiceBuildConfig;
@@ -34,6 +35,7 @@ export interface WorkerProjectServiceSummary {
 }
 
 export interface WorkerBuildArtifactSummary {
+  buildState: 'building' | 'failed' | 'pending' | 'ready';
   id: string;
   imageRef: string | null;
   sourceDigest: string;
@@ -41,6 +43,7 @@ export interface WorkerBuildArtifactSummary {
 
 export interface WorkerClaimedDeployment {
   artifact: WorkerBuildArtifactSummary;
+  buildJobToken: string;
   buildEnv: TenantSecretEnvironment;
   deploymentId: string;
   deploymentRunId: string;
@@ -95,10 +98,25 @@ export interface WorkerAppendDeploymentEventRequest {
   timestamp?: string | undefined;
 }
 
+export interface WorkerUploadArtifactSbomRequest {
+  digest: string;
+  imageDigest: string;
+  sbomJson: string;
+}
+
+export interface WorkerUploadArtifactSbomResponse {
+  stored: boolean;
+}
+
 export const workerAppendDeploymentEventPathname: string = '/internal/deployments/events';
 export const workerClaimNextDeploymentPathname: string = '/internal/deployments/claim-next';
 export const workerFailDeploymentPathname: string = '/internal/deployments/fail';
 export const workerRecoverOrphanedBuildClaimsPathname: string = '/internal/deployments/requeue-orphaned-builds';
+export function workerArtifactSbomPath(artifactId: string): string {
+  return `/internal/artifacts/${encodeURIComponent(artifactId)}/sbom`;
+}
+
+const sha256DigestSchema: ContractSchema<string> = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 
 export const workerClaimDeploymentRequestSchema: ContractSchema<WorkerClaimDeploymentRequest> = z
   .object({
@@ -119,15 +137,17 @@ const workerProjectServiceSummarySchema: ContractSchema<WorkerProjectServiceSumm
 
 const workerBuildArtifactSummarySchema: ContractSchema<WorkerBuildArtifactSummary> = z
   .object({
+    buildState: z.enum(['building', 'failed', 'pending', 'ready']),
     id: z.string().min(1),
     imageRef: z.string().min(1).nullable(),
-    sourceDigest: z.string().min(1),
+    sourceDigest: logicalSourceDigestSchema,
   })
   .strict();
 
 const workerClaimedDeploymentSchema: ContractSchema<WorkerClaimedDeployment> = z
   .object({
     artifact: workerBuildArtifactSummarySchema,
+    buildJobToken: z.string().min(1),
     buildEnv: tenantSecretEnvironmentSchema,
     deploymentId: z.string().min(1),
     deploymentRunId: z.string().min(1),
@@ -181,4 +201,16 @@ export const workerAppendDeploymentEventRequestSchema: ContractSchema<WorkerAppe
     stream: z.enum(['compartment', 'stdout', 'stderr']),
     timestamp: z.string().datetime().optional(),
   })
+  .strict();
+
+export const workerUploadArtifactSbomRequestSchema: ContractSchema<WorkerUploadArtifactSbomRequest> = z
+  .object({
+    digest: sha256DigestSchema,
+    imageDigest: sha256DigestSchema,
+    sbomJson: z.string().min(1),
+  })
+  .strict();
+
+export const workerUploadArtifactSbomResponseSchema: ContractSchema<WorkerUploadArtifactSbomResponse> = z
+  .object({ stored: z.boolean() })
   .strict();

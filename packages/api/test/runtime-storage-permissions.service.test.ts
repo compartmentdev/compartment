@@ -18,10 +18,8 @@ import {
   resolveSourceUploadArchivePath,
   storeSourceUploadArchive,
 } from '../src/services/source-upload-storage.service';
-import {
-  resolveSourceResolutionTaskArchivePath,
-  storeSourceResolutionTaskArchive,
-} from '../src/services/git-source/source-resolution-task-archive-storage.service';
+import { storeSourceResolutionTaskArchive } from '../src/services/git-source/source-resolution-task-archive-file-storage.service';
+import { resolveSourceResolutionTaskArchivePath } from '../src/services/git-source/source-resolution-task-archive-storage.service';
 import {
   chmodPrivateRuntimeStorageFile,
   repairPrivateRuntimeStoragePermissions,
@@ -199,6 +197,7 @@ function createRuntimeStorageApiConfig(runtimeRoot: string): ApiConfig {
     usageMeteringIntervalMs: 60_000,
     usageRetentionDays: 400,
     auditRetentionDays: 90,
+    builderProfileDigest: 'sha256:' + 'e'.repeat(64),
     baseDomain: 'localhost',
     bindHost: '127.0.0.1',
     tlsMode: 'internal',

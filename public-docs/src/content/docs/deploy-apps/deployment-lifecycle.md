@@ -16,8 +16,10 @@ compartment deployment list
 compartment deployment logs --follow
 ```
 
-Compartment queues deployments per selected service, runs the service build path, stores immutable image references, and
-activates runtime state only after the candidate starts successfully.
+Compartment queues deployments per selected service and resolves each service to an immutable image reference. A new
+source or build configuration runs the service build path. An unchanged retained artifact skips image construction,
+and concurrent identical deploys join the same build. Runtime state activates only after the candidate starts
+successfully.
 
 If a service declares `release.command`, it runs once before the candidate starts and routes switch. A non-zero exit or
 10-minute timeout fails that deploy attempt and leaves the previous active deployment serving traffic.
@@ -96,7 +98,7 @@ deployment when no active deployment exists, and identifies the failed deploymen
 
 When a deployment fails, `compartment status` and `compartment inspect` show the observed stage and stored failure
 reason, followed by a deployment-logs command to run next. Stages follow the work that actually ran, including source
-preparation, image build and publication, Kubernetes apply, readiness waiting, and rollback restoration or activation.
+preparation, artifact reuse or joined image build and publication, Kubernetes apply, readiness waiting, and rollback restoration or activation.
 They do not describe a Kubernetes rollout failure or rollback as an image build.
 
 The browser control plane also exposes deployment history and deployment run details for projects, which is useful when you want to inspect older rollouts interactively instead of staying in the CLI.

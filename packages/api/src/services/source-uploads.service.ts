@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import {
   createForbiddenError,
@@ -116,7 +115,7 @@ async function readPreparedSourceUploadArchive(
   sourceUploadId: string,
   archivePath: string,
 ): Promise<PreparedSourceUploadArchive> {
-  await validateSourceUploadArchive(archivePath);
+  const sourceDigest: string = await validateSourceUploadArchive(archivePath);
   const archiveBuffer: Buffer = await readFile(archivePath);
 
   return {
@@ -124,7 +123,7 @@ async function readPreparedSourceUploadArchive(
     storedArchive: {
       archiveBase64: archiveBuffer.toString('base64'),
       byteSize: archiveBuffer.byteLength,
-      sourceDigest: createHash('sha256').update(archiveBuffer).digest('hex'),
+      sourceDigest,
     },
   };
 }
@@ -169,7 +168,10 @@ async function validatePreparedSourceUploadForPersist(
   try {
     throwIfSourceArchiveTruncated(input);
     validateStoredSourceUploadArchive(preparedArchive);
-    await validatePreparedSourceUploadArchive(preparedArchive);
+    const sourceDigest: string = await validatePreparedSourceUploadArchive(preparedArchive);
+    if (sourceDigest !== input.sourceDigest) {
+      throw createInvalidSourceUploadError('Source archive logical digest does not match the uploaded digest.');
+    }
   } catch (error) {
     await deleteSourceUploadArchiveBestEffort(preparedArchive.sourceUploadId);
     if (error instanceof SourceUploadArchiveTooLargeError) {
@@ -179,8 +181,8 @@ async function validatePreparedSourceUploadForPersist(
   }
 }
 
-async function validatePreparedSourceUploadArchive(preparedArchive: PreparedSourceUploadArchive): Promise<void> {
-  await validateSourceUploadArchive(resolveSourceUploadArchivePath(preparedArchive.sourceUploadId));
+async function validatePreparedSourceUploadArchive(preparedArchive: PreparedSourceUploadArchive): Promise<string> {
+  return await validateSourceUploadArchive(resolveSourceUploadArchivePath(preparedArchive.sourceUploadId));
 }
 
 function validateStoredSourceUploadArchive(preparedArchive: PreparedSourceUploadArchive): void {
@@ -205,7 +207,9 @@ async function persistPreparedSourceUploadRecord(
 }
 
 async function persistSourceUploadRecord(
-  input: Pick<CreateSourceUploadStreamInput, 'actorPrincipalId' | 'organizationId' | 'scope'>,
+  input: Pick<CreateSourceUploadStreamInput, 'actorPrincipalId' | 'organizationId' | 'scope'> & {
+    sourceDigest?: string | undefined;
+  },
   preparedArchive: PreparedSourceUploadArchive,
   now: Date,
 ): Promise<DeployableSourceUpload> {
@@ -219,7 +223,7 @@ async function persistSourceUploadRecord(
     organizationId: input.organizationId,
     projectId: input.scope.projectId,
     projectServiceId: input.scope.projectServiceId,
-    sourceDigest: preparedArchive.storedArchive.sourceDigest,
+    sourceDigest: input.sourceDigest ?? preparedArchive.storedArchive.sourceDigest,
   });
 }
 

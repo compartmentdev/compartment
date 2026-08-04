@@ -5,7 +5,7 @@ export const repoRootDir = fileURLToPath(new URL('../../', import.meta.url));
 const allowedBoundaryImportsByPackage = {
   contracts: [],
   utils: [],
-  api: ['console', 'contracts', 'sdk', 'utils'],
+  api: ['console', 'contracts', 'sdk', 'source-archive', 'utils'],
   console: ['contracts', 'utils'],
   edge: ['contracts', 'sdk', 'utils'],
   docker: [],

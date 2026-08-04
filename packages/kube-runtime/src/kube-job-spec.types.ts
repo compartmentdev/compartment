@@ -8,6 +8,8 @@ export interface KubeLogReference {
   tailLines?: number | undefined;
 }
 
+export type KubeJobLogReporter = (line: string) => void | Promise<void>;
+
 export interface KubeJobSpec {
   args?: string[] | undefined;
   cleanupPolicy?: 'delete' | 'ttl' | undefined;
@@ -17,9 +19,11 @@ export interface KubeJobSpec {
   id: string;
   image: string;
   imagePullSecretId?: string | undefined;
+  initializers?: KubeJobInitializer[] | undefined;
   jobClass: 'build' | 'release' | 'operation';
   labels: Readonly<Record<string, string>>;
   namespace: string;
+  onLogLine?: KubeJobLogReporter | undefined;
   priorityClassName?: string | undefined;
   resources?: object | undefined;
   scheduling?: KubeWorkloadScheduling | undefined;
@@ -31,6 +35,14 @@ export interface KubeJobSpec {
   volumeMounts?: KubeJobVolumeMount[] | undefined;
 }
 
+export interface KubeJobInitializer {
+  args?: string[] | undefined;
+  command?: string[] | undefined;
+  image: string;
+  name: string;
+  volumeMounts: KubeVolumeMount[];
+}
+
 export interface KubeJobEmptyDirVolume {
   containerMountPath?: string | undefined;
   name: string;
@@ -38,11 +50,12 @@ export interface KubeJobEmptyDirVolume {
 
 export interface KubeJobSidecar {
   args?: string[] | undefined;
+  command?: string[] | undefined;
   env: Readonly<Record<string, string>>;
   image: string;
   name: string;
   resources?: object | undefined;
-  securityProfile: 'rootless-buildkit';
+  securityProfile: 'userns-buildkit';
   volumeMounts: KubeVolumeMount[];
 }
 

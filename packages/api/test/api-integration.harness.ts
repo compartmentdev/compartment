@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,6 +13,7 @@ import {
   installResponseSchema,
   serializeCompartmentSourcePackageMetadata,
   sourceUploadArchiveMultipartFieldName,
+  sourceUploadDigestMultipartFieldName,
   sourceUploadSummarySchema,
   variableResponseSchema,
   workerClaimDeploymentResponseSchema,
@@ -37,6 +38,12 @@ import {
 } from '@compartment/contracts';
 import type { LightMyRequestResponse } from 'fastify';
 import type { PoolClient } from 'pg';
+import { createLogicalSourceDigest } from '@compartment/source-archive';
+import { readSourceArchive } from '../src/services/deployment-source-build-validation-archive-reader.service';
+import type {
+  ReadSourceArchiveResult,
+  SourceArchiveTarEntryKind,
+} from '../src/services/deployment-source-build-validation-archive.types';
 import { expect } from 'vitest';
 import type { ApiApp } from '../src/app.types';
 import { readApiInstallToken } from '../src/config';
@@ -44,9 +51,11 @@ import {
   findNextDeploymentReconcilePair,
   persistDeploymentReconcileObservation,
 } from '../src/queries/deployment-reconcile.query';
+import { findJoinedDeploymentById } from '../src/queries/deployment-joined.query';
 import type { DeploymentReconcilePair } from '../src/queries/deployment-reconcile.query.types';
+import type { DeploymentJoinedRow } from '../src/queries/deployments.query.types';
+import { persistBuildArtifactSbom } from '../src/services/build-artifact-sbom.service';
 import { prepareDeploymentReconcile } from '../src/services/deployment-reconcile.service';
-import type { SourceArchiveTarEntryKind } from '../src/services/deployment-source-build-validation-archive.types';
 import type { StoredDeploymentRow } from './api.integration.types';
 
 const executeFileAsync: (file: string, args: readonly string[]) => Promise<{ stderr: string; stdout: string }> =
@@ -84,6 +93,7 @@ interface InjectSourceUploadRequestOptions {
   projectName?: string | undefined;
   serviceName?: string | undefined;
   sourceArchive?: Buffer | undefined;
+  sourceDigest?: string | undefined;
 }
 
 export interface ExpectedRunConfig {
@@ -208,8 +218,13 @@ export async function injectSourceUploadRequest(
   const options: InjectSourceUploadRequestOptions = Buffer.isBuffer(sourceArchiveOrOptions)
     ? { sourceArchive: sourceArchiveOrOptions }
     : (sourceArchiveOrOptions ?? {});
+  const sourceArchive: Buffer = options.sourceArchive ?? (await createDefaultDeploySourceArchive());
   const multipartRequest: MultipartRequest = buildMultipartRequest([
-    createSourceArchiveMultipartPart(options.sourceArchive ?? (await createDefaultDeploySourceArchive())),
+    createMultipartFieldPart(
+      sourceUploadDigestMultipartFieldName,
+      options.sourceDigest ?? (await readTestSourceArchiveDigest(sourceArchive)),
+    ),
+    createSourceArchiveMultipartPart(sourceArchive),
   ]);
 
   return await apiApp.inject({
@@ -222,6 +237,30 @@ export async function injectSourceUploadRequest(
     payload: multipartRequest.payload,
     url: buildSourceUploadUrl(options),
   });
+}
+
+async function readTestSourceArchiveDigest(sourceArchive: Buffer): Promise<string> {
+  const archiveDirectory: string = await mkdtemp(join(tmpdir(), 'compartment-api-digest-'));
+  const archivePath: string = join(archiveDirectory, 'source.tgz');
+  const extractionDirectory: string = join(archiveDirectory, 'extract');
+  try {
+    await writeFile(archivePath, sourceArchive);
+    const archive: ReadSourceArchiveResult = await readSourceArchive(archivePath);
+    await mkdir(extractionDirectory);
+    await executeFileAsync('tar', ['-xzf', archivePath, '-C', extractionDirectory]);
+    return await createLogicalSourceDigest(
+      extractionDirectory,
+      archive.logicalEntryPaths.filter(
+        (entryPath: string): boolean => entryPath !== compartmentSourcePackageMetadataArchivePath,
+      ),
+      compartmentSourcePackageMetadataArchivePath,
+      archive.metadataFileContents,
+    );
+  } catch {
+    return `v1:sha256:${'0'.repeat(64)}`;
+  } finally {
+    await rm(archiveDirectory, { force: true, recursive: true });
+  }
 }
 
 export async function createUploadedSourceArchive(
@@ -631,10 +670,11 @@ export async function completeClaimedDeployment(
   routeHost: string = 'smoke-web.localhost',
   observedAt: Date = new Date(),
 ): Promise<void> {
+  const imageRef: string = await persistTestBuildArtifactSbom(deploymentId);
   await prepareDeploymentReconcile({
     deploymentId,
     deploymentName: `app-${deploymentId}`,
-    imageRef: 'registry.example/app@sha256:image',
+    imageRef,
     namespace: `cpt-${deploymentId}`,
     networkPolicyNames: [],
     routeHost,
@@ -658,6 +698,28 @@ export async function completeClaimedDeployment(
       revision: 1,
     }),
   ).toBe(true);
+}
+
+export async function persistTestBuildArtifactSbom(deploymentId: string): Promise<string> {
+  const deployment: DeploymentJoinedRow | undefined = await findJoinedDeploymentById(deploymentId, 'localhost');
+  if (deployment === undefined) {
+    throw new Error(`Expected deployment ${deploymentId} before persisting test SBOM evidence.`);
+  }
+  if (deployment.artifact.buildState === 'ready' && deployment.artifact.imageRef !== null) {
+    return deployment.artifact.imageRef;
+  }
+  const imageDigest: string = `sha256:${createHash('sha256').update(deploymentId).digest('hex')}`;
+  const sbomJson: string = JSON.stringify({ artifacts: [{ name: deployment.service.name }] });
+  expect(
+    await persistBuildArtifactSbom({
+      artifactId: deployment.artifact.id,
+      deploymentId,
+      digest: `sha256:${createHash('sha256').update(sbomJson).digest('hex')}`,
+      imageDigest,
+      sbomJson,
+    }),
+  ).toBe(true);
+  return `registry.example/app@${imageDigest}`;
 }
 
 export async function acknowledgeKubeDeploymentStopped(deploymentId: string): Promise<void> {

@@ -18,6 +18,12 @@ import type {
 
 interface BuildArtifactsColumnBuilders {
   id: PrimaryTextBuilder<'id'>;
+  fingerprint: OptionalTextBuilder<'fingerprint'>;
+  buildState: DefaultEnumTextBuilder<'build_state', ['pending', 'building', 'ready', 'failed']>;
+  buildOwnerDeploymentId: OptionalTextBuilder<'build_owner_deployment_id'>;
+  sbomDigest: OptionalTextBuilder<'sbom_digest'>;
+  sbomImageDigest: OptionalTextBuilder<'sbom_image_digest'>;
+  sbomJson: OptionalTextBuilder<'sbom_json'>;
   projectId: RequiredTextBuilder<'project_id'>;
   projectServiceId: RequiredTextBuilder<'project_service_id'>;
   createdByPrincipalId: OptionalTextBuilder<'created_by_principal_id'>;

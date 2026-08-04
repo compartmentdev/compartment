@@ -800,7 +800,7 @@ describe('Phase 0 API integration projects', (): void => {
 
     const remainingArchiveResponse: LightMyRequestResponse = await app.inject({
       headers: {
-        authorization: 'Bearer test-runtime-control-token',
+        authorization: `Bearer ${claimedBackofficeDeployment.buildJobToken}`,
       },
       method: 'GET',
       url: `/internal/artifacts/${claimedBackofficeDeployment.artifact.id}/source-archive`,
@@ -812,7 +812,7 @@ describe('Phase 0 API integration projects', (): void => {
 
     const retainedArchiveResponse: LightMyRequestResponse = await app.inject({
       headers: {
-        authorization: 'Bearer test-runtime-control-token',
+        authorization: `Bearer ${claimedBackofficeDeployment.buildJobToken}`,
       },
       method: 'GET',
       url: `/internal/artifacts/${claimedBackofficeDeployment.artifact.id}/source-archive`,

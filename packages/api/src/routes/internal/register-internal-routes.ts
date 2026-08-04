@@ -9,6 +9,7 @@ import { registerGetPodMetricNamespacesRoute } from './get-pod-metric-namespaces
 import { registerPostAppAccessExchangeRoute } from './post-app-access-exchange.route';
 import { registerPostAppAccessLogoutRoute } from './post-app-access-logout.route';
 import { registerPostAppAccessSessionResolveRoute } from './post-app-access-session-resolve.route';
+import { registerPostArtifactSbomRoute } from './post-artifact-sbom.route';
 import { registerPostClaimDeploymentRoute } from './post-claim-deployment.route';
 import { registerPostRecoverOrphanedBuildClaimsRoute } from './post-recover-orphaned-build-claims.route';
 import { registerPostClaimGitSourceResolutionTaskRoute } from './post-claim-git-source-resolution-task.route';
@@ -44,6 +45,7 @@ export function registerInternalApiRoutes(
   app.register(registerEdgeInternalRoutes);
   app.register(registerProductLogInternalRoutes);
   app.register(registerWorkerInternalRoutes, options);
+  app.register(registerBuildJobInternalRoutes);
   done();
 }
 
@@ -77,7 +79,6 @@ function registerWorkerInternalRoutes(
   done: RegisterInternalRoutesDone,
 ): void {
   app.addHook('preHandler', authenticateInternalWorkerRequest);
-  registerGetArtifactSourceArchiveRoute(app);
   registerGetPodMetricNamespacesRoute(app);
   registerPostClaimDeploymentRoute(app);
   registerPostRecoverOrphanedBuildClaimsRoute(app);
@@ -86,6 +87,16 @@ function registerWorkerInternalRoutes(
   registerPostFailDeploymentRoute(app);
   registerWorkerOperationRoutes(app);
   registerGitSourceResolutionWorkerRoutes(app, options.sourceArchiveMaxBytes);
+  done();
+}
+
+function registerBuildJobInternalRoutes(
+  app: ApiApp,
+  _options: FastifyPluginOptions,
+  done: RegisterInternalRoutesDone,
+): void {
+  registerGetArtifactSourceArchiveRoute(app);
+  registerPostArtifactSbomRoute(app);
   done();
 }
 

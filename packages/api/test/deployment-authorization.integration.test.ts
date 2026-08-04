@@ -71,6 +71,7 @@ const deploymentAuthorizationDatabaseUrl: string = deriveProcessScopedDatabaseUr
 );
 const apiConfig: ApiConfig = {
   bindHost: '127.0.0.1',
+  builderProfileDigest: 'sha256:' + 'e'.repeat(64),
   baseDomain: 'localhost',
   tlsMode: 'internal',
   controlPlaneHost: 'console.localhost',
@@ -358,6 +359,6 @@ function expectLowPrivilegeDeployment(deployment: DeploymentReadSummary | undefi
 function expectPrivilegedInspectDeployment(deployment: DeploymentInspectTarget | undefined): void {
   expect(deployment).toBeDefined();
   expect(deployment?.routeHost).toBe('smoke-web.localhost');
-  expect(deployment?.runtime?.imageRef).toBe('registry.example/app@sha256:image');
+  expect(deployment?.runtime?.imageRef).toMatch(/^registry\.example\/app@sha256:[a-f0-9]{64}$/u);
   expect(deployment?.runtime?.servicePort).toBe(80);
 }

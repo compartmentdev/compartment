@@ -41,10 +41,11 @@ async function buildSourceUploadResponse(request: FastifyRequest): Promise<Sourc
   try {
     const sourceUpload: CreatedSourceUpload = await parsePostSourceUploadRequest<CreatedSourceUpload>(
       request,
-      async (sourceArchive: MultipartFile): Promise<CreatedSourceUpload> => {
+      async (sourceArchive: MultipartFile, sourceDigest: string): Promise<CreatedSourceUpload> => {
         const createdSourceUpload: CreatedSourceUpload = await createSourceUploadFromMultipartFile(
           request,
           sourceArchive,
+          sourceDigest,
           scope,
         );
         sourceUploadId = createdSourceUpload.id;
@@ -87,6 +88,7 @@ async function resolveSourceUploadScopeForRequest(request: FastifyRequest): Prom
 async function createSourceUploadFromMultipartFile(
   request: FastifyRequest,
   sourceArchive: MultipartFile,
+  sourceDigest: string,
   scope: SourceUploadScope,
 ): Promise<CreatedSourceUpload> {
   return await createSourceUploadFromStream({
@@ -95,6 +97,7 @@ async function createSourceUploadFromMultipartFile(
     organizationId: request.currentOrganization.id,
     scope,
     sourceArchiveStream: sourceArchive.file,
+    sourceDigest,
   });
 }
 

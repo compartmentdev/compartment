@@ -44,6 +44,7 @@ const apiConfig: ApiConfig = {
   auditRetentionCleanupCron: '0 3 * * *',
   auditRetentionCleanupMaxBatches: 10,
   auditRetentionDays: 90,
+  builderProfileDigest: 'sha256:' + 'e'.repeat(64),
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
   controlPlaneHost: 'console.localhost',

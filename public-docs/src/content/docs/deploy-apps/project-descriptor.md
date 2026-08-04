@@ -68,6 +68,9 @@ Monorepos can use `build.include` to widen a source build to the workspace root.
 context root becomes the package-manager detection and install root. Include the root `package.json`, lockfile,
 workspace file, and any shared packages needed by the build, then run a root-aware command:
 
+`build.env` is supported for Railpack builds. Dockerfile builds reject `build.env` because Docker build arguments can
+expose their values in process arguments and image or cache metadata.
+
 ```yaml
 name: api-platform
 

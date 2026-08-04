@@ -70,7 +70,11 @@ services:
     );
 
     const snapshot: ResolvedGitSourceSnapshot = await resolveGitSourceSnapshot(createResolutionTask());
+    const repeatedSnapshot: ResolvedGitSourceSnapshot = await resolveGitSourceSnapshot(createResolutionTask());
     const extractionDirectory: string = await extractArchive(snapshot.normalizedArchive);
+
+    expect(snapshot.sourceDigest).toMatch(/^v1:sha256:[a-f0-9]{64}$/u);
+    expect(repeatedSnapshot.sourceDigest).toBe(snapshot.sourceDigest);
 
     expect(snapshot.descriptor).toMatchObject({
       name: 'browser-commenter',

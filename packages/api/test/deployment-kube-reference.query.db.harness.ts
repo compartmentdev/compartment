@@ -29,6 +29,9 @@ interface DeploymentKubeReferenceDatabaseTestContext {
   readonly pool: Pool;
 }
 
+const candidateArtifactImageDigest: string = `sha256:${'c'.repeat(64)}`;
+export const candidateArtifactImageRef: string = `repo/kube@${candidateArtifactImageDigest}`;
+
 export function createDeploymentKubeReferenceDatabaseTestContext(
   scope: string,
 ): DeploymentKubeReferenceDatabaseTestContext {
@@ -116,13 +119,18 @@ export async function seedCandidate(db: Database): Promise<void> {
     type: 'deployment.create',
   });
   await db.insert(buildArtifacts).values({
+    buildOwnerDeploymentId: 'dep_candidate',
+    buildState: 'building',
     id: 'bar_candidate',
-    imageRef: 'repo/kube@sha256:candidate',
+    imageRef: candidateArtifactImageRef,
     imageRepository: 'repo/kube',
     projectId: 'prj_kube',
     projectServiceId: 'svc_kube',
     resolvedBuildEnvJson: '{}',
     resolvedBuildJson: '{}',
+    sbomDigest: `sha256:${'d'.repeat(64)}`,
+    sbomImageDigest: candidateArtifactImageDigest,
+    sbomJson: '{"artifacts":[{"name":"candidate"}]}',
     sourceDigest: 'sha256:candidate',
   });
   await db.insert(deploymentRuns).values({ environmentId: 'env_kube', id: 'drn_candidate', triggerType: 'manual' });
@@ -170,6 +178,7 @@ function buildApiConfig(url: string): ApiConfig {
     usageMeteringIntervalMs: 60_000,
     usageRetentionDays: 400,
     auditRetentionDays: 90,
+    builderProfileDigest: 'sha256:' + 'e'.repeat(64),
     baseDomain: 'localhost',
     bindHost: '127.0.0.1',
     tlsMode: 'internal',

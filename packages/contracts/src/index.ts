@@ -218,18 +218,23 @@ export {
   type WorkerFailDeploymentRequest,
   type WorkerRecoverOrphanedBuildClaimsResponse,
   type WorkerRecoverOrphanedBuildClaimsRequest,
+  type WorkerUploadArtifactSbomRequest,
+  type WorkerUploadArtifactSbomResponse,
   type WorkerProjectServiceSummary,
   type WorkerBuildArtifactSummary,
   workerAppendDeploymentEventPathname,
   workerClaimNextDeploymentPathname,
   workerFailDeploymentPathname,
   workerRecoverOrphanedBuildClaimsPathname,
+  workerArtifactSbomPath,
   workerAppendDeploymentEventRequestSchema,
   workerClaimDeploymentResponseSchema,
   workerClaimDeploymentRequestSchema,
   workerFailDeploymentRequestSchema,
   workerRecoverOrphanedBuildClaimsResponseSchema,
   workerRecoverOrphanedBuildClaimsRequestSchema,
+  workerUploadArtifactSbomRequestSchema,
+  workerUploadArtifactSbomResponseSchema,
 } from './contracts/internal-worker.contract';
 export * from './contracts/internal-product-job.contract';
 export * from './contracts/internal-deployment-reconcile.contract';

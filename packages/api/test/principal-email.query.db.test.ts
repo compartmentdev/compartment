@@ -30,6 +30,7 @@ import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 const { testDatabaseUrl } = readDatabaseTestMode();
 const principalEmailQueryDatabaseUrl: string = deriveDatabaseUrl(testDatabaseUrl, 'principal_email_query');
 const apiConfig: ApiConfig = {
+  builderProfileDigest: 'sha256:' + 'e'.repeat(64),
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
   tlsMode: 'internal',

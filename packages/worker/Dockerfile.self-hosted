@@ -54,6 +54,37 @@ RUN apt-get update \
 
 RUN build-railpack
 
+FROM --platform=$BUILDPLATFORM ${COMPARTMENT_GO_BUILD_IMAGE} AS runc-launcher-build
+
+ARG TARGETARCH
+ARG TARGETOS
+
+ENV CGO_ENABLED=0 GOARCH=${TARGETARCH} GOOS=${TARGETOS} GOTOOLCHAIN=local
+
+WORKDIR /workspace
+
+COPY packages/worker/scripts/runc-no-new-keyring.go ./runc-no-new-keyring.go
+
+RUN go build -trimpath -ldflags='-s -w' -o /out/runc-no-new-keyring ./runc-no-new-keyring.go
+
+FROM --platform=$TARGETPLATFORM debian:bookworm-slim AS syft-install
+
+ARG COMPARTMENT_SYFT_VERSION=1.44.0
+ARG TARGETARCH
+
+RUN apt-get update \
+  && apt-get install --yes --no-install-recommends ca-certificates curl \
+  && case "${TARGETARCH}" in \
+    amd64) SYFT_SHA256='0e91737aee2b5baf1d255b959630194a302335d848ff97bb07921eb6205b5f5a' ;; \
+    arm64) SYFT_SHA256='6f6cdcdc695721d91ce756e3b5bc3e3416599c464101f5e32e9c3f33054ee6d9' ;; \
+    *) exit 1 ;; \
+  esac \
+  && curl --fail --location --silent --show-error \
+    --output /tmp/syft.tar.gz \
+    "https://github.com/anchore/syft/releases/download/v${COMPARTMENT_SYFT_VERSION}/syft_${COMPARTMENT_SYFT_VERSION}_linux_${TARGETARCH}.tar.gz" \
+  && printf '%s  %s\n' "${SYFT_SHA256}" /tmp/syft.tar.gz | sha256sum --check --strict \
+  && tar --extract --gzip --file /tmp/syft.tar.gz --directory /usr/local/bin syft
+
 FROM ${COMPARTMENT_NODE_RUNTIME_IMAGE} AS runtime
 
 ARG COMPARTMENT_RUNTIME_UID=10001
@@ -65,6 +96,8 @@ LABEL org.opencontainers.image.source="https://github.com/compartmentdev/compart
 
 COPY --from=buildctl-build /out/buildctl /usr/local/bin/buildctl
 COPY --from=railpack-build /out/railpack /usr/local/bin/railpack
+COPY --from=runc-launcher-build /out/runc-no-new-keyring /usr/local/bin/runc-no-new-keyring
+COPY --from=syft-install /usr/local/bin/syft /usr/local/bin/syft
 
 RUN apt-get update \
   && apt-get upgrade --yes --no-install-recommends \

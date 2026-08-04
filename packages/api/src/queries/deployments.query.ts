@@ -1,4 +1,4 @@
-import { and, eq, inArray, or, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { buildArtifacts, deployments, environments } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -17,23 +17,38 @@ import type {
   MarkBuildArtifactsCleanedInput,
   MarkDeploymentFailedInput,
   PersistedDeploymentRow,
-  UpdateBuildArtifactImageInput,
   PersistedBuildArtifactRow,
 } from './deployments.query.types';
 
-export async function updateBuildArtifactImage(input: UpdateBuildArtifactImageInput): Promise<BuildArtifactRow> {
+export async function failOwnedBuildArtifact(
+  buildArtifactId: string,
+  deploymentId: string,
+  imageRef?: string,
+): Promise<boolean> {
   const [artifact] = await getApiDatabase()
     .update(buildArtifacts)
     .set({
-      imageCleanedAt: null,
-      imageRef: input.imageRef,
-      imageRetentionState: 'available',
-      updatedAt: input.updatedAt,
+      buildOwnerDeploymentId: null,
+      buildState: 'failed',
+      fingerprint: retainedFailedArtifactFingerprint(deploymentId),
+      ...(imageRef === undefined ? {} : { imageRef }),
+      sbomDigest: null,
+      sbomImageDigest: null,
+      sbomJson: null,
+      updatedAt: new Date(),
     })
-    .where(eq(buildArtifacts.id, input.buildArtifactId))
-    .returning();
+    .where(and(eq(buildArtifacts.id, buildArtifactId), eq(buildArtifacts.buildOwnerDeploymentId, deploymentId)))
+    .returning({ fingerprint: buildArtifacts.fingerprint });
+  return artifact?.fingerprint === null;
+}
 
-  return toBuildArtifactRow(requirePersistedRow(artifact, 'build artifact'));
+function retainedFailedArtifactFingerprint(deploymentId: string): SQL<string | null> {
+  return sql<string | null>`case when exists (
+    select 1 from ${deployments}
+    where ${deployments.buildArtifactId} = ${buildArtifacts.id}
+      and ${deployments.id} <> ${deploymentId}
+      and ${deployments.status} = ${'queued'}
+  ) then ${buildArtifacts.fingerprint} else null end`;
 }
 export async function findBuildArtifactById(artifactId: string): Promise<BuildArtifactRow | undefined> {
   const [artifact] = await getApiDatabase()
@@ -50,7 +65,13 @@ export async function markBuildArtifactsCleaned(input: MarkBuildArtifactsCleaned
   }
   const rows: PersistedBuildArtifactRow[] = await getApiDatabase()
     .update(buildArtifacts)
-    .set({ imageCleanedAt: input.cleanedAt, imageRetentionState: 'cleaned', updatedAt: input.updatedAt })
+    .set({
+      fingerprint: null,
+      buildState: 'failed',
+      imageCleanedAt: input.cleanedAt,
+      imageRetentionState: 'cleaned',
+      updatedAt: input.updatedAt,
+    })
     .where(inArray(buildArtifacts.id, input.artifactIds))
     .returning();
   return rows.map(toBuildArtifactRow);
@@ -147,7 +168,6 @@ export async function createDeploymentWithExecutor(
 }
 
 export { toDeploymentRow } from './deployment-row.mapper';
-export { requirePersistedRow } from './persisted-row.query.shared';
 
 export function toBuildArtifactRow(row: PersistedBuildArtifactRow): BuildArtifactRow {
   return {

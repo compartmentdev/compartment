@@ -2,7 +2,7 @@ import { isManifestReference } from './registry-manifest-reference';
 import type { RegistryCredentialPayload } from './registry-credentials.types';
 
 const immutableIdPattern: RegExp = /^[A-Za-z0-9][A-Za-z0-9_-]*$/u;
-export const projectRepositoryPattern: RegExp = /^projects\/(prj_[A-Za-z0-9_-]+)\/services\/(svc_[A-Za-z0-9_-]+)$/u;
+const projectRepositoryPattern: RegExp = /^projects\/(prj_[A-Za-z0-9_-]+)\/services\/(svc_[A-Za-z0-9_-]+)$/u;
 
 export function isRegistryCredentialPayload(
   value: Partial<RegistryCredentialPayload> | null,
@@ -28,23 +28,35 @@ function hasCredentialBase(
 }
 
 function hasPullCredentialShape(value: Partial<RegistryCredentialPayload>): boolean {
-  return (
+  const projectPull: boolean =
     value.cacheTag === undefined &&
     value.repository === undefined &&
     value.tag === undefined &&
-    value.expiresAt === undefined
-  );
+    value.expiresAt === undefined;
+  const scopedPull: boolean =
+    value.cacheTag === undefined &&
+    typeof value.repository === 'string' &&
+    isProjectRepositoryForProject(value.repository, value.projectId) &&
+    value.tag === undefined &&
+    hasSafeExpiry(value);
+  return projectPull || scopedPull;
 }
 
 function hasWriteCredentialShape(value: Partial<RegistryCredentialPayload>, cacheTag: string): boolean {
   return (
     typeof value.repository === 'string' &&
-    projectRepositoryPattern.test(value.repository) &&
-    value.repository.startsWith(`projects/${value.projectId ?? ''}/`) &&
+    isProjectRepositoryForProject(value.repository, value.projectId) &&
     typeof value.tag === 'string' &&
     isManifestReference(value.tag) &&
     (value.access !== 'push' || value.cacheTag === cacheTag) &&
-    typeof value.expiresAt === 'number' &&
-    Number.isSafeInteger(value.expiresAt)
+    hasSafeExpiry(value)
   );
+}
+
+export function isProjectRepositoryForProject(repository: string, projectId: string | undefined): boolean {
+  return projectRepositoryPattern.exec(repository)?.[1] === projectId;
+}
+
+function hasSafeExpiry(value: Partial<RegistryCredentialPayload>): boolean {
+  return typeof value.expiresAt === 'number' && Number.isSafeInteger(value.expiresAt);
 }

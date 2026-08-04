@@ -5,19 +5,36 @@ import type {
   RegistryRequestAuthorization,
 } from './registry-credentials.types';
 import { isManifestDigest, isManifestReference } from './registry-manifest-reference';
-import { isRegistryCredentialPayload, projectRepositoryPattern } from './registry-credential-payload';
+import { isProjectRepositoryForProject, isRegistryCredentialPayload } from './registry-credential-payload';
 
 const credentialUsernamePrefix: string = 'compartment-v1-';
 const projectIdPattern: RegExp = /^prj_[A-Za-z0-9_-]+$/u;
 const registryRequestPattern: RegExp =
   /^\/v2\/(projects\/prj_[A-Za-z0-9_-]+\/services\/svc_[A-Za-z0-9_-]+)\/(?:blobs|manifests|tags)\//u;
-const pushCredentialLifetimeSeconds: number = 60 * 60;
+const buildCredentialLifetimeSeconds: number = 60 * 60;
 const cleanupCredentialLifetimeSeconds: number = 10 * 60;
 export const buildCacheTag: string = 'build-cache';
 
 export function issueProjectPullCredential(signingKey: string, projectId: string): RegistryCredential {
   assertProjectId(projectId);
   return signCredential(signingKey, { access: 'pull', projectId, version: 1 });
+}
+
+export function issueBuildPullCredential(
+  signingKey: string,
+  projectId: string,
+  repository: string,
+  nowSeconds: number = Math.floor(Date.now() / 1000),
+): RegistryCredential {
+  assertProjectId(projectId);
+  assertProjectRepository(repository, projectId);
+  return signCredential(signingKey, {
+    access: 'pull',
+    expiresAt: nowSeconds + buildCredentialLifetimeSeconds,
+    projectId,
+    repository,
+    version: 1,
+  });
 }
 
 export function issueBuildPushCredential(
@@ -35,7 +52,7 @@ export function issueBuildPushCredential(
   return signCredential(signingKey, {
     access: 'push',
     cacheTag: buildCacheTag,
-    expiresAt: nowSeconds + pushCredentialLifetimeSeconds,
+    expiresAt: nowSeconds + buildCredentialLifetimeSeconds,
     projectId,
     repository,
     tag,
@@ -71,7 +88,7 @@ export function authorizeRegistryRequest(
   requestTarget: string | undefined,
   nowSeconds: number = Math.floor(Date.now() / 1000),
 ): RegistryRequestAuthorization | null {
-  if (credential.access !== 'pull' && isCredentialExpired(credential, nowSeconds)) {
+  if (credential.expiresAt !== undefined && isCredentialExpired(credential, nowSeconds)) {
     return null;
   }
   const repository: string | null = readRequestRepository(requestTarget);
@@ -79,6 +96,9 @@ export function authorizeRegistryRequest(
     return requestTarget === '/v2/' && !isWriteMethod(method) ? { credential, repository } : null;
   }
   if (!repository.startsWith(`projects/${credential.projectId}/`)) {
+    return null;
+  }
+  if (credential.access === 'pull' && credential.repository !== undefined && credential.repository !== repository) {
     return null;
   }
   return authorizeRepositoryRequest(credential, method, requestTarget, repository, nowSeconds);
@@ -167,8 +187,7 @@ function readRequestRepository(requestTarget: string | undefined): string | null
 }
 
 function assertProjectRepository(repository: string, projectId: string): void {
-  const match: RegExpExecArray | null = projectRepositoryPattern.exec(repository);
-  if (match?.[1] !== projectId) {
+  if (!isProjectRepositoryForProject(repository, projectId)) {
     throw new Error('Registry repository must use the immutable project ID prefix.');
   }
 }

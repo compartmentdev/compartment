@@ -16,6 +16,7 @@ import {
 } from './source-archive-entry-list.helpers';
 import { hasVcsMetadataPathSegment } from './source-archive-plan.helpers';
 import type { PlannedSourceArchive } from './source-archive-plan.service.types';
+import { compareLogicalSourcePaths } from './source-logical-digest.service';
 
 interface SourceArchiveWalkState extends SourceArchiveIgnoreState {
   entries: Set<string>;
@@ -39,7 +40,7 @@ export async function listIncludedSourceArchiveEntries(input: PlannedSourceArchi
     await appendSelectedPathEntries(input.archiveRoot, includeEntry, state, true, includeEntry);
   }
 
-  return [...state.entries].sort((left: string, right: string): number => left.localeCompare(right));
+  return [...state.entries].sort(compareLogicalSourcePaths);
 }
 
 async function appendSelectedPathEntries(

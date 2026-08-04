@@ -35,6 +35,7 @@ export type {
   ApplyBundle,
   KubeDeploymentManifest,
   KubeJobEmptyDirVolume,
+  KubeJobInitializer,
   KubeJobResult,
   KubePersistedJobResult,
   KubeJobSpec,

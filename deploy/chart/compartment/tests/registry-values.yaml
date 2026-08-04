@@ -3,3 +3,6 @@ registry:
   issuerRef:
     kind: ClusterIssuer
     name: registry-test-issuer
+images:
+  worker:
+    digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc

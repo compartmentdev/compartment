@@ -31,6 +31,7 @@ import { claimPendingProjectProvisioning } from '../src/queries/project-provisio
 import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisioning.query.types';
 import { upsertDeploymentKubeReference } from '../src/queries/deployment-kube-reference.query';
 import {
+  candidateArtifactImageRef,
   createDeploymentKubeReferenceDatabaseTestContext,
   seedCandidate,
   seedDeployment,
@@ -139,7 +140,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
       deploymentId: 'dep_candidate',
       deploymentName: 'app-env-kube-svc-kube',
       id: 'kref_candidate',
-      imageRef: 'repo/kube@sha256:candidate',
+      imageRef: candidateArtifactImageRef,
       namespace: 'cpt-prj-kube',
       networkPolicyNames: [],
       routeId: 'route_kube',
@@ -410,7 +411,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
       deploymentId: 'dep_candidate',
       deploymentName: 'app-env-kube-svc-kube',
       id: 'kref_candidate',
-      imageRef: 'repo/kube@sha256:candidate',
+      imageRef: candidateArtifactImageRef,
       namespace: 'cpt-prj-kube',
       networkPolicyNames: [],
       routeId: 'route_kube',
@@ -429,6 +430,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
     await seedCandidate(db);
     await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
     const holder: PoolClient = await pool.connect();
+    const holderPid: number = await readDatabaseBackendPid(holder);
     let preparation: Promise<PrepareDeploymentReconcileResult> | null = null;
     try {
       await holder.query('begin');
@@ -441,19 +443,14 @@ describe('deployment Kubernetes transition persistence', (): void => {
         deploymentId: 'dep_candidate',
         deploymentName: 'app-env-kube-svc-kube',
         id: 'kref_concurrent_terminal',
-        imageRef: 'repo/kube@sha256:concurrent-terminal',
+        imageRef: candidateArtifactImageRef,
         namespace: 'cpt-prj-kube',
         networkPolicyNames: [],
         routeId: 'route_kube',
         routeSubdomain: 'kube',
         serviceName: 'app-env-kube-svc-kube',
       });
-      await Promise.race([
-        preparation.then((): never => {
-          throw new Error('Expected deployment preparation to wait for the terminal provisioning transaction.');
-        }),
-        waitForDatabaseBlocker(holder),
-      ]);
+      await waitForDatabaseBlockerPid(holderPid);
       await holder.query('commit');
       await preparation;
 
@@ -465,7 +462,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
       await Promise.allSettled(preparation === null ? [] : [preparation]);
       holder.release();
     }
-  });
+  }, 20_000);
 
   it('serializes deployment preparation with project archival', async (): Promise<void> => {
     await seedCandidate(db);
@@ -480,7 +477,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
         deploymentId: 'dep_candidate',
         deploymentName: 'app-env-kube-svc-kube',
         id: 'kref_concurrent_archive',
-        imageRef: 'repo/kube@sha256:concurrent-archive',
+        imageRef: candidateArtifactImageRef,
         namespace: 'cpt-prj-kube',
         networkPolicyNames: [],
         routeId: 'route_concurrent_archive',
@@ -930,6 +927,32 @@ async function waitForDatabaseBlocker(client: PoolClient): Promise<void> {
   while (Date.now() < deadline) {
     const result: { rows: { blockedCount: number }[] } = await client.query(
       `select count(*)::int as "blockedCount" from pg_stat_activity activity where activity.datname = current_database() and pg_backend_pid() = any(pg_blocking_pids(activity.pid))`,
+    );
+    if ((result.rows[0]?.blockedCount ?? 0) >= 1) {
+      return;
+    }
+    await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, 10));
+  }
+  throw new Error('Timed out waiting for deployment preparation to block on the provisioning transaction.');
+}
+
+async function readDatabaseBackendPid(client: PoolClient): Promise<number> {
+  const result: { rows: { pid: number }[] } = await client.query('select pg_backend_pid()::int as pid');
+  const pid: number | undefined = result.rows[0]?.pid;
+  if (pid === undefined) {
+    throw new Error('Expected the provisioning transaction database backend pid.');
+  }
+  return pid;
+}
+
+async function waitForDatabaseBlockerPid(blockerPid: number): Promise<void> {
+  const deadline: number = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const result: { rows: { blockedCount: number }[] } = await pool.query(
+      `select count(*)::int as "blockedCount"
+       from pg_stat_activity activity
+       where $1::int = any(pg_blocking_pids(activity.pid))`,
+      [blockerPid],
     );
     if ((result.rows[0]?.blockedCount ?? 0) >= 1) {
       return;

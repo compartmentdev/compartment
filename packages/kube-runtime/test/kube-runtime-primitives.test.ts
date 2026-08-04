@@ -1,5 +1,6 @@
-import { KubernetesObjectApi, type KubernetesObject, type PatchStrategy } from '@kubernetes/client-node';
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import type { Writable } from 'node:stream';
+import { KubernetesObjectApi, Log, type KubernetesObject, type PatchStrategy } from '@kubernetes/client-node';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock, type MockInstance } from 'vitest';
 import {
   KubeRuntime,
   kubeNamespaceName,
@@ -158,6 +159,17 @@ describe('KubeRuntime Job primitive', (): void => {
     objectApi.readError = null;
     objectApi.delete.mockClear();
     coreApi.readNamespacedPodLog.mockClear();
+    vi.spyOn(Log.prototype, 'log').mockImplementation(
+      async (
+        _namespace: string,
+        _podName: string,
+        _containerName: string,
+        stream: Writable,
+      ): Promise<AbortController> => {
+        stream.end('done\n');
+        return await Promise.resolve(new AbortController());
+      },
+    );
     vi.spyOn(KubernetesObjectApi, 'makeApiClient').mockReturnValue(objectApi as never);
   });
 
@@ -210,6 +222,149 @@ describe('KubeRuntime Job primitive', (): void => {
     expect(result).toMatchObject({ exitCode: 0, jobName, logs: 'done\n', podName: 'job-pod', status: 'succeeded' });
     expect(objectApi.patches.at(-1)![0].spec).toMatchObject({ ttlSecondsAfterFinished: 300 });
     expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it('reports available Job logs through the runJob callback before returning completion', async (): Promise<void> => {
+    const onLogLine: Mock = vi.fn(async (): Promise<void> => await Promise.resolve());
+    const spec: KubeJobSpec = { ...jobSpec('build'), onLogLine };
+    const jobName: string = kubeJobName(spec.id);
+    vi.spyOn(Log.prototype, 'log').mockImplementation(
+      async (
+        _namespace: string,
+        _podName: string,
+        _containerName: string,
+        stream: Writable,
+      ): Promise<AbortController> => {
+        stream.write('first build');
+        stream.end(' line\nsecond build line\n');
+        return await Promise.resolve(new AbortController());
+      },
+    );
+    createObservationMock.mockResolvedValue(terminalObservation(jobName, true, 0, vi.fn()));
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+
+    await runtime.runJob(spec);
+
+    expect(onLogLine.mock.calls).toEqual([['first build line'], ['second build line']]);
+  });
+
+  it('drains terminal Job log bytes delivered after the follow request opens', async (): Promise<void> => {
+    const onLogLine: Mock = vi.fn(async (): Promise<void> => await Promise.resolve());
+    const spec: KubeJobSpec = { ...jobSpec('build'), onLogLine };
+    const jobName: string = kubeJobName(spec.id);
+    vi.spyOn(Log.prototype, 'log').mockImplementation(
+      async (
+        _namespace: string,
+        _podName: string,
+        _containerName: string,
+        stream: Writable,
+      ): Promise<AbortController> => {
+        setTimeout((): void => {
+          stream.end('terminal build line\n');
+        }, 10);
+        return await Promise.resolve(new AbortController());
+      },
+    );
+    createObservationMock.mockResolvedValue(terminalObservation(jobName, true, 0, vi.fn()));
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+
+    await runtime.runJob(spec);
+
+    expect(onLogLine).toHaveBeenCalledWith('terminal build line');
+  });
+
+  it('polls logs from a running Pod before the Job reaches terminal state', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const onLogLine: Mock = vi.fn(async (): Promise<void> => await Promise.resolve());
+    const spec: KubeJobSpec = { ...jobSpec('build'), onLogLine };
+    const jobName: string = kubeJobName(spec.id);
+    const observation: RunningJobObservation = new RunningJobObservation(jobName);
+    vi.spyOn(Log.prototype, 'log').mockImplementation(
+      async (
+        _namespace: string,
+        _podName: string,
+        _containerName: string,
+        stream: Writable,
+      ): Promise<AbortController> => {
+        stream.write('live build line\n');
+        return await Promise.resolve(new AbortController());
+      },
+    );
+    createObservationMock.mockResolvedValue(observation);
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+
+    const resultPromise: Promise<KubeJobResult> = runtime.runJob(spec);
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(onLogLine).toHaveBeenCalledWith('live build line');
+    observation.complete();
+    await expect(resultPromise).resolves.toMatchObject({ status: 'succeeded' });
+  });
+
+  it('opens one follow request per Pod and flushes a final partial line', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const onLogLine: Mock = vi.fn(async (): Promise<void> => await Promise.resolve());
+    const spec: KubeJobSpec = { ...jobSpec('build'), onLogLine };
+    const jobName: string = kubeJobName(spec.id);
+    const observation: RunningJobObservation = new RunningJobObservation(jobName);
+    const controller: AbortController = new AbortController();
+    const followedPods: string[] = [];
+    vi.spyOn(Log.prototype, 'log').mockImplementation(
+      async (
+        _namespace: string,
+        podName: string,
+        _containerName: string,
+        stream: Writable,
+      ): Promise<AbortController> => {
+        followedPods.push(podName);
+        stream.write('first line\npartial');
+        return await Promise.resolve(controller);
+      },
+    );
+    createObservationMock.mockResolvedValue(observation);
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+
+    const resultPromise: Promise<KubeJobResult> = runtime.runJob(spec);
+    await vi.advanceTimersByTimeAsync(750);
+
+    expect(followedPods).toEqual(['job-pod']);
+    expect(onLogLine.mock.calls).toEqual([['first line']]);
+    observation.complete();
+    await expect(resultPromise).resolves.toMatchObject({ status: 'succeeded' });
+    expect(controller.signal.aborted).toBe(true);
+    expect(onLogLine.mock.calls).toEqual([['first line'], ['partial']]);
+  });
+
+  it('retries log following when the Job container is not ready yet', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const onLogLine: Mock = vi.fn(async (): Promise<void> => await Promise.resolve());
+    const spec: KubeJobSpec = { ...jobSpec('build'), onLogLine };
+    const jobName: string = kubeJobName(spec.id);
+    const observation: RunningJobObservation = new RunningJobObservation(jobName);
+    const follow: MockInstance<typeof Log.prototype.log> = vi
+      .spyOn(Log.prototype, 'log')
+      .mockRejectedValueOnce(new Error('container is waiting'))
+      .mockImplementation(
+        async (
+          _namespace: string,
+          _podName: string,
+          _containerName: string,
+          stream: Writable,
+        ): Promise<AbortController> => {
+          stream.write('retried build line\n');
+          return await Promise.resolve(new AbortController());
+        },
+      );
+    createObservationMock.mockResolvedValue(observation);
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+
+    const resultPromise: Promise<KubeJobResult> = runtime.runJob(spec);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(follow).toHaveBeenCalledTimes(2);
+    expect(onLogLine).toHaveBeenCalledWith('retried build line');
+    observation.complete();
+    await expect(resultPromise).resolves.toMatchObject({ status: 'succeeded' });
   });
 
   it('projects long logical Job IDs into Kubernetes-safe identity labels', async (): Promise<void> => {
@@ -863,5 +1018,55 @@ class TerminalObservation implements KubeObservation {
 
   public async stop(): Promise<void> {
     await this.stopMock();
+  }
+}
+
+class RunningJobObservation implements KubeObservation {
+  public readonly cache: Map<string, KubeObservedManifest>;
+  private readonly listeners: KubeObservationListener[] = [];
+
+  public constructor(private readonly jobName: string) {
+    this.cache = new Map<string, KubeObservedManifest>([
+      [
+        'pods/ns/job-pod',
+        {
+          apiVersion: 'v1',
+          kind: 'Pod',
+          metadata: { labels: { 'job-name': jobName }, name: 'job-pod' },
+        },
+      ],
+    ]);
+  }
+
+  public complete(): void {
+    const job: KubeObservedManifest = {
+      apiVersion: 'batch/v1',
+      kind: 'Job',
+      metadata: { name: this.jobName },
+      status: { succeeded: 1 },
+    };
+    this.cache.set('jobs/ns/job', job);
+    this.cache.set('pods/ns/job-pod', {
+      apiVersion: 'v1',
+      kind: 'Pod',
+      metadata: { labels: { 'job-name': this.jobName }, name: 'job-pod' },
+      status: { containerStatuses: [{ state: { terminated: { exitCode: 0 } } }] },
+    });
+    for (const listener of this.listeners) {
+      void listener({ object: job, observedAt: new Date(), resource: 'jobs', type: 'update' });
+    }
+  }
+
+  public health(): KubeObservationHealth {
+    return { healthy: true, lastConnectedAt: null, lastErrorAt: null };
+  }
+
+  public onEvent(listener: KubeObservationListener): () => void {
+    this.listeners.push(listener);
+    return (): void => undefined;
+  }
+
+  public async stop(): Promise<void> {
+    await Promise.resolve();
   }
 }

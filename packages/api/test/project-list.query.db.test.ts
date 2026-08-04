@@ -35,6 +35,7 @@ import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 const { testDatabaseUrl } = readDatabaseTestMode();
 const projectListQueryDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'project_list_query');
 const apiConfig: ApiConfig = {
+  builderProfileDigest: 'sha256:' + 'e'.repeat(64),
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
   tlsMode: 'internal',

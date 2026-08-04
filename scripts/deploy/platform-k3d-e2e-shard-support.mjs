@@ -23,7 +23,7 @@ export function buildPlatformK3dShardEnvironment(shardName, baseEnv = process.en
     throw new Error(`Unknown platform k3d e2e shard: ${shardName}`);
   }
   const portOffset = definition.index * 100;
-  const clusterName = baseEnv.COMPARTMENT_E2E_CLUSTER_NAME ?? `compartment-e2e-${shardName}`;
+  const clusterName = baseEnv.COMPARTMENT_E2E_CLUSTER_NAME ?? definition.clusterName ?? `compartment-e2e-${shardName}`;
   const httpPort = baseEnv.COMPARTMENT_E2E_HTTP_PORT ?? (18_080 + portOffset).toString();
   const stateDirectory = `.compartment/platform-k3d-${shardName}`;
   const environment = {

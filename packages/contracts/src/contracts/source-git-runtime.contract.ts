@@ -9,6 +9,7 @@ import { type CompartmentRoutesFile, compartmentRoutesFileSchema } from './compa
 import { environmentNameSchema } from './deployments.contract';
 import type { ContractSchema } from './schema.types';
 import { gitSourceDescriptorPathSchema } from './source-git-sync-path.contract';
+import { logicalSourceDigestSchema } from './source-uploads.contract';
 
 export interface WorkerClaimedGitSourceResolutionTask {
   branchName: string;
@@ -50,6 +51,10 @@ export interface WorkerFailGitSourceResolutionTaskRequest {
 
 export interface WorkerUploadGitSourceResolutionTaskArchiveResponse {
   success: true;
+}
+
+export interface WorkerUploadGitSourceResolutionTaskArchiveQuery {
+  sourceDigest: string;
 }
 
 export const compartmentGitHubSourceWebhookPathnameTemplate: string =
@@ -113,6 +118,13 @@ export const workerUploadGitSourceResolutionTaskArchiveResponseSchema: ContractS
     })
     .strict();
 
-export function buildWorkerUploadGitSourceResolutionTaskArchivePath(taskId: string): string {
-  return `/internal/git-source-resolution-tasks/${encodeURIComponent(taskId)}/source-archive`;
+export const workerUploadGitSourceResolutionTaskArchiveQuerySchema: ContractSchema<WorkerUploadGitSourceResolutionTaskArchiveQuery> =
+  z
+    .object({
+      sourceDigest: logicalSourceDigestSchema,
+    })
+    .strict();
+
+export function buildWorkerUploadGitSourceResolutionTaskArchivePath(taskId: string, sourceDigest: string): string {
+  return `/internal/git-source-resolution-tasks/${encodeURIComponent(taskId)}/source-archive?${new URLSearchParams({ sourceDigest }).toString()}`;
 }

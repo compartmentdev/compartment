@@ -1,6 +1,10 @@
 import { basename, dirname, join } from 'node:path';
 import { readDockerfileBuildPath } from './docker-build-args';
-import { buildRailpackSecretsHash, buildRailpackSecretArgs } from './docker-build-secrets';
+import {
+  isKeyedSha256Fingerprint,
+  requireRailpackSecretsFingerprint,
+  buildRailpackSecretArgs,
+} from './docker-build-secrets';
 import { railpackFrontendImage } from './railpack-frontend-image';
 import type {
   BuildKitDockerfileBuildctlInput,
@@ -9,7 +13,10 @@ import type {
 } from './docker-buildkit.types';
 import type { DockerBuildImageInput } from './docker-models';
 
+const buildPlatform: string = 'linux/amd64';
+
 export function buildDockerfileBuildctlArgs(input: BuildKitDockerfileBuildctlInput): string[] {
+  assertDockerfileBuildHasNoSecrets(input.input.buildEnv);
   const dockerfilePaths: BuildKitDockerfilePaths = readBuildKitDockerfilePaths(input.input);
 
   return [
@@ -22,30 +29,37 @@ export function buildDockerfileBuildctlArgs(input: BuildKitDockerfileBuildctlInp
     `dockerfile=${dockerfilePaths.dockerfileDirectory}`,
     '--opt',
     `filename=${dockerfilePaths.dockerfileName}`,
-    ...buildBuildKitBuildArgOpts(input.input.buildEnv),
+    '--opt',
+    `platform=${buildPlatform}`,
     ...buildBuildKitLabelOpts(input.input.labels),
     ...buildBuildKitCacheArgs(input.input),
-    '--opt',
-    'attest:sbom=',
-    '--output',
-    buildImageOutput(input.input.pushImageTag ?? input.input.imageTag, input.input.pushImageInsecureRegistry),
+    ...buildBuildKitOutputArgs(input.input),
     '--metadata-file',
     input.metadataFile,
   ];
+}
+
+function buildBuildKitLabelOpts(labels: Record<string, string> | undefined): string[] {
+  return Object.entries(labels ?? {}).flatMap(([name, value]: [string, string]): string[] => [
+    '--opt',
+    `label:${name}=${value}`,
+  ]);
 }
 
 export function buildRailpackImageBuildctlArgs(input: BuildKitRailpackImageBuildctlInput): string[] {
   return [
     ...buildBuildctlPrefixArgs(input.buildKitAddress, input.input),
     ...buildRailpackFrontendArgs(input.input.contextDirectory, input.railpackDirectory),
-    ...buildBuildKitLabelOpts(input.input.labels),
-    ...buildRailpackSecretsHashOpt(input.railpackSecrets.railpackConfigEnv),
+    '--opt',
+    `platform=${buildPlatform}`,
+    ...buildRailpackCacheOpts(
+      input.input.buildCacheKey,
+      input.railpackSecrets.railpackConfigEnv,
+      input.input.buildSecretFingerprint,
+    ),
     ...buildRailpackSecretArgs(input.railpackSecrets.secretFiles),
     ...buildBuildKitCacheArgs(input.input),
-    '--opt',
-    'attest:sbom=',
-    '--output',
-    buildImageOutput(input.input.pushImageTag ?? input.input.imageTag, input.input.pushImageInsecureRegistry),
+    ...buildBuildKitOutputArgs(input.input),
     '--metadata-file',
     input.metadataFile,
   ];
@@ -68,24 +82,38 @@ function buildRailpackFrontendArgs(contextDirectory: string, dockerfileDirectory
   ];
 }
 
-function buildBuildKitBuildArgOpts(buildEnv: Record<string, string> | undefined): string[] {
-  return Object.entries(buildEnv ?? {}).flatMap(([name, value]: [string, string]): string[] => [
-    '--opt',
-    `build-arg:${name}=${value}`,
-  ]);
+function assertDockerfileBuildHasNoSecrets(buildEnv: Record<string, string> | undefined): void {
+  if (buildEnv !== undefined && Object.keys(buildEnv).length > 0) {
+    throw new Error('Dockerfile builds do not support build secrets; use a Railpack source build.');
+  }
 }
 
-function buildBuildKitLabelOpts(labels: Record<string, string> | undefined): string[] {
-  return Object.entries(labels ?? {}).flatMap(([name, value]: [string, string]): string[] => [
-    '--opt',
-    `label:${name}=${value}`,
-  ]);
+function buildRailpackCacheOpts(
+  cacheKey: string | undefined,
+  buildEnv: Record<string, string>,
+  fingerprint: string | undefined,
+): string[] {
+  const secretsFingerprint: string | null = requireRailpackSecretsFingerprint(buildEnv, fingerprint);
+  const cacheFingerprint: string | null = readOptionalCacheFingerprint(cacheKey);
+
+  return [
+    ...(cacheFingerprint === null ? [] : ['--opt', `build-arg:cache-key=${cacheFingerprint}`]),
+    ...(secretsFingerprint === null ? [] : ['--opt', `build-arg:secrets-hash=${secretsFingerprint}`]),
+  ];
 }
 
-function buildRailpackSecretsHashOpt(buildEnv: Record<string, string>): string[] {
-  const secretsHash: string | null = buildRailpackSecretsHash(buildEnv);
+function readOptionalCacheFingerprint(fingerprint: string | undefined): string | null {
+  if (fingerprint === undefined) {
+    return null;
+  }
+  if (!isKeyedSha256Fingerprint(fingerprint)) {
+    throw new Error('Build cache fingerprints must be keyed SHA-256 values.');
+  }
+  return fingerprint;
+}
 
-  return secretsHash === null ? [] : ['--opt', `secrets-hash=${secretsHash}`];
+function buildBuildKitOutputArgs(input: DockerBuildImageInput): string[] {
+  return ['--output', buildImageOutput(input.pushImageTag ?? input.imageTag, input.pushImageInsecureRegistry)];
 }
 
 function buildImageOutput(imageTag: string, insecureRegistry: boolean | undefined): string {

@@ -52,6 +52,7 @@ import {
   createSourceArchive,
   injectDeployRequest,
   installCompartment,
+  persistTestBuildArtifactSbom,
   requireClaimedDeployment,
   requireDeployResponseDeployment,
   requireSingleDeployment,
@@ -396,7 +397,7 @@ describe('Phase 0 API integration deployment status', (): void => {
     expect(claimedDeployment.artifact.sourceDigest).toBeTruthy();
     const sourceArchiveResponse: LightMyRequestResponse = await app.inject({
       headers: {
-        authorization: 'Bearer test-runtime-control-token',
+        authorization: `Bearer ${claimedDeployment.buildJobToken}`,
       },
       method: 'GET',
       url: `/internal/artifacts/${claimedDeployment.artifact.id}/source-archive`,
@@ -443,7 +444,7 @@ describe('Phase 0 API integration deployment status', (): void => {
     });
     const retainedArchiveResponse: LightMyRequestResponse = await app.inject({
       headers: {
-        authorization: 'Bearer test-runtime-control-token',
+        authorization: `Bearer ${claimedDeployment.buildJobToken}`,
       },
       method: 'GET',
       url: `/internal/artifacts/${claimedDeployment.artifact.id}/source-archive`,
@@ -619,10 +620,11 @@ describe('Phase 0 API integration deployment status', (): void => {
   });
   it('returns runtime topology without a route host while a replacement is running', async (): Promise<void> => {
     const { installPayload, replacement, replacementClaim } = await prepareRunningReplacement();
+    const replacementImageRef: string = await persistTestBuildArtifactSbom(replacement.id);
     await prepareDeploymentReconcile({
       deploymentId: replacement.id,
       deploymentName: `app-${replacement.id}`,
-      imageRef: 'registry.example/app@sha256:replacement',
+      imageRef: replacementImageRef,
       namespace: `cpt-${replacement.id}`,
       networkPolicyNames: [],
       routeHost: replacementClaim.routeHost,
@@ -702,10 +704,11 @@ describe('Phase 0 API integration deployment status', (): void => {
     const { firstClaim, firstDeployment, installPayload, replacement, replacementClaim } =
       await prepareRunningReplacement();
     const observedAt: Date = new Date('2026-07-12T10:00:00.000Z');
+    const replacementImageRef: string = await persistTestBuildArtifactSbom(replacement.id);
     await prepareDeploymentReconcile({
       deploymentId: replacement.id,
       deploymentName: `app-${replacement.id}`,
-      imageRef: 'registry.example/app@sha256:replacement',
+      imageRef: replacementImageRef,
       namespace: `cpt-${replacement.id}`,
       networkPolicyNames: [],
       routeHost: replacementClaim.routeHost,
@@ -801,7 +804,7 @@ describe('Phase 0 API integration deployment status', (): void => {
     try {
       const sourceArchiveResponse: LightMyRequestResponse = await app.inject({
         headers: {
-          authorization: 'Bearer test-runtime-control-token',
+          authorization: `Bearer ${claimedDeployment.buildJobToken}`,
         },
         method: 'GET',
         url: `/internal/artifacts/${claimedDeployment.artifact.id}/source-archive`,

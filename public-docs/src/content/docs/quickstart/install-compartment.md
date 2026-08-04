@@ -93,22 +93,28 @@ nodePools:
 An empty build pool uses the system pool. Pass the file to `compartment install` with `--values
 compartment-values.yaml`.
 
-Build isolation requires `runsc` and a matching containerd runtime handler on every node eligible for
-`nodePools.build`; Compartment creates the `gvisor` RuntimeClass by default but does not install runtimes or change
-node containerd configuration. Set `buildkit.createRuntimeClass: false` only when the operator manages that
-RuntimeClass. Tenant kernel sandboxing remains optional and uses separate settings:
+Build isolation uses a private Kubernetes user namespace, writable `emptyDir` state, credentials, network policy, and
+process sandbox for every BuildKit Job. A gVisor RuntimeClass adds a separate kernel boundary when `runsc` and the
+matching containerd runtime handler are installed on every eligible build node. Compartment can create that
+RuntimeClass, but it does not install runtimes or change node containerd configuration. Configure build and tenant
+kernel sandboxing separately:
 
 ```yaml
+buildkit:
+  runtimeClassName: gvisor
+  createRuntimeClass: true
+  runtimeHandler: runsc
+
 tenantRuntime:
   runtimeClassName: gvisor
   createRuntimeClass: true
   runtimeHandler: runsc
 ```
 
-Set `createRuntimeClass: false` when the cluster operator manages the `gvisor` RuntimeClass separately. The sandbox
+Set the matching `createRuntimeClass` value to `false` when the cluster operator manages the `gvisor` RuntimeClass
+separately. The tenant sandbox
 covers application and stateful resource Pods plus product and provisioning Jobs. Platform Pods, `api-migrate`, and
-control-plane workloads keep the node default runtime. Each build runs in a short-lived gVisor Job and is deleted
-after completion.
+control-plane workloads keep the node default runtime. Each build Job is deleted after completion.
 
 Compartment samples tenant CPU and memory usage every 60 seconds and retains hourly aggregates for 400 days by
 default. The metering interval also controls hosted application traffic flushes. Use
@@ -239,9 +245,11 @@ The registry certificate carries that ClusterIP in its IP SAN, and its CA must b
 runtime. The installer pushes a unique acceptance image and asks every Ready node to pull it through the direct
 Service address. Address mismatch, reachability, authentication, TLS, image-push, and node-pull failures are blocking.
 
-Dockerfile and Railpack builds use an ephemeral rootless BuildKit sidecar under gVisor and produce OCI images. Build
-cache is stored in the project/service registry repository; no persistent cache volume is shared between tenants.
-Project NetworkPolicies preserve tenant isolation and the configured RFC1918 egress policy.
+Dockerfile and Railpack builds use an ephemeral BuildKit sidecar whose root process is mapped into a private Kubernetes
+user namespace. BuildKit keeps process sandboxing enabled and produces OCI images. Build cache is stored in the
+project/service registry repository; no persistent cache volume is shared between tenants. An optional configured
+`buildkit.runtimeClassName` can add a gVisor kernel boundary. Project NetworkPolicies preserve tenant isolation and the configured
+RFC1918 egress policy.
 
 Kubernetes cluster administrators and anyone able to escape a container remain outside the tenant-isolation boundary.
 Namespaces and NetworkPolicies do not provide VM-level isolation.

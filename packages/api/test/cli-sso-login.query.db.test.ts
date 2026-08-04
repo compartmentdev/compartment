@@ -21,6 +21,7 @@ import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 const { testDatabaseUrl } = readDatabaseTestMode();
 const cliSsoDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'cli_sso_query');
 const apiConfig: ApiConfig = {
+  builderProfileDigest: 'sha256:' + 'e'.repeat(64),
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
   tlsMode: 'internal',

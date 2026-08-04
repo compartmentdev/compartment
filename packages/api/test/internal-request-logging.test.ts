@@ -176,10 +176,12 @@ function createClaimedDeploymentResponse(): WorkerClaimDeploymentResponse {
   return workerClaimDeploymentResponseSchema.parse({
     deployment: {
       artifact: {
+        buildState: 'building',
         id: 'artifact_123',
         imageRef: null,
-        sourceDigest: 'sha256:abc123',
+        sourceDigest: `v1:sha256:${'a'.repeat(64)}`,
       },
+      buildJobToken: 'build-job-token',
       buildEnv: {},
       deploymentId: 'dep_123',
       deploymentRunId: 'drn_123',

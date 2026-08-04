@@ -44,6 +44,7 @@ vi.mock('../src/services/resource-operation-lock.service', (): object => ({
 
 const apiConfig: ApiConfig = {
   bindHost: '127.0.0.1',
+  builderProfileDigest: 'sha256:' + 'e'.repeat(64),
   baseDomain: 'localhost',
   tlsMode: 'internal',
   controlPlaneHost: 'console.localhost',

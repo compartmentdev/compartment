@@ -1,4 +1,3 @@
-import { hasText } from '@compartment/utils';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiApp } from '../../app.types';
 import { ApiBoundaryError } from '../../errors/api-boundary-error';
@@ -7,6 +6,8 @@ import {
   readArtifactSourceArchive,
 } from '../../services/artifact-source-archive.service';
 import { SourceUploadArchiveNotFoundError } from '../../services/source-upload-storage.service';
+import { authenticateBuildJobRequest } from './authenticate-build-job-request';
+import { requireArtifactRouteId } from './require-artifact-route-id';
 
 interface BuildArtifactSourceArchiveParams {
   artifactId: string;
@@ -19,7 +20,8 @@ export function registerGetArtifactSourceArchiveRoute(app: ApiApp): void {
       request: FastifyRequest<{ Params: BuildArtifactSourceArchiveParams }>,
       reply: FastifyReply,
     ): Promise<FastifyReply> => {
-      const artifactId: string = requireArtifactId(request.params.artifactId);
+      const artifactId: string = requireArtifactRouteId(request.params.artifactId);
+      authenticateBuildJobRequest(request, artifactId);
       const sourceArchive: Buffer = await readSourceArchiveOrThrowBoundaryError(artifactId);
 
       reply.header('Content-Type', 'application/gzip');
@@ -38,12 +40,4 @@ async function readSourceArchiveOrThrowBoundaryError(artifactId: string): Promis
 
     throw error;
   }
-}
-
-function requireArtifactId(artifactId: string): string {
-  if (!hasText(artifactId)) {
-    throw new ApiBoundaryError(400, 'invalid_artifact_id', 'Build artifact id is required.');
-  }
-
-  return artifactId;
 }

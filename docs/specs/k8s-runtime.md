@@ -35,7 +35,7 @@ The package exposes eight Kubernetes transport primitives. Only `apply`,
   version preconditions where data ownership requires them;
 - `observePodMetrics({ labels, namespaces })` reads resource usage for label-selected pods in explicitly supplied namespaces;
 - `logs(ref)` reads workload or Job logs;
-- `runJob(spec)` applies a deterministic Job and reads its terminal result.
+- `runJob(spec)` applies a deterministic Job, streams incremental Pod logs while it runs, and reads its terminal result.
 - `leaderElection(config)` coordinates one active controller through a namespaced `coordination.k8s.io/v1` Lease.
 
 The implementation uses `@kubernetes/client-node`. It must not implement raw
@@ -152,14 +152,21 @@ checksum and size. Restore verification finishes before the user restore command
 ## Build pipeline
 
 Each cluster source build runs as one deterministic worker-owned Kubernetes Job. The Job contains the build runner
-and a rootless BuildKit native sidecar, joins an existing Job after worker recovery,
+and a BuildKit sidecar inside a private Kubernetes user namespace, joins an existing Job after worker recovery,
 and is deleted after its result and logs are captured. The chart owns the BuildKit image, resources, scheduling,
 namespace RBAC, and network isolation; no long-lived BuildKit Deployment or Service exists. The build
-sidecar uses BuildKit's native snapshotter so the same build path works with either gVisor or the node default runtime.
-The default build timeout is 30 minutes to accommodate cold native-snapshotter builds.
-namespace uses Pod Security `enforce=privileged` with
-`audit=baseline` and `warn=baseline` because the tested AppArmor Unconfined
-profile is not admitted by baseline enforcement. Per-build ephemerality gives every build a fresh Pod and `emptyDir`
+sidecar runs as namespace root but maps to an unprivileged host UID, drops every capability before adding only
+the standard OCI container capability set plus user-namespace-scoped `SYS_ADMIN` for native snapshots, forbids privilege escalation,
+uses RuntimeDefault seccomp, and uses BuildKit's native snapshotter. Overlayfs produced the same ownership failure without
+`CHOWN`, so native remains the simplest tested option. The same build path works with either gVisor or the node default
+runtime. The default build timeout is 30 minutes to accommodate cold builds.
+The build namespace uses the Pod Security `privileged` admission label because baseline rejects `SYS_ADMIN`; the Job
+itself remains non-privileged and the build isolation tests enforce its exact narrower security context.
+The worker supplies a private runc launcher that retains the OCI process sandbox while disabling session-keyring
+creation and pivot-root operations rejected by the outer RuntimeDefault seccomp profile and Kubernetes user namespace.
+Runc's no-pivot path moves the prepared rootfs and enters it with `chroot` inside the build process's private mount and
+PID namespaces; the Job exposes no host mount, socket, writable shared volume, or file descriptor outside that rootfs.
+Per-build ephemerality gives every build a fresh Pod and `emptyDir`
 workspace, then deletes that Pod after result capture; it does not create a separate kernel boundary. When
 `buildkit.runtimeClassName` selects an operator-provided gVisor RuntimeClass, gVisor adds a userspace kernel sandbox
 between build processes and the node kernel. Without that value, builds use the node default container runtime and
@@ -172,14 +179,20 @@ shared between tenants. The worker's existing limit of two concurrent builds now
 defaults the namespace to deny and admits only DNS, source archive API, base-image, and registry egress. Public
 internet egress excludes metadata, link-local, RFC1918, Pod, and Service CIDRs.
 
+Build Jobs receive an expiring artifact-and-deployment-scoped capability rather than the platform worker credential.
+That capability permits only the owning source-archive read and SBOM write. Registry push credentials remain
+repository scoped; Syft receives a separate short-lived pull-only credential after the immutable image digest exists.
+BuildKit logs flow through the existing deployment-event stream while the Job runs.
+
 The F1 chart installs a private persistent bundled registry. External/BYO
 registry values are deferred to F2. Application namespaces use
 the P5 Secret path for deterministic Docker pull credentials. Kubelet registry
 reachability is node-side and remains an explicit M-check.
 
-Builds return only digest-pinned image references. BuildKit emits an SBOM OCI
-attestation into the selected registry. Keyed signing and verification before
-rollout are deferred to F2; P9 does not depend on public keyless Sigstore.
+Builds return only digest-pinned image references. The preinstalled, pinned Syft binary scans each new digest once.
+The API binds the stored SBOM to both the current build owner and scanned image digest and marks the artifact ready
+only after that evidence exists. Identical ready artifacts skip both BuildKit and Syft. Keyed signing and verification
+before rollout are deferred to F2; P9 does not depend on public keyless Sigstore.
 
 ## Evidence
 

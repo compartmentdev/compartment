@@ -18,6 +18,14 @@ export const buildArtifacts: DeploySchemaTypes.BuildArtifactsTable = pgTable(
   'build_artifacts',
   {
     id: text('id').primaryKey(),
+    fingerprint: text('fingerprint').unique(),
+    buildState: text('build_state', { enum: ['pending', 'building', 'ready', 'failed'] })
+      .default('pending')
+      .notNull(),
+    buildOwnerDeploymentId: text('build_owner_deployment_id'),
+    sbomDigest: text('sbom_digest'),
+    sbomImageDigest: text('sbom_image_digest'),
+    sbomJson: text('sbom_json'),
     projectId: text('project_id')
       .notNull()
       .references((): typeof projects.id => projects.id, { onDelete: 'cascade' }),

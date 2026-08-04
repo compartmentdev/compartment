@@ -43,6 +43,9 @@ vi.mock('../src/railpack-command', (): { prepareRailpackPlan: Mock<PrepareRailpa
 beforeEach((): void => {
   delete process.env.BUILDKIT_ADDR;
   mocks.prepareRailpackPlan.mockReset();
+  mocks.prepareRailpackPlan.mockImplementation(async (input: PrepareRailpackPlanInput): Promise<void> => {
+    await writeFile(input.planPath, JSON.stringify({ deploy: {}, steps: [] }), 'utf8');
+  });
   mocks.runBuildctlCommandWithOptionalProgressReporter.mockReset();
 });
 
@@ -71,16 +74,10 @@ describe('buildDockerImage', (): void => {
 
     await expect(
       buildDockerImage({
-        buildEnv: {
-          NEXT_PUBLIC_API_URL: 'https://api.example.com',
-        },
         cacheImageRef: 'registry:5000/compartment-web:build-cache',
         contextDirectory: '/tmp/source',
         dockerfilePath: 'apps/web/Dockerfile',
         imageTag: 'registry.example/compartment-web:art_123',
-        labels: {
-          'compartment.namespace': 'compartment-e2e',
-        },
         packer: 'dockerfile',
         pushImageInsecureRegistry: true,
         pushImageTag: 'registry:5000/compartment-web:art_123',
@@ -105,15 +102,11 @@ describe('buildDockerImage', (): void => {
         '--opt',
         'filename=Dockerfile',
         '--opt',
-        'build-arg:NEXT_PUBLIC_API_URL=https://api.example.com',
-        '--opt',
-        'label:compartment.namespace=compartment-e2e',
+        'platform=linux/amd64',
         '--import-cache',
         'type=registry,ref=registry:5000/compartment-web:build-cache,registry.insecure=true',
         '--export-cache',
         'type=registry,ref=registry:5000/compartment-web:build-cache,mode=max,image-manifest=true,oci-mediatypes=true,registry.insecure=true',
-        '--opt',
-        'attest:sbom=',
         '--output',
         'type=image,name=registry:5000/compartment-web:art_123,push=true,oci-mediatypes=true,oci-artifact=true,registry.insecure=true',
         '--metadata-file',
@@ -122,6 +115,21 @@ describe('buildDockerImage', (): void => {
       undefined,
       undefined,
     );
+  });
+
+  it('rejects Dockerfile build secrets before constructing process arguments', async (): Promise<void> => {
+    process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
+
+    await expect(
+      buildDockerImage({
+        buildEnv: { TOKEN: 'plaintext-must-not-enter-argv' },
+        contextDirectory: '/tmp/source',
+        imageTag: 'registry.example/compartment-web:art_123',
+        packer: 'dockerfile',
+      }),
+    ).rejects.toThrow('Dockerfile builds do not support build secrets; use a Railpack source build.');
+
+    expect(mocks.runBuildctlCommandWithOptionalProgressReporter).not.toHaveBeenCalled();
   });
 
   it('resolves the default Dockerfile path against the remote BuildKit context', async (): Promise<void> => {
@@ -189,7 +197,6 @@ describe('buildDockerImage', (): void => {
     const digest: string = `sha256:${'b'.repeat(64)}`;
 
     process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
-    mocks.prepareRailpackPlan.mockResolvedValueOnce();
     mockBuildKitImageOutput(digest);
 
     await expect(
@@ -199,11 +206,10 @@ describe('buildDockerImage', (): void => {
           HOME: '/tmp/project-home',
           PATH: '/project/bin',
         },
+        buildCacheKey: 'a'.repeat(64),
+        buildSecretFingerprint: '1'.repeat(64),
         contextDirectory: '/tmp/source',
         imageTag: 'registry.example/compartment-web:art_123',
-        labels: {
-          'compartment.namespace': 'compartment-e2e',
-        },
         packer: 'railpack',
         pushImageInsecureRegistry: true,
         pushImageTag: 'registry:5000/compartment-web:art_123',
@@ -230,15 +236,13 @@ describe('buildDockerImage', (): void => {
         '--opt',
         expect.stringMatching(/^source=ghcr\.io\/railwayapp\/railpack-frontend@sha256:[a-f0-9]{64}$/u),
         '--opt',
-        'label:compartment.namespace=compartment-e2e',
+        expect.stringMatching(/^build-arg:cache-key=[a-f0-9]{64}$/u),
         '--opt',
-        expect.stringMatching(/^secrets-hash=[a-f0-9]{64}$/u),
+        expect.stringMatching(/^build-arg:secrets-hash=[a-f0-9]{64}$/u),
         '--secret',
         expect.stringMatching(/^id=HOME,src=.*build-secret-0\.txt$/),
         '--secret',
         expect.stringMatching(/^id=PATH,src=.*build-secret-1\.txt$/),
-        '--opt',
-        'attest:sbom=',
         '--output',
         'type=image,name=registry:5000/compartment-web:art_123,push=true,oci-mediatypes=true,oci-artifact=true,registry.insecure=true',
       ]),
@@ -249,13 +253,14 @@ describe('buildDockerImage', (): void => {
     const digest: string = `sha256:${'e'.repeat(64)}`;
 
     process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
-    mocks.prepareRailpackPlan.mockResolvedValueOnce();
     mockBuildKitImageOutput(digest);
 
     await expect(
       buildDockerImage({
         appPath: 'apps/web',
         buildAptPackages: ['build-essential'],
+        buildCacheKey: 'b'.repeat(64),
+        buildSecretFingerprint: '2'.repeat(64),
         contextDirectory: '/tmp/source',
         imageTag: 'registry.example/compartment-web:art_123',
         packer: 'railpack',
@@ -269,7 +274,7 @@ describe('buildDockerImage', (): void => {
     const buildctlArgs: string[] | undefined = mocks.runBuildctlCommandWithOptionalProgressReporter.mock.calls[0]?.[0];
 
     expect(buildctlArgs).toContain('--opt');
-    expect(buildctlArgs).toContainEqual(expect.stringMatching(/^secrets-hash=[a-f0-9]{64}$/u));
+    expect(buildctlArgs).toContainEqual(expect.stringMatching(/^build-arg:secrets-hash=[a-f0-9]{64}$/u));
     expect(buildctlArgs).toContain('--secret');
     expect(buildctlArgs).toContainEqual(
       expect.stringMatching(/^id=RAILPACK_BUILD_APT_PACKAGES,src=.*build-secret-0\.txt$/),
@@ -331,11 +336,10 @@ describe('buildDockerImage', (): void => {
     await expect(
       buildDockerImage({
         buildCommand: 'pnpm docs:build',
+        buildCacheKey: 'c'.repeat(64),
+        buildSecretFingerprint: '3'.repeat(64),
         contextDirectory: '/tmp/source',
         imageTag: 'registry.example/compartment-web:art_123',
-        labels: {
-          'compartment.namespace': 'compartment-e2e',
-        },
         packer: 'static',
         runtimeAptPackages: ['jq'],
         staticOutputDirectory: 'public-docs/dist',

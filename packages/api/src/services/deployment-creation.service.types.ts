@@ -5,6 +5,7 @@ import type { DeploymentSourceProvenance, ResolvedProjectContext } from './deplo
 export interface PreparedQueuedDeploymentState {
   accessMode: AppRouteAccessMode;
   artifactId: string;
+  artifactFingerprint: string;
   buildEnvSnapshot: BuildEnvSnapshot;
   context: ResolvedProjectContext;
   deploymentRunId: string;

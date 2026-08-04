@@ -31,7 +31,6 @@ export type {
   CreateQueuedExistingArtifactDeploymentInput,
   MarkBuildArtifactsCleanedInput,
   MarkDeploymentFailedInput,
-  UpdateBuildArtifactImageInput,
 } from './deployments.query.write.types';
 
 export type DeploymentTransaction = ApiDatabaseTransaction;
@@ -88,8 +87,11 @@ export interface EnvironmentRow {
 export type BuildArtifactImageRetentionState = 'available' | 'cleaned';
 
 export interface BuildArtifactRow {
+  buildOwnerDeploymentId: string | null;
+  buildState: 'pending' | 'building' | 'ready' | 'failed';
   createdAt: Date;
   createdByPrincipalId: string | null;
+  fingerprint: string | null;
   id: string;
   imageCleanedAt: Date | null;
   imageRepository: string;
@@ -98,6 +100,7 @@ export interface BuildArtifactRow {
   projectId: string;
   projectServiceId: string;
   resolvedBuildJson: string;
+  sbomDigest: string | null;
   resolvedBuildEnvJson: string;
   sourceDigest: string;
   sourceUploadId: string | null;
@@ -138,6 +141,11 @@ export interface DeploymentRow {
   routeHost: string | null;
   status: DeploymentRuntimeStatus;
   updatedAt: Date;
+}
+
+export interface ConsumeSourceUploadAndCreateQueuedDeploymentBatchResult {
+  deployments: DeploymentRow[];
+  redundantSourceUploadId: string | null;
 }
 
 export interface DeploymentJoinedRow {

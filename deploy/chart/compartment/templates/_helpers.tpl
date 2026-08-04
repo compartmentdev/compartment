@@ -312,6 +312,19 @@ spec:
 {{- end -}}
 {{- end }}
 
+{{- define "compartment.builderProfileDigest" -}}
+{{- $buildkitDigest := required "images.buildkit.digest is required for deterministic build artifact reuse" .Values.images.buildkit.digest -}}
+{{- $workerDigest := required "images.worker.digest is required for deterministic build artifact reuse" .Values.images.worker.digest -}}
+{{- dict
+  "buildkitImage" (include "compartment.image" .Values.images.buildkit)
+  "platform" "linux/amd64"
+  "sandbox" "kubernetes-userns-runtime-default-v1"
+  "snapshotter" "native"
+  "version" "builder-profile:v1"
+  "workerImage" (include "compartment.image" .Values.images.worker)
+  | toJson | sha256sum | printf "sha256:%s" -}}
+{{- end }}
+
 {{- define "compartment.platformPriorityClassName" -}}
 compartment-platform
 {{- end }}

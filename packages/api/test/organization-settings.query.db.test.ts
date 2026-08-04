@@ -17,6 +17,7 @@ const organizationSettingsQueryDatabaseUrl: string = deriveProcessScopedDatabase
   'organization_settings_query',
 );
 const apiConfig: ApiConfig = {
+  builderProfileDigest: 'sha256:' + 'e'.repeat(64),
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
   tlsMode: 'internal',

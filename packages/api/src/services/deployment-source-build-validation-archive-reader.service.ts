@@ -60,6 +60,7 @@ export async function readSourceArchive(archivePath: string): Promise<ReadSource
 function createSourceArchiveReaderState(): SourceArchiveReaderState {
   return {
     entryCount: 0,
+    logicalEntryPaths: new Set<string>(),
     metadataFileContents: null,
     nextPathOverride: null,
     pendingBuffer: Buffer.alloc(0),
@@ -156,6 +157,7 @@ function readLogicalSourceArchiveEntryCaptureKind(
   const entryKind: 'directory' | 'file' = header.kind === 'directory' ? 'directory' : 'file';
   const entryPath: string = readLogicalSourceArchiveEntryPath(state, header.path);
   validateSourceArchiveLogicalEntryType(entryPath, entryKind);
+  recordLogicalSourceArchiveEntryPath(state, entryPath);
   if (entryKind !== 'file' || entryPath !== compartmentSourcePackageMetadataArchivePath) {
     return 'none';
   }
@@ -171,6 +173,13 @@ function readLogicalSourceArchiveEntryCaptureKind(
   }
 
   return 'metadata';
+}
+
+function recordLogicalSourceArchiveEntryPath(state: SourceArchiveReaderState, entryPath: string): void {
+  if (state.logicalEntryPaths.has(entryPath)) {
+    throw new SourceUploadArchiveValidationError(`Uploaded source archive contains duplicate "${entryPath}" entries.`);
+  }
+  state.logicalEntryPaths.add(entryPath);
 }
 
 function incrementSourceArchiveEntryCount(state: SourceArchiveReaderState): void {
@@ -253,6 +262,7 @@ function finalizeSourceArchiveRead(state: SourceArchiveReaderState): ReadSourceA
   }
 
   return {
+    logicalEntryPaths: [...state.logicalEntryPaths],
     metadataFileContents: state.metadataFileContents,
   };
 }

@@ -10,6 +10,7 @@ import {
   type CompartmentSourcePackageMetadata,
 } from '@compartment/contracts';
 import { listIncludedSourceArchiveEntries } from './source-archive-entry-list.service';
+import { createLogicalSourceDigest } from './source-logical-digest.service';
 import { planSourceArchive } from './source-archive-plan.service';
 import type { PlannedSourceArchive } from './source-archive-plan.service.types';
 import type { CreatedSourceArchive, SourceArchiveBuilderInput } from './source-archive.service.types';
@@ -25,14 +26,17 @@ export async function createSourceArchive(input: SourceArchiveBuilderInput): Pro
   const archivePlan: PlannedSourceArchive = await planSourceArchive(input);
   const sourcePackageMetadata: CompartmentSourcePackageMetadata = readSourcePackageMetadata(archivePlan);
   const archiveEntries: string[] = readSourceArchiveTarEntries(await listIncludedSourceArchiveEntries(archivePlan));
+  const serializedSourcePackageMetadata: string = serializeCompartmentSourcePackageMetadata(sourcePackageMetadata);
 
   return {
     archiveRoot: archivePlan.archiveRoot,
-    sourceArchive: await captureTarArchive(
+    sourceDigest: await createLogicalSourceDigest(
       archivePlan.archiveRoot,
       archiveEntries,
-      serializeCompartmentSourcePackageMetadata(sourcePackageMetadata),
+      compartmentSourcePackageMetadataArchivePath,
+      serializedSourcePackageMetadata,
     ),
+    sourceArchive: await captureTarArchive(archivePlan.archiveRoot, archiveEntries, serializedSourcePackageMetadata),
     sourcePackageMetadata,
   };
 }

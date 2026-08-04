@@ -1,15 +1,51 @@
-import type { KubeContainerSecurityContext, KubePodSecurityContext } from './kube-security-context.types';
+import type {
+  KubeBuildKitCapabilitySet,
+  KubeContainerSecurityContext,
+  KubePodSecurityContext,
+} from './kube-security-context.types';
 
 const postgresAlpineImagePattern: RegExp = /^postgres:(?:alpine|[^@]+-alpine)(?:[0-9]+(?:\.[0-9]+)*)?(?:@|$)/u;
 const projectRuntimeUserId: number = 10_001;
 const postgresAlpineRuntimeUserId: number = 70;
 const postgresDebianRuntimeUserId: number = 999;
+const userNamespaceBuildKitCapabilities: KubeBuildKitCapabilitySet = [
+  'SYS_ADMIN',
+  'CHOWN',
+  'SETUID',
+  'SETGID',
+  'DAC_OVERRIDE',
+  'FOWNER',
+  'FSETID',
+  'SETFCAP',
+  'SETPCAP',
+  'SYS_CHROOT',
+  'MKNOD',
+  'KILL',
+  'AUDIT_WRITE',
+  'NET_BIND_SERVICE',
+  'NET_RAW',
+];
 
 export function restrictedContainerSecurityContext(): KubeContainerSecurityContext {
   return {
     allowPrivilegeEscalation: false,
     capabilities: { drop: ['ALL'] },
     privileged: false,
+  };
+}
+
+export function userNamespaceBuildKitSecurityContext(): KubeContainerSecurityContext {
+  return {
+    allowPrivilegeEscalation: false,
+    capabilities: {
+      add: userNamespaceBuildKitCapabilities,
+      drop: ['ALL'],
+    },
+    privileged: false,
+    readOnlyRootFilesystem: true,
+    runAsGroup: 0,
+    runAsNonRoot: false,
+    runAsUser: 0,
   };
 }
 

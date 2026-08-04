@@ -18,6 +18,7 @@ describe('readApiConfig', (): void => {
     const config: ApiConfig = readApiConfig(createApiConfigEnv());
 
     expect(config.baseDomain).toBe('localhost');
+    expect(config.builderProfileDigest).toBe(`sha256:${'a'.repeat(64)}`);
     expect(config.auditRetentionDays).toBe(90);
     expect(config.auditRetentionCleanupBatchSize).toBe(1000);
     expect(config.auditRetentionCleanupCron).toBe('0 3 * * *');
@@ -82,6 +83,15 @@ describe('readApiConfig', (): void => {
       expect((): ApiConfig => readApiConfig(createApiConfigEnv({ [variableName]: undefined }))).toThrow();
     });
   }
+
+  it('requires a valid resolved builder profile digest', (): void => {
+    expect(
+      (): ApiConfig => readApiConfig(createApiConfigEnv({ COMPARTMENT_BUILDER_PROFILE_DIGEST: undefined })),
+    ).toThrow();
+    expect(
+      (): ApiConfig => readApiConfig(createApiConfigEnv({ COMPARTMENT_BUILDER_PROFILE_DIGEST: 'builder-profile:v1' })),
+    ).toThrow();
+  });
 
   it('rejects an invalid session ttl duration', (): void => {
     expect((): ApiConfig => readApiConfig(createApiConfigEnv({ COMPARTMENT_SESSION_TTL: 'banana' }))).toThrow(
@@ -336,6 +346,7 @@ function createApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.
     COMPARTMENT_AUDIT_RETENTION_CLEANUP_MAX_BATCHES: '100',
     COMPARTMENT_API_PORT: '9443',
     COMPARTMENT_BASE_DOMAIN: 'localhost',
+    COMPARTMENT_BUILDER_PROFILE_DIGEST: `sha256:${'a'.repeat(64)}`,
     COMPARTMENT_TLS_MODE: 'internal',
     COMPARTMENT_DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/compartment_dev',
     COMPARTMENT_EDGE_INTERNAL_HOST: '127.0.0.1',

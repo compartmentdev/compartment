@@ -38,6 +38,7 @@ const ssoOidcLoginResolutionDatabaseUrl: string = deriveProcessScopedDatabaseUrl
   'sso_oidc_login_resolution_service',
 );
 const apiConfig: ApiConfig = {
+  builderProfileDigest: 'sha256:' + 'e'.repeat(64),
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
   tlsMode: 'internal',

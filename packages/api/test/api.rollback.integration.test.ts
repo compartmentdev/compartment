@@ -258,7 +258,7 @@ describe('Phase 0 API integration rollback', (): void => {
       await claimNextQueuedDeployment(app),
     );
     expect(claimedPromotedDeployment.artifact.id).toBe(claimedStagingDeployment.artifact.id);
-    expect(claimedPromotedDeployment.artifact.imageRef).toBe('registry.example/app@sha256:image');
+    expect(claimedPromotedDeployment.artifact.imageRef).toMatch(/^registry\.example\/app@sha256:[a-f0-9]{64}$/u);
     expect(claimedPromotedDeployment.service.build).toEqual(expectedBuild);
     expect(claimedPromotedDeployment.run).toEqual(expectedRun);
     await completeClaimedDeployment(app, promotedDeployment.id, claimedPromotedDeployment.routeHost);
@@ -401,6 +401,10 @@ describe('Phase 0 API integration rollback', (): void => {
               web: { accessMode: 'public', path: '.' },
             },
           },
+          sourceArchive: await createSourceArchive({
+            'compartment.yml': 'name: smoke-web\nservices:\n  web: .\n',
+            'version.txt': 'release 2\n',
+          }),
         })
       ).json(),
     );
@@ -408,6 +412,7 @@ describe('Phase 0 API integration rollback', (): void => {
     const secondClaimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(
       await claimNextQueuedDeployment(app),
     );
+    expect(secondClaimedDeployment.artifact.id).not.toBe(firstClaimedDeployment.artifact.id);
     await completeQueuedDeployment(app, secondDeployment.id, secondClaimedDeployment.routeHost);
 
     const rollbackResponse: LightMyRequestResponse = await app.inject({
@@ -450,7 +455,7 @@ describe('Phase 0 API integration rollback', (): void => {
       await claimNextQueuedDeployment(app),
     );
     expect(claimedRollbackDeployment.artifact.id).toBe(firstClaimedDeployment.artifact.id);
-    expect(claimedRollbackDeployment.artifact.imageRef).toBe('registry.example/app@sha256:image');
+    expect(claimedRollbackDeployment.artifact.imageRef).toMatch(/^registry\.example\/app@sha256:[a-f0-9]{64}$/u);
     expect(claimedRollbackDeployment.run).toEqual(expectedRun);
     await completeQueuedDeployment(app, rollbackDeployment.id, claimedRollbackDeployment.routeHost);
     const accessModeAuditEvents: (typeof auditEvents.$inferSelect)[] = await db
@@ -518,12 +523,20 @@ describe('Phase 0 API integration rollback', (): void => {
     await completeQueuedDeployment(app, promotedDeployment.id, claimedPromotedDeployment.routeHost);
 
     const secondDeployPayload: DeployResponse = deployResponseSchema.parse(
-      (await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev')).json(),
+      (
+        await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev', {
+          sourceArchive: await createSourceArchive({
+            'compartment.yml': 'name: smoke-web\nservices:\n  web: .\n',
+            'version.txt': 'release 2\n',
+          }),
+        })
+      ).json(),
     );
     const secondDeployment: DeploymentSummary = requireDeployResponseDeployment(secondDeployPayload);
     const secondClaimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(
       await claimNextQueuedDeployment(app),
     );
+    expect(secondClaimedDeployment.artifact.id).not.toBe(firstClaimedDeployment.artifact.id);
     await completeQueuedDeployment(app, secondDeployment.id, secondClaimedDeployment.routeHost);
 
     const rollbackResponse: LightMyRequestResponse = await app.inject({
@@ -820,6 +833,10 @@ describe('Phase 0 API integration rollback', (): void => {
         await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev', {
           descriptor: createMultiServiceDescriptor(),
           routes: createMultiServiceRoutes(),
+          sourceArchive: await createSourceArchive({
+            'compartment.yml': 'name: smoke-multi-service\nservices:\n  web: .\n  backoffice: .\n',
+            'version.txt': 'release 2\n',
+          }),
         })
       ).json(),
     );

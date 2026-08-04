@@ -77,6 +77,7 @@ export { listVariables } from './services/variable-list.service';
 export { promoteDeployment } from './services/deployment-promote.service';
 export { rollbackDeployment } from './services/deployment-rollback.service';
 export { getArtifactSourceArchive } from './services/artifact-source-archive.service';
+export { uploadArtifactSbom } from './services/worker-upload-artifact-sbom.service';
 export { blockUser } from './services/user-block.service';
 export {
   createAccessAssignment,

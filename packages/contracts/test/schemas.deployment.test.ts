@@ -768,7 +768,7 @@ describe('contract schemas deployment and app access', (): void => {
       createdAt: '2026-03-24T09:00:00.000Z',
       expiresAt: '2026-03-24T10:00:00.000Z',
       id: 'sup_123',
-      sourceDigest: 'sha256:abc123',
+      sourceDigest: `v1:sha256:${'a'.repeat(64)}`,
     });
 
     expect(result.id).toBe('sup_123');

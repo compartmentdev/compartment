@@ -15,7 +15,7 @@ import {
   getDeploymentStatus,
   type CompartmentRequester,
 } from '@compartment/sdk';
-import { createSourceArchive } from '@compartment/source-archive';
+import { createSourceArchive, type CreatedSourceArchive } from '@compartment/source-archive';
 import { createProjectRequester, waitForDeploymentOperationCompletion } from './deployment-operation-runner.service';
 import { createAuthenticatedRequester, requireOrganizationContext } from './context.service';
 import type { AuthenticatedContext } from './context.types';
@@ -144,38 +144,36 @@ async function startProjectDeployment(
   projectName: string,
   input: DeployCommandInput,
 ): Promise<DeployResponse> {
-  const environmentName: string | undefined = input.environmentName;
   reportDeployProgress(input, 'Preparing source archive...');
-  const sourceArchive: Buffer = await readProjectSourceArchive(descriptor, input.serviceName);
+  const sourceArchive: CreatedSourceArchive = await readProjectSourceArchive(descriptor, input.serviceName);
 
   reportDeployProgress(input, 'Submitting deployment...');
   return await deployProjectApi(
     deployRequest,
     {
       descriptor: createDeployDescriptor(descriptor, projectName),
-      environmentName,
+      environmentName: input.environmentName,
       label: input.label,
       onboardingSessionId: context.firstDeployOnboardingSessionId,
       projectName,
       ...(descriptor.routes !== undefined ? { routes: descriptor.routes } : {}),
       serviceName: input.serviceName,
     },
-    sourceArchive,
+    sourceArchive.sourceArchive,
+    sourceArchive.sourceDigest,
   );
 }
 
 async function readProjectSourceArchive(
   descriptor: StoredProjectDescriptor,
   serviceName: string | undefined,
-): Promise<Buffer> {
-  return (
-    await createSourceArchive({
-      descriptor: descriptor.descriptor,
-      descriptorFilePath: descriptor.filePath,
-      ...(descriptor.routes !== undefined ? { routes: descriptor.routes } : {}),
-      ...(serviceName !== undefined ? { serviceName } : {}),
-    })
-  ).sourceArchive;
+): Promise<CreatedSourceArchive> {
+  return await createSourceArchive({
+    descriptor: descriptor.descriptor,
+    descriptorFilePath: descriptor.filePath,
+    ...(descriptor.routes !== undefined ? { routes: descriptor.routes } : {}),
+    ...(serviceName !== undefined ? { serviceName } : {}),
+  });
 }
 
 function requireDeploymentDescriptor(target: ResolvedProjectTarget): StoredProjectDescriptor {

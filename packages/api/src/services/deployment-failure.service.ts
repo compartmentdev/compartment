@@ -1,6 +1,6 @@
 import type { WorkerFailDeploymentRequest } from '@compartment/contracts';
 import { findJoinedDeploymentById } from '../queries/deployment-joined.query';
-import { markDeploymentFailed, updateBuildArtifactImage } from '../queries/deployments.query';
+import { failOwnedBuildArtifact, markDeploymentFailed } from '../queries/deployments.query';
 import { updateOperationRecord } from '../queries/operations.query';
 import { getApiConfig } from '../runtime/runtime-access';
 import type { DeploymentJoinedRow } from '../queries/deployments.query.types';
@@ -12,7 +12,12 @@ export async function finalizeFailedDeployment(input: WorkerFailDeploymentReques
     await findJoinedDeploymentById(input.deploymentId, getApiConfig().baseDomain),
   );
   const completedAt: Date = new Date();
-  await persistFailedBuildArtifactImage(deployment, input.imageRef, completedAt);
+  const artifactId: string = deployment.artifact.id;
+  const shouldCleanupSourceArchive: boolean = await failOwnedBuildArtifact(
+    artifactId,
+    input.deploymentId,
+    input.imageRef,
+  );
   await markDeploymentFailed({
     completedAt,
     deploymentId: input.deploymentId,
@@ -25,16 +30,15 @@ export async function finalizeFailedDeployment(input: WorkerFailDeploymentReques
     status: 'failed',
     summary: input.message,
   });
-  await cleanupDeploymentSourceArchive(deployment.artifact);
+  await cleanupFailedArtifactSourceArchive(deployment, shouldCleanupSourceArchive);
 }
 
-async function persistFailedBuildArtifactImage(
+async function cleanupFailedArtifactSourceArchive(
   deployment: DeploymentJoinedRow,
-  imageRef: string | undefined,
-  updatedAt: Date,
+  shouldCleanup: boolean,
 ): Promise<void> {
-  if (imageRef !== undefined) {
-    await updateBuildArtifactImage({ buildArtifactId: deployment.artifact.id, imageRef, updatedAt });
+  if (shouldCleanup) {
+    await cleanupDeploymentSourceArchive(deployment.artifact);
   }
 }
 

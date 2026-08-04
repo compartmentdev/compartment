@@ -1,6 +1,7 @@
 import {
   compartmentSourceUploadsPathname,
   sourceUploadArchiveMultipartFieldName,
+  sourceUploadDigestMultipartFieldName,
   type SourceUploadCreateQuery,
   sourceUploadSummarySchema,
   type SourceUploadSummary,
@@ -11,9 +12,11 @@ import { buildListPath } from './list-path.service';
 export async function createSourceUpload(
   request: CompartmentRequester,
   sourceArchive: Uint8Array,
+  sourceDigest: string,
   query: SourceUploadCreateQuery = {},
 ): Promise<SourceUploadSummary> {
   const formData: FormData = new FormData();
+  formData.set(sourceUploadDigestMultipartFieldName, sourceDigest);
   formData.set(
     sourceUploadArchiveMultipartFieldName,
     new Blob([sourceArchive], { type: 'application/gzip' }),

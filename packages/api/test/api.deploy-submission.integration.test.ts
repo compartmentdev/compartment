@@ -19,10 +19,14 @@ import {
   type ResourceOutputListResponse,
   type SetVariableRequest,
   type SourceUploadSummary,
+  type WorkerClaimDeploymentResponse,
+  type WorkerClaimedDeployment,
+  type WorkerPrepareDeploymentReconcileRequest,
   compartmentCurrentOrganizationHeaderName,
 } from '@compartment/contracts';
 import type { JsonValue } from '@compartment/utils';
 import type { LightMyRequestResponse } from 'fastify';
+import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { eq } from 'drizzle-orm';
@@ -61,8 +65,11 @@ import {
   browserOrganizationUsersPathnameTemplate,
 } from '../src/browser-public-paths';
 import { reconcileDeclaredResources } from '../src/services/resources-reconcile.service';
+import { persistBuildArtifactSbom } from '../src/services/build-artifact-sbom.service';
+import { prepareDeploymentReconcile } from '../src/services/deployment-reconcile.service';
 import {
   buildOrganizationAuthorizationHeaders,
+  claimNextQueuedDeployment,
   buildMultipartRequest,
   buildInstallAuthorizationHeaders,
   createUploadedSourceArchive,
@@ -73,6 +80,7 @@ import {
   injectDeployRequest,
   injectJsonDeployRequest,
   installCompartment,
+  requireClaimedDeployment,
   requireDeployResponseDeployment,
   setVariable,
   type MultipartRequest,
@@ -512,7 +520,10 @@ describe('Phase 0 API integration deploy submission', (): void => {
       app,
       installPayload.sessionToken,
       'acme-dev',
-      Buffer.from('not-a-gzip', 'utf8'),
+      {
+        sourceArchive: Buffer.from('not-a-gzip', 'utf8'),
+        sourceDigest: `v1:sha256:${'a'.repeat(64)}`,
+      },
     );
 
     expect(sourceUploadResponse.statusCode).toBe(400);
@@ -532,29 +543,17 @@ describe('Phase 0 API integration deploy submission', (): void => {
       sessionSecret: defaultApiConfig.sessionSecret,
       sessionToken: 'invited-deployer-session-token',
     });
-    const multipartRequest: MultipartRequest = buildMultipartRequest([
-      createMultipartFilePart(
-        'sourceArchive',
-        await createSourceArchive({
-          'compartment.yml': 'name: smoke-web\nservices:\n  web: .\n',
-          'package.json': '{"name":"root"}\n',
-          'services/web/package.json': '{"name":"web"}\n',
-        }),
-        'source.tgz',
-        'application/gzip',
-      ),
-    ]);
-
-    const sourceUploadResponse: LightMyRequestResponse = await app.inject({
-      method: 'POST',
-      url: '/v1/source-uploads',
-      payload: multipartRequest.payload,
-      headers: {
-        authorization: `Bearer ${invitedSessionToken}`,
-        'content-type': multipartRequest.contentType,
-        [compartmentCurrentOrganizationHeaderName]: 'acme-dev',
-      },
+    const sourceArchive: Buffer = await createSourceArchive({
+      'compartment.yml': 'name: smoke-web\nservices:\n  web: .\n',
+      'package.json': '{"name":"root"}\n',
+      'services/web/package.json': '{"name":"web"}\n',
     });
+    const sourceUploadResponse: LightMyRequestResponse = await injectSourceUploadRequest(
+      app,
+      invitedSessionToken,
+      'acme-dev',
+      sourceArchive,
+    );
 
     expect(sourceUploadResponse.statusCode).toBe(403);
     expect(errorResponseSchema.parse(sourceUploadResponse.json()).error.code).toBe('forbidden');
@@ -637,6 +636,186 @@ describe('Phase 0 API integration deploy submission', (): void => {
         targetType: 'deployment',
       }),
     );
+  });
+  it('coalesces identical uploads behind one build owner and reuses the ready SBOM-backed artifact', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    const sourceArchive: Buffer = await createSourceArchive({
+      'compartment.yml': 'name: smoke-web\nservices:\n  web: .\n',
+      'package.json': '{"name":"smoke-web"}\n',
+    });
+    const [firstUpload, secondUpload]: [SourceUploadSummary, SourceUploadSummary] = await Promise.all([
+      createUploadedSourceArchive(app, installPayload.sessionToken, 'acme-dev', sourceArchive),
+      createUploadedSourceArchive(app, installPayload.sessionToken, 'acme-dev', sourceArchive),
+    ]);
+
+    const deployResponses: LightMyRequestResponse[] = await Promise.all([
+      injectJsonDeployRequest(app, installPayload.sessionToken, 'acme-dev', { sourceUploadId: firstUpload.id }),
+      injectJsonDeployRequest(app, installPayload.sessionToken, 'acme-dev', { sourceUploadId: secondUpload.id }),
+    ]);
+    expect(deployResponses.map((response: LightMyRequestResponse): number => response.statusCode)).toEqual([200, 200]);
+    const deployPayloads: DeployResponse[] = deployResponses.map(
+      (response: LightMyRequestResponse): DeployResponse => deployResponseSchema.parse(response.json()),
+    );
+    const deploymentIds: string[] = deployPayloads.map(
+      (payload: DeployResponse): string => requireDeployResponseDeployment(payload).id,
+    );
+    expect(new Set(deploymentIds).size).toBe(2);
+    expect(new Set(deployPayloads.map((payload: DeployResponse): string => payload.deploymentRunId)).size).toBe(2);
+
+    const storedArtifacts: (typeof buildArtifacts.$inferSelect)[] = await db.select().from(buildArtifacts);
+    expect(storedArtifacts).toHaveLength(1);
+    const artifact: typeof buildArtifacts.$inferSelect = storedArtifacts[0]!;
+    const storedUploads: (typeof sourceUploads.$inferSelect)[] = await db.select().from(sourceUploads);
+    expect(storedUploads).toHaveLength(1);
+    expect(storedUploads[0]?.id).toBe(artifact.sourceUploadId);
+    expect([firstUpload.id, secondUpload.id]).toContain(storedUploads[0]?.id);
+
+    const firstClaim: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app, 2, 2));
+    const waitingClaim: WorkerClaimDeploymentResponse = await claimNextQueuedDeployment(app, 2, 2);
+    expect(deploymentIds).toContain(firstClaim.deploymentId);
+    expect(waitingClaim.deployment).toBeNull();
+    const claimedArtifact: typeof buildArtifacts.$inferSelect | undefined = (
+      await db.select().from(buildArtifacts).where(eq(buildArtifacts.id, artifact.id))
+    )[0];
+    expect(claimedArtifact).toMatchObject({
+      buildOwnerDeploymentId: firstClaim.deploymentId,
+      buildState: 'building',
+    });
+
+    const firstImageDigest: string = `sha256:${'a'.repeat(64)}`;
+    const firstSbomJson: string = JSON.stringify({ artifacts: [{ name: 'first-build' }] });
+    await expect(
+      persistBuildArtifactSbom({
+        artifactId: artifact.id,
+        deploymentId: firstClaim.deploymentId,
+        digest: `sha256:${createHash('sha256').update(firstSbomJson).digest('hex')}`,
+        imageDigest: firstImageDigest,
+        sbomJson: firstSbomJson,
+      }),
+    ).resolves.toBe(true);
+
+    const failureResponse: LightMyRequestResponse = await app.inject({
+      headers: { authorization: 'Bearer test-runtime-control-token' },
+      method: 'POST',
+      payload: { deploymentId: firstClaim.deploymentId, message: 'transient build failure' },
+      url: '/internal/deployments/fail',
+    });
+    expect(failureResponse.statusCode, failureResponse.body).toBe(200);
+    const retryClaim: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app, 2, 2));
+    expect(retryClaim.deploymentId).toBe(deploymentIds.find((id: string): boolean => id !== firstClaim.deploymentId));
+    expect(await db.select().from(buildArtifacts).where(eq(buildArtifacts.id, artifact.id))).toEqual([
+      expect.objectContaining({
+        buildOwnerDeploymentId: retryClaim.deploymentId,
+        buildState: 'building',
+        sbomDigest: null,
+        sbomImageDigest: null,
+        sbomJson: null,
+      }),
+    ]);
+
+    const imageDigest: string = `sha256:${'b'.repeat(64)}`;
+    const imageRef: string = `registry.example/app@${imageDigest}`;
+    const reconcileInput: WorkerPrepareDeploymentReconcileRequest = {
+      deploymentId: retryClaim.deploymentId,
+      deploymentName: `app-${retryClaim.deploymentId}`,
+      imageRef,
+      namespace: `cpt-${retryClaim.deploymentId}`,
+      networkPolicyNames: [],
+      routeHost: retryClaim.routeHost,
+      serviceName: retryClaim.service.name,
+    };
+    await expect(prepareDeploymentReconcile(reconcileInput)).rejects.toThrow(
+      'Build artifact readiness requires a persisted SBOM.',
+    );
+
+    const sbomJson: string = JSON.stringify({ artifacts: [{ name: 'smoke-web' }] });
+    await expect(
+      persistBuildArtifactSbom({
+        artifactId: artifact.id,
+        deploymentId: retryClaim.deploymentId,
+        digest: `sha256:${createHash('sha256').update(sbomJson).digest('hex')}`,
+        imageDigest,
+        sbomJson,
+      }),
+    ).resolves.toBe(true);
+    await expect(prepareDeploymentReconcile(reconcileInput)).resolves.toBeUndefined();
+
+    const reuseUpload: SourceUploadSummary = await createUploadedSourceArchive(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+      sourceArchive,
+    );
+    const reuseDeployResponse: LightMyRequestResponse = await injectJsonDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+      { sourceUploadId: reuseUpload.id },
+    );
+    expect(reuseDeployResponse.statusCode, reuseDeployResponse.body).toBe(200);
+    const reuseDeploymentId: string = requireDeployResponseDeployment(
+      deployResponseSchema.parse(reuseDeployResponse.json()),
+    ).id;
+    const reuseClaim: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app, 2, 2));
+    expect(reuseClaim.deploymentId).toBe(reuseDeploymentId);
+    expect(reuseClaim.artifact).toMatchObject({ id: artifact.id, imageRef });
+    await expect(
+      prepareDeploymentReconcile({
+        deploymentId: reuseClaim.deploymentId,
+        deploymentName: `app-${reuseClaim.deploymentId}`,
+        imageRef,
+        namespace: `cpt-${reuseClaim.deploymentId}`,
+        networkPolicyNames: [],
+        routeHost: reuseClaim.routeHost,
+        serviceName: reuseClaim.service.name,
+      }),
+    ).resolves.toBeUndefined();
+
+    const failedReuseUpload: SourceUploadSummary = await createUploadedSourceArchive(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+      sourceArchive,
+    );
+    const failedReuseResponse: LightMyRequestResponse = await injectJsonDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+      { sourceUploadId: failedReuseUpload.id },
+    );
+    expect(failedReuseResponse.statusCode, failedReuseResponse.body).toBe(200);
+    const failedReuseDeploymentId: string = requireDeployResponseDeployment(
+      deployResponseSchema.parse(failedReuseResponse.json()),
+    ).id;
+    const failedReuseClaim: WorkerClaimedDeployment = requireClaimedDeployment(
+      await claimNextQueuedDeployment(app, 2, 2),
+    );
+    expect(failedReuseClaim).toMatchObject({
+      deploymentId: failedReuseDeploymentId,
+      artifact: { id: artifact.id, imageRef },
+    });
+    const failedReuseFinalizeResponse: LightMyRequestResponse = await app.inject({
+      headers: { authorization: 'Bearer test-runtime-control-token' },
+      method: 'POST',
+      payload: { deploymentId: failedReuseDeploymentId, message: 'runtime handoff failed' },
+      url: '/internal/deployments/fail',
+    });
+    expect(failedReuseFinalizeResponse.statusCode, failedReuseFinalizeResponse.body).toBe(200);
+    expect(await db.select().from(deployments).where(eq(deployments.id, failedReuseDeploymentId))).toEqual([
+      expect.objectContaining({ status: 'failed' }),
+    ]);
+    expect(await db.select().from(buildArtifacts)).toEqual([
+      expect.objectContaining({
+        buildOwnerDeploymentId: null,
+        buildState: 'ready',
+        id: artifact.id,
+        imageRef,
+        sbomImageDigest: imageDigest,
+      }),
+    ]);
+    expect(
+      (await db.select().from(sourceUploads)).map((upload: typeof sourceUploads.$inferSelect): string => upload.id),
+    ).not.toContain(reuseUpload.id);
   });
   it.each([
     [

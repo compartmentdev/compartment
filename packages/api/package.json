@@ -24,6 +24,7 @@
   "dependencies": {
     "@compartment/console": "workspace:*",
     "@compartment/contracts": "workspace:*",
+    "@compartment/source-archive": "workspace:*",
     "@compartment/utils": "workspace:*",
     "@fastify/multipart": "^9.4.0",
     "@fastify/rate-limit": "^10.3.0",

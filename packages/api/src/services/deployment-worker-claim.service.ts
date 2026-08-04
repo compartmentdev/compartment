@@ -1,5 +1,6 @@
 import {
   findFirstFairQueuedDeploymentCandidateForUpdate,
+  claimBuildArtifactOwnershipWithExecutor,
   markQueuedDeploymentRunningWithExecutor,
   readBuildQueueCounts,
 } from '../queries/deployment-claim.query';
@@ -71,7 +72,7 @@ async function reserveClaimedDeploymentRoute(
     return null;
   }
 
-  await markClaimedDeploymentOperationRunning(tx, deployment.operationId);
+  await markClaimedDeploymentRunning(tx, deployment, now);
   await reserveDeploymentPublicRouteWithExecutor(
     tx,
     buildDeploymentPublicRouteReservationContext(candidate, deployment.id, now),
@@ -83,6 +84,15 @@ async function reserveClaimedDeploymentRoute(
     deploymentId: deployment.id,
     queue: buildQueueObservation(counts, Math.max(0, now.getTime() - new Date(candidate.createdAt).getTime())),
   };
+}
+
+async function markClaimedDeploymentRunning(
+  tx: DeploymentTransaction,
+  deployment: DeploymentRow,
+  now: Date,
+): Promise<void> {
+  await claimBuildArtifactOwnershipWithExecutor(tx, deployment, now);
+  await markClaimedDeploymentOperationRunning(tx, deployment.operationId);
 }
 
 async function markClaimedDeploymentOperationRunning(tx: DeploymentTransaction, operationId: string): Promise<void> {

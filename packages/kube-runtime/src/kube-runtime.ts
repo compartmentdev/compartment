@@ -1,8 +1,10 @@
-import { CoreV1Api, KubernetesObjectApi, Metrics, type KubeConfig } from '@kubernetes/client-node';
+import { CoreV1Api, KubernetesObjectApi, Log, Metrics, type KubeConfig } from '@kubernetes/client-node';
 import { createKubeObservation } from './kube-observation';
+import { CapturedKubeJobResult } from './kube-captured-job-result';
 import { readKubePodMetrics } from './kube-pod-metrics';
 import type { KubePodMetricCollection, ObservePodMetrics } from './kube-pod-metrics.types';
 import { waitForTerminalJob, type TerminalJob } from './kube-job';
+import { startJobLogReporter, type JobLogReporter } from './kube-job-log-reporter';
 import { createOrJoinKubeJob } from './kube-job-reconciliation';
 import {
   kubeFinalizedJobManifest,
@@ -36,33 +38,6 @@ import type {
   KubeObservedManifest,
   ObserveLabels,
 } from './kube-runtime.types';
-
-type FinalizeJob = () => Promise<void>;
-
-class CapturedKubeJobResult implements KubeJobResult {
-  public readonly completedAt: Date;
-  public readonly exitCode: number | null;
-  public readonly jobName: string;
-  public readonly logs: string;
-  public readonly podName: string | null;
-  public readonly status: 'succeeded' | 'failed' | 'timed-out';
-
-  public constructor(
-    result: TerminalJobResult,
-    private readonly finalizeJob: FinalizeJob,
-  ) {
-    this.completedAt = result.completedAt;
-    this.exitCode = result.exitCode;
-    this.jobName = result.jobName;
-    this.logs = result.logs;
-    this.podName = result.podName;
-    this.status = result.status;
-  }
-
-  public async finalize(): Promise<void> {
-    await this.finalizeJob();
-  }
-}
 
 export class KubeRuntime {
   private readonly cleanupObjectApi: KubernetesObjectApi | null;
@@ -211,8 +186,28 @@ export class KubeRuntime {
     observation: KubeObservation,
     expiresAt: number,
   ): Promise<TerminalJobResult> {
-    const remainingMs: number = Math.max(0, expiresAt - Date.now());
-    const terminal: TerminalJob = await waitForTerminalJob(observation, jobName, remainingMs);
+    const logReporter: JobLogReporter | null = startJobLogReporter(
+      new Log(this.kubeConfig),
+      spec,
+      observation,
+      jobName,
+    );
+    let terminal: TerminalJob | null = null;
+    try {
+      terminal = await waitForTerminalJob(observation, jobName, Math.max(0, expiresAt - Date.now()));
+    } finally {
+      if (logReporter !== null) {
+        await logReporter.stopAndFlush(terminal?.podNames ?? findJobPodNames(observation.cache, jobName));
+      }
+    }
+    return await this.captureTerminalJobResult(spec, jobName, terminal);
+  }
+
+  private async captureTerminalJobResult(
+    spec: KubeJobSpec,
+    jobName: string,
+    terminal: TerminalJob,
+  ): Promise<TerminalJobResult> {
     const output: string = (
       await Promise.all(
         terminal.podNames.map(

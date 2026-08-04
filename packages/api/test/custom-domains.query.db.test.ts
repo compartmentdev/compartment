@@ -33,6 +33,7 @@ import { isUniqueConstraintError } from '../src/queries/query-error';
 const { testDatabaseUrl } = readDatabaseTestMode();
 const customDomainsQueryDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'custom_domains_query');
 const apiConfig: ApiConfig = {
+  builderProfileDigest: 'sha256:' + 'e'.repeat(64),
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
   tlsMode: 'internal',

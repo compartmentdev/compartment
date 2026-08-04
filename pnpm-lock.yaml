@@ -85,6 +85,9 @@ importers:
       '@compartment/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@compartment/source-archive':
+        specifier: workspace:*
+        version: link:../source-archive
       '@compartment/utils':
         specifier: workspace:*
         version: link:../utils

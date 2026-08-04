@@ -180,3 +180,12 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: images.api.digest.*pattern
+
+  - it: requires a pinned worker image for deterministic build artifact reuse
+    set:
+      images:
+        worker:
+          digest: ''
+    asserts:
+      - failedTemplate:
+          errorPattern: images.worker.digest is required for deterministic build artifact reuse

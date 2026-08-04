@@ -14,6 +14,7 @@ import {
 import type { DockerBuildImageInput, DockerBuildImageResult } from './docker-models';
 import { normalizeStaticRailpackPlan } from './docker-static-plan';
 import { prepareRailpackPlan } from './railpack-command';
+import { pinRailpackPlanImages } from './docker-railpack-image-pins';
 
 const buildKitMetadataFileName: string = 'buildkit-metadata.json';
 
@@ -88,6 +89,7 @@ async function prepareRailpackBuildPlan(
   railpackPlanPaths: RailpackPlanPaths,
 ): Promise<void> {
   await prepareRailpackPlan(buildPrepareRailpackPlanInput(input, railpackPlanPaths));
+  await pinRailpackPlanImages(railpackPlanPaths.planPath);
   if (input.packer === 'static') {
     await normalizeStaticRailpackPlan(railpackPlanPaths.planPath, requireStaticOutputDirectory(input));
   }

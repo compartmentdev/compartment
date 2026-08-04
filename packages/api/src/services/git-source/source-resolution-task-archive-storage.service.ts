@@ -1,27 +1,44 @@
-import { createHash } from 'node:crypto';
-import { unlink, writeFile } from 'node:fs/promises';
+import { unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isMissingFileSystemEntryError } from '@compartment/utils';
 import { getApiConfig } from '../../runtime/runtime-access';
-import { chmodPrivateRuntimeStorageFile, privateRuntimeFileMode } from '../private-runtime-storage-permissions.service';
+import { validateSourceUploadArchive } from '../deployment-source-build-validation-archive.service';
+import { storeSourceResolutionTaskArchive } from './source-resolution-task-archive-file-storage.service';
 
 interface StoredSourceResolutionTaskArchive {
   byteSize: number;
   sourceDigest: string;
 }
 
-export async function storeSourceResolutionTaskArchive(
+export class SourceResolutionTaskArchiveDigestMismatchError extends Error {
+  public constructor() {
+    super('Source archive logical digest does not match the uploaded digest.');
+    this.name = 'SourceResolutionTaskArchiveDigestMismatchError';
+  }
+}
+
+export async function storeVerifiedSourceResolutionTaskArchive(
   taskId: string,
   sourceArchive: Buffer,
+  expectedSourceDigest: string,
 ): Promise<StoredSourceResolutionTaskArchive> {
+  await storeSourceResolutionTaskArchive(taskId, sourceArchive);
   const archivePath: string = resolveSourceResolutionTaskArchivePath(taskId);
-  await writeFile(archivePath, sourceArchive, { flag: 'wx', mode: privateRuntimeFileMode });
-  await chmodPrivateRuntimeStorageFile(archivePath);
 
-  return {
-    byteSize: sourceArchive.byteLength,
-    sourceDigest: createHash('sha256').update(sourceArchive).digest('hex'),
-  };
+  try {
+    const sourceDigest: string = await validateSourceUploadArchive(archivePath);
+    if (sourceDigest !== expectedSourceDigest) {
+      throw new SourceResolutionTaskArchiveDigestMismatchError();
+    }
+
+    return {
+      byteSize: sourceArchive.byteLength,
+      sourceDigest,
+    };
+  } catch (error) {
+    await deleteSourceResolutionTaskArchive(taskId);
+    throw error;
+  }
 }
 
 export async function deleteSourceResolutionTaskArchive(taskId: string): Promise<void> {

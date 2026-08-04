@@ -21,6 +21,7 @@ export interface CreateDeploymentSourceProvenanceInput {
 export interface CreateBuildArtifactInput {
   createdByPrincipalId?: string | undefined;
   id: string;
+  fingerprint: string;
   imageRepository: string;
   imageRef?: string | null | undefined;
   projectId: string;
@@ -29,12 +30,6 @@ export interface CreateBuildArtifactInput {
   resolvedBuildJson: string;
   sourceDigest: string;
   sourceUploadId?: string | null | undefined;
-  updatedAt: Date;
-}
-
-export interface UpdateBuildArtifactImageInput {
-  buildArtifactId: string;
-  imageRef: string;
   updatedAt: Date;
 }
 

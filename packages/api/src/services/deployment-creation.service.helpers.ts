@@ -35,6 +35,7 @@ import type {
   ResolvedProjectContext,
 } from './deployments.service.types';
 import { buildQueuedDeploymentBaseInput } from './queued-deployment-input.service';
+import { buildArtifactFingerprint } from './build-artifact-fingerprint.service';
 
 export function buildQueuedDeploymentBatchItem(
   preparedState: PreparedQueuedDeploymentState,
@@ -54,6 +55,7 @@ function buildQueuedArtifactInput(
 ): CreateBuildArtifactInput {
   return {
     createdByPrincipalId: actorPrincipalId,
+    fingerprint: preparedState.artifactFingerprint,
     id: preparedState.artifactId,
     imageRepository: buildCompartmentArtifactImageRepository(
       preparedState.context.project.id,
@@ -69,12 +71,6 @@ function buildQueuedArtifactInput(
   };
 }
 
-export function resolveDescriptorServiceBuild(
-  descriptorService: ResolvedDescriptorService | undefined,
-): ResolvedCompartmentServiceBuildConfig {
-  return descriptorService?.build ?? resolveCompartmentServiceBuildConfig(undefined);
-}
-
 export function buildPreparedQueuedDeploymentState(
   deploymentRunId: string,
   sourceProvenance: DeploymentSourceProvenance | undefined,
@@ -83,9 +79,11 @@ export function buildPreparedQueuedDeploymentState(
   sourceUpload: SourceUploadRow,
   buildEnvSnapshot: BuildEnvSnapshot,
 ): PreparedQueuedDeploymentState {
+  const build: ResolvedCompartmentServiceBuildConfig = resolveDescriptorServiceBuild(context.descriptorService);
   return {
     accessMode: resolveDescriptorServiceAccessMode(context.descriptorService),
     artifactId: createId('art'),
+    artifactFingerprint: fingerprintPreparedArtifact(context, sourceUpload.sourceDigest, buildEnvSnapshot, build),
     buildEnvSnapshot,
     context,
     deploymentRunId,
@@ -94,6 +92,28 @@ export function buildPreparedQueuedDeploymentState(
     ...(sourceProvenance !== undefined ? { sourceProvenance } : {}),
     sourceUploadId: sourceUpload.id,
   };
+}
+
+export function resolveDescriptorServiceBuild(
+  descriptorService: ResolvedDescriptorService | undefined,
+): ResolvedCompartmentServiceBuildConfig {
+  return descriptorService?.build ?? resolveCompartmentServiceBuildConfig(undefined);
+}
+
+function fingerprintPreparedArtifact(
+  context: ResolvedProjectContext,
+  sourceDigest: string,
+  buildEnvSnapshot: BuildEnvSnapshot,
+  build: ResolvedCompartmentServiceBuildConfig,
+): string {
+  return buildArtifactFingerprint({
+    build,
+    buildEnvSnapshot,
+    organizationId: context.organization.id,
+    projectId: context.project.id,
+    projectServiceId: context.service.id,
+    sourceDigest,
+  });
 }
 
 function resolveDescriptorServiceAccessMode(

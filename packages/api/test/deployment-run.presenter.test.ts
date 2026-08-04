@@ -126,8 +126,11 @@ function createDeploymentJoinedRow(
 
   return {
     artifact: {
+      buildOwnerDeploymentId: null,
+      buildState: 'pending',
       createdAt: now,
       createdByPrincipalId: null,
+      fingerprint: `sha256:fingerprint-${serviceName}`,
       id: `art_${serviceName}`,
       imageRef: null,
       imageRepository: `registry.example/${serviceName}`,
@@ -137,6 +140,7 @@ function createDeploymentJoinedRow(
       projectServiceId: `svc_${serviceName}`,
       resolvedBuildEnvJson: '{}',
       resolvedBuildJson: '{}',
+      sbomDigest: null,
       sourceDigest: 'sha256:source',
       sourceUploadId: null,
       updatedAt: now,

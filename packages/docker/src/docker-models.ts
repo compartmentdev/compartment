@@ -12,7 +12,9 @@ export interface DockerBuildImageInput {
   appPath?: string | undefined;
   buildAptPackages?: string[] | undefined;
   buildCommand?: string | undefined;
+  buildCacheKey?: string | undefined;
   buildEnv?: Record<string, string> | undefined;
+  buildSecretFingerprint?: string | undefined;
   cacheImageRef?: string | undefined;
   contextDirectory: string;
   dockerfilePath?: string | undefined;

@@ -39,6 +39,7 @@ export {
 export {
   buildCompartmentArtifactImageRepository,
   buildCompartmentArtifactImageTag,
+  readCompartmentArtifactImageDigest,
   retargetCompartmentArtifactImageDigestRef,
   type RegistryInstallVerificationOutput,
 } from './contracts/artifact-image.contract';
@@ -117,6 +118,14 @@ export {
   updateSsoOidcProviderRequestSchema,
 } from './contracts/sso-oidc.contract';
 export { hasSsoOidcProviderUpdateChanges } from './contracts/sso-oidc.contract.validation';
+export {
+  type WorkerBuildJobDockerInput,
+  type WorkerBuildJobInput,
+  type WorkerBuildJobLogRecord,
+  type WorkerSourceBuildJobInput,
+  workerBuildJobInputSchema,
+  workerBuildJobLogRecordSchema,
+} from './contracts/internal-worker-build-job.contract';
 export {
   type OrganizationAuthSettingsResponse,
   type UpdateOrganizationAuthSettingsRequest,

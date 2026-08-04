@@ -287,6 +287,23 @@ describe('Phase 0 API integration source archive', (): void => {
     expect(await db.select().from(sourceUploads)).toHaveLength(0);
   });
 
+  it('rejects a valid source archive when its claimed logical digest does not match', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    const sourceUploadResponse: LightMyRequestResponse = await injectSourceUploadRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+      {
+        sourceArchive: await createSourceArchive({ 'compartment.yml': 'name: digest-check\nservices: {}\n' }),
+        sourceDigest: `v1:sha256:${'0'.repeat(64)}`,
+      },
+    );
+
+    expect(sourceUploadResponse.statusCode).toBe(400);
+    expect(errorResponseSchema.parse(sourceUploadResponse.json()).error.code).toBe('invalid_source_upload');
+    expect(await db.select().from(sourceUploads)).toHaveLength(0);
+  });
+
   it('rejects source uploads that contain unsupported GNU long link headers', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
 
@@ -611,7 +628,7 @@ describe('Phase 0 API integration source archive', (): void => {
     try {
       const sourceArchiveResponse: LightMyRequestResponse = await app.inject({
         headers: {
-          authorization: 'Bearer test-runtime-control-token',
+          authorization: `Bearer ${claimedDeployment.buildJobToken}`,
         },
         method: 'GET',
         url: `/internal/artifacts/${claimedDeployment.artifact.id}/source-archive`,
@@ -651,7 +668,7 @@ describe('Phase 0 API integration source archive', (): void => {
 
     const sourceArchiveResponse: LightMyRequestResponse = await app.inject({
       headers: {
-        authorization: 'Bearer test-runtime-control-token',
+        authorization: `Bearer ${claimedDeployment.buildJobToken}`,
       },
       method: 'GET',
       url: `/internal/artifacts/${claimedDeployment.artifact.id}/source-archive`,

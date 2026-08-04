@@ -14,6 +14,7 @@ export interface CreateSourceUploadStreamInput {
   organizationId: string;
   scope: SourceUploadScope;
   sourceArchiveStream: NodeJS.ReadableStream;
+  sourceDigest: string;
 }
 
 export interface CreateSourceUploadArchivePathInput {

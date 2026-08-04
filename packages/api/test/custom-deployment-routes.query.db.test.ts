@@ -32,6 +32,7 @@ const customDeploymentRoutesDatabaseUrl: string = deriveProcessScopedDatabaseUrl
   'custom_deployment_routes_query',
 );
 const apiConfig: ApiConfig = {
+  builderProfileDigest: 'sha256:' + 'e'.repeat(64),
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
   tlsMode: 'internal',

@@ -1,6 +1,9 @@
 import type { DockerBuildImageResult, DockerProgressLine } from '@compartment/docker';
+import { workerBuildJobInputSchema, workerBuildJobLogRecordSchema } from '@compartment/contracts';
+import type { JsonValue } from '@compartment/utils';
 import type {
   KubeJobEmptyDirVolume,
+  KubeJobInitializer,
   KubeJobResult,
   KubeJobSidecar,
   KubeJobSpec,
@@ -20,7 +23,6 @@ export async function runWorkerBuildJob(
 ): Promise<DockerBuildImageResult> {
   const capture: KubeJobResult = await runtime.runJob(buildKubeJobSpec(config, input));
   try {
-    await publishCapturedProgress(capture.logs, input.onProgressLine);
     if (capture.status !== 'succeeded') {
       throw new Error(
         `Sandboxed build Job ${capture.jobName} ${capture.status}: ${readCapturedBuildFailure(capture.logs)}`,
@@ -34,20 +36,17 @@ export async function runWorkerBuildJob(
 
 export function readWorkerBuildJobInputEnvironment(env: NodeJS.ProcessEnv): {
   input: WorkerBuildJobInput;
-  internalToken: string;
+  buildJobToken: string;
 } {
   const serializedInput: string | undefined = env[buildJobInputEnvironmentName];
-  const internalToken: string | undefined = env[buildJobTokenEnvironmentName];
+  const buildJobToken: string | undefined = env[buildJobTokenEnvironmentName];
   if (serializedInput === undefined || serializedInput === '') {
     throw new Error(`${buildJobInputEnvironmentName} is required.`);
   }
-  if (internalToken === undefined || internalToken === '') {
+  if (buildJobToken === undefined || buildJobToken === '') {
     throw new Error(`${buildJobTokenEnvironmentName} is required.`);
   }
-  return {
-    input: JSON.parse(serializedInput) as WorkerBuildJobInput,
-    internalToken,
-  };
+  return { input: workerBuildJobInputSchema.parse(JSON.parse(serializedInput) as JsonValue), buildJobToken };
 }
 
 export function writeWorkerBuildJobLog(record: WorkerBuildJobLogRecord): void {
@@ -62,9 +61,11 @@ function buildKubeJobSpec(config: WorkerBuildSandboxConfig, input: RunWorkerBuil
     env: buildJobEnvironment(input),
     id: input.id,
     image: config.runnerImage,
+    initializers: [runcLauncherInitializer(config), buildKitConfigInitializer(config, input.build)],
     jobClass: 'build',
     labels: { 'compartment.dev/job-class': 'build' },
     namespace: config.namespace,
+    ...(input.onProgressLine === undefined ? {} : { onLogLine: createLiveLogReporter(input.onProgressLine) }),
     priorityClassName: 'compartment-platform',
     resources: config.runnerResources,
     scheduling: config.scheduling,
@@ -74,10 +75,21 @@ function buildKubeJobSpec(config: WorkerBuildSandboxConfig, input: RunWorkerBuil
   };
 }
 
+function createLiveLogReporter(
+  reporter: (line: DockerProgressLine) => void | Promise<void>,
+): (line: string) => Promise<void> {
+  return async (line: string): Promise<void> => {
+    const record: WorkerBuildJobLogRecord | undefined = readBuildLogRecord(line);
+    if (record?.type === 'progress') {
+      await reporter(record.progress);
+    }
+  };
+}
+
 function buildJobEnvironment(input: RunWorkerBuildJobInput): Record<string, string> {
   return {
     [buildJobInputEnvironmentName]: JSON.stringify(input.build),
-    [buildJobTokenEnvironmentName]: input.internalToken,
+    [buildJobTokenEnvironmentName]: input.jobToken,
     BUILDKIT_ADDR: buildKitAddress,
     TMPDIR: '/tmp',
   };
@@ -85,49 +97,88 @@ function buildJobEnvironment(input: RunWorkerBuildJobInput): Record<string, stri
 
 function buildJobVolumes(): KubeJobEmptyDirVolume[] {
   return [
+    { name: 'buildkit-config' },
     { name: 'buildkit-data' },
-    { name: 'buildkit-rootless-tmp' },
+    { name: 'buildkit-tmp' },
     { name: 'buildkit-run' },
+    { name: 'buildkit-tools' },
     { containerMountPath: '/tmp', name: 'tmp' },
   ];
 }
 
+function buildKitConfigInitializer(config: WorkerBuildSandboxConfig, build: WorkerBuildJobInput): KubeJobInitializer {
+  const registryHost: string | null = readInsecureBuildCacheRegistryHost(build);
+  const script: string =
+    registryHost === null
+      ? ': > /buildkit-config/buildkitd.toml'
+      : `printf '%s\\n' '[registry."${registryHost}"]' '  http = true' > /buildkit-config/buildkitd.toml`;
+  return {
+    args: ['-c', script],
+    command: ['sh'],
+    image: config.runnerImage,
+    name: 'prepare-buildkit-config',
+    volumeMounts: [{ mountPath: '/buildkit-config', name: 'buildkit-config' }],
+  };
+}
+
+function readInsecureBuildCacheRegistryHost(build: WorkerBuildJobInput): string | null {
+  if (!build.docker.pushImageInsecureRegistry) {
+    return null;
+  }
+  const cacheImageRef: string | undefined = build.docker.cacheImageRef;
+  if (cacheImageRef === undefined) {
+    return null;
+  }
+  const registryHost: string = cacheImageRef.split('/', 1)[0] ?? '';
+  if (!/^[a-z0-9.-]+(?::[0-9]+)?$/u.test(registryHost)) {
+    throw new Error('Build cache references require a valid internal registry host.');
+  }
+  return registryHost;
+}
+
+function runcLauncherInitializer(config: WorkerBuildSandboxConfig): KubeJobInitializer {
+  return {
+    args: ['/usr/local/bin/runc-no-new-keyring', '/buildkit-tools/runc-no-new-keyring'],
+    command: ['cp'],
+    image: config.runnerImage,
+    name: 'prepare-buildkit-tools',
+    volumeMounts: [{ mountPath: '/buildkit-tools', name: 'buildkit-tools' }],
+  };
+}
+
 function buildKitSidecar(config: WorkerBuildSandboxConfig): KubeJobSidecar {
   return {
-    args: [
-      '--addr',
-      buildKitAddress,
-      '--oci-worker-no-process-sandbox',
-      '--oci-worker-snapshotter=native',
-      '--oci-worker-gc-keepstorage',
-      String(config.gcKeepStorageMb),
-    ],
+    args: buildKitSidecarArgs(config.gcKeepStorageMb),
+    command: ['buildkitd'],
     env: { HOME: '/home/user', XDG_RUNTIME_DIR: '/run/user/1000' },
     image: config.buildKitImage,
     name: 'buildkit',
     resources: config.buildKitResources,
-    securityProfile: 'rootless-buildkit',
+    securityProfile: 'userns-buildkit',
     volumeMounts: [
       { mountPath: '/home/user/.local/share/buildkit', name: 'buildkit-data' },
-      { mountPath: '/home/user/.local/tmp', name: 'buildkit-rootless-tmp' },
+      { mountPath: '/buildkit-config', name: 'buildkit-config', readOnly: true },
+      { mountPath: '/home/user/.local/tmp', name: 'buildkit-tmp' },
       { mountPath: '/run/user/1000', name: 'buildkit-run' },
+      { mountPath: '/buildkit-tools', name: 'buildkit-tools', readOnly: true },
       { mountPath: '/tmp', name: 'tmp' },
     ],
   };
 }
 
-async function publishCapturedProgress(
-  logs: string,
-  reporter: ((line: DockerProgressLine) => void | Promise<void>) | undefined,
-): Promise<void> {
-  if (reporter === undefined) {
-    return;
-  }
-  for (const record of readBuildLogRecords(logs)) {
-    if (record.type === 'progress') {
-      await reporter(record.progress);
-    }
-  }
+function buildKitSidecarArgs(gcKeepStorageMb: number): string[] {
+  return [
+    '--config',
+    '/buildkit-config/buildkitd.toml',
+    '--root',
+    '/home/user/.local/share/buildkit',
+    '--addr',
+    buildKitAddress,
+    '--oci-worker-snapshotter=native',
+    '--oci-worker-binary=/buildkit-tools/runc-no-new-keyring',
+    '--oci-worker-gc-keepstorage',
+    String(gcKeepStorageMb),
+  ];
 }
 
 function readCapturedBuildResult(logs: string): DockerBuildImageResult {
@@ -158,11 +209,15 @@ function readCapturedBuildFailure(logs: string): string {
 
 function readBuildLogRecords(logs: string): WorkerBuildJobLogRecord[] {
   return logs.split('\n').flatMap((line: string): WorkerBuildJobLogRecord[] => {
-    try {
-      const record: WorkerBuildJobLogRecord = JSON.parse(line) as WorkerBuildJobLogRecord;
-      return [record];
-    } catch {
-      return [];
-    }
+    const record: WorkerBuildJobLogRecord | undefined = readBuildLogRecord(line);
+    return record === undefined ? [] : [record];
   });
+}
+
+function readBuildLogRecord(line: string): WorkerBuildJobLogRecord | undefined {
+  try {
+    return workerBuildJobLogRecordSchema.parse(JSON.parse(line) as JsonValue);
+  } catch {
+    return undefined;
+  }
 }

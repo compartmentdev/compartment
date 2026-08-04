@@ -251,6 +251,7 @@ describe('project lifecycle service', (): void => {
 
 function mockLifecycleContext(deployments: DeploymentJoinedRow[], activeDeployments: DeploymentJoinedRow[]): void {
   mocks.getApiConfig.mockReturnValue({
+    builderProfileDigest: 'sha256:' + 'e'.repeat(64),
     baseDomain: 'localhost',
     bindHost: '127.0.0.1',
     tlsMode: 'internal',
@@ -350,8 +351,11 @@ function createDeployment(serviceName: string, overrides?: Partial<DeploymentRow
 
   return {
     artifact: {
+      buildOwnerDeploymentId: null,
+      buildState: 'ready',
       createdAt,
       createdByPrincipalId: 'prn_123',
+      fingerprint: `sha256:fingerprint-${serviceName}`,
       id: `art_${serviceName}`,
       imageRef: 'registry.example/billing:latest',
       imageRepository: 'registry.example/billing',
@@ -361,6 +365,7 @@ function createDeployment(serviceName: string, overrides?: Partial<DeploymentRow
       projectServiceId: `svc_${serviceName}`,
       resolvedBuildEnvJson: '{}',
       resolvedBuildJson: '{}',
+      sbomDigest: 'sha256:image',
       sourceDigest: 'sha256:123',
       sourceUploadId: null,
       updatedAt: createdAt,

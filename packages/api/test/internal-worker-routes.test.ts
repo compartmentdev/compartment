@@ -10,6 +10,7 @@ import {
   workerRunNextScheduledResourceOperationResponseSchema,
   workerUploadGitSourceResolutionTaskArchiveResponseSchema,
 } from '@compartment/contracts';
+import { createHash } from 'node:crypto';
 import type { FastifyReply, FastifyRequest, HookHandlerDoneFunction, LightMyRequestResponse } from 'fastify';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ApiApp } from '../src/app.types';
@@ -17,8 +18,10 @@ import type {
   claimQueuedDeploymentForWorker,
   recoverOrphanedDeploymentBuildClaims,
 } from '../src/services/deployment-worker.service';
-import type { storeSourceResolutionTaskArchive } from '../src/services/git-source/source-resolution-task-archive-storage.service';
+import type { storeVerifiedSourceResolutionTaskArchive } from '../src/services/git-source/source-resolution-task-archive-storage.service';
 import type { runNextScheduledResourceOperationForWorker } from '../src/services/resource-operation-scheduler.service';
+import type { persistBuildArtifactSbom } from '../src/services/build-artifact-sbom.service';
+import { createBuildJobAccessToken } from '../src/routes/internal/build-job-access-token';
 import type {
   acknowledgeProjectProvisioningV2,
   claimProjectProvisioningV2,
@@ -28,9 +31,10 @@ import { applyApiRouteTestEnv, injectApiRoute, withApiRouteApp } from './api-rou
 type ClaimQueuedDeploymentForWorker = typeof claimQueuedDeploymentForWorker;
 type RecoverOrphanedDeploymentBuildClaims = typeof recoverOrphanedDeploymentBuildClaims;
 type RunNextScheduledResourceOperationForWorker = typeof runNextScheduledResourceOperationForWorker;
-type StoreSourceResolutionTaskArchive = typeof storeSourceResolutionTaskArchive;
+type StoreSourceResolutionTaskArchive = typeof storeVerifiedSourceResolutionTaskArchive;
 type ClaimProjectProvisioningV2 = typeof claimProjectProvisioningV2;
 type AcknowledgeProjectProvisioningV2 = typeof acknowledgeProjectProvisioningV2;
+type PersistBuildArtifactSbom = typeof persistBuildArtifactSbom;
 
 interface InternalWorkerRouteMocks {
   acknowledgeProjectProvisioningV2: Mock<AcknowledgeProjectProvisioningV2>;
@@ -39,6 +43,7 @@ interface InternalWorkerRouteMocks {
   claimProjectProvisioningV2: Mock<ClaimProjectProvisioningV2>;
   runNextScheduledResourceOperationForWorker: Mock<RunNextScheduledResourceOperationForWorker>;
   storeSourceResolutionTaskArchive: Mock<StoreSourceResolutionTaskArchive>;
+  persistBuildArtifactSbom: Mock<PersistBuildArtifactSbom>;
 }
 
 let previousSourceArchiveMaxBytes: string | undefined;
@@ -52,6 +57,7 @@ const mocks: InternalWorkerRouteMocks = vi.hoisted(
     claimProjectProvisioningV2: vi.fn<ClaimProjectProvisioningV2>(),
     runNextScheduledResourceOperationForWorker: vi.fn<RunNextScheduledResourceOperationForWorker>(),
     storeSourceResolutionTaskArchive: vi.fn<StoreSourceResolutionTaskArchive>(),
+    persistBuildArtifactSbom: vi.fn<PersistBuildArtifactSbom>(),
   }),
 );
 
@@ -80,9 +86,9 @@ vi.mock(
 vi.mock(
   '../src/services/git-source/source-resolution-task-archive-storage.service',
   (): {
-    storeSourceResolutionTaskArchive: Mock<StoreSourceResolutionTaskArchive>;
+    storeVerifiedSourceResolutionTaskArchive: Mock<StoreSourceResolutionTaskArchive>;
   } => ({
-    storeSourceResolutionTaskArchive: mocks.storeSourceResolutionTaskArchive,
+    storeVerifiedSourceResolutionTaskArchive: mocks.storeSourceResolutionTaskArchive,
   }),
 );
 
@@ -95,6 +101,13 @@ vi.mock(
   }),
 );
 
+vi.mock(
+  '../src/services/build-artifact-sbom.service',
+  (): { persistBuildArtifactSbom: Mock<PersistBuildArtifactSbom> } => ({
+    persistBuildArtifactSbom: mocks.persistBuildArtifactSbom,
+  }),
+);
+
 describe('internal worker routes', (): void => {
   afterEach((): void => {
     mocks.acknowledgeProjectProvisioningV2.mockReset();
@@ -103,6 +116,7 @@ describe('internal worker routes', (): void => {
     mocks.claimProjectProvisioningV2.mockReset();
     mocks.runNextScheduledResourceOperationForWorker.mockReset();
     mocks.storeSourceResolutionTaskArchive.mockReset();
+    mocks.persistBuildArtifactSbom.mockReset();
     if (shouldRestoreSourceArchiveMaxBytes) {
       restoreOptionalEnvValue('COMPARTMENT_SOURCE_ARCHIVE_MAX_BYTES', previousSourceArchiveMaxBytes);
       shouldRestoreSourceArchiveMaxBytes = false;
@@ -125,6 +139,53 @@ describe('internal worker routes', (): void => {
 
       expect(response.statusCode).toBe(401);
       expect(mocks.claimQueuedDeploymentForWorker).not.toHaveBeenCalled();
+    });
+  });
+
+  it('keeps artifact SBOM uploads behind artifact-bound build-job authentication', async (): Promise<void> => {
+    applyApiRouteTestEnv();
+    const sbomJson: string = JSON.stringify({ artifacts: [] });
+    const digest: string = `sha256:${createHash('sha256').update(sbomJson).digest('hex')}`;
+    const validToken: string = createBuildJobAccessToken({
+      artifactId: 'art_123',
+      deploymentId: 'dep_123',
+      secret: 'test-runtime-control-token',
+    });
+    const mismatchedToken: string = createBuildJobAccessToken({
+      artifactId: 'art_other',
+      deploymentId: 'dep_123',
+      secret: 'test-runtime-control-token',
+    });
+    mocks.persistBuildArtifactSbom.mockResolvedValueOnce(true);
+
+    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
+      const missingAuth: LightMyRequestResponse = await injectApiRoute(app, {
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+        payload: { digest, imageDigest: `sha256:${'b'.repeat(64)}`, sbomJson },
+        timeoutMs: 1000,
+        url: '/internal/artifacts/art_123/sbom',
+      });
+      expect(missingAuth.statusCode).toBe(401);
+
+      const mismatchedAuth: LightMyRequestResponse = await injectApiRoute(app, {
+        headers: { authorization: `Bearer ${mismatchedToken}`, 'content-type': 'application/json' },
+        method: 'POST',
+        payload: { digest, imageDigest: `sha256:${'b'.repeat(64)}`, sbomJson },
+        timeoutMs: 1000,
+        url: '/internal/artifacts/art_123/sbom',
+      });
+      expect(mismatchedAuth.statusCode).toBe(401);
+
+      const accepted: LightMyRequestResponse = await injectApiRoute(app, {
+        headers: { authorization: `Bearer ${validToken}`, 'content-type': 'application/json' },
+        method: 'POST',
+        payload: { digest, imageDigest: `sha256:${'b'.repeat(64)}`, sbomJson },
+        timeoutMs: 1000,
+        url: '/internal/artifacts/art_123/sbom',
+      });
+      expect(accepted.statusCode).toBe(200);
+      expect(mocks.persistBuildArtifactSbom).toHaveBeenCalledOnce();
     });
   });
 
@@ -338,13 +399,18 @@ describe('internal worker routes', (): void => {
         headers: createWorkerArchiveHeaders(),
         method: 'POST',
         payload: sourceArchive,
-        url: buildWorkerUploadGitSourceResolutionTaskArchivePath('srt_123'),
+        url: buildWorkerUploadGitSourceResolutionTaskArchivePath('srt_123', `v1:sha256:${'a'.repeat(64)}`),
       });
 
       expect(response.statusCode).toBe(200);
       expect(workerUploadGitSourceResolutionTaskArchiveResponseSchema.parse(response.json())).toEqual({
         success: true,
       });
+      expect(mocks.storeSourceResolutionTaskArchive).toHaveBeenCalledWith(
+        'srt_123',
+        sourceArchive,
+        `v1:sha256:${'a'.repeat(64)}`,
+      );
     });
   });
 });

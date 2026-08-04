@@ -376,10 +376,12 @@ function createWorkerConfig(
 function createClaimedDeployment(): WorkerClaimedDeployment {
   return {
     artifact: {
+      buildState: 'building',
       id: 'art_123',
       imageRef: null,
-      sourceDigest: 'sha256:source',
+      sourceDigest: `v1:sha256:${'a'.repeat(64)}`,
     },
+    buildJobToken: 'build-job-token',
     buildEnv: {},
     deploymentId: 'dep_123',
     deploymentRunId: 'drn_123',
