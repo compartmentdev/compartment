@@ -1,5 +1,5 @@
 import type { DeploymentRunLogsResponse } from '@compartment/contracts';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 import { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import {
   deploymentRunCompletionTimeoutMs,
@@ -9,6 +9,10 @@ import {
 describe('deployment run completion wait', (): void => {
   afterEach((): void => {
     vi.useRealTimers();
+  });
+
+  it('allows the worker build lifecycle plus failure propagation time', (): void => {
+    expect(deploymentRunCompletionTimeoutMs).toBe(32 * 60_000);
   });
 
   it('allows a progressing image build to finish after the former three-minute observer limit', async (): Promise<void> => {
@@ -34,35 +38,29 @@ describe('deployment run completion wait', (): void => {
     expect(Date.now() - startedAtMs).toBeGreaterThan(180_000);
   });
 
-  it('fails immediately with lifecycle diagnostics when the deployment becomes terminal', async (): Promise<void> => {
+  it('fails immediately when the deployment becomes terminal', async (): Promise<void> => {
     const cli: SelfHostedUserSetupCli = new SelfHostedUserSetupCli({}, 1_000);
     const failedPayload: DeploymentRunLogsResponse = buildDeploymentRunLogsResponse('deployment_failed');
-    vi.spyOn(cli, 'runJson').mockResolvedValue(failedPayload);
+    const runJson: MockInstance = vi.spyOn(cli, 'runJson').mockResolvedValue(failedPayload);
 
     const failure: Error = await readWaitError(waitForDeploymentRunCompletion(cli, 'failed-build', 'drn_failed'));
 
-    expect(failure.message).toContain('Deployment run drn_failed failed.');
-    expect(failure.message).toContain('Status: failed.');
-    expect(failure.message).toContain('Failure message: Build sandbox exceeded its deadline.');
-    expect(failure.message).toContain('building_image:running:Building image.');
-    expect(failure.message).toContain('Last observed timestamp: 2026-08-04T09:46:00.000Z.');
-    expect(failure.message).toContain('Last payload:');
+    expect(failure.message).toBe('Deployment run drn_failed failed.');
+    expect(runJson).toHaveBeenCalledOnce();
   });
 
-  it('fails immediately with lifecycle diagnostics when the deployment is stopped', async (): Promise<void> => {
+  it('fails immediately when the deployment is stopped', async (): Promise<void> => {
     const cli: SelfHostedUserSetupCli = new SelfHostedUserSetupCli({}, 1_000);
     const stoppedPayload: DeploymentRunLogsResponse = buildDeploymentRunLogsResponse('stopped');
-    vi.spyOn(cli, 'runJson').mockResolvedValue(stoppedPayload);
+    const runJson: MockInstance = vi.spyOn(cli, 'runJson').mockResolvedValue(stoppedPayload);
 
     const failure: Error = await readWaitError(waitForDeploymentRunCompletion(cli, 'stopped-build', 'drn_stopped'));
 
-    expect(failure.message).toContain('Deployment run drn_stopped stopped.');
-    expect(failure.message).toContain('Status: stopped.');
-    expect(failure.message).toContain('building_image:running:Building image.');
-    expect(failure.message).toContain('Last payload:');
+    expect(failure.message).toBe('Deployment run drn_stopped stopped.');
+    expect(runJson).toHaveBeenCalledOnce();
   });
 
-  it('bounds the observer and reports the last known progress for a running deployment', async (): Promise<void> => {
+  it('bounds the observer and reports the last payload for a running deployment', async (): Promise<void> => {
     vi.useFakeTimers();
     const cli: SelfHostedUserSetupCli = new SelfHostedUserSetupCli({}, 1_000);
     const runningPayload: DeploymentRunLogsResponse = buildDeploymentRunLogsResponse('running');
@@ -76,12 +74,9 @@ describe('deployment run completion wait', (): void => {
     await vi.advanceTimersByTimeAsync(deploymentRunCompletionTimeoutMs);
     const failure: Error = await readWaitError(completion);
 
-    expect(failure.message).toContain('Deployment run drn_running timed out.');
-    expect(failure.message).toContain('Status: running.');
-    expect(failure.message).toContain('Failure message: none.');
-    expect(failure.message).toContain('building_image:running:Building image.');
-    expect(failure.message).toContain('Last observed timestamp: 2026-08-04T09:46:00.000Z.');
-    expect(failure.message).toContain('Last payload:');
+    expect(failure.message).toBe(
+      `Timed out waiting for deployment run drn_running. Last payload: ${JSON.stringify(runningPayload)}`,
+    );
   });
 });
 

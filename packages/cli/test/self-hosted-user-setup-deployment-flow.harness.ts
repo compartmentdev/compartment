@@ -12,7 +12,6 @@ import {
   type DeploymentLogLine,
   type DeploymentLogsResponse,
   type DeploymentReadSummary,
-  type DeploymentRunLogLine,
   type DeploymentRunLogsResponse,
   type DeploymentRunStepSummary,
   type DeploymentStatusResponse,
@@ -168,52 +167,19 @@ export async function waitForDeploymentRunCompletion(
       return payload;
     }
     if (payload.deployment.status === 'failed' || completedStep?.status === 'failed') {
-      throw new Error(buildDeploymentRunWaitError('failed', payload));
+      throw new Error(`Deployment run ${deploymentRunId} failed.`);
     }
     if (payload.deployment.status === 'stopped') {
-      throw new Error(buildDeploymentRunWaitError('stopped', payload));
+      throw new Error(`Deployment run ${deploymentRunId} stopped.`);
     }
 
     lastPayload = payload;
     await sleep(deploymentRunPollDelayMs);
   } while (Date.now() < deadline);
 
-  throw new Error(buildDeploymentRunWaitError('timed out', lastPayload));
-}
-
-function buildDeploymentRunWaitError(
-  reason: 'failed' | 'stopped' | 'timed out',
-  payload: DeploymentRunLogsResponse,
-): string {
-  const runningSteps: DeploymentRunStepSummary[] = payload.steps.filter(
-    (step: DeploymentRunStepSummary): boolean => step.status === 'running',
+  throw new Error(
+    `Timed out waiting for deployment run ${deploymentRunId}. Last payload: ${JSON.stringify(lastPayload)}`,
   );
-  const observedTimestamps: string[] = [
-    payload.deployment.createdAt,
-    ...payload.steps.flatMap((step: DeploymentRunStepSummary): string[] =>
-      step.completedAt === null ? [step.createdAt] : [step.createdAt, step.completedAt],
-    ),
-    ...payload.lines.map((line: DeploymentRunLogLine): string => line.timestamp),
-  ];
-  const lastObservedTimestamp: string = observedTimestamps.reduce(
-    (latest: string, candidate: string): string => (candidate > latest ? candidate : latest),
-    payload.deployment.createdAt,
-  );
-  const runningStepSummary: string =
-    runningSteps.length === 0
-      ? 'none'
-      : runningSteps
-          .map((step: DeploymentRunStepSummary): string => `${step.stepKey}:${step.status}:${step.message}`)
-          .join(', ');
-
-  return [
-    `Deployment run ${payload.deployment.id} ${reason}.`,
-    `Status: ${payload.deployment.status}.`,
-    `Failure message: ${payload.deployment.failureMessage ?? 'none'}.`,
-    `Running steps: ${runningStepSummary}.`,
-    `Last observed timestamp: ${lastObservedTimestamp}.`,
-    `Last payload: ${JSON.stringify(payload)}`,
-  ].join(' ');
 }
 
 export async function waitForDeploymentRuntimeLog(
