@@ -16,7 +16,7 @@ describe('managed VM artifacts', (): void => {
       name: 'k3s',
       sha256: '0'.repeat(64),
       url: 'https://releases.example.test/k3s',
-      version: 'v1.36.2+k3s1',
+      version: 'v1.35.5+k3s1',
     };
     await expect(downloadManagedVmArtifacts([artifact])).rejects.toThrow('k3s digest verification failed');
   });

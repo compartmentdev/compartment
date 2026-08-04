@@ -53,7 +53,7 @@ describe('platform k3d e2e command boundary', () => {
     expect(args.join(' ')).not.toContain('30080@server');
     expect(args.join(' ')).not.toContain('30900@server');
     expect(args.join(' ')).not.toContain('31500@server');
-    expect(args).toContain('rancher/k3s:v1.36.2-k3s1');
+    expect(args).toContain('rancher/k3s:v1.35.5-k3s1');
     expect(
       args.some((arg) =>
         arg.endsWith(

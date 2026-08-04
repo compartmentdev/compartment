@@ -409,7 +409,7 @@ The proof ran on `compartment-dmitry-devbox-07`, a clean Ubuntu 24.04.4 VM with 
 
 Proved:
 
-- the official k3s `stable` channel resolved to `v1.36.2+k3s1`; the node became Ready with embedded etcd, Secret encryption, Flannel, kube-proxy, NetworkPolicy enforcement, CoreDNS, Traefik, ServiceLB, and local-path storage;
+- the release-owned tested k3s channel resolves to `v1.35.5+k3s1`; the node becomes Ready with embedded etcd, Secret encryption, Flannel, kube-proxy, NetworkPolicy enforcement, CoreDNS, Traefik, ServiceLB, and local-path storage;
 - cert-manager `v1.21.0` was Ready and its required APIs and admission webhook worked on Kubernetes 1.36;
 - the published canonical Kubernetes installer passed preflight, verified signed platform images, installed the platform, issued certificates, and completed its private-registry node-pull acceptance check;
 - a real Dockerfile application built, pushed through the private registry, pulled by the node, reached `active` in 29 seconds, and returned the expected protected-route redirect;

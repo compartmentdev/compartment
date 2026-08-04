@@ -33,7 +33,7 @@ describe('managed VM preflight', (): void => {
     );
     expect(result.checks.every((check: ManagedVmPreflightCheck): boolean => check.passed)).toBe(true);
     expect((): void => assertManagedVmPreflight(result)).not.toThrow();
-    expect(result.metadata.k3sChannel).toBe('compartment-stable-1.36');
+    expect(result.metadata.k3sChannel).toBe('compartment-stable-1.35');
   });
 
   it('reports resource, port, route, address, and foreign-state failures together', (): void => {
