@@ -99,6 +99,16 @@ describe('existing Kubernetes non-persistent preflight', (): void => {
     );
   });
 
+  it('accepts a newer Kubernetes minor when all required capabilities are present', async (): Promise<void> => {
+    const fixture: PreflightFixture = passingFixture();
+    fixture.version = 'v1.40.0';
+    installFixture(fixture);
+
+    await expect(runKubernetesExistingClusterPreflight(preflightInput())).resolves.toEqual({
+      kubernetesVersion: 'v1.40.0',
+    });
+  });
+
   it('reports a missing core API resource', async (): Promise<void> => {
     const fixture: PreflightFixture = passingFixture();
     fixture.rawResources.set('/api/v1', ['namespaces', 'secrets', 'services', 'serviceaccounts']);

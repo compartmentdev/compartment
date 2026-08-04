@@ -61,6 +61,8 @@ describe('canonical Kubernetes install input', (): void => {
     ).input;
 
     expect(interactive).toEqual(flags);
+    expect(capture.stderr.join('')).toContain('Install Compartment into this cluster? [Y/n]:');
+    expect(capture.stderr.join('')).not.toContain('Use cluster');
     expect(capture.stderr.join('')).toContain('Installation review:');
     expect(capture.stderr.join('')).toContain('production (https://cluster.example.test:6443)');
   });

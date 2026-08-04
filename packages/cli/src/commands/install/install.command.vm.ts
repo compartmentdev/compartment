@@ -1,9 +1,9 @@
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { execa } from '../../services/managed-vm-command.service';
 import { promptMutationConfirmation } from '../../prompts/prompt';
-import { managedVmKubeconfigPath, managedVmValuesPath } from '../../services/managed-vm-cluster.service';
+import { managedVmValuesPath } from '../../services/managed-vm-cluster.service';
 import {
   inspectManagedVmHost,
   inspectManagedVmState,
@@ -13,36 +13,17 @@ import { assertManagedVmPreflight, evaluateManagedVmPreflight } from '../../serv
 import type {
   ManagedVmPreflightResult,
   ManagedVmInstallStage,
-  ManagedVmObservedState,
   ManagedVmProvisionerState,
 } from '../../services/managed-vm-provisioning.types';
 import { provisionManagedVmCluster } from '../../services/managed-vm-provisioner.service';
 import { renderManagedVmFirewallRules } from '../../services/managed-vm-firewall.service';
 import { persistManagedVmStage } from '../../services/managed-vm-state.service';
-import { selectInstallTarget, type InstallTarget } from '../../services/managed-vm-target.service';
 import type { CliCommandDependencies } from '../command.types';
 import { resolveInstallIdentityPrompts, withResolvedInstallIdentity } from './install.command.identity';
 import { executeCanonicalKubernetesInstallCommand } from './install.command.kubernetes';
-import type {
-  InstallCommandOptions,
-  InstallInputStream,
-  ResolvedInstallIdentityPrompts,
-} from './install.command.types';
+import type { InstallCommandOptions, ResolvedInstallIdentityPrompts } from './install.command.types';
 
 const observationUrl: string = 'https://1.1.1.1/cdn-cgi/trace';
-
-export async function resolveInstallCommandTarget(
-  dependencies: CliCommandDependencies,
-  options: InstallCommandOptions,
-): Promise<InstallTarget> {
-  const state: ManagedVmObservedState = await inspectManagedVmState();
-  return await selectInstallTarget({
-    explicitTarget: options.target,
-    interactive: (dependencies.io.stdin as InstallInputStream).isTTY === true,
-    kubeconfigPaths: readKubeconfigCandidates(options.kubeContext),
-    managedStateExists: state.provisionerStateExists,
-  });
-}
 
 export async function executeManagedVmInstallCommand(
   dependencies: CliCommandDependencies,
@@ -229,11 +210,15 @@ function renderManagedVmReview(
 ): void {
   dependencies.io.stderr(`\nInstallation review
   Target: this VM
-  Kubernetes: k3s ${preflight.metadata.k3sChannel}, single node, embedded etcd
-  Kubernetes compatibility: minor ${preflight.metadata.kubernetesMinor} and required capabilities
   Domain: managed
   Owner: ${identity.adminEmail}
   Organization: ${identity.organizationName}
+
+Managed Kubernetes
+  Kubernetes: k3s ${preflight.metadata.k3sVersion} (${preflight.metadata.k3sChannel})
+  kubectl: provided by k3s
+  Helm: ${preflight.metadata.helmVersion}
+  Topology: single node, embedded etcd
 
 Host changes
   /usr/local/bin/compartment, k3s, helm
@@ -243,14 +228,6 @@ Host changes
   Firewall rules on ${preflight.inventory.publicInterface}:
 ${indent(renderManagedVmFirewallRules(preflight.inventory.publicInterface), '    ')}
 `);
-}
-
-function readKubeconfigCandidates(configuredContext: string | undefined): readonly string[] {
-  const configured: string | undefined = process.env.KUBECONFIG;
-  const paths: readonly string[] = configured?.split(delimiter).filter((path: string): boolean => path !== '') ?? [
-    join(homedir(), '.kube', 'config'),
-  ];
-  return configuredContext !== undefined && configured !== undefined ? paths : [...paths, managedVmKubeconfigPath];
 }
 
 function parseObservedAddress(body: string): string {

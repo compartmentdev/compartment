@@ -100,7 +100,10 @@ describe('Kubernetes install local tool preflight', (): void => {
       .mockResolvedValueOnce(successfulKubectlVersion())
       .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: 'v4.2.3+gdbd5f13' });
 
-    await expect(assertKubernetesInstallLocalTools()).resolves.toBeUndefined();
+    await expect(assertKubernetesInstallLocalTools()).resolves.toEqual({
+      helm: 'v4.2.3+gdbd5f13',
+      kubectl: 'v1.33.2',
+    });
     expect(mockedRunCommand).toHaveBeenNthCalledWith(1, ['kubectl', 'version', '--client', '--output=json']);
     expect(mockedRunCommand).toHaveBeenNthCalledWith(2, ['helm', 'version', '--template', '{{.Version}}']);
   });
