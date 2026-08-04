@@ -4,6 +4,7 @@ import {
   promptRegisterEmail,
   promptRegisterOrganization,
   promptVisibleText,
+  writeInstallOrganizationDetailsHeading,
 } from '../../prompts/prompt';
 import { readPromptLine } from '../../prompts/prompt-reader';
 import type { KubernetesInstallInputValues } from './install.command.input.types';
@@ -118,6 +119,7 @@ function buildResolvedWizardInput(
 }
 
 async function resolveWizardOwner(io: CliIo, options: InstallCommandOptions): Promise<KubernetesInstallWizardOwner> {
+  writeInstallOrganizationDetailsHeading(io, options.email, options.organization);
   const email: string = await promptRegisterEmail(io, options.email);
   return {
     email,

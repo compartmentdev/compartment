@@ -20,14 +20,37 @@ export const publicDocsAreas = [
     label: 'CLI Reference',
   },
   {
-    cliRoots: ['install'],
-    generatedDocPrefixes: ['public-docs/src/content/docs/reference/generated/cli/install'],
-    generatedSourcePatterns: [/^packages\/cli\/src\/commands\/install\//u],
+    cliRoots: ['install', 'system'],
+    generatedDocPrefixes: [
+      'public-docs/src/content/docs/reference/generated/cli/install',
+      'public-docs/src/content/docs/reference/generated/cli/system',
+    ],
+    generatedSourcePatterns: [/^packages\/cli\/src\/commands\/install\//u, /^packages\/cli\/src\/commands\/system\//u],
     guides: [
       {
         path: 'public-docs/src/content/docs/quickstart/install-compartment.md',
         slug: 'quickstart/install-compartment',
         title: 'Install Compartment',
+      },
+      {
+        path: 'public-docs/src/content/docs/install-operate/install-modes.md',
+        slug: 'install-operate/install-modes',
+        title: 'Install Modes',
+      },
+      {
+        path: 'public-docs/src/content/docs/install-operate/install-domain.md',
+        slug: 'install-operate/install-domain',
+        title: 'Install Domain',
+      },
+      {
+        path: 'public-docs/src/content/docs/install-operate/system-operations.md',
+        slug: 'install-operate/system-operations',
+        title: 'System Operations',
+      },
+      {
+        path: 'public-docs/src/content/docs/guides/operate-managed-vm.md',
+        slug: 'guides/operate-managed-vm',
+        title: 'Operate a Managed VM',
       },
     ],
     guideSourcePatterns: [
@@ -39,9 +62,12 @@ export const publicDocsAreas = [
       /^packages\/contracts\/src\/contracts\/install\.contract\.ts$/u,
       /^scripts\/release\/install-cli\.sh\.template$/u,
       /^scripts\/release\/render-cli-install-script\.mjs$/u,
+      /^packages\/cli\/src\/commands\/system\//u,
+      /^packages\/cli\/src\/services\/kubernetes-system-/u,
+      /^packages\/cli\/src\/services\/managed-vm-/u,
     ],
     key: 'install-operate',
-    label: 'Install & Operate',
+    label: 'Install and Operate',
   },
   {
     cliRoots: ['init', 'deploy', 'status', 'logs', 'inspect', 'promote', 'rollback', 'deployment', 'project'],

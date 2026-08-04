@@ -3,6 +3,10 @@ title: Install Compartment
 description: Install Compartment on a clean Ubuntu VM or into an existing Kubernetes cluster.
 ---
 
+Compartment always runs on Kubernetes. Choose between a Compartment-managed VM and an existing cluster in
+[Install Modes](/install-operate/install-modes/), then choose the public DNS and TLS model in
+[Install Domain](/install-operate/install-domain/).
+
 ## Install the CLI
 
 ```bash
@@ -308,3 +312,6 @@ compartment login --api-url https://api.example.com
 Use `compartment system status` to inspect the authenticated control plane and current organization.
 For a provisioned VM, continue with [Operate a Managed VM](/guides/operate-managed-vm/) for updates, diagnostics,
 recovery, and destructive reset.
+
+For either target, use [System Operations](/install-operate/system-operations/) for platform status, restart, update,
+and install-domain commands.

@@ -3,7 +3,8 @@ title: What Is Compartment
 description: What Compartment is, what it runs, and how teams use it.
 ---
 
-Compartment is a self-hosted application deployment system for teams that want to ship internal, private, or public web apps without building their own platform stack.
+Compartment is a self-hosted application deployment system that runs on Kubernetes and helps teams ship internal,
+private, or public web apps without building their own platform stack.
 
 It is designed for the case where application code already exists, often from a normal product team or from AI coding agents, and you need a controlled Kubernetes platform to deploy the app, expose it on a stable URL, and manage access.
 

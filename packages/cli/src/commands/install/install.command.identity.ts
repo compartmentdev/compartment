@@ -1,4 +1,9 @@
-import { promptNewPassword, promptRegisterEmail, promptRegisterOrganization } from '../../prompts/prompt';
+import {
+  promptNewPassword,
+  promptRegisterEmail,
+  promptRegisterOrganization,
+  writeInstallOrganizationDetailsHeading,
+} from '../../prompts/prompt';
 import { validatePassword } from '../../prompts/prompt.validation';
 import type { InstallInput } from '../../services/install.service.types';
 import type { CliIoCommandDependencies } from '../command.types';
@@ -11,6 +16,7 @@ export async function resolveInstallIdentityPrompts(
   dependencies: CliIoCommandDependencies,
   options: InstallCommandOptions,
 ): Promise<ResolvedInstallIdentityPrompts> {
+  writeInstallOrganizationDetailsHeading(dependencies.io, options.email, options.organization);
   const adminEmail: string = await promptRegisterEmail(dependencies.io, options.email);
   const organizationName: string = await promptRegisterOrganization(dependencies.io, adminEmail, options.organization);
   const adminPassword: string = await resolveInstallAdminPassword(dependencies, options);

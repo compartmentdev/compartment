@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { runCli } from '../src/app';
 import {
   promptActivationToken,
+  promptMutationConfirmation,
   promptNewPassword,
   promptRequiredVisibleText,
   promptValidatedVisibleText,
@@ -49,6 +50,20 @@ describe.sequential('prompt input safety', (): void => {
 
     await expect(promptActivationToken(capture.io)).rejects.toThrow('Interactive terminal required for prompt input.');
     expect(countOccurrences(readCliStderr(capture), 'Invitation token: ')).toBe(1);
+  });
+
+  it('continues with sudo by default and preserves an explicit decline', async (): Promise<void> => {
+    const acceptedCapture: CliCommandCapture = createInteractiveCliCapture();
+    const accepted: Promise<boolean> = promptMutationConfirmation(acceptedCapture.io);
+    await answerInteractivePrompt(acceptedCapture, 'Continue and request sudo access? [Y/n]: ', '');
+    await expect(accepted).resolves.toBe(true);
+    acceptedCapture.stdin.end();
+
+    const declinedCapture: CliCommandCapture = createInteractiveCliCapture();
+    const declined: Promise<boolean> = promptMutationConfirmation(declinedCapture.io);
+    await answerInteractivePrompt(declinedCapture, 'Continue and request sudo access? [Y/n]: ', 'n');
+    await expect(declined).resolves.toBe(false);
+    declinedCapture.stdin.end();
   });
 
   it('accepts a matching password and confirmation', async (): Promise<void> => {
