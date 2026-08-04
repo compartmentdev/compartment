@@ -53,6 +53,7 @@ const guardedRuntimeTerms = [
   'restart |behavior',
   'Bootstrapped self-hosted |runtime',
   'Updated self-hosted |runtime',
+  'https://compartment.dev|/k/install.sh',
   'registry|-mirror',
   'skip|-registry|-mirror',
   'registries|.|yaml',
