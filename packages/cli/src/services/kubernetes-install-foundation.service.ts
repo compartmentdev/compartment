@@ -1,3 +1,4 @@
+import { buildPrivateRegistryHost } from '@compartment/contracts';
 import { runKubernetesHelmInstallStage, writeKubernetesInstallValues } from './kubernetes-install-helm.service';
 import { runObservableInstallStep } from './kubernetes-install-progress.service';
 import { readExistingKubernetesInstall } from './kubernetes-install-release.service';
@@ -6,6 +7,7 @@ import { requireFoundationInstall } from './kubernetes-install-runtime.support';
 import { buildInitialInstallValues, buildResumableFoundationValues } from './kubernetes-install-state.service';
 import { requireManagedBrokerUrl } from './kubernetes-install-managed-state.support';
 import { applyKubernetesConfiguredIngressState } from './kubernetes-install-state-ingress.service';
+import { readRegistryServiceAddresses } from './kubernetes-install-registry-service.service';
 import type {
   ExistingKubernetesInstall,
   KubernetesInstallDeploymentInput,
@@ -65,7 +67,11 @@ async function deployResumableFoundation(
   installationId: string,
   existingState: KubernetesInstallState,
 ): Promise<void> {
-  const state: KubernetesInstallState = buildResumableState(input, installationId, existingState);
+  const registryHostname: string =
+    input.registryHostname === ''
+      ? buildPrivateRegistryHost((await readRegistryServiceAddresses(input))[0]!)
+      : input.registryHostname;
+  const state: KubernetesInstallState = buildResumableState(input, installationId, existingState, registryHostname);
   await writeKubernetesInstallValues(material.installValuesPath, buildResumableFoundationValues(state, installToken));
   await runFoundationHelmInstall(input, material);
 }
@@ -74,6 +80,7 @@ function buildResumableState(
   input: KubernetesInstallDeploymentInput,
   installationId: string,
   existingState: KubernetesInstallState,
+  registryHostname: string,
 ): KubernetesInstallState {
   return applyKubernetesConfiguredIngressState(input, {
     ...existingState,
@@ -84,8 +91,8 @@ function buildResumableState(
         : existingState.brokerUrl,
     ingressClassName: input.ingressClassName,
     installationId,
-    registryHostname: input.registryHostname,
-    registryIssuerRef: input.registryIssuerRef,
+    registryHostname,
+    registryIssuerRef: input.registryIssuerRef.name === '' ? existingState.registryIssuerRef : input.registryIssuerRef,
   });
 }
 

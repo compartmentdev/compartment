@@ -393,7 +393,7 @@ describe('Kubernetes install deployment', (): void => {
     expect(state.installValues[0]).toMatchObject({
       platform: { installationId: 'installation-123' },
       registry: {
-        hostname: '',
+        hostname: registryClusterIp,
         issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
       },
       secrets: { installToken: 'existing-install-token' },
@@ -569,6 +569,7 @@ describe('Kubernetes install deployment', (): void => {
       'Reconciling changed Helm values: ingress.endpoint.value, ingress.targetsJson, registry.hostname, storage.storageClass',
     );
     expect(readHelmStages()).toEqual(['foundation', 'foundation', 'full']);
+    expect(state.installValues[0]?.registry.hostname).toBe(registryClusterIp);
     expect(brokerUrls.some((url: string): boolean => url.startsWith('https://broker.compartment.run'))).toBe(false);
   });
   it('rechecks Certificate readiness when resuming after a full-stage timeout', async (): Promise<void> => {
