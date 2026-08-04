@@ -8,7 +8,7 @@ import type {
 import { isManagedVmInstallStage, isManagedVmUpdateStage } from './managed-vm-stage.service';
 
 const statePath: string = '/var/lib/compartment/installer/state.json';
-const artifactNames: readonly string[] = ['cert-manager', 'helm', 'k3s', 'k3s-install-script'];
+const artifactNames: readonly string[] = ['cert-manager', 'gvisor', 'helm', 'k3s', 'k3s-install-script'];
 
 type ManagedVmArtifactBoundary = Partial<ManagedVmArtifact>;
 
@@ -76,11 +76,12 @@ function isManagedVmReleaseMetadata(
     value !== undefined &&
     isManagedVmArtifacts(value.artifacts) &&
     typeof value.certManagerVersion === 'string' &&
+    (value.metadataVersion === 1 || value.metadataVersion === 2) &&
+    (value.metadataVersion === 1 || typeof value.gvisorVersion === 'string') &&
     typeof value.helmVersion === 'string' &&
     typeof value.k3sChannel === 'string' &&
     typeof value.k3sVersion === 'string' &&
     typeof value.kubernetesMinor === 'string' &&
-    typeof value.metadataVersion === 'number' &&
     typeof value.podCidr === 'string' &&
     typeof value.serviceCidr === 'string'
   );

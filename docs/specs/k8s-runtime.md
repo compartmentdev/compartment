@@ -123,11 +123,10 @@ plus product and provisioning Jobs project the tenant selector, tolerations, and
 When it is absent, all three Pod fields are omitted so existing server-side-apply ownership remains unchanged.
 Platform and build scheduling remains owned by the Helm chart.
 
-Tenant kernel sandboxing is installation-owned and opt-in through `tenantRuntime.runtimeClassName`.
-The selected RuntimeClass is projected onto application Deployments, resource Deployments, product Jobs, and
-provisioning Jobs; an empty value omits `runtimeClassName` entirely. Platform workloads and `api-migrate` remain on
-the node default runtime. Build Jobs use their separate chart-owned optional RuntimeClass and build node pool.
-PostgreSQL resources use the tenant RuntimeClass without a separate
+Kernel sandboxing is installation-owned and required through `sandboxRuntime.runtimeClassName`.
+The selected RuntimeClass is projected onto build Jobs, application Deployments, resource Deployments, product Jobs,
+and provisioning Jobs. Platform workloads and `api-migrate` remain on the node default runtime.
+PostgreSQL resources use the sandbox RuntimeClass without a separate
 opt-out; the additional I/O cost is an accepted isolation tradeoff.
 
 Network isolation follows the T2 evidence. Application Pods and product Jobs
@@ -155,17 +154,28 @@ Each cluster source build runs as one deterministic worker-owned Kubernetes Job.
 and a rootless BuildKit native sidecar, joins an existing Job after worker recovery,
 and is deleted after its result and logs are captured. The chart owns the BuildKit image, resources, scheduling,
 namespace RBAC, and network isolation; no long-lived BuildKit Deployment or Service exists. The build
-sidecar uses BuildKit's native snapshotter so the same build path works with either gVisor or the node default runtime.
+sidecar uses BuildKit's native snapshotter under the installation-selected gVisor RuntimeClass.
 The default build timeout is 30 minutes to accommodate cold native-snapshotter builds.
 namespace uses Pod Security `enforce=privileged` with
 `audit=baseline` and `warn=baseline` because the tested AppArmor Unconfined
 profile is not admitted by baseline enforcement. Per-build ephemerality gives every build a fresh Pod and `emptyDir`
-workspace, then deletes that Pod after result capture; it does not create a separate kernel boundary. When
-`buildkit.runtimeClassName` selects an operator-provided gVisor RuntimeClass, gVisor adds a userspace kernel sandbox
-between build processes and the node kernel. Without that value, builds use the node default container runtime and
-retain Pod, namespace, RBAC, NetworkPolicy, and ephemeral-storage isolation, but not gVisor's kernel boundary.
+workspace, then deletes that Pod after result capture; it does not create a separate kernel boundary.
+`sandboxRuntime.runtimeClassName` selects the verified gVisor RuntimeClass shared by builds and tenant workloads.
+Installation fails before Helm when a real canary does not prove the gVisor userspace kernel boundary.
 Fresh installs bind only the existing platform worker ServiceAccount to the namespaced Job, Secret, Pod, and Pod-log
 permissions required by `runJob`; no tenant or seeded product principal receives Kubernetes authority.
+
+### Sandbox E2E coverage
+
+Do not run the complete k3d matrix under gVisor. Ordinary shards install against a harness-only runc RuntimeClass and
+stub only the install canary's kernel-log response; those shards cover product behavior but are not gVisor evidence.
+The dedicated `gvisor-build` shard uses the real runtime for installation, builds, and tenant workloads. The fresh
+managed-VM workflow starts with no K3s or gVisor files and verifies runtime download, containerd registration,
+RuntimeClass creation, and a real gVisor canary. Only those two paths count as sandbox-boundary evidence. This split
+keeps the security boundary covered without multiplying the slower sandbox workload matrix across every shard.
+The fresh-VM workflow is dispatched only onto a disposable `compartment-fresh-vm` runner. The runner must have no
+K3s or gVisor state before the job and must be destroyed after it; a persistent self-hosted runner is not valid for
+this coverage path.
 
 Each Job uses only `emptyDir` local cache and a project/service-scoped registry cache; no unencrypted cache volume is
 shared between tenants. The worker's existing limit of two concurrent builds now limits build pods. NetworkPolicy

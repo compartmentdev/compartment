@@ -342,6 +342,7 @@ function ownerInstallArgs(): string[] {
 
 function supportedInventory(): ManagedVmHostInventory {
   return {
+    archiveExtractorAvailable: true,
     architecture: 'x86_64',
     cgroupV2: true,
     clockSynchronized: true,
@@ -356,7 +357,7 @@ function supportedInventory(): ManagedVmHostInventory {
     osVersion: '24.04',
     portsInUse: [],
     publicInterface: 'ens3',
-    reachableEndpoints: ['1', '2', '3', '4', '5', '6'],
+    reachableEndpoints: ['1', '2', '3', '4', '5', '6', '7', '8'],
     requiredKernelModules: true,
     routeCidrs: ['default'],
     sudoAvailable: true,

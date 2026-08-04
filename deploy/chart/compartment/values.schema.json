@@ -322,14 +322,12 @@
         "tenant": { "$ref": "#/definitions/nodePool" }
       }
     },
-    "tenantRuntime": {
+    "sandboxRuntime": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["runtimeClassName", "createRuntimeClass", "runtimeHandler"],
+      "required": ["runtimeClassName"],
       "properties": {
-        "runtimeClassName": { "type": "string" },
-        "createRuntimeClass": { "type": "boolean" },
-        "runtimeHandler": { "type": "string", "minLength": 1 }
+        "runtimeClassName": { "type": "string", "minLength": 1 }
       }
     },
     "buildkit": {
@@ -340,9 +338,6 @@
         "gcKeepStorageMb",
         "maximumConcurrentBuilds",
         "maximumConcurrentBuildsPerProject",
-        "runtimeClassName",
-        "createRuntimeClass",
-        "runtimeHandler",
         "timeoutMs",
         "podCidr",
         "serviceCidr"
@@ -351,11 +346,8 @@
         "enabled": { "type": "boolean" },
         "namespace": { "type": "string", "minLength": 1 },
         "gcKeepStorageMb": { "type": "integer", "minimum": 1 },
-        "runtimeClassName": { "type": "string" },
         "maximumConcurrentBuilds": { "type": "integer", "minimum": 1 },
         "maximumConcurrentBuildsPerProject": { "type": "integer", "minimum": 1 },
-        "createRuntimeClass": { "type": "boolean" },
-        "runtimeHandler": { "type": "string", "minLength": 1 },
         "timeoutMs": { "type": "integer", "minimum": 1 },
         "dnsNamespaceSelector": { "type": "object", "additionalProperties": { "type": "string" } },
         "dnsPodSelector": { "type": "object", "additionalProperties": { "type": "string" } },

@@ -1,16 +1,16 @@
 import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { buildKubectlCommand, formatKubernetesCommandFailure } from './kubernetes-command.support';
-import type { KubernetesInstallDeploymentInput } from './kubernetes-install.service.types';
 import type {
   KubernetesNodeList,
   KubernetesNodeListItem,
   KubernetesNodeStatusCondition,
+  KubernetesReadyNodeTarget,
 } from './kubernetes-ready-nodes.service.types';
 
-export async function readReadyKubernetesNodeNames(input: KubernetesInstallDeploymentInput): Promise<string[]> {
+export async function readReadyKubernetesNodeNames(input: KubernetesReadyNodeTarget): Promise<string[]> {
   const result: CommandResult = await runCommandWithTimeout(
-    buildKubectlCommand(input, ['get', 'nodes', '--output', 'json']),
+    buildKubectlCommand({ ...input, namespace: 'default' }, ['get', 'nodes', '--output', 'json']),
     30_000,
   );
   if (result.exitCode !== 0) {

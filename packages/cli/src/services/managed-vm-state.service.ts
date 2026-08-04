@@ -35,6 +35,14 @@ export const managedVmOwnedPaths: readonly ManagedVmOwnedPath[] = [
   { path: '/run/k3s', stage: 'installing-k3s' },
   { path: '/var/lib/kubelet', stage: 'installing-k3s' },
   { path: '/var/lib/rancher/k3s', stage: 'installing-k3s' },
+  { path: '/usr/local/bin/runsc', stage: 'installing-sandbox-runtime' },
+  { path: '/usr/local/bin/containerd-shim-runsc-v1', stage: 'installing-sandbox-runtime' },
+  { path: '/usr/local/bin/gvisor-bin', stage: 'installing-sandbox-runtime' },
+  { path: '/etc/containerd/runsc.toml', stage: 'installing-sandbox-runtime' },
+  {
+    path: '/var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.tmpl',
+    stage: 'installing-sandbox-runtime',
+  },
 ];
 
 export async function readManagedVmState(): Promise<ManagedVmProvisionerState | undefined> {
@@ -113,9 +121,10 @@ export async function persistManagedVmStage(
 export async function recordManagedVmOwnedFileDigests(
   state: ManagedVmProvisionerState,
 ): Promise<ManagedVmProvisionerState> {
+  const adoptedState: ManagedVmProvisionerState = { ...state, ownedPaths: managedVmOwnedPaths };
   const next: ManagedVmProvisionerState = {
-    ...state,
-    ownedFileDigests: await collectManagedVmOwnedFileDigests(state, state.completedStage),
+    ...adoptedState,
+    ownedFileDigests: await collectManagedVmOwnedFileDigests(adoptedState, state.completedStage),
     updatedAt: new Date().toISOString(),
   };
   await writeStateAtomically(next);

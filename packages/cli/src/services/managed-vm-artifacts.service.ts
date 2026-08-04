@@ -1,8 +1,12 @@
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execa } from './managed-vm-command.service';
-import type { ManagedVmDownloadedArtifacts } from './managed-vm-artifacts.service.types';
+import type {
+  ManagedVmDownloadedArtifacts,
+  ManagedVmPreparedBaseArtifacts,
+  ManagedVmPreparedGvisorArtifacts,
+} from './managed-vm-artifacts.service.types';
 import type { ManagedVmArtifact, ManagedVmArtifactName } from './managed-vm-provisioning.types';
 import { digest } from './managed-vm-state.service';
 
@@ -24,6 +28,15 @@ async function downloadAndPrepareArtifacts(
   directory: string,
   artifacts: readonly ManagedVmArtifact[],
 ): Promise<ManagedVmDownloadedArtifacts> {
+  const base: ManagedVmPreparedBaseArtifacts = await prepareBaseArtifacts(directory, artifacts);
+  const gvisor: ManagedVmPreparedGvisorArtifacts = await prepareGvisorArtifacts(directory, artifacts);
+  return { ...base, ...gvisor, directory };
+}
+
+async function prepareBaseArtifacts(
+  directory: string,
+  artifacts: readonly ManagedVmArtifact[],
+): Promise<ManagedVmPreparedBaseArtifacts> {
   const k3sPath: string = await downloadArtifact(directory, findArtifact(artifacts, 'k3s'), 'k3s');
   const k3sInstallScriptPath: string = await downloadArtifact(
     directory,
@@ -39,7 +52,22 @@ async function downloadAndPrepareArtifacts(
   await execa('tar', ['-xzf', archivePath, '-C', directory]);
   const helmPath: string = join(directory, 'linux-amd64', 'helm');
   await Promise.all([chmod(k3sPath, 0o755), chmod(k3sInstallScriptPath, 0o700), chmod(helmPath, 0o755)]);
-  return { certManagerManifestPath, directory, helmPath, k3sInstallScriptPath, k3sPath };
+  return { certManagerManifestPath, helmPath, k3sInstallScriptPath, k3sPath };
+}
+
+async function prepareGvisorArtifacts(
+  directory: string,
+  artifacts: readonly ManagedVmArtifact[],
+): Promise<ManagedVmPreparedGvisorArtifacts> {
+  const archivePath: string = await downloadArtifact(directory, findArtifact(artifacts, 'gvisor'), 'gvisor.tar.bz2');
+  const gvisorDirectory: string = join(directory, 'gvisor');
+  await mkdir(gvisorDirectory, { mode: 0o700 });
+  await execa('tar', ['-xjf', archivePath, '-C', gvisorDirectory]);
+  const gvisorRunscPath: string = join(gvisorDirectory, 'runsc');
+  const gvisorContainerdShimPath: string = join(gvisorDirectory, 'containerd-shim-runsc-v1');
+  const gvisorBinDirectory: string = join(gvisorDirectory, 'gvisor-bin');
+  await Promise.all([chmod(gvisorRunscPath, 0o755), chmod(gvisorContainerdShimPath, 0o755)]);
+  return { gvisorBinDirectory, gvisorContainerdShimPath, gvisorRunscPath };
 }
 
 export async function cleanManagedVmArtifacts(artifacts: ManagedVmDownloadedArtifacts): Promise<void> {

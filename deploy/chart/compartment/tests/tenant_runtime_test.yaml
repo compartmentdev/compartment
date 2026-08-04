@@ -1,97 +1,51 @@
-suite: tenant runtime
+suite: sandbox runtime
 templates:
   - api.yaml
   - api-migrate.yaml
-  - buildkit.yaml
   - configmap.yaml
   - install-state-secret.yaml
-  - runtime-class.yaml
-  - secret.yaml
   - worker.yaml
   - project-provisioner.yaml
+  - secret.yaml
 values:
   - registry-values.yaml
   - node-pools-values.yaml
 tests:
-  - it: does not create an optional sandbox RuntimeClass by default
+  - it: schedules builds and tenant workloads through the required default sandbox
     asserts:
-      - hasDocuments:
-          count: 0
-        template: runtime-class.yaml
-      - notContains:
-          path: spec.template.spec.containers[0].env
-          content:
-            name: COMPARTMENT_KUBE_TENANT_SCHEDULING
-        template: worker.yaml
-      - notContains:
-          path: spec.template.spec.containers[0].env
-          content:
-            name: COMPARTMENT_KUBE_TENANT_SCHEDULING
-        template: project-provisioner.yaml
-
-  - it: creates the configured RuntimeClass and passes it to tenant projection controllers
-    set:
-      tenantRuntime:
-        runtimeClassName: gvisor
-        createRuntimeClass: true
-        runtimeHandler: runsc
-    asserts:
-      - equal:
-          path: metadata.name
-          value: gvisor
-        template: runtime-class.yaml
-      - equal:
-          path: handler
-          value: runsc
-        template: runtime-class.yaml
-      - contains: &tenantRuntimeEnv
+      - contains: &sandboxRuntimeEnv
           path: spec.template.spec.containers[0].env
           content:
             name: COMPARTMENT_KUBE_TENANT_SCHEDULING
             value: '{"nodeSelector":{},"runtimeClassName":"gvisor","tolerations":[]}'
         template: worker.yaml
-      - contains: *tenantRuntimeEnv
+      - contains: *sandboxRuntimeEnv
         template: project-provisioner.yaml
+      - equal:
+          path: data.COMPARTMENT_KUBE_BUILD_SCHEDULING
+          value: '{"nodeSelector":{},"runtimeClassName":"gvisor","tolerations":[]}'
+        template: configmap.yaml
       - notExists:
           path: spec.template.spec.runtimeClassName
         template: api.yaml
       - notExists:
           path: spec.template.spec.runtimeClassName
         template: api-migrate.yaml
+
+  - it: applies one operator RuntimeClass to both build and tenant workloads
+    set:
+      sandboxRuntime:
+        runtimeClassName: gke-gvisor
+    asserts:
+      - contains: &customTenantRuntimeEnv
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_KUBE_TENANT_SCHEDULING
+            value: '{"nodeSelector":{},"runtimeClassName":"gke-gvisor","tolerations":[]}'
+        template: worker.yaml
+      - contains: *customTenantRuntimeEnv
+        template: project-provisioner.yaml
       - equal:
           path: data.COMPARTMENT_KUBE_BUILD_SCHEDULING
-          value: '{"nodeSelector":{},"tolerations":[]}'
+          value: '{"nodeSelector":{},"runtimeClassName":"gke-gvisor","tolerations":[]}'
         template: configmap.yaml
-
-  - it: creates and schedules builds with an explicitly configured build RuntimeClass
-    set:
-      buildkit:
-        runtimeClassName: gvisor
-        createRuntimeClass: true
-        runtimeHandler: runsc
-    asserts:
-      - hasDocuments:
-          count: 1
-        template: runtime-class.yaml
-      - equal:
-          path: metadata.name
-          value: gvisor
-        template: runtime-class.yaml
-      - equal:
-          path: handler
-          value: runsc
-        template: runtime-class.yaml
-      - equal:
-          path: data.COMPARTMENT_KUBE_BUILD_SCHEDULING
-          value: '{"nodeSelector":{},"runtimeClassName":"gvisor","tolerations":[]}'
-        template: configmap.yaml
-
-  - it: rejects RuntimeClass creation without a build RuntimeClass name
-    set:
-      buildkit:
-        runtimeClassName: ''
-        createRuntimeClass: true
-    asserts:
-      - failedTemplate:
-          errorMessage: buildkit.runtimeClassName is required when createRuntimeClass is true
-        template: runtime-class.yaml

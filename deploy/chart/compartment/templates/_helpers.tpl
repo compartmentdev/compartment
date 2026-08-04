@@ -349,22 +349,16 @@ tolerations:
 {{- $pool = .Values.nodePools.system -}}
 {{- end -}}
 {{- $scheduling := dict "nodeSelector" $pool.nodeSelector "tolerations" $pool.tolerations -}}
-{{- if not (empty .Values.buildkit.runtimeClassName) -}}
-{{- $_ := set $scheduling "runtimeClassName" .Values.buildkit.runtimeClassName -}}
-{{- end -}}
+{{- $_ := set $scheduling "runtimeClassName" .Values.sandboxRuntime.runtimeClassName -}}
 {{- $scheduling | toJson -}}
 {{- end }}
 
 {{- define "compartment.tenantSchedulingJson" -}}
 {{- $pool := .Values.nodePools.tenant -}}
-{{- $runtimeClassName := .Values.tenantRuntime.runtimeClassName -}}
-{{- if or (not (empty $pool.nodeSelector)) (not (empty $pool.tolerations)) (not (empty $runtimeClassName)) -}}
+{{- $runtimeClassName := .Values.sandboxRuntime.runtimeClassName -}}
 {{- $scheduling := dict "nodeSelector" $pool.nodeSelector "tolerations" $pool.tolerations -}}
-{{- if not (empty $runtimeClassName) -}}
 {{- $_ := set $scheduling "runtimeClassName" $runtimeClassName -}}
-{{- end -}}
 {{- $scheduling | toJson -}}
-{{- end -}}
 {{- end }}
 
 {{- define "compartment.storageClass" -}}

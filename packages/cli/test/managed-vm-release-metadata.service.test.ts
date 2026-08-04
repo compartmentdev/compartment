@@ -3,11 +3,11 @@ import { managedVmReleaseMetadata } from '../src/services/managed-vm-release-met
 
 describe('managed VM release metadata', (): void => {
   it('uses bounded digest-verified release artifacts without a latest URL', (): void => {
-    expect(managedVmReleaseMetadata.artifacts).toHaveLength(4);
+    expect(managedVmReleaseMetadata.artifacts).toHaveLength(5);
     for (const artifact of managedVmReleaseMetadata.artifacts) {
       expect(artifact.sha256).toMatch(/^[a-f0-9]{64}$/u);
       expect(artifact.url).not.toMatch(/latest/u);
-      expect(artifact.version).toMatch(/^v/u);
+      expect(artifact.version).toMatch(/^(?:v|release-)/u);
     }
     expect(managedVmReleaseMetadata.artifacts).toContainEqual({
       name: 'k3s-install-script',
@@ -21,6 +21,13 @@ describe('managed VM release metadata', (): void => {
       url: 'https://get.helm.sh/helm-v4.1.4-linux-amd64.tar.gz',
       version: 'v4.1.4',
     });
+    expect(managedVmReleaseMetadata.artifacts).toContainEqual({
+      name: 'gvisor',
+      sha256: 'b5e080862deda9158912cbb26df21d2b30b85560fffd166578b79b8f33fa0127',
+      url: 'https://storage.googleapis.com/gvisor/releases/release/20260721.0/x86_64/gvisor.tar.bz2',
+      version: 'release-20260721.0',
+    });
+    expect(managedVmReleaseMetadata.gvisorVersion).toBe('release-20260721.0');
     expect(managedVmReleaseMetadata.helmVersion).toBe('v4.1.4');
     expect(managedVmReleaseMetadata.k3sChannel).not.toContain(managedVmReleaseMetadata.k3sVersion);
   });

@@ -12,6 +12,12 @@ export const kubernetesInstallCompatibility: KubernetesInstallCompatibility = {
       url: 'https://github.com/cert-manager/cert-manager/releases/download/v1.21.0/cert-manager.yaml',
       version: 'v1.21.0',
     },
+    gvisor: {
+      name: 'gvisor',
+      sha256: 'b5e080862deda9158912cbb26df21d2b30b85560fffd166578b79b8f33fa0127',
+      url: 'https://storage.googleapis.com/gvisor/releases/release/20260721.0/x86_64/gvisor.tar.bz2',
+      version: 'release-20260721.0',
+    },
     helm: {
       name: 'helm',
       sha256: '70b2c30a19da4db264dfd68c8a3664e05093a361cefd89572ffb36f8abfa3d09',

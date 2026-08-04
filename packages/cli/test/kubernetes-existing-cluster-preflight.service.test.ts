@@ -410,11 +410,21 @@ function passingFixture(): PreflightFixture {
     rawResources: new Map([
       [
         '/api/v1',
-        ['configmaps', 'namespaces', 'persistentvolumeclaims', 'pods', 'secrets', 'services', 'serviceaccounts'],
+        [
+          'configmaps',
+          'namespaces',
+          'nodes',
+          'persistentvolumeclaims',
+          'pods',
+          'secrets',
+          'services',
+          'serviceaccounts',
+        ],
       ],
       ['/apis/apps/v1', ['daemonsets', 'deployments', 'statefulsets']],
       ['/apis/batch/v1', ['cronjobs', 'jobs']],
       ['/apis/networking.k8s.io/v1', ['ingresses', 'ingressclasses', 'networkpolicies']],
+      ['/apis/node.k8s.io/v1', ['runtimeclasses']],
       ['/apis/rbac.authorization.k8s.io/v1', ['roles', 'rolebindings', 'clusterroles', 'clusterrolebindings']],
       ['/apis/storage.k8s.io/v1', ['storageclasses']],
       ['/apis/admissionregistration.k8s.io/v1', ['validatingadmissionpolicies', 'validatingadmissionpolicybindings']],

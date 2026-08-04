@@ -13,7 +13,8 @@ sudo compartment system status
 ```
 
 Status combines the host provisioner stage, k3s service and version, Kubernetes readiness, and the Compartment Helm
-release. After a reboot, wait for this command to report k3s and the platform as ready before deploying.
+release. The completed provisioner stage means the install-time gVisor canary passed. After a reboot, wait for this
+command to report k3s and the platform as ready before deploying.
 
 ## Create diagnostics
 
@@ -33,8 +34,9 @@ sudo compartment system update
 ```
 
 First install the current verified stable CLI. Its signed provisioning metadata selects the managed target
-release and artifacts. The update command verifies those artifacts, creates an etcd snapshot, advances k3s and cert-manager
-through durable stages, invokes the canonical platform update, and verifies the resulting host and cluster versions.
+release and artifacts. The update command verifies those artifacts, creates an etcd snapshot, advances k3s, the
+pinned gVisor runtime, and cert-manager through durable stages, invokes the canonical platform update, and verifies
+the resulting host and cluster versions plus a real gVisor canary.
 Managed Kubernetes components do not update in the background. If an update stops, correct the reported problem and
 rerun the same command.
 
@@ -57,4 +59,5 @@ sudo compartment system reset \
 ```
 
 This permanently removes the managed cluster, platform and application data, and only the host files, services,
-firewall rules, and CA trust recorded as Compartment-owned. A normal Helm uninstall does not destroy the host cluster.
+gVisor binaries and containerd configuration, firewall rules, and CA trust recorded as Compartment-owned. A normal
+Helm uninstall does not destroy the host cluster.

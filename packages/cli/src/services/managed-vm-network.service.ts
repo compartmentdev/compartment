@@ -2,10 +2,14 @@ const managedVmRequiredEndpoints: readonly string[] = [
   'https://compartment.dev/install.sh',
   'https://github.com',
   'https://ghcr.io/v2/',
+  'https://registry-1.docker.io/v2/',
   'https://get.helm.sh',
+  'https://storage.googleapis.com/gvisor/releases/',
   'https://acme-v02.api.letsencrypt.org/directory',
   'https://broker.compartment.run',
 ];
+
+export const managedVmRequiredEndpointCount: number = managedVmRequiredEndpoints.length;
 
 export async function readReachableManagedVmEndpoints(): Promise<readonly string[]> {
   const results: (string | undefined)[] = await Promise.all(

@@ -161,6 +161,8 @@ function renderManagedVmValues(publicAddress: string): string {
     value: ${publicAddress}
 storage:
   storageClass: local-path
+sandboxRuntime:
+  runtimeClassName: gvisor
 registry:
   issuerRef:
     kind: Issuer

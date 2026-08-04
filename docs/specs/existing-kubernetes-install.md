@@ -40,9 +40,9 @@ previous dedicated-cluster Caddy architecture.
 13. NetworkPolicy resources remain mandatory runtime projections, but the installer does not detect the CNI, test
     NetworkPolicy support, or run an enforcement probe.
 14. There is no `compartment doctor` command in this scope.
-15. Firecracker and Kata Containers are not part of this installation mode. gVisor is not installed or required;
-    source builds can use an operator-provided RuntimeClass, and install preflight reports whether that optional
-    sandbox is selected or available.
+15. Firecracker and Kata Containers are not part of this installation mode. gVisor is required. The operator installs
+    it on every eligible build and tenant node and creates the RuntimeClass; install preflight proves the sandbox with
+    a real Pod and fails closed before Helm when the proof fails.
 16. The production runtime is Kubernetes only. Docker Engine and Docker Compose production installation paths are
     deleted rather than retained as fallbacks.
 17. Dockerfile and OCI image build support remains. `packages/docker` is retained only for BuildKit command shaping
@@ -531,9 +531,9 @@ The model does not protect against:
 - a node kernel or container runtime escape;
 - a compromise of the trusted Compartment control plane.
 
-Firecracker, Kata, dedicated nodes, and per-organization clusters are deferred. An operator-selected gVisor
-RuntimeClass can strengthen source-build isolation, but it is not installed, required, or silently promised by
-namespace isolation.
+Firecracker, Kata, dedicated nodes, and per-organization clusters are deferred. An operator-selected and verified
+gVisor RuntimeClass supplies the required kernel sandbox for builds and tenant workloads; namespace isolation alone
+does not satisfy that boundary.
 
 ### API and database boundary
 
@@ -986,10 +986,9 @@ NetworkPolicy manifests and CI enforcement tests are retained.
 ### Sandbox runtimes
 
 - Firecracker integration.
-- gVisor installation, node mutation, or automatic RuntimeClass selection.
-- install failure solely because no gVisor RuntimeClass is available.
+- gVisor installation or node mutation in the existing-cluster path.
+- automatic RuntimeClass selection; the operator names one class through `sandboxRuntime.runtimeClassName`.
 - Kata Containers installation or detection.
-- a separate RuntimeClass selector in the public install contract; operators configure the chart value.
 - a security claim that Kubernetes namespaces provide VM-level isolation.
 
 ### Docker production runtime
@@ -1171,8 +1170,9 @@ provision Kubernetes
 That mode is the one-command bare-VM experience. It installs and pins every listed prerequisite before invoking the
 canonical installer; the user does not prepare ingress, cert-manager, storage, or CNI manually.
 
-It may make stronger decisions because Compartment owns the created cluster, including a supported CNI or sandbox
-runtime. Those decisions do not enter the existing-cluster install contract unless they become universal requirements.
+It may mutate the created cluster because Compartment owns it, including installing the pinned gVisor runtime and
+creating its RuntimeClass. The sandbox outcome remains universal: both paths run the same canary proof and both fail
+closed before platform installation when gVisor is unavailable.
 
 The provisioner must not fork:
 

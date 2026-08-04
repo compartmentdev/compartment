@@ -18,6 +18,7 @@ interface LifecycleMocks {
   rm: Mock;
   rmdir: Mock;
   verifyComponents: Mock;
+  verifySandbox: Mock;
 }
 
 const mocks: LifecycleMocks = vi.hoisted(
@@ -33,6 +34,7 @@ const mocks: LifecycleMocks = vi.hoisted(
     rm: vi.fn(),
     rmdir: vi.fn(),
     verifyComponents: vi.fn(),
+    verifySandbox: vi.fn(),
   }),
 );
 
@@ -79,6 +81,13 @@ vi.mock(
   '../src/services/managed-vm-lock.service',
   (): Record<string, Mock> => ({
     acquireManagedVmLock: mocks.acquireLock,
+  }),
+);
+vi.mock(
+  '../src/services/managed-vm-sandbox-runtime.service',
+  (): Record<string, Mock> => ({
+    installManagedVmSandboxRuntime: vi.fn(),
+    verifyManagedVmSandboxRuntime: mocks.verifySandbox,
   }),
 );
 vi.mock(

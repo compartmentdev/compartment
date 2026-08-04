@@ -101,6 +101,7 @@ export function readPlatformK3dEnvironment(env) {
     httpPort: readPortEnv(env, 'COMPARTMENT_E2E_HTTP_PORT', 18_080),
     httpsPort: readPortEnv(env, 'COMPARTMENT_E2E_HTTPS_PORT', 18_443),
     keepOnFailure: readBooleanEnv(env, 'COMPARTMENT_E2E_KEEP_ON_FAILURE'),
+    gvisorAvailable: readBooleanEnv(env, 'COMPARTMENT_E2E_GVISOR_AVAILABLE'),
     gvisorEnabled: readBooleanEnv(env, 'COMPARTMENT_E2E_GVISOR_ENABLED'),
     managedNamespace: readNameEnv(env, 'COMPARTMENT_E2E_MANAGED_NAMESPACE', 'compartment-managed-e2e'),
     managedPlatformValuesPath: readStatePathEnv(
@@ -156,9 +157,12 @@ function readPortEnv(env, name, defaultValue) {
   return value;
 }
 
-function readBooleanEnv(env, name) {
+function readBooleanEnv(env, name, defaultValue = false) {
   const value = env[name];
-  if (value === undefined || value === '0') {
+  if (value === undefined) {
+    return defaultValue;
+  }
+  if (value === '0') {
     return false;
   }
   if (value === '1') {
@@ -256,8 +260,11 @@ export function isConsoleReadyStatus(status) {
   return status === 302;
 }
 
-export function renderPlatformK3dValues(imageDigestsByServiceName, gvisorEnabled = platformEnvironment.gvisorEnabled) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorEnabled)}ingress:\n  className: ${ingressClassName}\n${renderRegistryTlsValues()}platform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\nbuildkit:\n  namespace: ${platformNamespace}-build\n${renderBuildRuntimeValues(gvisorEnabled)}`;
+export function renderPlatformK3dValues(
+  imageDigestsByServiceName,
+  gvisorAvailable = platformEnvironment.gvisorAvailable,
+) {
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorAvailable)}ingress:\n  className: ${ingressClassName}\n${renderRegistryTlsValues()}platform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\nbuildkit:\n  namespace: ${platformNamespace}-build\n`;
 }
 
 export function renderPreviousPlatformK3dValues() {
@@ -266,16 +273,16 @@ export function renderPreviousPlatformK3dValues() {
 
 export function renderManagedPlatformK3dValues(
   imageDigestsByServiceName,
-  gvisorEnabled = platformEnvironment.gvisorEnabled,
+  gvisorAvailable = platformEnvironment.gvisorAvailable,
 ) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorEnabled)}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\n  targetsJson: '[{"type":"A","value":"8.8.4.4"}]'\n${renderRegistryTlsValues()}tls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nbuildkit:\n  namespace: ${managedNamespace}-build\n${renderBuildRuntimeValues(gvisorEnabled)}`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorAvailable)}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\n  targetsJson: '[{"type":"A","value":"8.8.4.4"}]'\n${renderRegistryTlsValues()}tls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nbuildkit:\n  namespace: ${managedNamespace}-build\n`;
 }
 
 export function renderPublicOperatorPlatformK3dValues(
   imageDigestsByServiceName,
-  gvisorEnabled = platformEnvironment.gvisorEnabled,
+  gvisorAvailable = platformEnvironment.gvisorAvailable,
 ) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorEnabled)}ingress:\n  className: ${ingressClassName}\nstorage:\n  storageClass: local-path\n${renderRegistryTlsValues()}platform:\n  publicProtocol: http\nbuildkit:\n  namespace: ${managedNamespace}-public-operator-build\n${renderBuildRuntimeValues(gvisorEnabled)}`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorAvailable)}ingress:\n  className: ${ingressClassName}\nstorage:\n  storageClass: local-path\n${renderRegistryTlsValues()}platform:\n  publicProtocol: http\nbuildkit:\n  namespace: ${managedNamespace}-public-operator-build\n`;
 }
 
 function renderRegistryTlsValues() {
@@ -283,13 +290,8 @@ function renderRegistryTlsValues() {
 }
 
 function renderSandboxRuntimeValues(gvisorEnabled) {
-  return gvisorEnabled
-    ? 'tenantRuntime:\n  runtimeClassName: gvisor\n  createRuntimeClass: false\n  runtimeHandler: runsc\n'
-    : '';
-}
-
-function renderBuildRuntimeValues(gvisorEnabled) {
-  return gvisorEnabled ? '  runtimeClassName: gvisor\n' : '';
+  const runtimeClassName = gvisorEnabled ? 'gvisor' : 'compartment-e2e-runc';
+  return `sandboxRuntime:\n  runtimeClassName: ${runtimeClassName}\n`;
 }
 function renderPlatformImageValues(imageDigestsByServiceName) {
   const imageValues = platformK3dServiceNames
@@ -395,9 +397,7 @@ async function createCluster() {
   await runKubectlWithTransientApiRetry(['--context', contextName, '--request-timeout=5s', 'get', '--raw=/readyz'], {
     deadline: prerequisiteSetupDeadline,
   });
-  if (platformEnvironment.gvisorEnabled) {
-    installGvisorRuntimeClass();
-  }
+  installSandboxRuntimeClass();
   if (isIngressNginxShard) {
     await installIngressNginx(prerequisiteSetupStartedAt, prerequisiteSetupDeadline);
   } else {
@@ -421,11 +421,13 @@ async function createCluster() {
   await installRegistryTestIssuer();
 }
 
-function installGvisorRuntimeClass() {
-  const runtimeClassPath = join(dirname(platformValuesPath), `${clusterName}-gvisor-runtime-class.yaml`);
+function installSandboxRuntimeClass() {
+  const runtimeClassName = platformEnvironment.gvisorAvailable ? 'gvisor' : 'compartment-e2e-runc';
+  const runtimeHandler = platformEnvironment.gvisorAvailable ? 'runsc' : 'runc';
+  const runtimeClassPath = join(dirname(platformValuesPath), `${clusterName}-sandbox-runtime-class.yaml`);
   writeFileSync(
     runtimeClassPath,
-    'apiVersion: node.k8s.io/v1\nkind: RuntimeClass\nmetadata:\n  name: gvisor\nhandler: runsc\n',
+    `apiVersion: node.k8s.io/v1\nkind: RuntimeClass\nmetadata:\n  name: ${runtimeClassName}\nhandler: ${runtimeHandler}\n`,
     { mode: 0o600 },
   );
   try {
@@ -650,7 +652,7 @@ export function buildPlatformK3dClusterCreateArgs() {
     registryClusterHost,
     '--volume',
     `${registryTestCaPath}:/etc/ssl/certs/compartment-registry-test-ca.crt@server:*;agent:*`,
-    ...(platformEnvironment.gvisorEnabled
+    ...(platformEnvironment.gvisorAvailable
       ? [
           '--volume',
           '/usr/bin/runsc:/usr/local/bin/runsc@server:*;agent:*',
@@ -1099,7 +1101,7 @@ function assertRequiredTools() {
   for (const tool of ['docker', 'k3d', 'kubectl', 'helm', 'openssl']) {
     assertTool(tool);
   }
-  if (platformEnvironment.gvisorEnabled) {
+  if (platformEnvironment.gvisorAvailable) {
     assertTool('runsc');
     assertTool('containerd-shim-runsc-v1');
     captureCommand('test', ['-d', '/usr/bin/gvisor-bin'], repositoryRoot);

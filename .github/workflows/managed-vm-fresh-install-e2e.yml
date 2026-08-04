@@ -1,0 +1,50 @@
+name: Managed VM fresh-install E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner_labels_json:
+        description: JSON labels for a disposable, empty Ubuntu VM runner
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: managed-vm-fresh-install-e2e
+  cancel-in-progress: false
+
+jobs:
+  fresh-install:
+    name: Fresh Ubuntu VM install
+    runs-on: ${{ fromJson(inputs.runner_labels_json) }}
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093
+        with:
+          version: 10.6.3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install cosign for the packaged CLI
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5
+        with:
+          cosign-release: v2.6.1
+
+      - name: Build packaged source CLI
+        run: pnpm cli:build:sea:source --output-dir ./.compartment/managed-vm-e2e-cli
+
+      - name: Verify fresh managed-VM installation
+        run: ./scripts/deploy/managed-vm-fresh-install-e2e.sh ./.compartment/managed-vm-e2e-cli/compartment

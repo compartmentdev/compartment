@@ -103,19 +103,19 @@ describe('platform k3d e2e shard runner', () => {
     expect(buildPlatformK3dShardEnvironment('user-flow', {}).COMPARTMENT_E2E_INGRESS_CLASS).toBe('traefik');
   });
 
-  it('assigns a unique port range to the minimal gVisor build shard', () => {
+  it('keeps long-running gVisor workloads in the dedicated build partition', () => {
     expect(buildPlatformK3dShardEnvironment('gvisor-build', {})).toMatchObject({
       COMPARTMENT_E2E_BUILD_MATRIX_PARTITION: 'gvisor',
+      COMPARTMENT_E2E_GVISOR_AVAILABLE: '1',
       COMPARTMENT_E2E_GVISOR_ENABLED: '1',
       COMPARTMENT_E2E_HTTP_PORT: '18780',
       COMPARTMENT_E2E_HTTPS_PORT: '19143',
       COMPARTMENT_E2E_REGISTRY_PORT: '16200',
     });
-    expect(
-      buildPlatformK3dShardEnvironment('build-matrix-a-1', {
-        COMPARTMENT_E2E_GVISOR_ENABLED: '1',
-      }).COMPARTMENT_E2E_GVISOR_ENABLED,
-    ).toBe('0');
+    expect(buildPlatformK3dShardEnvironment('build-matrix-a-1', {})).toMatchObject({
+      COMPARTMENT_E2E_GVISOR_AVAILABLE: '0',
+      COMPARTMENT_E2E_GVISOR_ENABLED: '0',
+    });
   });
 
   it('rejects unknown or extra shard arguments', () => {

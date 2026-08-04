@@ -114,7 +114,7 @@ jobs:
       - name: Install pinned gVisor
         if: ${{ matrix.shard == 'gvisor-build' }}
         env:
-          GVISOR_SHA512: 1e951f8d9dd2198e16ad66066fac0db42943ac8e8ca35c7173a20f0fbc859b8185c33c478ae0dc3c4e76b8c06d99ed118286caf43ad207c96578b42af62cae72
+          GVISOR_SHA256: b5e080862deda9158912cbb26df21d2b30b85560fffd166578b79b8f33fa0127
           GVISOR_VERSION: release/20260721.0
         run: |
           gvisor_archive="/tmp/gvisor.tar.bz2"
@@ -124,7 +124,7 @@ jobs:
             --retry-all-errors \
             "https://storage.googleapis.com/gvisor/releases/${GVISOR_VERSION}/x86_64/gvisor.tar.bz2" \
             --output "${gvisor_archive}"
-          echo "${GVISOR_SHA512}  ${gvisor_archive}" | sha512sum --check
+          echo "${GVISOR_SHA256}  ${gvisor_archive}" | sha256sum --check
           gvisor_extract_dir="$(mktemp -d)"
           tar -xjf "${gvisor_archive}" -C "${gvisor_extract_dir}"
           sudo install -m 0755 "${gvisor_extract_dir}/runsc" /usr/bin/runsc

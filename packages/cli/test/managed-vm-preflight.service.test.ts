@@ -153,6 +153,7 @@ describe('managed VM preflight', (): void => {
 
 function supportedInventory(): ManagedVmHostInventory {
   return {
+    archiveExtractorAvailable: true,
     architecture: 'x86_64',
     cgroupV2: true,
     clockSynchronized: true,
@@ -169,7 +170,7 @@ function supportedInventory(): ManagedVmHostInventory {
     publicInterface: 'ens3',
     routeCidrs: ['default'],
     requiredKernelModules: true,
-    reachableEndpoints: ['1', '2', '3', '4', '5', '6'],
+    reachableEndpoints: ['1', '2', '3', '4', '5', '6', '7', '8'],
     systemd: true,
     sudoAvailable: true,
   };

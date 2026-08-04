@@ -80,27 +80,19 @@ describe('platform k3d e2e command boundary', () => {
     );
   });
 
-  it('mounts the complete runsc runtime only for an opted-in gVisor cluster', async () => {
-    vi.stubEnv('COMPARTMENT_E2E_GVISOR_ENABLED', '1');
+  it('mounts the complete runtime when gVisor is available to installer E2E', async () => {
+    vi.stubEnv('COMPARTMENT_E2E_GVISOR_AVAILABLE', '1');
     vi.resetModules();
     try {
       const { buildPlatformK3dClusterCreateArgs: buildGvisorClusterCreateArgs } =
         await import('./platform-k3d-e2e.mjs');
       const args = buildGvisorClusterCreateArgs();
 
-      expect(args).toContain('/usr/bin/runsc:/usr/local/bin/runsc@server:*;agent:*');
-      expect(args).toContain(
-        '/usr/bin/containerd-shim-runsc-v1:/usr/local/bin/containerd-shim-runsc-v1@server:*;agent:*',
-      );
-      expect(args).toContain('/usr/bin/gvisor-bin:/usr/local/bin/gvisor-bin@server:*;agent:*');
-      expect(
-        args.some((arg) =>
-          arg.endsWith(
-            'scripts/deploy/fixtures/containerd-gvisor-config.toml.tmpl:/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl@server:*;agent:*',
-          ),
-        ),
-      ).toBe(true);
-      expect(args).toContain('/etc/containerd/runsc.toml:/etc/containerd/runsc.toml@server:*;agent:*');
+      expect(args.join(' ')).toContain('containerd-gvisor-config.toml.tmpl');
+      expect(args.join(' ')).toContain('containerd-shim-runsc-v1');
+      expect(args.join(' ')).toContain('/usr/bin/gvisor-bin');
+      expect(args.join(' ')).toContain('/usr/bin/runsc');
+      expect(args.join(' ')).toContain('/etc/containerd/runsc.toml');
     } finally {
       vi.unstubAllEnvs();
     }
@@ -485,15 +477,15 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).not.toContain('tls:\n  issuerRef:');
   });
 
-  it('enables the gVisor RuntimeClass only for an opted-in e2e cluster', () => {
+  it('uses one mandatory sandbox runtime contract for builds and tenant workloads', () => {
+    expect(renderPlatformK3dValues(createTestImageDigests())).toContain(
+      'sandboxRuntime:\n  runtimeClassName: compartment-e2e-runc',
+    );
+    expect(renderPlatformK3dValues(createTestImageDigests(), true)).toContain(
+      'sandboxRuntime:\n  runtimeClassName: gvisor',
+    );
     expect(renderPlatformK3dValues(createTestImageDigests())).not.toContain('tenantRuntime:');
-    expect(renderPlatformK3dValues(createTestImageDigests())).not.toContain('runtimeClassName: gvisor');
-    expect(renderPlatformK3dValues(createTestImageDigests(), true)).toContain(
-      'tenantRuntime:\n  runtimeClassName: gvisor\n  createRuntimeClass: false\n  runtimeHandler: runsc',
-    );
-    expect(renderPlatformK3dValues(createTestImageDigests(), true)).toContain(
-      'buildkit:\n  namespace: compartment-build\n  runtimeClassName: gvisor',
-    );
+    expect(renderPlatformK3dValues(createTestImageDigests())).not.toContain('buildkit:\n  runtimeClassName:');
   });
 
   it('writes isolated managed-install values with a typed ingress endpoint and verified digests', () => {

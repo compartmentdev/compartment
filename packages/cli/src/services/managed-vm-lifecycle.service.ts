@@ -33,6 +33,7 @@ import {
 } from './managed-vm-artifacts.service';
 import { removeManagedVmOwnedPaths } from './managed-vm-owned-paths.service';
 import { isManagedVmInstallStageComplete, isManagedVmUpdateStageComplete } from './managed-vm-stage.service';
+import { installManagedVmSandboxRuntime, verifyManagedVmSandboxRuntime } from './managed-vm-sandbox-runtime.service';
 
 export async function getManagedVmSystemStatus(): Promise<ManagedVmSystemStatus> {
   const state: ManagedVmProvisionerState = await requireManagedVmState();
@@ -92,6 +93,7 @@ async function prepareManagedVmUpdate(): Promise<ManagedVmProvisionerState> {
   if (!isManagedVmUpdateStageComplete(requireManagedVmUpdate(state).stage, 'components-installed')) {
     throw new Error('Managed-VM update has not completed its verified component stage.');
   }
+  await verifyManagedVmSandboxRuntime();
   return state;
 }
 
@@ -106,6 +108,7 @@ async function markManagedVmPlatformUpdated(state: ManagedVmProvisionerState): P
 
 async function verifyAndCompleteManagedVmUpdate(state: ManagedVmProvisionerState): Promise<void> {
   await verifyManagedVmComponentVersions();
+  await verifyManagedVmSandboxRuntime();
   const update: ManagedVmUpdateState = {
     ...requireManagedVmUpdate(state),
     stage: 'verified',
@@ -173,6 +176,7 @@ async function reinstallManagedVmComponents(
   const artifacts: ManagedVmDownloadedArtifacts = await downloadManagedVmArtifacts(managedVmReleaseMetadata.artifacts);
   try {
     await installManagedVmK3s(artifacts);
+    await installManagedVmSandboxRuntime(artifacts);
     await installManagedVmHelm(artifacts);
     await installManagedVmCertManager(artifacts.certManagerManifestPath);
     await configureManagedVmRegistryIssuer();
@@ -206,7 +210,13 @@ async function removeOwnedManagedVmPaths(state: ManagedVmProvisionerState): Prom
 
 function assertOwnedManifest(state: ManagedVmProvisionerState): void {
   const expected: string = JSON.stringify(managedVmOwnedPaths);
-  if (JSON.stringify(state.ownedPaths) !== expected) {
+  const legacyExpected: string = JSON.stringify(
+    managedVmOwnedPaths.filter(
+      (ownedPath: ManagedVmOwnedPath): boolean => ownedPath.stage !== 'installing-sandbox-runtime',
+    ),
+  );
+  const observed: string = JSON.stringify(state.ownedPaths);
+  if (observed !== expected && !(state.releaseMetadata.metadataVersion === 1 && observed === legacyExpected)) {
     throw new Error('Managed-VM ownership manifest is invalid; refusing lifecycle mutation.');
   }
 }

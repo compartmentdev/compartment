@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: legacy RuntimeClass migration
+templates:
+  - templates/runtime-class-migration.yaml
+release:
+  name: compartment
+  namespace: default
+  upgrade: true
+kubernetesProvider:
+  scheme:
+    node.k8s.io/v1/RuntimeClass:
+      gvr:
+        group: node.k8s.io
+        version: v1
+        resource: runtimeclasses
+      namespaced: false
+  objects:
+    - apiVersion: node.k8s.io/v1
+      kind: RuntimeClass
+      metadata:
+        name: gvisor
+        annotations:
+          meta.helm.sh/release-name: compartment
+          meta.helm.sh/release-namespace: default
+      handler: runsc
+tests:
+  - it: retains a RuntimeClass owned by an older Compartment chart
+    asserts:
+      - isKind:
+          of: RuntimeClass
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+      - equal:
+          path: handler
+          value: runsc
+
+  - it: does not adopt an operator-owned RuntimeClass
+    release:
+      name: another-release
+    asserts:
+      - hasDocuments:
+          count: 0
