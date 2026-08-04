@@ -38,6 +38,10 @@ describe('Kubernetes sandbox RuntimeClass preflight', (): void => {
     expect(mockedRunCommandWithInput.mock.calls[0]?.[1]).toContain('"nodeName":"node-a"');
     expect(mockedRunCommandWithInput.mock.calls[1]?.[1]).toContain('"nodeName":"node-b"');
     expect(mockedRunCommandWithTimeout).toHaveBeenCalledWith(
+      expect.arrayContaining(['wait', expect.stringMatching(/^pod\/compartment-gvisor-/u), '--timeout=4m']),
+      5 * 60_000,
+    );
+    expect(mockedRunCommandWithTimeout).toHaveBeenCalledWith(
       expect.arrayContaining(['exec', expect.stringMatching(/^pod\/compartment-gvisor-/u), '--', 'dmesg']),
       30_000,
     );

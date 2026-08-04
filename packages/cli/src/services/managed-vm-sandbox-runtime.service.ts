@@ -1,6 +1,7 @@
 import { chmod, copyFile, cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { execa, type ManagedVmCommandResult } from './managed-vm-command.service';
 import type { ManagedVmDownloadedArtifacts } from './managed-vm-artifacts.service.types';
+import { waitForManagedVmKubernetes } from './managed-vm-cluster.service';
 import { managedVmReleaseMetadata } from './managed-vm-release-metadata.service';
 import { verifyKubernetesSandboxRuntime } from './kubernetes-sandbox-runtime-preflight.service';
 
@@ -15,7 +16,7 @@ export async function installManagedVmSandboxRuntime(artifacts: ManagedVmDownloa
   await installGvisorFiles(artifacts);
   await writeContainerdConfiguration();
   await execa('systemctl', ['restart', 'k3s']);
-  await execa('k3s', ['kubectl', 'wait', 'node', '--all', '--for=condition=Ready', '--timeout=5m']);
+  await waitForManagedVmKubernetes();
   await applyManagedVmRuntimeClass();
   await verifyManagedVmSandboxRuntime();
 }

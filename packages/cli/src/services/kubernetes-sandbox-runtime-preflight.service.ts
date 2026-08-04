@@ -11,6 +11,7 @@ import { readReadyKubernetesNodeNames } from './kubernetes-ready-nodes.service';
 const canaryImage: string =
   'postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777';
 const canaryTimeoutMs: number = 5 * 60_000;
+const canaryKubernetesTimeout: string = '4m';
 
 export async function verifyKubernetesSandboxRuntime(
   input: KubernetesSandboxRuntimePreflightInput,
@@ -78,7 +79,12 @@ async function applyCanaryPod(
 
 async function waitForCanaryPod(input: KubernetesSandboxRuntimePreflightInput, podName: string): Promise<void> {
   const result: CommandResult = await runCommandWithTimeout(
-    buildCanaryKubectlCommand(input, ['wait', `pod/${podName}`, '--for=condition=Ready', '--timeout=180s']),
+    buildCanaryKubectlCommand(input, [
+      'wait',
+      `pod/${podName}`,
+      '--for=condition=Ready',
+      `--timeout=${canaryKubernetesTimeout}`,
+    ]),
     canaryTimeoutMs,
   );
   if (result.exitCode !== 0) {

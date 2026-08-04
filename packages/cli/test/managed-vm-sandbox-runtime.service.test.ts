@@ -74,6 +74,13 @@ describe('managed VM sandbox runtime', (): void => {
       { mode: 0o600 },
     );
     expect(mocks.execa).toHaveBeenCalledWith('systemctl', ['restart', 'k3s']);
+    expect(mocks.execa).toHaveBeenCalledWith('k3s', [
+      'kubectl',
+      'wait',
+      '--for=create',
+      'serviceaccount/default',
+      '--timeout=5m',
+    ]);
     expect(mocks.verifySandbox).toHaveBeenCalledWith({
       kubeContext: 'default',
       kubeconfigPath: '/etc/rancher/k3s/k3s.yaml',

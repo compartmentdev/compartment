@@ -1,7 +1,9 @@
+import { fileURLToPath } from 'node:url';
+
 import { readPlatformK3dEnvironment } from './platform-k3d-e2e.mjs';
 import { platformK3dShardDefinitions, platformK3dShardNames } from './platform-k3d-e2e-shards.mjs';
 
-const e2eFixtureBinPath = new URL('./fixtures/kubectl-e2e-bin/', import.meta.url).pathname;
+const e2eFixtureBinPath = fileURLToPath(new URL('./fixtures/kubectl-e2e-bin/', import.meta.url));
 
 export function readPlatformK3dShard(args) {
   const [shardName, ...extraArgs] = args;
