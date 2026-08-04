@@ -11,6 +11,7 @@
     "noUncheckedIndexedAccess": false,
     "paths": {
       "@compartment/contracts": ["../packages/contracts/src/index.ts"],
+      "@compartment/contracts/browser": ["../packages/contracts/src/index.browser.ts"],
       "@compartment/sdk": ["../packages/sdk/src/index.ts"],
       "@compartment/source-archive": ["../packages/source-archive/src/index.ts"],
       "@compartment/utils": ["../packages/utils/src/index.ts"]
