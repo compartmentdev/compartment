@@ -4,6 +4,7 @@ import { buildCompartmentBrowserEntryUrl } from '../../compartment-url';
 import type { CliInstallResult } from '../../install.types';
 import type { OutputFormat } from '../../output/output.types';
 import { renderOutput } from '../../output/render';
+import { formatTerminalBold, shouldUseTerminalStyles } from '../terminal-style.helpers';
 
 export function renderInstallResult(
   io: CliIo,
@@ -11,7 +12,12 @@ export function renderInstallResult(
   result: CliInstallResult,
   development: boolean,
 ): void {
-  renderOutput(io, output, toInstallResponse(result), createInstallResultMessage(result, development));
+  renderOutput(
+    io,
+    output,
+    toInstallResponse(result),
+    createInstallResultMessage(result, development, shouldUseTerminalStyles(io, 'stdout')),
+  );
 }
 
 function toInstallResponse(result: CliInstallResult): InstallResponse {
@@ -26,11 +32,16 @@ function toInstallResponse(result: CliInstallResult): InstallResponse {
   };
 }
 
-function createInstallResultMessage(result: CliInstallResult, development: boolean): string {
+function createInstallResultMessage(
+  result: CliInstallResult,
+  development: boolean,
+  useTerminalStyles: boolean,
+): string {
   const installKind: string = development ? 'local development Compartment' : 'Compartment';
   const onboardingUrl: string = buildCompartmentBrowserEntryUrl(result.compartmentUrl, result.adminEmail, {
     startOnboarding: true,
   });
+  const continueSetupHeading: string = formatTerminalBold('Continue setup:', useTerminalStyles);
 
-  return `Installed ${installKind} at ${result.compartmentUrl}. Logged in as ${result.adminEmail}.\nContinue setup: ${onboardingUrl}`;
+  return `Installed ${installKind} at ${result.compartmentUrl}. Logged in as ${result.adminEmail}.\n${continueSetupHeading} ${onboardingUrl}`;
 }

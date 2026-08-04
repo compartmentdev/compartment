@@ -19,6 +19,17 @@ export interface RemoteSelectionPromptOption {
 
 const newPasswordAttemptLimit: number = 3;
 
+export function writeInstallOrganizationDetailsHeading(
+  io: CliIo,
+  configuredEmail?: string,
+  configuredOrganization?: string,
+): void {
+  if (hasText(configuredEmail) && hasText(configuredOrganization)) {
+    return;
+  }
+  io.stderr('Compartment organization details:\n');
+}
+
 export async function promptRegisterEmail(io: CliIo, configuredEmail?: string): Promise<string> {
   if (hasText(configuredEmail)) {
     assertEmail(configuredEmail);
@@ -202,7 +213,7 @@ export async function promptVisibleText(io: CliIo, label: string, defaultValue?:
 }
 
 export async function promptMutationConfirmation(io: CliIo): Promise<boolean> {
-  return await promptYesNoChoice(io, 'Continue and request sudo access? [y/N]: ', false);
+  return await promptYesNoChoice(io, 'Continue and request sudo access? [Y/n]: ', true);
 }
 
 export async function promptManagedKubernetesInstall(io: CliIo): Promise<boolean> {

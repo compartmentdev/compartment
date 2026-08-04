@@ -15,6 +15,27 @@ afterEach((): void => {
 });
 
 describe.sequential('install identity input', (): void => {
+  it('labels interactive owner prompts as Compartment organization details', async (): Promise<void> => {
+    process.env[adminPasswordEnvName] = 'correct horse battery staple';
+    const capture: CliCommandCapture = createCliCapture({ isTTY: true });
+    capture.stdin.end('admin@example.com\nAcme Dev\n');
+
+    await resolveInstallIdentityPrompts(
+      { io: capture.io },
+      {
+        output: 'text',
+      },
+    );
+
+    const stderr: string = readCliStderr(capture);
+    const headingIndex: number = stderr.indexOf('Compartment organization details:\n');
+    const emailIndex: number = stderr.indexOf('Admin email: ');
+    const organizationIndex: number = stderr.indexOf('Organization name');
+    expect(headingIndex).toBeGreaterThanOrEqual(0);
+    expect(emailIndex).toBeGreaterThan(headingIndex);
+    expect(organizationIndex).toBeGreaterThan(emailIndex);
+  });
+
   it('uses COMPARTMENT_ADMIN_PASSWORD without prompting', async (): Promise<void> => {
     process.env[adminPasswordEnvName] = 'correct horse battery staple';
     const capture: CliCommandCapture = createCliCapture();
