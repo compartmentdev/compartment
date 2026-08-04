@@ -161,7 +161,7 @@ users: [{ name: owner, user: {} }]
     }
   });
 
-  it('runs confirmed root automation without sudo and preserves the owner password at the canonical boundary', async (): Promise<void> => {
+  it('preserves interactively resolved owner fields during confirmed root installation', async (): Promise<void> => {
     const getuid: GetUid | undefined = process.getuid;
     if (getuid === undefined) {
       throw new Error('This test requires process.getuid.');
@@ -169,9 +169,23 @@ users: [{ name: owner, user: {} }]
     process.getuid = (): number => 0;
     try {
       const capture: CliCommandCapture = createCliCapture();
+      capture.stdin.end('owner@example.com\nAcme\n');
       const { runCli } = await import('../src/app');
 
-      expect(await runCli([...ownerInstallArgs(), '--yes'], capture.io)).toBe(0);
+      expect(
+        await runCli(
+          [
+            'install',
+            '--target',
+            'vm',
+            '--admin-password',
+            'correct horse battery staple',
+            '--managed-domain',
+            '--yes',
+          ],
+          capture.io,
+        ),
+      ).toBe(0);
 
       expect(readCliStderr(capture).match(/Installation review/gu)).toHaveLength(1);
       expect(mocks.execa).not.toHaveBeenCalled();
@@ -180,8 +194,40 @@ users: [{ name: owner, user: {} }]
         expect.anything(),
         expect.objectContaining({
           adminPassword: 'correct horse battery staple',
+          email: 'owner@example.com',
           managedDomain: true,
+          organization: 'Acme',
           values: '/etc/compartment/values.yaml',
+        }),
+      );
+    } finally {
+      process.getuid = getuid;
+    }
+  });
+
+  it('preserves the complete owner identity while resuming a confirmed root install', async (): Promise<void> => {
+    const getuid: GetUid | undefined = process.getuid;
+    if (getuid === undefined) {
+      throw new Error('This test requires process.getuid.');
+    }
+    mocks.inspectState.mockResolvedValue({
+      foreignPaths: [],
+      ownedConfigMatches: true,
+      provisionerStateExists: true,
+    });
+    process.getuid = (): number => 0;
+    try {
+      const capture: CliCommandCapture = createCliCapture();
+      const { runCli } = await import('../src/app');
+
+      expect(await runCli([...ownerInstallArgs(), '--yes'], capture.io)).toBe(0);
+
+      expect(mocks.canonicalInstall).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          adminPassword: 'correct horse battery staple',
+          email: 'owner@example.com',
+          organization: 'Acme',
         }),
       );
     } finally {
