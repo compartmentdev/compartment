@@ -4,12 +4,27 @@ import { describe, expect, it } from 'vitest';
 
 const channelActionPath = new URL('../../.github/actions/publish-self-hosted-channel/action.yml', import.meta.url);
 const mainWorkflowPath = new URL('../../.github/workflows/publish-self-hosted-main.yml', import.meta.url);
+const releaseWorkflowPath = new URL('../../.github/workflows/publish-self-hosted-release.yml', import.meta.url);
 
 async function readWorkflow(path) {
   return parse(await readFile(path, 'utf8'));
 }
 
 describe('self-hosted publish workflows', () => {
+  it('archives every canonical runtime image before stable release scanning', async () => {
+    const workflow = await readWorkflow(releaseWorkflowPath);
+    const buildJob = workflow.jobs['build-release-images'];
+    const installStep = buildJob.steps.find((step) => step.name === 'Install dependencies');
+    const checkStep = buildJob.steps.find((step) => step.name === 'Check release version files');
+    const archiveStep = buildJob.steps.find((step) => step.name === 'Archive self-hosted images');
+
+    expect(installStep.run).toBe('pnpm install --frozen-lockfile');
+    expect(buildJob.steps.indexOf(checkStep)).toBeGreaterThan(buildJob.steps.indexOf(installStep));
+    expect(archiveStep.run).toContain('node ./scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs');
+    expect(archiveStep.run).toContain('compartment-${service}:${{ steps.release.outputs.value }}');
+    expect(archiveStep.run).toContain('docker image save "${image_refs[@]}"');
+  });
+
   it('publishes immutable main images from direct main pushes', async () => {
     const workflow = await readWorkflow(mainWorkflowPath);
     const publishJob = workflow.jobs['publish-main-images'];

@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 
 import { prepareRelease } from './prepare.mjs';
 
@@ -34,6 +35,10 @@ describe('prepare-release', () => {
     await expect(readJsonFile(join(repositoryRoot, '.release-please-manifest.json'))).resolves.toEqual({
       '.': '0.2.0',
     });
+    await expect(readYamlFile(join(repositoryRoot, 'deploy/chart/compartment/Chart.yaml'))).resolves.toMatchObject({
+      appVersion: '0.2.0',
+      version: '0.1.0',
+    });
   });
 });
 
@@ -44,6 +49,13 @@ async function createReleaseFixture() {
   await writeFile(
     join(temporaryDirectory, '.release-please-manifest.json'),
     `${JSON.stringify({ '.': '0.1.0' }, null, 2)}\n`,
+    'utf8',
+  );
+  const chartDirectory = join(temporaryDirectory, 'deploy/chart/compartment');
+  await mkdir(chartDirectory, { recursive: true });
+  await writeFile(
+    join(chartDirectory, 'Chart.yaml'),
+    "apiVersion: v2\nname: compartment\nversion: 0.1.0\nappVersion: '0.1.0'\n",
     'utf8',
   );
 
@@ -62,4 +74,8 @@ async function createReleaseFixture() {
 
 async function readJsonFile(path) {
   return JSON.parse(await readFile(path, 'utf8'));
+}
+
+async function readYamlFile(path) {
+  return parse(await readFile(path, 'utf8'));
 }
