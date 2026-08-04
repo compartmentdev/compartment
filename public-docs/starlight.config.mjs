@@ -34,16 +34,30 @@ const docsSidebar = [
     ],
   },
   {
-    label: 'Operate',
-    items: ['guides/operate-managed-vm'],
+    label: 'Install and Operate',
+    items: [
+      'install-operate/install-modes',
+      'install-operate/install-domain',
+      'install-operate/system-operations',
+      'guides/operate-managed-vm',
+    ],
   },
   {
     label: 'Reference',
+    collapsed: true,
     items: [
       'reference/cli-reference',
-      { label: 'Generated CLI Reference', autogenerate: { directory: 'reference/generated/cli' } },
+      {
+        label: 'Generated CLI Reference',
+        collapsed: true,
+        autogenerate: { directory: 'reference/generated/cli', collapsed: true },
+      },
       'reference/schema-reference',
-      { label: 'Generated Schema Reference', autogenerate: { directory: 'reference/generated/schema' } },
+      {
+        label: 'Generated Schema Reference',
+        collapsed: true,
+        autogenerate: { directory: 'reference/generated/schema', collapsed: true },
+      },
       'reference/glossary',
     ],
   },
@@ -66,9 +80,9 @@ const docsLlmsCustomSets = [
     description: 'login, activation, organizations, users, roles, groups, assignments, audit logs, and SSO',
   },
   {
-    label: 'Operate',
-    paths: ['guides/**'],
-    description: 'managed VM status, updates, diagnostics, recovery, and destructive reset',
+    label: 'Install and Operate',
+    paths: ['install-operate/**', 'guides/operate-managed-vm'],
+    description: 'Kubernetes install targets, domains, platform operations, and managed VM lifecycle',
   },
   {
     label: 'Reference',
