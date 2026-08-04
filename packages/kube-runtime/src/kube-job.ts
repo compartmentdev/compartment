@@ -1,4 +1,5 @@
 import type { KubeObservation, KubeObservationEvent, KubeObservedManifest } from './kube-runtime.types';
+import { jobStatusFailed } from './kube-job-status';
 
 export interface TerminalJob {
   exitCode: number;
@@ -8,8 +9,14 @@ export interface TerminalJob {
 }
 
 interface JobStatus {
+  conditions?: JobStatusCondition[] | undefined;
   failed?: number | undefined;
   succeeded?: number | undefined;
+}
+
+interface JobStatusCondition {
+  status?: string | undefined;
+  type?: string | undefined;
 }
 
 interface PodStatus {
@@ -60,7 +67,8 @@ function readTerminalJob(cache: ReadonlyMap<string, KubeObservedManifest>, jobNa
     (object: KubeObservedManifest): boolean => object.kind === 'Job' && object.metadata?.name === jobName,
   );
   const status: JobStatus | undefined = job?.status;
-  if ((status?.succeeded ?? 0) === 0 && (status?.failed ?? 0) === 0) {
+  const failed: boolean = jobStatusFailed(status);
+  if ((status?.succeeded ?? 0) === 0 && !failed) {
     return null;
   }
   return readTerminalPod(cache, jobName, (status?.succeeded ?? 0) > 0);

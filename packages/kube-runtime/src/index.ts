@@ -36,6 +36,7 @@ export type {
   KubeDeploymentManifest,
   KubeJobEmptyDirVolume,
   KubeJobResult,
+  KubeRunJobOptions,
   KubePersistedJobResult,
   KubeJobSpec,
   KubeJobSidecar,
