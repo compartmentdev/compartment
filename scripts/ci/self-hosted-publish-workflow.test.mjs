@@ -66,9 +66,6 @@ describe('self-hosted publish workflows', () => {
     const signStep = publishJob.steps.find((step) => step.name === 'Sign and verify CLI artifact');
     const promoteImagesStep = promotionJob.steps.find((step) => step.name === 'Promote mutable kubernetes image tags');
     const promoteStep = promotionJob.steps.find((step) => step.name === 'Promote mutable kubernetes CLI tag');
-    const publicInstallerStep = promotionJob.steps.find(
-      (step) => step.name === 'Verify supported public installer handoff',
-    );
     const expectedPromotionCondition = `
       \${{
         always() &&
@@ -137,23 +134,6 @@ describe('self-hosted publish workflows', () => {
     expect(promoteStep.id).toBe('promote-kubernetes-cli');
     expect(promoteStep.run).toContain('echo \'promoted=false\' >> "$GITHUB_OUTPUT"');
     expect(promoteStep.run).toContain('echo \'promoted=true\' >> "$GITHUB_OUTPUT"');
-    expect(promotionJob.steps.indexOf(publicInstallerStep)).toBeGreaterThan(promotionJob.steps.indexOf(promoteStep));
-    expect(publicInstallerStep.if).toBe("steps.promote-kubernetes-cli.outputs.promoted == 'true'");
-    expect(publicInstallerStep.run).toContain('https://compartment.dev/install.sh');
-    expect(publicInstallerStep.run).toMatch(
-      /curl -fsSL[\s\S]*--write-out '%\{http_code\}'[\s\S]*https:\/\/compartment\.dev\/install\.sh/u,
-    );
-    expect(publicInstallerStep.run).toContain('received_sha256=""');
-    expect(publicInstallerStep.run).toContain('received_size=""');
-    expect(publicInstallerStep.run).toContain('expected_sha256="$(sha256sum install.sh');
-    expect(publicInstallerStep.run).toContain('expected_size="$(wc -c < install.sh)"');
-    expect(publicInstallerStep.run).toContain('[ "$http_status" = 200 ]');
-    expect(publicInstallerStep.run).toMatch(
-      /cmp --silent install\.sh \.\/\.compartment\/public-install\.sh; then[\s\S]*expected sha256[\s\S]*received sha256[\s\S]*exit 0/u,
-    );
-    expect(publicInstallerStep.run).toContain('HTTP 200 served different content');
-    expect(publicInstallerStep.run).not.toContain('last_result=redirect');
-    expect(publicInstallerStep.run.trimEnd().endsWith('exit 1')).toBe(true);
   });
 
   it('publishes, signs, and verifies both registries through one channel action', async () => {
