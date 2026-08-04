@@ -16,9 +16,9 @@ export const managedVmReleaseMetadata: ManagedVmReleaseMetadata = {
     },
     {
       name: 'helm',
-      sha256: 'f8180838c23d7c7d797b208861fecb591d9ce1690d8704ed1e4cb8e2add966c1',
-      url: 'https://get.helm.sh/helm-v3.18.4-linux-amd64.tar.gz',
-      version: 'v3.18.4',
+      sha256: '70b2c30a19da4db264dfd68c8a3664e05093a361cefd89572ffb36f8abfa3d09',
+      url: 'https://get.helm.sh/helm-v4.1.4-linux-amd64.tar.gz',
+      version: 'v4.1.4',
     },
     {
       name: 'cert-manager',
@@ -28,7 +28,7 @@ export const managedVmReleaseMetadata: ManagedVmReleaseMetadata = {
     },
   ],
   certManagerVersion: 'v1.21.0',
-  helmVersion: 'v3.18.4',
+  helmVersion: 'v4.1.4',
   k3sChannel: 'compartment-stable-1.35',
   k3sVersion: 'v1.35.5+k3s1',
   kubernetesMinor: '1.35',

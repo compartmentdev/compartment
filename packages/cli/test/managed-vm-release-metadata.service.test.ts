@@ -15,6 +15,13 @@ describe('managed VM release metadata', (): void => {
       url: 'https://raw.githubusercontent.com/k3s-io/k3s/v1.35.5%2Bk3s1/install.sh',
       version: 'v1.35.5+k3s1',
     });
+    expect(managedVmReleaseMetadata.artifacts).toContainEqual({
+      name: 'helm',
+      sha256: '70b2c30a19da4db264dfd68c8a3664e05093a361cefd89572ffb36f8abfa3d09',
+      url: 'https://get.helm.sh/helm-v4.1.4-linux-amd64.tar.gz',
+      version: 'v4.1.4',
+    });
+    expect(managedVmReleaseMetadata.helmVersion).toBe('v4.1.4');
     expect(managedVmReleaseMetadata.k3sChannel).not.toContain(managedVmReleaseMetadata.k3sVersion);
   });
 });
