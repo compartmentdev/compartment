@@ -4,6 +4,7 @@ import {
   createSystemUserFlowContext,
   loginSystemUserFlowAdmin,
   prepareSystemUserFlowAppDeployment,
+  prepareSystemUserFlowStagingEnvironment,
   prepareSystemUserFlowVariables,
 } from './system-user-flow.shared.e2e.harness';
 import {
@@ -12,7 +13,7 @@ import {
   type SelfHostedUserSetupHarness,
 } from './self-hosted-user-setup.e2e.harness';
 import { registerSystemUserFlowStatefulTeardownCases } from './system-user-flow.stateful-teardown.e2e-cases';
-import { SystemUserFlowContext } from './system-user-flow.e2e.harness';
+import { appBuildMessage, SystemUserFlowContext } from './system-user-flow.e2e.harness';
 
 export type SystemUserFlowStatefulShard = 'backup-rollback' | 'access-audit';
 
@@ -37,7 +38,12 @@ export function registerSystemUserFlowStatefulShard(shard: SystemUserFlowStatefu
       context.activeDeployment = deployment.activeDeployment;
       context.promotedDeploymentId = deployment.activeDeployment.id;
       context.adminAppSessionCookie = deployment.adminAppSessionCookie;
-      context.completedCaseCount = 4;
+      if (shard === 'access-audit') {
+        await prepareSystemUserFlowStagingEnvironment(context.admin, context.app, appBuildMessage);
+        context.completedCaseCount = 6;
+      } else {
+        context.completedCaseCount = 4;
+      }
     },
     selfHostedUserSetupTimeoutMs,
   );

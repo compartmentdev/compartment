@@ -108,6 +108,7 @@ import { expectAuditFileExports, expectAuditFileSinkCoverage } from './self-host
 import { expectCurrentOrganizationSlug } from './cli-response-test.harness';
 import { expectK3dBackupRetentionFlow } from './self-hosted-user-setup-k3d.harness';
 import { expectedAuditEventTypes, requireProjectOverview } from './system-user-flow-response.harness';
+import { prepareSystemUserFlowStagingEnvironment } from './system-user-flow.shared.e2e.harness';
 
 import {
   appBuildMessage,
@@ -281,11 +282,7 @@ export function registerSystemUserFlowStatefulTeardownCases(
           variableResponseSchema,
           { cwd: app.directory },
         );
-        await admin.runJson(
-          `variable set E2E_BUILD_MESSAGE ${rollbackBuildMessage} --env staging`,
-          variableResponseSchema,
-          { cwd: app.directory },
-        );
+        await prepareSystemUserFlowStagingEnvironment(admin, app, rollbackBuildMessage);
 
         const secondDeployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
           'deploy',
@@ -381,7 +378,7 @@ export function registerSystemUserFlowStatefulTeardownCases(
         promotedDeploymentId,
         completedCaseCount,
       } = context;
-      expectSelfHostedUserSetupStepCompleted(completedCaseCount, 4);
+      expectSelfHostedUserSetupStepCompleted(completedCaseCount, 6);
       const invitePayload: InviteUserResponse = await admin.runJson(
         `user invite ${viewerEmail}`,
         inviteUserResponseSchema,

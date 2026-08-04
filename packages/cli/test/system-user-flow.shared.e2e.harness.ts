@@ -206,6 +206,16 @@ export async function prepareSystemUserFlowVariables(
   };
 }
 
+export async function prepareSystemUserFlowStagingEnvironment(
+  admin: SelfHostedUserSetupCli,
+  app: SelfHostedUserSetupAppFixture,
+  buildMessage: string,
+): Promise<VariableResponse> {
+  return await admin.runJson(`variable set E2E_BUILD_MESSAGE ${buildMessage} --env staging`, variableResponseSchema, {
+    cwd: app.directory,
+  });
+}
+
 export async function prepareSystemUserFlowAppDeployment(
   admin: SelfHostedUserSetupCli,
   app: SelfHostedUserSetupAppFixture,
