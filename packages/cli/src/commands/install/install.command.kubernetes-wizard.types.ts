@@ -4,6 +4,7 @@ import type {
   InstallWizardRegistryValues,
   InstallWizardTlsValues,
   InstallWizardValues,
+  InstallCommandOptions,
 } from './install.command.types';
 import type {
   KubernetesContextChoice,
@@ -60,4 +61,22 @@ export interface KubernetesInstallWizardClusterSelection {
   issuers: readonly KubernetesInstallIssuerChoice[];
   kubeContext: string;
   storageClass: string;
+}
+
+export interface FinishKubernetesInstallWizardInput {
+  context: KubernetesContextChoice;
+  ingressClass: string;
+  inspectIssuer: InspectKubernetesInstallIssuer;
+  issuers: readonly KubernetesInstallIssuerChoice[];
+  options: InstallCommandOptions;
+  retainedState: RetainedKubernetesInstallState | null;
+  storageClass: string;
+}
+
+export interface PrepareFinishKubernetesInstallWizardInput {
+  context: KubernetesContextChoice;
+  inspectIssuer: InspectKubernetesInstallIssuer;
+  options: InstallCommandOptions;
+  readResources: ReadKubernetesInstallResourceInventory;
+  readRetainedState: ReadKubernetesInstallRetainedState;
 }

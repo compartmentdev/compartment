@@ -11,6 +11,7 @@ import type {
   KubernetesInstallIssuerChoice,
   KubernetesInstallIssuerKind,
   KubernetesInstallResourceInventory,
+  KubernetesInstallResourceLists,
   KubernetesInventoryList,
   KubernetesInventoryResource,
   KubernetesStorageClassChoice,
@@ -18,13 +19,6 @@ import type {
 
 const defaultStorageClassAnnotation: string = 'storageclass.kubernetes.io/is-default-class';
 const certManagerVersion: string = 'v1.21.0';
-
-interface KubernetesInstallResourceLists {
-  clusterIssuers: KubernetesInventoryList;
-  ingressClasses: KubernetesInventoryList;
-  issuers: KubernetesInventoryList;
-  storageClasses: KubernetesInventoryList;
-}
 
 export async function readKubernetesInstallInventory(
   input: KubernetesInstallInventoryInput,

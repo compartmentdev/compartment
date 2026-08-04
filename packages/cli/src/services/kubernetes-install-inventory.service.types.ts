@@ -50,6 +50,13 @@ export interface KubernetesInventoryList {
   items?: KubernetesInventoryResource[] | undefined;
 }
 
+export interface KubernetesInstallResourceLists {
+  clusterIssuers: KubernetesInventoryList;
+  ingressClasses: KubernetesInventoryList;
+  issuers: KubernetesInventoryList;
+  storageClasses: KubernetesInventoryList;
+}
+
 export interface KubernetesInstallInventory {
   contexts: readonly KubernetesContextChoice[];
 }
