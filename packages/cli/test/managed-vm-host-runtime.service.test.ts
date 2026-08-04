@@ -48,6 +48,18 @@ describe('managed VM host runtime', (): void => {
       freeInodes: 19_664_281,
     });
   });
+
+  it('reports zero instead of NaN when df has no numeric data row', async (): Promise<void> => {
+    mocks.execa.mockImplementation(
+      async (command: string, args: readonly string[]): Promise<ManagedVmCommandResult> => {
+        const stdout: string = await Promise.resolve(command === 'df' ? 'Avail\n' : commandOutput(command, args));
+        return { exitCode: 0, stderr: '', stdout };
+      },
+    );
+    const { inspectManagedVmHost } = await import('../src/services/managed-vm-host-runtime.service');
+
+    await expect(inspectManagedVmHost()).resolves.toMatchObject({ freeBytes: 0, freeInodes: 0 });
+  });
 });
 
 function commandOutput(command: string, args: readonly string[]): string {

@@ -192,7 +192,8 @@ function readLastOutputValue(stdout: string): number {
     .map((line: string): string => line.trim())
     .filter(Boolean)
     .at(-1);
-  return Number(value ?? '0');
+  const parsed: number = Number(value ?? '0');
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 async function readClockSynchronization(): Promise<boolean> {
