@@ -12,6 +12,7 @@ import {
   verifyManagedVmPrerequisites,
   waitForManagedVmKubernetes,
 } from './managed-vm-cluster.service';
+import { installManagedVmSandboxRuntime } from './managed-vm-sandbox-runtime.service';
 import { installManagedVmFirewall } from './managed-vm-firewall.service';
 import type { ManagedVmInstallStage, ManagedVmProvisionerState } from './managed-vm-provisioning.types';
 import type { ManagedVmProvisionInput } from './managed-vm-provisioner.service.types';
@@ -80,6 +81,21 @@ async function runClusterStages(
   );
   state = await runK3sStage(state, input, artifacts);
   state = await runStage(state, 'waiting-for-kubernetes', input, waitForManagedVmKubernetes);
+  return await runPostKubernetesStages(state, input, artifacts);
+}
+
+async function runPostKubernetesStages(
+  initialState: ManagedVmProvisionerState,
+  input: ManagedVmProvisionInput,
+  artifacts: ManagedVmDownloadedArtifacts,
+): Promise<ManagedVmProvisionerState> {
+  let state: ManagedVmProvisionerState = initialState;
+  state = await runStage(
+    state,
+    'installing-sandbox-runtime',
+    input,
+    async (): Promise<void> => await installManagedVmSandboxRuntime(artifacts),
+  );
   state = await runStage(
     state,
     'installing-cert-manager',

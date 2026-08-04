@@ -13,6 +13,7 @@ interface ManagedVmCommandMocks {
   inspectHost: Mock;
   inspectState: Mock;
   observePublicIpv4: Mock;
+  persistStage: Mock;
   provision: Mock;
   runCommand: Mock;
 }
@@ -24,6 +25,7 @@ const mocks: ManagedVmCommandMocks = vi.hoisted(
     inspectHost: vi.fn(),
     inspectState: vi.fn(),
     observePublicIpv4: vi.fn(),
+    persistStage: vi.fn(),
     provision: vi.fn(),
     runCommand: vi.fn(),
   }),
@@ -44,7 +46,10 @@ vi.mock('../src/commands/install/install.command.kubernetes', (): object => ({
 }));
 vi.mock('../src/services/managed-vm-state.service', async (importOriginal: <T>() => Promise<T>): Promise<object> => {
   const original: object = await importOriginal<object>();
-  return { ...original, persistManagedVmStage: vi.fn() };
+  return {
+    ...original,
+    persistManagedVmStage: mocks.persistStage,
+  };
 });
 
 describe('managed VM install command boundary', (): void => {
@@ -261,6 +266,28 @@ users: [{ name: owner, user: {} }]
     }
   });
 
+  it('records installer-owned host changes when the canonical install must be resumed', async (): Promise<void> => {
+    const getuid: GetUid | undefined = process.getuid;
+    if (getuid === undefined) {
+      throw new Error('This test requires process.getuid.');
+    }
+    const state: object = { completedStage: 'verifying-prerequisites' };
+    mocks.provision.mockResolvedValue(state);
+    mocks.canonicalInstall.mockRejectedValue(new Error('platform install failed'));
+    process.getuid = (): number => 0;
+    try {
+      const capture: CliCommandCapture = createCliCapture();
+      const { runCli } = await import('../src/app');
+
+      expect(await runCli([...ownerInstallArgs(), '--yes'], capture.io)).toBe(1);
+
+      expect(mocks.persistStage).toHaveBeenCalledWith(state, 'verifying-prerequisites');
+      expect(readCliStderr(capture)).toContain('platform install failed');
+    } finally {
+      process.getuid = getuid;
+    }
+  });
+
   it('consumes stdin password once during confirmed root automation', async (): Promise<void> => {
     const getuid: GetUid | undefined = process.getuid;
     if (getuid === undefined) {
@@ -342,6 +369,7 @@ function ownerInstallArgs(): string[] {
 
 function supportedInventory(): ManagedVmHostInventory {
   return {
+    archiveExtractorAvailable: true,
     architecture: 'x86_64',
     cgroupV2: true,
     clockSynchronized: true,
@@ -356,7 +384,7 @@ function supportedInventory(): ManagedVmHostInventory {
     osVersion: '24.04',
     portsInUse: [],
     publicInterface: 'ens3',
-    reachableEndpoints: ['1', '2', '3', '4', '5', '6'],
+    reachableEndpoints: ['1', '2', '3', '4', '5', '6', '7', '8'],
     requiredKernelModules: true,
     routeCidrs: ['default'],
     sudoAvailable: true,

@@ -34,6 +34,7 @@ async function readHostObservation(): Promise<ManagedVmHostObservation> {
   const localIpv4Addresses: Promise<readonly string[]> = readLocalIpv4Addresses();
   const publicInterface: Promise<string> = readPublicInterface();
   return {
+    archiveExtractorAvailable: await pathExists('/usr/bin/bzip2'),
     clockSynchronized: await clockSynchronized,
     disk: await disk,
     firewall: await firewall,
@@ -50,6 +51,7 @@ async function readHostObservation(): Promise<ManagedVmHostObservation> {
 async function createHostInventory(observation: ManagedVmHostObservation): Promise<ManagedVmHostInventory> {
   const os: ReadonlyMap<string, string> = parseOsRelease(observation.osRelease);
   return {
+    archiveExtractorAvailable: observation.archiveExtractorAvailable,
     architecture: process.arch === 'x64' ? 'x86_64' : process.arch,
     cgroupV2: await pathExists('/sys/fs/cgroup/cgroup.controllers'),
     clockSynchronized: observation.clockSynchronized,
@@ -68,9 +70,12 @@ async function createHostInventory(observation: ManagedVmHostObservation): Promi
     requiredKernelModules: observation.modules,
     reachableEndpoints: observation.reachableEndpoints,
     systemd: await pathExists('/run/systemd/system'),
-    sudoAvailable:
-      (typeof process.getuid === 'function' && process.getuid() === 0) || (await pathExists('/usr/bin/sudo')),
+    sudoAvailable: await isSudoAvailable(),
   };
+}
+
+async function isSudoAvailable(): Promise<boolean> {
+  return (typeof process.getuid === 'function' && process.getuid() === 0) || (await pathExists('/usr/bin/sudo'));
 }
 
 export async function inspectManagedVmState(): Promise<ManagedVmObservedState> {

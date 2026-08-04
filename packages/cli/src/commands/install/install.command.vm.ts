@@ -89,18 +89,33 @@ async function runPrivilegedManagedVmInstall(
     reportStage: (stage: ManagedVmInstallStage): void => dependencies.io.stderr(`  ${stage}\n`),
   });
   const adminPassword: string | undefined = await readPrivilegedAdminPassword(options);
-  await executeCanonicalKubernetesInstallCommand(dependencies, {
-    ...options,
-    adminPassword,
-    check: false,
-    ingressClass: 'traefik',
-    ingressEndpoint: preflight.publicAddress,
-    kubeContext: 'default',
-    managedDomain: true,
-    storageClass: 'local-path',
-    values: managedVmValuesPath,
-  });
+  await executeManagedVmPlatformInstall(dependencies, options, preflight, state, adminPassword);
   await persistManagedVmStage(state, 'complete');
+}
+
+async function executeManagedVmPlatformInstall(
+  dependencies: CliCommandDependencies,
+  options: InstallCommandOptions,
+  preflight: ManagedVmPreflightResult,
+  state: ManagedVmProvisionerState,
+  adminPassword: string | undefined,
+): Promise<void> {
+  try {
+    await executeCanonicalKubernetesInstallCommand(dependencies, {
+      ...options,
+      adminPassword,
+      check: false,
+      ingressClass: 'traefik',
+      ingressEndpoint: preflight.publicAddress,
+      kubeContext: 'default',
+      managedDomain: true,
+      storageClass: 'local-path',
+      values: managedVmValuesPath,
+    });
+  } catch (error) {
+    await persistManagedVmStage(state, state.completedStage);
+    throw error;
+  }
 }
 
 async function readPrivilegedAdminPassword(options: InstallCommandOptions): Promise<string | undefined> {
@@ -218,11 +233,12 @@ Managed Kubernetes
   Kubernetes: k3s ${preflight.metadata.k3sVersion} (${preflight.metadata.k3sChannel})
   kubectl: provided by k3s
   Helm: ${preflight.metadata.helmVersion}
+  Sandbox: gVisor ${preflight.metadata.gvisorVersion}
   Topology: single node, embedded etcd
 
 Host changes
-  /usr/local/bin/compartment, k3s, helm
-  /etc/compartment and /etc/rancher/k3s
+  /usr/local/bin/compartment, k3s, helm, runsc, containerd-shim-runsc-v1
+  /etc/compartment, /etc/containerd, and /etc/rancher/k3s
   /var/lib/rancher/k3s and /var/lib/compartment/installer
   systemd services: compartment-firewall, k3s
   Firewall rules on ${preflight.inventory.publicInterface}:

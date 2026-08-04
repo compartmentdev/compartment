@@ -5,6 +5,7 @@ const managedVmInstallStages: readonly ManagedVmInstallStage[] = [
   'preparing-host',
   'installing-k3s',
   'waiting-for-kubernetes',
+  'installing-sandbox-runtime',
   'installing-cert-manager',
   'verifying-prerequisites',
   'installing-compartment',

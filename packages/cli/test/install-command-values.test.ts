@@ -136,10 +136,8 @@ nodePools:
   system:
     nodeSelector:
       compartment.dev/node-pool: system
-tenantRuntime:
+sandboxRuntime:
   runtimeClassName: gvisor
-  createRuntimeClass: true
-  runtimeHandler: runsc
 `);
 
     await expect(readOperatorInstallInputValues(valuesPath, true)).resolves.toMatchObject({

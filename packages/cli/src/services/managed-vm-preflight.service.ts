@@ -6,6 +6,7 @@ import type {
   ManagedVmPreflightResult,
   ManagedVmStateClassification,
 } from './managed-vm-provisioning.types';
+import { managedVmRequiredEndpointCount } from './managed-vm-network.service';
 import { managedVmReleaseMetadata } from './managed-vm-release-metadata.service';
 import { areIpv4CidrsOverlapping, isGloballyRoutableIpv4 } from './managed-vm-network-address.service';
 
@@ -39,6 +40,7 @@ function createPreflightChecks(
     check('architecture', inventory.architecture === 'x86_64', 'x86_64'),
     check('systemd', inventory.systemd, 'systemd is running'),
     check('sudo', inventory.sudoAvailable, 'root or sudo escalation is available'),
+    check('archive-extractor', inventory.archiveExtractorAvailable, 'bzip2 is available'),
     check('cgroup-v2', inventory.cgroupV2, 'cgroup v2'),
     check('kernel-modules', inventory.requiredKernelModules, 'overlay, br_netfilter, and nf_tables'),
     check('clock', inventory.clockSynchronized, 'system clock is synchronized'),
@@ -63,8 +65,8 @@ function createNetworkChecks(
     check('firewall', inventory.firewall !== 'firewalld', `${inventory.firewall} firewall classified`),
     check(
       'downloads',
-      inventory.reachableEndpoints.length === 6,
-      `${String(inventory.reachableEndpoints.length)}/6 endpoints reachable`,
+      inventory.reachableEndpoints.length === managedVmRequiredEndpointCount,
+      `${String(inventory.reachableEndpoints.length)}/${String(managedVmRequiredEndpointCount)} endpoints reachable`,
     ),
     ...createPublicAddressChecks(inventory, publicAddress),
     check('host-state', classification === 'fresh' || classification === 'resume', classification),

@@ -20,6 +20,11 @@ export interface KubernetesNodeStatus {
   conditions?: KubernetesNodeStatusCondition[] | undefined;
 }
 
+export interface KubernetesReadyNodeTarget {
+  kubeContext?: string | undefined;
+  kubeconfigPath?: string | undefined;
+}
+
 export interface KubernetesNodeStatusCondition {
   status?: string | undefined;
   type?: string | undefined;

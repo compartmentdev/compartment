@@ -30,9 +30,9 @@ import type {
 import { readOperatorOwnedKubernetesTlsSecretName } from './kubernetes-install-tls.service';
 import { isReservedKubernetesInstallLocalhostDomain } from '../kubernetes-install-domain';
 import { assertRegistryIpIssuerAssessment } from './kubernetes-operator-issuer-trust.service';
-import { inspectKubernetesBuildRuntime } from './kubernetes-build-runtime-preflight.service';
-import type { KubernetesBuildRuntimeAssessment } from './kubernetes-build-runtime-preflight.service.types';
-import { resolveKubernetesBuildRuntimeClassName } from './kubernetes-build-runtime-values.service';
+import { verifyKubernetesSandboxRuntime } from './kubernetes-sandbox-runtime-preflight.service';
+import type { KubernetesSandboxRuntimeVerification } from './kubernetes-sandbox-runtime-preflight.service.types';
+import { resolveKubernetesSandboxRuntimeClassName } from './kubernetes-sandbox-runtime-values.service';
 import { readKubernetesChartValues } from './kubernetes-chart-values.service';
 
 export async function installIntoKubernetes(
@@ -55,25 +55,25 @@ async function runCanonicalPreflight(
       chartFullname: deploymentInput.chartFullname,
       install: input,
     });
-    const runtimeClassName: string = await verifyInstallImages(deploymentInput);
-    reportBuildRuntimeAssessment(input, await inspectBuildRuntime(input, runtimeClassName));
+    const runtimeClassName: string = await resolveInstallSandboxRuntime(deploymentInput);
+    reportSandboxRuntimeVerification(input, await inspectSandboxRuntime(input, runtimeClassName));
   });
 }
 
-async function inspectBuildRuntime(
+async function inspectSandboxRuntime(
   input: KubernetesInstallApplicationInput,
   runtimeClassName: string,
-): Promise<KubernetesBuildRuntimeAssessment> {
-  return await inspectKubernetesBuildRuntime({
+): Promise<KubernetesSandboxRuntimeVerification> {
+  return await verifyKubernetesSandboxRuntime({
     kubeContext: input.kubeContext,
     kubeconfigPath: input.kubeconfigPath,
     runtimeClassName,
   });
 }
 
-function reportBuildRuntimeAssessment(
+function reportSandboxRuntimeVerification(
   input: KubernetesInstallApplicationInput,
-  assessment: KubernetesBuildRuntimeAssessment,
+  assessment: KubernetesSandboxRuntimeVerification,
 ): void {
   input.progress.report(assessment.detail, { renderMode: 'line' });
 }
@@ -89,11 +89,11 @@ async function verifyOperatorCertificateSources(input: KubernetesInstallDeployme
   await assertOperatorTlsSecret(input, await readOperatorOwnedKubernetesTlsSecretName(input.valuesPath));
 }
 
-async function verifyInstallImages(input: KubernetesInstallDeploymentInput): Promise<string> {
+async function resolveInstallSandboxRuntime(input: KubernetesInstallDeploymentInput): Promise<string> {
   const directory: string = await createKubernetesInstallMaterializedDirectory();
   try {
     const material: KubernetesInstallHelmMaterial = await prepareKubernetesInstallHelmMaterial(input, directory);
-    return await resolveKubernetesBuildRuntimeClassName(
+    return await resolveKubernetesSandboxRuntimeClassName(
       await readKubernetesChartValues(material.chartPath),
       input.valuesPath,
     );

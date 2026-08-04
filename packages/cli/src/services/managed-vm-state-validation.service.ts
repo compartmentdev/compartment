@@ -1,5 +1,6 @@
 import type {
   ManagedVmArtifact,
+  ManagedVmCurrentReleaseMetadata,
   ManagedVmOwnedPath,
   ManagedVmProvisionerState,
   ManagedVmReleaseMetadata,
@@ -8,14 +9,17 @@ import type {
 import { isManagedVmInstallStage, isManagedVmUpdateStage } from './managed-vm-stage.service';
 
 const statePath: string = '/var/lib/compartment/installer/state.json';
-const artifactNames: readonly string[] = ['cert-manager', 'helm', 'k3s', 'k3s-install-script'];
+const artifactNames: readonly string[] = ['cert-manager', 'gvisor', 'helm', 'k3s', 'k3s-install-script'];
 
 type ManagedVmArtifactBoundary = Partial<ManagedVmArtifact>;
 
 type ManagedVmOwnedPathBoundary = Partial<ManagedVmOwnedPath>;
 
-interface ManagedVmReleaseMetadataBoundary extends Partial<Omit<ManagedVmReleaseMetadata, 'artifacts'>> {
+interface ManagedVmReleaseMetadataBoundary extends Partial<
+  Omit<ManagedVmCurrentReleaseMetadata, 'artifacts' | 'metadataVersion'>
+> {
   artifacts?: readonly ManagedVmArtifactBoundary[] | null | undefined;
+  metadataVersion?: number | undefined;
 }
 
 type ManagedVmUpdateBoundary = Partial<ManagedVmUpdateState>;
@@ -71,18 +75,21 @@ function isOwnedFileDigestRecord(
 function isManagedVmReleaseMetadata(
   value: ManagedVmReleaseMetadataBoundary | null | undefined,
 ): value is ManagedVmReleaseMetadata {
-  return (
-    value !== null &&
-    value !== undefined &&
+  if (value === null || value === undefined) {
+    return false;
+  }
+  const commonFieldsAreValid: boolean =
     isManagedVmArtifacts(value.artifacts) &&
     typeof value.certManagerVersion === 'string' &&
     typeof value.helmVersion === 'string' &&
     typeof value.k3sChannel === 'string' &&
     typeof value.k3sVersion === 'string' &&
     typeof value.kubernetesMinor === 'string' &&
-    typeof value.metadataVersion === 'number' &&
     typeof value.podCidr === 'string' &&
-    typeof value.serviceCidr === 'string'
+    typeof value.serviceCidr === 'string';
+  return (
+    commonFieldsAreValid &&
+    (value.metadataVersion === 1 || (value.metadataVersion === 2 && typeof value.gvisorVersion === 'string'))
   );
 }
 

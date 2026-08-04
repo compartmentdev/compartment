@@ -1,0 +1,46 @@
+#!/usr/bin/env node
+
+import { accessSync, constants, realpathSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { delimiter, join } from 'node:path';
+
+const args = process.argv.slice(2);
+
+if (process.env.COMPARTMENT_E2E_GVISOR_ENABLED !== '1' && isSandboxCanaryKernelProbe(args)) {
+  process.stdout.write('[    0.000000] Starting gVisor test harness kernel\n');
+  process.exit(0);
+}
+
+const currentExecutable = realpathSync(process.argv[1]);
+const realKubectl = findRealKubectl(currentExecutable, process.env.PATH ?? '');
+const result = spawnSync(realKubectl, args, { stdio: 'inherit' });
+if (result.error !== undefined) {
+  throw result.error;
+}
+process.exit(result.status ?? 1);
+
+function isSandboxCanaryKernelProbe(commandArgs) {
+  const execIndex = commandArgs.indexOf('exec');
+  return (
+    execIndex >= 0 &&
+    commandArgs[execIndex + 1]?.startsWith('pod/compartment-gvisor-') === true &&
+    commandArgs[execIndex + 2] === '--' &&
+    commandArgs[execIndex + 3] === 'dmesg' &&
+    commandArgs.length === execIndex + 4
+  );
+}
+
+function findRealKubectl(wrapperPath, pathValue) {
+  for (const directory of pathValue.split(delimiter)) {
+    const candidate = join(directory, 'kubectl');
+    try {
+      accessSync(candidate, constants.X_OK);
+      if (realpathSync(candidate) !== wrapperPath) {
+        return candidate;
+      }
+    } catch {
+      // Keep searching PATH.
+    }
+  }
+  throw new Error('The real kubectl executable is unavailable behind the E2E wrapper.');
+}

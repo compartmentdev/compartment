@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import { execa, type ManagedVmCommandResult } from './managed-vm-command.service';
 import { verifyManagedVmFirewall } from './managed-vm-firewall.service';
 import type { ManagedVmInstallStage } from './managed-vm-provisioning.types';
+import { isManagedVmSandboxRuntimeHealthy } from './managed-vm-sandbox-runtime.service';
 
 const preparedHostPaths: readonly string[] = [
   '/etc/rancher/k3s/config.yaml',
@@ -24,6 +25,13 @@ export async function isManagedVmStageHealthy(stage: ManagedVmInstallStage): Pro
   }
   if (stage === 'waiting-for-kubernetes') {
     return await isKubernetesHealthy();
+  }
+  return await isPostKubernetesStageHealthy(stage);
+}
+
+async function isPostKubernetesStageHealthy(stage: ManagedVmInstallStage): Promise<boolean> {
+  if (stage === 'installing-sandbox-runtime') {
+    return await isManagedVmSandboxRuntimeHealthy();
   }
   if (stage === 'installing-cert-manager') {
     return await isCertManagerHealthy();

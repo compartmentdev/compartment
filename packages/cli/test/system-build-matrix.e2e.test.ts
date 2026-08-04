@@ -684,12 +684,11 @@ async function expectEphemeralGVisorBuildPod(deployment: Promise<SelfHostedDeplo
       '--container',
       'buildkit',
       '--',
-      'cat',
-      '/proc/version',
+      'dmesg',
     ],
     timeoutMs: selfHostedBuildMatrixRuntimeCommandTimeoutMs,
   });
-  expectSuccessfulCommand(version, 'kubectl exec /proc/version in ephemeral BuildKit sidecar');
+  expectSuccessfulCommand(version, 'kubectl exec dmesg in ephemeral BuildKit sidecar');
   expect(version.stdout.toLowerCase()).toContain('gvisor');
   await deployment;
   await waitForNoBuildPods(seed.kubeContext, buildNamespace);
@@ -781,21 +780,10 @@ async function readK3dRuntimeCommandOutput(
   }
   if (process.env.COMPARTMENT_E2E_GVISOR_ENABLED === '1') {
     const versionResult: SelfHostedUserSetupCommandResult = await runCommand({
-      argv: [
-        'kubectl',
-        '--context',
-        kubeContext,
-        'exec',
-        '--namespace',
-        namespace,
-        podName,
-        '--',
-        'cat',
-        '/proc/version',
-      ],
+      argv: ['kubectl', '--context', kubeContext, 'exec', '--namespace', namespace, podName, '--', 'dmesg'],
       timeoutMs: selfHostedBuildMatrixRuntimeCommandTimeoutMs,
     });
-    expectSuccessfulCommand(versionResult, `kubectl exec /proc/version for deployment ${deploymentId}`);
+    expectSuccessfulCommand(versionResult, `kubectl exec dmesg for deployment ${deploymentId}`);
     expect(versionResult.stdout.toLowerCase()).toContain('gvisor');
   }
   const outputResult: SelfHostedUserSetupCommandResult = await runCommand({

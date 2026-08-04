@@ -101,6 +101,18 @@ describe('managed VM recorded file ownership', (): void => {
 
     await expect(readManagedVmState()).rejects.toThrow('state at /var/lib/compartment/installer/state.json is invalid');
   });
+
+  it('rejects unsupported managed-VM release metadata versions', async (): Promise<void> => {
+    files.readFile.mockResolvedValueOnce(
+      JSON.stringify({
+        ...validState(),
+        releaseMetadata: { ...validState().releaseMetadata, metadataVersion: 99 },
+      }),
+    );
+    const { readManagedVmState } = await import('../src/services/managed-vm-state.service');
+
+    await expect(readManagedVmState()).rejects.toThrow('state at /var/lib/compartment/installer/state.json is invalid');
+  });
 });
 
 function validState(): ManagedVmProvisionerState {
@@ -114,11 +126,12 @@ function validState(): ManagedVmProvisionerState {
     releaseMetadata: {
       artifacts: [],
       certManagerVersion: 'v1',
+      gvisorVersion: 'release-test',
       helmVersion: 'v1',
       k3sChannel: 'stable',
       k3sVersion: 'v1',
       kubernetesMinor: '1.35',
-      metadataVersion: 1,
+      metadataVersion: 2,
       podCidr: `10.${String(42)}.0.0/16`,
       serviceCidr: `10.${String(43)}.0.0/16`,
     },

@@ -174,10 +174,8 @@ nodePools:
     nodeSelector: {}
     tolerations: []
 
-tenantRuntime:
-  runtimeClassName: ''
-  createRuntimeClass: false
-  runtimeHandler: runsc
+sandboxRuntime:
+  runtimeClassName: gvisor
 
 buildkit:
   enabled: true
@@ -185,9 +183,6 @@ buildkit:
   gcKeepStorageMb: 2000
   maximumConcurrentBuilds: 2
   maximumConcurrentBuildsPerProject: 2
-  runtimeClassName: ''
-  createRuntimeClass: false
-  runtimeHandler: runsc
   timeoutMs: 1800000
   dnsNamespaceSelector:
     kubernetes.io/metadata.name: kube-system

@@ -5,10 +5,14 @@ export type KubernetesPermissionRequirement = readonly [string, string, Kubernet
 export type KubernetesApiRequirement = readonly [string, readonly string[]];
 
 export const requiredApiResources: readonly KubernetesApiRequirement[] = [
-  ['/api/v1', ['configmaps', 'namespaces', 'persistentvolumeclaims', 'pods', 'secrets', 'services', 'serviceaccounts']],
+  [
+    '/api/v1',
+    ['configmaps', 'namespaces', 'nodes', 'persistentvolumeclaims', 'pods', 'secrets', 'services', 'serviceaccounts'],
+  ],
   ['/apis/apps/v1', ['daemonsets', 'deployments', 'statefulsets']],
   ['/apis/batch/v1', ['cronjobs', 'jobs']],
   ['/apis/networking.k8s.io/v1', ['ingresses', 'ingressclasses', 'networkpolicies']],
+  ['/apis/node.k8s.io/v1', ['runtimeclasses']],
   ['/apis/rbac.authorization.k8s.io/v1', ['roles', 'rolebindings', 'clusterroles', 'clusterrolebindings']],
   ['/apis/storage.k8s.io/v1', ['storageclasses']],
   ['/apis/admissionregistration.k8s.io/v1', ['validatingadmissionpolicies', 'validatingadmissionpolicybindings']],
@@ -24,6 +28,8 @@ export const requiredPermissions: readonly KubernetesPermissionRequirement[] = [
   ['get', 'namespaces', 'cluster'],
   ['get', 'ingressclasses.networking.k8s.io', 'cluster'],
   ['get', 'storageclasses.storage.k8s.io', 'cluster'],
+  ['get', 'runtimeclasses.node.k8s.io', 'cluster'],
+  ['list', 'nodes', 'cluster'],
   ['*', 'configmaps', 'install'],
   ['*', 'persistentvolumeclaims', 'install'],
   ['*', 'secrets', 'install'],
@@ -46,6 +52,11 @@ export const requiredPermissions: readonly KubernetesPermissionRequirement[] = [
   ['create', 'certificates.cert-manager.io', 'default'],
   ['get', 'certificates.cert-manager.io', 'default'],
   ['get', 'secrets', 'default'],
+  ['create', 'pods', 'default'],
+  ['delete', 'pods', 'default'],
+  ['get', 'pods', 'default'],
+  ['watch', 'pods', 'default'],
+  ['create', 'pods/exec', 'default'],
 ];
 
 export function readClusterOwnedTargets(fullname: string): KubernetesOwnedResourceTarget[] {

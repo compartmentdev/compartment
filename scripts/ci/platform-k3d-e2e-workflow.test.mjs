@@ -37,7 +37,7 @@ describe('platform k3d e2e workflow', () => {
       suites: ['install', 'build-matrix'],
     });
     const buildMatrixShards = Object.values(platformK3dShardDefinitions).filter(
-      (definition) => definition.suites.includes('build-matrix') && !definition.gvisorEnabled,
+      (definition) => definition.suites.includes('build-matrix') && definition.buildMatrixPartition !== 'gvisor',
     );
     expect(buildMatrixShards).toHaveLength(5);
     expect(buildMatrixShards.every((definition) => definition.suites.join(',') === 'install,build-matrix')).toBe(true);
@@ -70,7 +70,7 @@ describe('platform k3d e2e workflow', () => {
     expect(gvisorInstallStep.if).toBe("${{ matrix.shard == 'gvisor-build' }}");
     expect(gvisorInstallStep.env.GVISOR_VERSION).toMatch(/^release\/\d{8}\.\d+$/);
     expect(gvisorInstallStep.run).toContain('gvisor.tar.bz2');
-    expect(gvisorInstallStep.run).toContain('sha512sum --check');
+    expect(gvisorInstallStep.run).toContain('sha256sum --check');
     expect(gvisorInstallStep.run).toContain('/usr/bin/runsc');
     expect(gvisorInstallStep.run).toContain('/usr/bin/containerd-shim-runsc-v1');
     expect(gvisorInstallStep.run).toContain('/usr/bin/gvisor-bin');

@@ -3,6 +3,7 @@ export type ManagedVmInstallStage =
   | 'preparing-host'
   | 'installing-k3s'
   | 'waiting-for-kubernetes'
+  | 'installing-sandbox-runtime'
   | 'installing-cert-manager'
   | 'verifying-prerequisites'
   | 'installing-compartment'
@@ -12,7 +13,7 @@ export type ManagedVmInstallStage =
 
 export type ManagedVmStateClassification = 'foreign' | 'fresh' | 'inconsistent' | 'locked' | 'resume';
 
-export type ManagedVmArtifactName = 'cert-manager' | 'helm' | 'k3s' | 'k3s-install-script';
+export type ManagedVmArtifactName = 'cert-manager' | 'gvisor' | 'helm' | 'k3s' | 'k3s-install-script';
 
 export interface ManagedVmArtifact {
   name: ManagedVmArtifactName;
@@ -21,19 +22,30 @@ export interface ManagedVmArtifact {
   version: string;
 }
 
-export interface ManagedVmReleaseMetadata {
+interface ManagedVmReleaseMetadataBase {
   artifacts: readonly ManagedVmArtifact[];
   certManagerVersion: string;
   helmVersion: string;
   k3sChannel: string;
   k3sVersion: string;
   kubernetesMinor: string;
-  metadataVersion: number;
   podCidr: string;
   serviceCidr: string;
 }
 
+export interface ManagedVmLegacyReleaseMetadata extends ManagedVmReleaseMetadataBase {
+  metadataVersion: 1;
+}
+
+export interface ManagedVmCurrentReleaseMetadata extends ManagedVmReleaseMetadataBase {
+  gvisorVersion: string;
+  metadataVersion: 2;
+}
+
+export type ManagedVmReleaseMetadata = ManagedVmCurrentReleaseMetadata | ManagedVmLegacyReleaseMetadata;
+
 export interface ManagedVmHostInventory {
+  archiveExtractorAvailable: boolean;
   architecture: string;
   cgroupV2: boolean;
   clockSynchronized: boolean;
@@ -63,6 +75,7 @@ export interface ManagedVmDiskAvailability {
 }
 
 export interface ManagedVmHostObservation {
+  archiveExtractorAvailable: boolean;
   clockSynchronized: boolean;
   disk: ManagedVmDiskAvailability;
   firewall: ManagedVmFirewallKind;
@@ -97,7 +110,7 @@ export interface ManagedVmPreflightResult {
   checks: readonly ManagedVmPreflightCheck[];
   classification: ManagedVmStateClassification;
   inventory: ManagedVmHostInventory;
-  metadata: ManagedVmReleaseMetadata;
+  metadata: ManagedVmCurrentReleaseMetadata;
   publicAddress: string;
 }
 

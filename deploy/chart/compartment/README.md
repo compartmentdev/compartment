@@ -12,6 +12,7 @@ existing-cluster preflight before applying it.
 - an existing cert-manager CA Issuer or ClusterIssuer whose CA is already trusted by every node container runtime
 - NetworkPolicy enforcement
 - persistent storage
+- gVisor installed on every node eligible for build or tenant workloads, with a working RuntimeClass
 - installer access to the namespaced and cluster-scoped resources rendered by the chart
 
 The chart does not install or disable cluster infrastructure and does not mutate nodes.
@@ -20,10 +21,9 @@ The registry uses its private Service ClusterIP directly in image references and
 address in its SAN. Public ACME issuers cannot issue certificates for private IP addresses. Installation therefore
 fails unless the configured `registry.issuerRef` selects a CA issuer whose CA is already in every node's trust store.
 
-gVisor is an optional build-isolation enhancement. By default, ephemeral source-build Pods use each build node's
-default container runtime. To add kernel-level sandboxing, install `runsc` on the build nodes, expose it through a
-RuntimeClass, and set `buildkit.runtimeClassName` to that class name. The chart does not create a cluster-scoped
-RuntimeClass unless `buildkit.createRuntimeClass` is explicitly enabled.
+The chart schedules builds and tenant workloads through the RuntimeClass selected by
+`sandboxRuntime.runtimeClassName` (`gvisor` by default). The CLI verifies that class before Helm runs and owns runtime
+installation only for managed VMs; the chart never installs runtimes or adopts an operator-owned RuntimeClass.
 
 ## Node pools and workload priority
 
