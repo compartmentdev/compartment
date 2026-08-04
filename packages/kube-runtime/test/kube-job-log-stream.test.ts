@@ -3,6 +3,7 @@ import { getEventListeners } from 'node:events';
 import type { Writable } from 'node:stream';
 import { describe, expect, it, vi, type MockInstance } from 'vitest';
 import { followJobLogs } from '../src/kube-job-log-stream';
+import { waitForJobPod } from '../src/kube-job-log-observation';
 import type {
   KubeObservation,
   KubeObservationHealth,
@@ -19,6 +20,17 @@ type FollowLog = (
 ) => Promise<AbortController>;
 
 describe('Kubernetes Job log stream', (): void => {
+  it('removes the abort listener when cancellation races Pod subscription', async (): Promise<void> => {
+    const controller: AbortController = new AbortController();
+    const observation: AbortOnSubscribeObservation = new AbortOnSubscribeObservation(controller);
+
+    await expect(waitForJobPod(observation, 'job-name', new Set<string>(), controller.signal)).rejects.toThrow(
+      'cancelled while subscribing',
+    );
+
+    expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
+  });
+
   it('drains a started Pod even when the Job is already terminal', async (): Promise<void> => {
     const observation: PodObservation = new PodObservation();
     observation.complete();
@@ -169,6 +181,25 @@ describe('Kubernetes Job log stream', (): void => {
     expect(chunks).toEqual(['job-pod\n', 'job-pod-retry\n']);
   });
 });
+
+class AbortOnSubscribeObservation implements KubeObservation {
+  readonly cache: ReadonlyMap<string, KubeObservedManifest> = new Map<string, KubeObservedManifest>();
+
+  constructor(private readonly controller: AbortController) {}
+
+  health(): KubeObservationHealth {
+    return { healthy: true, lastConnectedAt: null, lastErrorAt: null };
+  }
+
+  onEvent(): () => void {
+    this.controller.abort(new Error('cancelled while subscribing'));
+    return (): void => undefined;
+  }
+
+  async stop(): Promise<void> {
+    await Promise.resolve();
+  }
+}
 
 class PodObservation implements KubeObservation {
   public readonly cache: Map<string, KubeObservedManifest> = new Map<string, KubeObservedManifest>([

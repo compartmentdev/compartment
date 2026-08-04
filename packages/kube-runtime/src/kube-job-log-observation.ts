@@ -53,6 +53,7 @@ function subscribeForJobPod(
 ): void {
   let unsubscribe: () => void = (): void => undefined;
   const abort: () => void = (): void => {
+    signal.removeEventListener('abort', abort);
     unsubscribe();
     reject(jobLogAbortError(signal, jobName));
   };
