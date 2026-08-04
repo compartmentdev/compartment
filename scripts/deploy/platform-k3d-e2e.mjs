@@ -1149,7 +1149,11 @@ export async function runK3dRegistryCreateWithRetry(args, options = {}) {
       throw lastResult.error ?? new Error(`Command failed: k3d ${args.join(' ')}`);
     }
 
-    cleanup();
+    try {
+      await cleanup();
+    } catch (cleanupError) {
+      process.stderr.write(`Failed to clean the partial k3d registry before retrying: ${String(cleanupError)}\n`);
+    }
     const retryDelayMs = Math.min(
       transientRegistryCreateInitialDelayMs * 2 ** (attempt - 1),
       transientRegistryCreateMaxDelayMs,

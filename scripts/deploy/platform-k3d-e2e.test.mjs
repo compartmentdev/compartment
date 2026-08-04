@@ -173,7 +173,7 @@ describe('platform k3d e2e command boundary', () => {
   });
 
   it('retries only transient registry pulls and cleans partial registries between attempts', async () => {
-    const cleanup = vi.fn();
+    const cleanup = vi.fn().mockRejectedValueOnce(new Error('cleanup failed')).mockResolvedValue(undefined);
     const waits = [];
     const commandRunner = vi
       .fn()
@@ -198,6 +198,9 @@ describe('platform k3d e2e command boundary', () => {
         commandRunner,
         wait: async (milliseconds) => waits.push(milliseconds),
       });
+      expect(stderr).toHaveBeenCalledWith(
+        'Failed to clean the partial k3d registry before retrying: Error: cleanup failed\n',
+      );
     } finally {
       stderr.mockRestore();
     }
