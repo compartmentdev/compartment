@@ -1,0 +1,174 @@
+name: Bare VM release gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        description: Public IPv4 address of a freshly provisioned disposable Ubuntu 24.04 VM
+        required: true
+        type: string
+      owner_email:
+        description: First-owner email used only for the disposable installation
+        required: true
+        type: string
+      organization:
+        description: Disposable organization name
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  fresh-vm:
+    name: Ubuntu 24.04 fresh VM
+    environment: bare-vm-release-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      FRESH_VM_HOST: ${{ inputs.host }}
+      OWNER_EMAIL: ${{ inputs.owner_email }}
+      OWNER_ORGANIZATION: ${{ inputs.organization }}
+      RELEASE_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Validate release-gate inputs
+        run: |
+          case "$FRESH_VM_HOST" in
+            ''|*[!0-9.]*) echo 'host must be an IPv4 address' >&2; exit 1 ;;
+          esac
+          python3 - "$FRESH_VM_HOST" <<'PY'
+          import ipaddress
+          import sys
+          address = ipaddress.ip_address(sys.argv[1])
+          if address.version != 4 or address.is_private or address.is_loopback or address.is_multicast:
+              raise SystemExit('host must be a public IPv4 address')
+          PY
+          python3 - "$OWNER_EMAIL" <<'PY'
+          import re
+          import sys
+          if re.fullmatch(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', sys.argv[1]) is None:
+              raise SystemExit('owner_email must be a simple email address')
+          PY
+          case "$OWNER_ORGANIZATION" in
+            ''|*[!A-Za-z0-9_.\ -]*) echo 'organization contains unsupported characters' >&2; exit 1 ;;
+          esac
+
+      - name: Configure pinned disposable VM access
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.FRESH_VM_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.FRESH_VM_SSH_KNOWN_HOSTS }}
+        run: |
+          test -n "$SSH_PRIVATE_KEY"
+          test -n "$SSH_KNOWN_HOSTS"
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          ssh-keygen -F "$FRESH_VM_HOST" -f ~/.ssh/known_hosts >/dev/null
+
+      - name: Verify fresh supported host
+        run: |
+          ssh "ubuntu@${FRESH_VM_HOST}" \
+            'test "$(. /etc/os-release && printf %s "$ID:$VERSION_ID")" = ubuntu:24.04 && test ! -e /var/lib/compartment/installer/state.json'
+
+      - name: Install from the public bootstrap
+        env:
+          OWNER_PASSWORD: ${{ secrets.FRESH_VM_OWNER_PASSWORD }}
+        run: |
+          password_file="$(mktemp)"
+          trap 'rm -f "$password_file"' EXIT
+          printf '%s' "$OWNER_PASSWORD" > "$password_file"
+          chmod 0600 "$password_file"
+          scp "$password_file" "ubuntu@${FRESH_VM_HOST}:/tmp/compartment-owner-password"
+          ssh "ubuntu@${FRESH_VM_HOST}" 'curl --proto "=https" --tlsv1.2 -fsSL -o /tmp/compartment-install.sh https://compartment.dev/install.sh && chmod 0700 /tmp/compartment-install.sh'
+          owner_email_base64="$(printf '%s' "$OWNER_EMAIL" | base64 -w0)"
+          organization_base64="$(printf '%s' "$OWNER_ORGANIZATION" | base64 -w0)"
+          ssh "ubuntu@${FRESH_VM_HOST}" -- env \
+            OWNER_EMAIL_BASE64="$owner_email_base64" \
+            OWNER_ORGANIZATION_BASE64="$organization_base64" \
+            RELEASE_SHA="$RELEASE_SHA" \
+            'sh -c '\''owner_email="$(printf %s "$OWNER_EMAIL_BASE64" | base64 -d)"; organization="$(printf %s "$OWNER_ORGANIZATION_BASE64" | base64 -d)"; /tmp/compartment-install.sh --channel kubernetes --version "sha-${RELEASE_SHA}" --init-install --target vm --yes --email "$owner_email" --organization "$organization" --admin-password-file /tmp/compartment-owner-password; status=$?; rm -f /tmp/compartment-install.sh; exit "$status"'\'''
+
+      - name: Verify exact packaged CLI build
+        run: |
+          version_output="$(ssh "ubuntu@${FRESH_VM_HOST}" 'sudo compartment --version')"
+          expected_suffix="-kubernetes+$(printf '%s' "$RELEASE_SHA" | cut -c1-7)"
+          case "$version_output" in
+            *"$expected_suffix") ;;
+            *) echo "Expected candidate CLI suffix ${expected_suffix}, received: ${version_output}" >&2; exit 1 ;;
+          esac
+
+      - name: Verify resumable install and readiness JSON
+        run: |
+          owner_email_base64="$(printf '%s' "$OWNER_EMAIL" | base64 -w0)"
+          organization_base64="$(printf '%s' "$OWNER_ORGANIZATION" | base64 -w0)"
+          ssh "ubuntu@${FRESH_VM_HOST}" -- env \
+            OWNER_EMAIL_BASE64="$owner_email_base64" \
+            OWNER_ORGANIZATION_BASE64="$organization_base64" \
+            'sh -c '\''owner_email="$(printf %s "$OWNER_EMAIL_BASE64" | base64 -d)"; organization="$(printf %s "$OWNER_ORGANIZATION_BASE64" | base64 -d)"; sudo compartment install --target vm --yes --email "$owner_email" --organization "$organization" --admin-password-file /tmp/compartment-owner-password; status=$?; rm -f /tmp/compartment-owner-password; exit "$status"'\'''
+          ssh "ubuntu@${FRESH_VM_HOST}" 'sudo compartment system status --output json' > status.json
+          jq -e '.host.k3sActive == true and .host.installationId != "" and .platform.ready == true' status.json
+
+      - name: Probe public and isolated ports externally
+        run: |
+          base_domain="$(ssh "ubuntu@${FRESH_VM_HOST}" "sudo sed -n 's/^  baseDomain: //p' /etc/compartment/values.yaml")"
+          test -n "$base_domain"
+          curl --fail --silent --show-error --retry 30 --retry-delay 10 "https://console.${base_domain}/login"
+          sudo apt-get update
+          sudo apt-get install --yes nmap
+          tcp_result="$(nmap -Pn -p 2379,2380,6443,10250 --open -oG - "$FRESH_VM_HOST")"
+          if printf '%s\n' "$tcp_result" | grep -Eq 'Ports: .*open'; then
+            echo 'A cluster-only TCP port is publicly reachable.' >&2
+            exit 1
+          fi
+          udp_result="$(sudo nmap -Pn -sU -p 8472 --open -oG - "$FRESH_VM_HOST")"
+          if printf '%s\n' "$udp_result" | grep -Eq '8472/open/udp'; then
+            echo 'The cluster-only overlay UDP port is publicly reachable.' >&2
+            exit 1
+          fi
+
+      - name: Deploy the first application and verify registry pull
+        run: |
+          tar -C examples -czf /tmp/compartment-gate-app.tar.gz dockerfile
+          scp /tmp/compartment-gate-app.tar.gz "ubuntu@${FRESH_VM_HOST}:/tmp/compartment-gate-app.tar.gz"
+          ssh "ubuntu@${FRESH_VM_HOST}" 'rm -rf /tmp/compartment-gate-app && mkdir /tmp/compartment-gate-app && tar -C /tmp/compartment-gate-app --strip-components=1 -xzf /tmp/compartment-gate-app.tar.gz && cd /tmp/compartment-gate-app && sudo compartment deploy'
+          ssh "ubuntu@${FRESH_VM_HOST}" 'sudo compartment status --output json' > app-status.json
+          jq -e '.. | objects | select(has("status")) | .status' app-status.json >/dev/null
+          ssh "ubuntu@${FRESH_VM_HOST}" 'sudo compartment whoami --output json' > owner-session.json
+          jq -e --arg email "$OWNER_EMAIL" '.principal.email == $email' owner-session.json
+
+      - name: Verify managed update
+        run: ssh "ubuntu@${FRESH_VM_HOST}" 'sudo compartment system update'
+
+      - name: Verify reboot recovery
+        run: |
+          ssh "ubuntu@${FRESH_VM_HOST}" 'sudo reboot' || true
+          for attempt in $(seq 1 36); do
+            if ssh -o ConnectTimeout=5 "ubuntu@${FRESH_VM_HOST}" 'sudo compartment system status --output json' > status-after-reboot.json 2>/dev/null \
+              && jq -e '.host.k3sActive == true and .platform.ready == true' status-after-reboot.json >/dev/null; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo 'Disposable VM did not recover after reboot.' >&2
+          exit 1
+
+      - name: Capture diagnostics
+        if: failure()
+        run: ssh "ubuntu@${FRESH_VM_HOST}" 'sudo compartment system diagnose --path /tmp/compartment-diagnose.tar.gz' || true
+
+      - name: Destructively reset the disposable VM
+        if: always()
+        run: |
+          installation_id="$(ssh "ubuntu@${FRESH_VM_HOST}" 'sudo jq -er .installationId /var/lib/compartment/installer/state.json' 2>/dev/null || true)"
+          if [ -n "$installation_id" ]; then
+            ssh "ubuntu@${FRESH_VM_HOST}" -- env INSTALLATION_ID="$installation_id" \
+              'sudo compartment system reset --destroy-provisioned-cluster --confirm-installation "$INSTALLATION_ID"'
+            ssh "ubuntu@${FRESH_VM_HOST}" 'test ! -e /var/lib/compartment/installer/state.json && test ! -e /etc/systemd/system/compartment-firewall.service'
+          fi

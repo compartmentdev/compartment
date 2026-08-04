@@ -1,24 +1,25 @@
 ---
 title: Install Compartment
-description: Install Compartment into an existing Kubernetes cluster.
+description: Install Compartment on a clean Ubuntu VM or into an existing Kubernetes cluster.
 ---
 
 ## Install the CLI
 
 ```bash
-curl -fsSL https://compartment.dev/k/install.sh | sh
+curl -fsSL https://compartment.dev/install.sh | sh
+compartment install
 ```
 
-This is the supported self-hosted installation channel. The bootstrap resolves an immutable CLI artifact for the
-current Kubernetes release line and verifies its Cosign workflow identity and commit before installing it. No channel
-flag, raw repository URL, or separate bootstrap step is required. The public route returns a 307 redirect to the
-Kubernetes branch's root installer, which is the sole source of truth.
+This is the supported clean-VM path for an Ubuntu 24.04 LTS x86_64 host. The bootstrap downloads and verifies the CLI
+without root. The CLI checks the host, shows one mutation review, and requests sudo only after you confirm it. On a
+clean host without a usable Kubernetes context, it selects the managed-VM target automatically and installs the
+tested k3s channel, Helm, cert-manager, registry trust, and Compartment.
 
 The default command follows the tip of the `kubernetes` channel. To reproduce an installation with a specific
 published build, pin its full immutable tag:
 
 ```bash
-curl -fsSL https://compartment.dev/k/install.sh | sh -s -- \
+curl -fsSL https://compartment.dev/install.sh | sh -s -- \
   --channel kubernetes \
   --version sha-0123456789abcdef0123456789abcdef01234567
 ```
@@ -31,17 +32,31 @@ published and signed build after verifying it. If automatic discovery is unavail
 publication runs and prints the command template to complete with that run's full commit SHA.
 Add `--verbose` to show Cosign, ORAS, and checksum diagnostics during installation.
 
-## Prepare the cluster
+## Prepare a clean VM
 
-Compartment installs into an existing Kubernetes cluster. The initial supported release matrix is:
+Use a fresh Ubuntu 24.04 LTS x86_64 VM with systemd, cgroup v2, sudo access, a public IPv4 address, at least 2 vCPU,
+4 GiB memory, and 50 GiB free storage. For normal application builds, use 4 vCPU, 8 GiB memory, and 80 GiB storage.
+Ports 80 and 443 must be available and reachable. Compartment never changes port 22 or cloud security-group rules.
 
-| Kubernetes distribution | Topology                 | Ingress Controller                                               | cert-manager |
-| ----------------------- | ------------------------ | ---------------------------------------------------------------- | ------------ |
-| k3s v1.33.2+k3s1        | one server               | bundled Traefik v3.3.6                                           | v1.21.0      |
-| k3s v1.33.2+k3s1        | one server and one agent | ingress-nginx controller v1.13.3, with Traefik v3.3.6 coexisting | v1.21.0      |
+The installer blocks Kubernetes API, etcd, kubelet, and overlay ports on the public interface with persistent,
+Compartment-owned firewall rules before k3s starts. It refuses to adopt a foreign Kubernetes, k3s, container-runtime,
+or CNI installation. Use a clean host or select the existing-Kubernetes target explicitly.
 
-Versions or controllers outside this exact matrix are not supported until they are added to the release gate. The
-CLI can preflight Kubernetes 1.30+ clusters, but a successful preflight does not expand the supported matrix.
+You can run every read-only check without changing the host:
+
+```bash
+compartment install --target vm --check --output json
+```
+
+For automation, pass `--target vm`, `--yes`, owner inputs, and `--admin-password-file <path>` (or `-` for stdin).
+Do not put the password on the command line.
+
+## Use an existing Kubernetes cluster
+
+The existing-Kubernetes path remains available for operator-managed clusters. Compartment supports the current and
+previous tested Kubernetes minors when the required API and runtime capability checks pass. CI currently exercises
+Kubernetes 1.36 and 1.35. Exact k3s patches are reproducible release inputs, not the public compatibility contract.
+
 A single-node installation is not highly available: a node outage interrupts the control plane and any tenant
 workloads scheduled on that node.
 
@@ -121,10 +136,10 @@ storage.
 
 ## Run the installer
 
-Interactive installation discovers the cluster choices and prompts when more than one valid option exists:
+Select the existing-Kubernetes target explicitly in automation:
 
 ```bash
-KUBECONFIG=./kubeconfig compartment install --kube-context production
+KUBECONFIG=./kubeconfig compartment install --target kubernetes --kube-context production
 ```
 
 The managed Compartment domain is the default public-domain choice and requires no prior domain preparation. The
@@ -170,6 +185,7 @@ command arguments:
 COMPARTMENT_ADMIN_PASSWORD='replace-with-a-strong-password' \
 KUBECONFIG=./kubeconfig \
 compartment install \
+  --target kubernetes \
   --kube-context production \
   --namespace compartment \
   --release-name compartment \
@@ -295,3 +311,5 @@ compartment login --api-url https://api.example.com
 ```
 
 Use `compartment system status` to inspect the authenticated control plane and current organization.
+For a provisioned VM, continue with [Operate a Managed VM](/guides/operate-managed-vm/) for updates, diagnostics,
+recovery, and destructive reset.

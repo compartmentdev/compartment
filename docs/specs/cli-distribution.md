@@ -18,11 +18,20 @@ Stable `checksums.txt` includes the CLI archives and `install.sh`. The checksum 
 
 Releases created before repository release immutability was enabled are not retroactively attested.
 
-The Kubernetes-line public entry at `https://compartment.dev/k/install.sh` redirects with HTTP 307 to the root
-`install.sh` on the `kubernetes` branch, which remains the sole source of truth. That installer resolves the current
+The Kubernetes-line public entry at `https://compartment.dev/install.sh` must serve the root `install.sh` approved by
+the `kubernetes` publication workflow. Publication fails while that URL serves stale or different bytes. The installer resolves the current
 `kubernetes` commit, resolves `ghcr.io/compartmentdev/compartment-cli` to an immutable digest, and verifies the Cosign
 certificate identity, GitHub OIDC issuer, and exact workflow SHA before pulling the platform-specific archive. Stable
 release installer assets remain pinned to their release version.
+
+## Bare-VM Release Gate
+
+The `Bare VM release gate` workflow is the destructive release proof for this channel. It runs only through the
+protected `bare-vm-release-gate` GitHub environment and requires a separately designated, freshly provisioned Ubuntu
+24.04 VM with a public IPv4 address. The workflow installs through the public bootstrap, probes the public route and
+cluster-only ports from outside the VM, verifies reboot recovery, and performs the installation-ID-confirmed reset.
+It must never target a development host or a persistent runner. Configure `FRESH_VM_SSH_PRIVATE_KEY` and
+`FRESH_VM_OWNER_PASSWORD` as environment secrets immediately before the proof and discard the VM afterward.
 
 ## Local Smoke
 

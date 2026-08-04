@@ -1,4 +1,6 @@
 import type { OutputFormat } from '../../output/output.types';
+import type { KubernetesSystemStatusResponse } from '@compartment/contracts';
+import type { ManagedVmSystemStatus } from '../../services/managed-vm-lifecycle.service.types';
 
 export interface KubernetesOperatorCommandOptions {
   chart?: string | undefined;
@@ -22,8 +24,24 @@ export interface IssuePasswordResetCommandOptions extends KubernetesOperatorComm
 }
 
 export interface KubernetesSystemUpdateCommandOptions extends KubernetesOperatorCommandOptions {
-  values: string;
+  values?: string | undefined;
   version?: string | undefined;
+}
+
+export interface ManagedVmDiagnoseCommandOptions {
+  output: OutputFormat;
+  path?: string | undefined;
+}
+
+export interface ManagedVmResetCommandOptions {
+  confirmInstallation?: string | undefined;
+  destroyProvisionedCluster?: boolean | undefined;
+  output: OutputFormat;
+}
+
+export interface ManagedVmCompositeSystemStatus {
+  host: ManagedVmSystemStatus;
+  platform: KubernetesSystemStatusResponse;
 }
 
 export interface ResolvedSystemDomainVersionedCommand {

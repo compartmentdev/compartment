@@ -103,7 +103,7 @@ describe.sequential('production public operator-domain Kubernetes install', (): 
 });
 
 function buildInstallCommand(selectedValuesPath: string, ownerEmail: string): string {
-  return `install --api-url ${apiUrl} --base-domain ${baseDomain} --values ${selectedValuesPath} --kube-context ${kubeContext} --namespace ${namespace} --release-name ${releaseName} --email ${ownerEmail} --organization "${organizationName}" --organization-slug ${organizationSlug}`;
+  return `install --target kubernetes --api-url ${apiUrl} --base-domain ${baseDomain} --values ${selectedValuesPath} --kube-context ${kubeContext} --namespace ${namespace} --release-name ${releaseName} --email ${ownerEmail} --organization "${organizationName}" --organization-slug ${organizationSlug}`;
 }
 
 async function createFreshCli(adminPassword?: string): Promise<SelfHostedUserSetupCli> {

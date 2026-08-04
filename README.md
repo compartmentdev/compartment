@@ -49,14 +49,16 @@ Teams use Compartment when software that started as a script, internal app, work
 
 ## Quickstart
 
-Install the CLI, then connect it to a Compartment control plane installed by your operator:
+On a clean Ubuntu 24.04 VM, install the verified CLI and start the managed installation:
 
 ```bash
-curl -fsSL https://compartment.dev/k/install.sh | sh
-compartment login --api-url https://console.example.com --organization acme-dev
+curl -fsSL https://compartment.dev/install.sh | sh
+compartment install
 ```
 
-The public bootstrap installs the signed, supported existing-Kubernetes release line by default.
+When no usable Kubernetes context exists, the CLI selects the managed-VM target, checks the host, shows one mutation
+review, and requests sudo only after confirmation. Operators can instead select an existing cluster explicitly with
+`compartment install --target kubernetes`.
 
 Prepare an application repository:
 

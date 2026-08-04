@@ -4,7 +4,7 @@ set -eu
 
 release_repository="${COMPARTMENT_RELEASES_REPOSITORY:-compartmentdev/compartment}"
 if [ "$release_repository" = "compartmentdev/compartment" ]; then
-  installer_command="curl -fsSL https://compartment.dev/k/install.sh | sh -s --"
+  installer_command="curl -fsSL https://compartment.dev/install.sh | sh -s --"
 else
   installer_command="sh install.sh"
 fi
@@ -33,6 +33,10 @@ install_namespace=""
 install_release_name=""
 install_remote=""
 install_values_path=""
+install_target=""
+install_check="0"
+install_yes="0"
+install_admin_password_file=""
 verbose="0"
 
 while [ "$#" -gt 0 ]; do
@@ -99,6 +103,22 @@ while [ "$#" -gt 0 ]; do
       ;;
     --base-domain)
       install_base_domain="$2"
+      shift 2
+      ;;
+    --target)
+      install_target="$2"
+      shift 2
+      ;;
+    --check)
+      install_check="1"
+      shift
+      ;;
+    --yes)
+      install_yes="1"
+      shift
+      ;;
+    --admin-password-file)
+      install_admin_password_file="$2"
       shift 2
       ;;
     --values)
@@ -183,11 +203,20 @@ elif [ "$init_login" = "1" ]; then
     exit 1
   fi
 else
-  if [ -n "$init_api_url" ] || [ -n "$init_email" ] || [ -n "$init_organization" ] || [ -n "$init_organization_slug" ] || [ -n "$init_onboarding_session" ] || [ -n "$install_base_domain" ] || [ -n "$install_chart_path" ] || [ -n "$install_kube_context" ] || [ -n "$install_namespace" ] || [ -n "$install_release_name" ] || [ -n "$install_remote" ] || [ -n "$install_values_path" ]; then
+  if [ -n "$init_api_url" ] || [ -n "$init_email" ] || [ -n "$init_organization" ] || [ -n "$init_organization_slug" ] || [ -n "$init_onboarding_session" ] || [ -n "$install_base_domain" ] || [ -n "$install_chart_path" ] || [ -n "$install_kube_context" ] || [ -n "$install_namespace" ] || [ -n "$install_release_name" ] || [ -n "$install_remote" ] || [ -n "$install_values_path" ] || [ -n "$install_target" ] || [ "$install_check" = "1" ] || [ "$install_yes" = "1" ] || [ -n "$install_admin_password_file" ]; then
     printf 'Use install, update, and login arguments only with --init-install, --init-update, or --init-login.\n' >&2
     exit 1
   fi
 fi
+
+case "$install_target" in
+  ""|vm|kubernetes)
+    ;;
+  *)
+    printf 'Unsupported installation target: %s\n' "$install_target" >&2
+    exit 1
+    ;;
+esac
 
 case "$channel" in
   latest|main|kubernetes)
@@ -697,6 +726,15 @@ format_init_install_command() {
   if [ -n "$format_install_remote" ]; then
     format_install_command="${format_install_command} --remote $(quote_shell_argument "$format_install_remote")"
   fi
+  if [ -n "$install_target" ]; then
+    format_install_command="${format_install_command} --target $(quote_shell_argument "$install_target")"
+  fi
+  if [ "$install_check" = "1" ]; then
+    format_install_command="${format_install_command} --check"
+  fi
+  if [ "$install_yes" = "1" ]; then
+    format_install_command="${format_install_command} --yes"
+  fi
 
   printf '%s' "$format_install_command"
 }
@@ -716,12 +754,24 @@ run_init_install() {
   init_install_remote="$2"
   init_install_command="$(format_init_install_command "$init_install_path" "$init_install_api_url" "$init_install_base_domain" "$init_install_email" "$init_install_organization" "$init_install_organization_slug" "$init_install_kube_context" "$init_install_namespace" "$init_install_release_name" "$init_install_chart_path" "$init_install_remote")"
 
-  if ! can_use_installer_terminal; then
+  if ! can_use_installer_terminal && [ "$install_check" != "1" ] && [ "$install_yes" != "1" ]; then
     printf 'Requested `--init-install`, but no terminal is available for owner setup. Run `%s` from an interactive shell.\n' "$init_install_command" >&2
     exit 1
   fi
 
   set -- install
+  if [ -n "$install_target" ]; then
+    set -- "$@" --target "$install_target"
+  fi
+  if [ "$install_check" = "1" ]; then
+    set -- "$@" --check
+  fi
+  if [ "$install_yes" = "1" ]; then
+    set -- "$@" --yes
+  fi
+  if [ -n "$install_admin_password_file" ]; then
+    set -- "$@" --admin-password-file "$install_admin_password_file"
+  fi
   if [ -n "$init_install_api_url" ]; then
     set -- "$@" --api-url "$init_install_api_url"
   fi
@@ -756,6 +806,11 @@ run_init_install() {
   printf 'Running `%s` for Kubernetes platform and owner setup.\n' "$init_install_command"
   if can_write_installer_terminal; then
     "$init_install_path" "$@" </dev/tty >/dev/tty 2>/dev/tty
+    return 0
+  fi
+
+  if ! can_use_installer_terminal; then
+    "$init_install_path" "$@"
     return 0
   fi
 

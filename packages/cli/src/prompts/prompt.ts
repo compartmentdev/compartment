@@ -201,6 +201,10 @@ export async function promptVisibleText(io: CliIo, label: string, defaultValue?:
   return value;
 }
 
+export async function promptMutationConfirmation(io: CliIo): Promise<boolean> {
+  return await promptYesNoChoice(io, 'Continue and request sudo access? [y/N]: ', false);
+}
+
 async function promptYesNoChoice(io: CliIo, label: string, defaultValue: boolean): Promise<boolean> {
   for (;;) {
     const answer: string = (await readPromptLine(io, label)).trim().toLowerCase();

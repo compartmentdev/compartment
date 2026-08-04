@@ -76,7 +76,7 @@ const certManagerManifestUrl =
   'https://github.com/cert-manager/cert-manager/releases/download/v1.21.0/cert-manager.yaml';
 const ingressNginxManifestUrl =
   'https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.13.3/deploy/static/provider/baremetal/deploy.yaml';
-const k3sImageRef = 'rancher/k3s:v1.33.2-k3s1';
+const k3sImageRef = process.env.COMPARTMENT_E2E_K3S_IMAGE ?? 'rancher/k3s:v1.35.5-k3s1';
 const ingressNginxHttpNodePort = 30_080;
 const ingressNginxHttpsNodePort = 30_443;
 const pebbleImageRef =

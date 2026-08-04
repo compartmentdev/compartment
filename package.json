@@ -5,23 +5,6 @@
   "engines": {
     "node": "24.15.0"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "argon2",
-      "esbuild",
-      "msw",
-      "sharp"
-    ],
-    "overrides": {
-      "@esbuild-kit/core-utils>esbuild": "0.25.11",
-      "@kubernetes/client-node@1.4.0>js-yaml": "4.3.0",
-      "gel@2.2.0>shell-quote": "1.9.0",
-      "minimatch@10.2.5>brace-expansion": "5.0.8",
-      "yaml-language-server@1.20.0>yaml": "2.8.3",
-      "fast-uri": "3.1.4",
-      "find-my-way": ">=9.7.0"
-    }
-  },
   "scripts": {
     "prepare": "node .husky/install.mjs",
     "dev": "dotenv -e .env -- node ./scripts/dev/start-dev.mjs",
