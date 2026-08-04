@@ -342,6 +342,7 @@ describe('canonical Kubernetes install input', (): void => {
     const output: string = capture.stderr.join('');
     expect(wizard.input).toMatchObject({ baseDomain: 'apps.example.com', publicProtocol: 'http' });
     expect(wizard.values).toMatchObject({ platform: { publicProtocol: 'http' } });
+    expect(output).toContain('Compartment organization details:\nAdmin email: ');
     expect(output).toContain('Installation review:');
     expect(output).toContain('Admin email');
     expect(output).toContain('1. External TLS termination; platform serves HTTP [default]');
