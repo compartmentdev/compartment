@@ -22,18 +22,27 @@ export interface ManagedVmArtifact {
   version: string;
 }
 
-export interface ManagedVmReleaseMetadata {
+interface ManagedVmReleaseMetadataBase {
   artifacts: readonly ManagedVmArtifact[];
   certManagerVersion: string;
-  gvisorVersion: string;
   helmVersion: string;
   k3sChannel: string;
   k3sVersion: string;
   kubernetesMinor: string;
-  metadataVersion: number;
   podCidr: string;
   serviceCidr: string;
 }
+
+export interface ManagedVmLegacyReleaseMetadata extends ManagedVmReleaseMetadataBase {
+  metadataVersion: 1;
+}
+
+export interface ManagedVmCurrentReleaseMetadata extends ManagedVmReleaseMetadataBase {
+  gvisorVersion: string;
+  metadataVersion: 2;
+}
+
+export type ManagedVmReleaseMetadata = ManagedVmCurrentReleaseMetadata | ManagedVmLegacyReleaseMetadata;
 
 export interface ManagedVmHostInventory {
   archiveExtractorAvailable: boolean;
@@ -101,7 +110,7 @@ export interface ManagedVmPreflightResult {
   checks: readonly ManagedVmPreflightCheck[];
   classification: ManagedVmStateClassification;
   inventory: ManagedVmHostInventory;
-  metadata: ManagedVmReleaseMetadata;
+  metadata: ManagedVmCurrentReleaseMetadata;
   publicAddress: string;
 }
 

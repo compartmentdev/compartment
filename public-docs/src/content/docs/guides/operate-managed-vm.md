@@ -13,8 +13,7 @@ sudo compartment system status
 ```
 
 Status combines the host provisioner stage, k3s service and version, Kubernetes readiness, and the Compartment Helm
-release. The completed provisioner stage means the install-time gVisor canary passed. After a reboot, wait for this
-command to report k3s and the platform as ready before deploying.
+release. After a reboot, wait for this command to report k3s and the platform as ready before deploying.
 
 ## Create diagnostics
 

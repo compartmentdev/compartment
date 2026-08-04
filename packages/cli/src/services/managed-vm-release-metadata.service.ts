@@ -1,10 +1,10 @@
-import type { ManagedVmReleaseMetadata } from './managed-vm-provisioning.types';
+import type { ManagedVmCurrentReleaseMetadata } from './managed-vm-provisioning.types';
 import { kubernetesInstallCompatibility } from './kubernetes-install-compatibility.service';
 import type { ManagedKubernetesInstallCompatibility } from './kubernetes-install-compatibility.service.types';
 
 const managedCompatibility: ManagedKubernetesInstallCompatibility = kubernetesInstallCompatibility.managed;
 
-export const managedVmReleaseMetadata: ManagedVmReleaseMetadata = {
+export const managedVmReleaseMetadata: ManagedVmCurrentReleaseMetadata = {
   artifacts: [
     managedCompatibility.k3s,
     managedCompatibility.k3sInstallScript,

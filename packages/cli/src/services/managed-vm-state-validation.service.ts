@@ -1,5 +1,6 @@
 import type {
   ManagedVmArtifact,
+  ManagedVmCurrentReleaseMetadata,
   ManagedVmOwnedPath,
   ManagedVmProvisionerState,
   ManagedVmReleaseMetadata,
@@ -14,8 +15,11 @@ type ManagedVmArtifactBoundary = Partial<ManagedVmArtifact>;
 
 type ManagedVmOwnedPathBoundary = Partial<ManagedVmOwnedPath>;
 
-interface ManagedVmReleaseMetadataBoundary extends Partial<Omit<ManagedVmReleaseMetadata, 'artifacts'>> {
+interface ManagedVmReleaseMetadataBoundary extends Partial<
+  Omit<ManagedVmCurrentReleaseMetadata, 'artifacts' | 'metadataVersion'>
+> {
   artifacts?: readonly ManagedVmArtifactBoundary[] | null | undefined;
+  metadataVersion?: number | undefined;
 }
 
 type ManagedVmUpdateBoundary = Partial<ManagedVmUpdateState>;
@@ -71,19 +75,21 @@ function isOwnedFileDigestRecord(
 function isManagedVmReleaseMetadata(
   value: ManagedVmReleaseMetadataBoundary | null | undefined,
 ): value is ManagedVmReleaseMetadata {
-  return (
-    value !== null &&
-    value !== undefined &&
+  if (value === null || value === undefined) {
+    return false;
+  }
+  const commonFieldsAreValid: boolean =
     isManagedVmArtifacts(value.artifacts) &&
     typeof value.certManagerVersion === 'string' &&
-    (value.metadataVersion === 1 || value.metadataVersion === 2) &&
-    (value.metadataVersion === 1 || typeof value.gvisorVersion === 'string') &&
     typeof value.helmVersion === 'string' &&
     typeof value.k3sChannel === 'string' &&
     typeof value.k3sVersion === 'string' &&
     typeof value.kubernetesMinor === 'string' &&
     typeof value.podCidr === 'string' &&
-    typeof value.serviceCidr === 'string'
+    typeof value.serviceCidr === 'string';
+  return (
+    commonFieldsAreValid &&
+    (value.metadataVersion === 1 || (value.metadataVersion === 2 && typeof value.gvisorVersion === 'string'))
   );
 }
 

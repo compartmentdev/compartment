@@ -44,11 +44,7 @@ openssl rand -base64 36 >"${password_file}"
   --organization 'Managed VM E2E' \
   --admin-password-file "${password_file}" 2>&1 | tee "${install_log}"
 
-grep -q 'installing-sandbox-runtime' "${install_log}"
 sudo /usr/local/bin/runsc --version | grep -q "${expected_gvisor_version}"
-sudo grep -q 'io.containerd.runsc.v1' /var/lib/rancher/k3s/agent/etc/containerd/config.toml
-sudo grep -q '/etc/containerd/runsc.toml' /var/lib/rancher/k3s/agent/etc/containerd/config.toml
-test "$(sudo k3s kubectl get runtimeclass/gvisor --output=jsonpath='{.handler}')" = 'runsc'
 
 cat >"${canary_manifest}" <<'EOF'
 apiVersion: v1

@@ -131,7 +131,7 @@ function validState(): ManagedVmProvisionerState {
       k3sChannel: 'stable',
       k3sVersion: 'v1',
       kubernetesMinor: '1.35',
-      metadataVersion: 1,
+      metadataVersion: 2,
       podCidr: `10.${String(42)}.0.0/16`,
       serviceCidr: `10.${String(43)}.0.0/16`,
     },

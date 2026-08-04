@@ -17,9 +17,8 @@ compartment install
 This is the supported clean-VM path for an Ubuntu 24.04 LTS x86_64 host. The bootstrap downloads and verifies the CLI
 without root. The CLI checks the host, shows one mutation review, and requests sudo only after you confirm it. On a
 clean host without a usable Kubernetes context, it offers to install managed Kubernetes before installing Helm,
-cert-manager, registry trust, and Compartment. Managed installation also downloads a pinned, checksum-verified gVisor
-release, configures the K3s containerd runtime handler, creates the `gvisor` RuntimeClass, and proves it with a real
-canary Pod. Installation stops if that canary does not run under the gVisor kernel sandbox.
+cert-manager, registry trust, and Compartment. It also installs and verifies the required gVisor sandbox; installation
+stops if that verification fails.
 
 Add `--verbose` to show Cosign, ORAS, and checksum diagnostics during installation.
 
@@ -104,28 +103,18 @@ nodePools:
 An empty build pool uses the system pool. Pass the file to `compartment install` with `--values
 compartment-values.yaml`.
 
-Existing-cluster installation requires `runsc` and a matching containerd runtime handler on every Ready schedulable
-node. The operator creates the RuntimeClass because Compartment does not mutate
-operator-managed nodes. Configure its name once for both workload classes:
+For an existing cluster, configure the operator-installed RuntimeClass listed above. Compartment does not mutate
+operator-managed nodes:
 
 ```yaml
 sandboxRuntime:
   runtimeClassName: gvisor
 ```
 
-Follow the official [gVisor containerd installation guide](https://gvisor.dev/docs/user_guide/containerd/quick_start/)
-to install `runsc` and its shim, register the CRI runtime handler on every Ready schedulable node, and create the
-matching RuntimeClass.
-
-Before Helm runs, the installer verifies the RuntimeClass on every Ready schedulable node with a real Pod and checks
-its gVisor kernel log with `dmesg`. A missing class, unschedulable canary, incorrect handler, or host-kernel result
-blocks installation with operator remediation. The sandbox covers short-lived build Jobs, application and stateful
-resource Pods, and product and provisioning Jobs. Platform Pods, `api-migrate`, and control-plane workloads keep the
-node default runtime, but the runtime handler must remain available across the cluster so node-pool changes cannot
-silently remove the sandbox boundary.
-
-The canary image is digest-pinned in Docker Hub, so nodes must be able to pull from `registry-1.docker.io` during
-preflight.
+Follow the official [gVisor containerd installation guide](https://gvisor.dev/docs/user_guide/containerd/quick_start/).
+Before Helm runs, Compartment launches a digest-pinned canary on each Ready schedulable node and fails closed unless
+the Pod proves the configured gVisor kernel boundary. Builds and tenant workloads use this class; platform components
+keep the node default runtime. Nodes must reach `registry-1.docker.io` to pull the canary image during preflight.
 
 Compartment samples tenant CPU and memory usage every 60 seconds and retains hourly aggregates for 400 days by
 default. The metering interval also controls hosted application traffic flushes. Use

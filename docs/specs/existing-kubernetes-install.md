@@ -40,9 +40,8 @@ previous dedicated-cluster Caddy architecture.
 13. NetworkPolicy resources remain mandatory runtime projections, but the installer does not detect the CNI, test
     NetworkPolicy support, or run an enforcement probe.
 14. There is no `compartment doctor` command in this scope.
-15. Firecracker and Kata Containers are not part of this installation mode. gVisor is required. The operator installs
-    it on every eligible build and tenant node and creates the RuntimeClass; install preflight proves the sandbox with
-    a real Pod and fails closed before Helm when the proof fails.
+15. Firecracker and Kata Containers are not part of this installation mode. The required gVisor boundary follows the
+    shared runtime contract in `docs/specs/k8s-runtime.md`.
 16. The production runtime is Kubernetes only. Docker Engine and Docker Compose production installation paths are
     deleted rather than retained as fallbacks.
 17. Dockerfile and OCI image build support remains. `packages/docker` is retained only for BuildKit command shaping
@@ -1170,9 +1169,8 @@ provision Kubernetes
 That mode is the one-command bare-VM experience. It installs and pins every listed prerequisite before invoking the
 canonical installer; the user does not prepare ingress, cert-manager, storage, or CNI manually.
 
-It may mutate the created cluster because Compartment owns it, including installing the pinned gVisor runtime and
-creating its RuntimeClass. The sandbox outcome remains universal: both paths run the same canary proof and both fail
-closed before platform installation when gVisor is unavailable.
+It may mutate the created cluster because Compartment owns it, including installing the pinned gVisor runtime. Both
+installation modes still satisfy the shared sandbox contract before platform installation.
 
 The provisioner must not fork:
 

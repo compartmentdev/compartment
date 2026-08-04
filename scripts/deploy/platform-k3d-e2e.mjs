@@ -289,8 +289,8 @@ function renderRegistryTlsValues() {
   return `registry:\n  clusterIP: ${bundledRegistryClusterIp}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\n`;
 }
 
-function renderSandboxRuntimeValues(gvisorEnabled) {
-  const runtimeClassName = gvisorEnabled ? 'gvisor' : 'compartment-e2e-runc';
+function renderSandboxRuntimeValues(gvisorAvailable) {
+  const runtimeClassName = gvisorAvailable ? 'gvisor' : 'compartment-e2e-runc';
   return `sandboxRuntime:\n  runtimeClassName: ${runtimeClassName}\n`;
 }
 function renderPlatformImageValues(imageDigestsByServiceName) {

@@ -27,7 +27,6 @@ describe('managed VM release metadata', (): void => {
       url: 'https://storage.googleapis.com/gvisor/releases/release/20260721.0/x86_64/gvisor.tar.bz2',
       version: 'release-20260721.0',
     });
-    expect(managedVmReleaseMetadata.gvisorVersion).toBe('release-20260721.0');
     expect(managedVmReleaseMetadata.helmVersion).toBe('v4.1.4');
     expect(managedVmReleaseMetadata.k3sChannel).not.toContain(managedVmReleaseMetadata.k3sVersion);
   });

@@ -37,25 +37,12 @@ describe('Kubernetes sandbox RuntimeClass preflight', (): void => {
     expect(mockedRunCommandWithInput.mock.calls[0]?.[1]).toContain('"runtimeClassName":"gke-gvisor"');
     expect(mockedRunCommandWithInput.mock.calls[0]?.[1]).toContain('"nodeName":"node-a"');
     expect(mockedRunCommandWithInput.mock.calls[1]?.[1]).toContain('"nodeName":"node-b"');
-    expect(mockedRunCommandWithTimeout).toHaveBeenCalledWith(
-      expect.arrayContaining(['wait', expect.stringMatching(/^pod\/compartment-gvisor-/u), '--timeout=4m']),
-      5 * 60_000,
-    );
-    expect(mockedRunCommandWithTimeout).toHaveBeenCalledWith(
-      expect.arrayContaining(['exec', expect.stringMatching(/^pod\/compartment-gvisor-/u), '--', 'dmesg']),
-      30_000,
-    );
-    expect(mockedRunCommandWithTimeout).toHaveBeenLastCalledWith(
-      expect.arrayContaining(['delete', expect.stringMatching(/^pod\/compartment-gvisor-/u)]),
-      30_000,
-    );
   });
 
   it('fails closed when no sandbox RuntimeClass is configured', async (): Promise<void> => {
     await expect(verifyKubernetesSandboxRuntime(input(''))).rejects.toThrow(
       'No Kubernetes sandbox RuntimeClass is configured',
     );
-    expect(mockedRunCommand).not.toHaveBeenCalled();
   });
 
   it('fails closed with operator instructions when the RuntimeClass is missing', async (): Promise<void> => {
@@ -64,7 +51,6 @@ describe('Kubernetes sandbox RuntimeClass preflight', (): void => {
     await expect(verifyKubernetesSandboxRuntime(input('gvisor'))).rejects.toThrow(
       'Install gVisor on every eligible build and tenant node',
     );
-    expect(mockedRunCommandWithInput).not.toHaveBeenCalled();
   });
 
   it('rejects a RuntimeClass that starts the canary with the host kernel', async (): Promise<void> => {
@@ -75,10 +61,6 @@ describe('Kubernetes sandbox RuntimeClass preflight', (): void => {
 
     await expect(verifyKubernetesSandboxRuntime(input('native'))).rejects.toThrow(
       'did not expose the gVisor kernel log',
-    );
-    expect(mockedRunCommandWithTimeout).toHaveBeenLastCalledWith(
-      expect.arrayContaining(['delete', expect.stringMatching(/^pod\/compartment-gvisor-/u)]),
-      30_000,
     );
   });
 

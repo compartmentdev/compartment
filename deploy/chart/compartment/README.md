@@ -21,12 +21,9 @@ The registry uses its private Service ClusterIP directly in image references and
 address in its SAN. Public ACME issuers cannot issue certificates for private IP addresses. Installation therefore
 fails unless the configured `registry.issuerRef` selects a CA issuer whose CA is already in every node's trust store.
 
-Compartment requires one gVisor RuntimeClass available on every Ready schedulable node for ephemeral builds and
-tenant workloads. The default class name is
-`gvisor`; override it with `sandboxRuntime.runtimeClassName` when the operator uses another name. The existing-cluster
-installer creates a real canary Pod and verifies the gVisor kernel log with `dmesg` before Helm runs. The chart
-does not install runtimes, mutate nodes, or create the operator-owned RuntimeClass. Managed-VM installation pins and
-installs the runtime and creates the class before invoking the same chart.
+The chart schedules builds and tenant workloads through the RuntimeClass selected by
+`sandboxRuntime.runtimeClassName` (`gvisor` by default). The CLI verifies that class before Helm runs and owns runtime
+installation only for managed VMs; the chart never installs runtimes or adopts an operator-owned RuntimeClass.
 
 ## Node pools and workload priority
 

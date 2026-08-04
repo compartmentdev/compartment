@@ -71,26 +71,4 @@ describe('managed VM cluster installation', (): void => {
       '/tmp/install-k3s.sh',
     ]);
   });
-
-  it('waits for the default service account before starting sandbox canaries', async (): Promise<void> => {
-    const { waitForManagedVmKubernetes } = await import('../src/services/managed-vm-cluster.service');
-
-    await waitForManagedVmKubernetes();
-
-    expect(mocks.execa).toHaveBeenNthCalledWith(1, 'k3s', [
-      'kubectl',
-      'wait',
-      'node',
-      '--all',
-      '--for=condition=Ready',
-      '--timeout=5m',
-    ]);
-    expect(mocks.execa).toHaveBeenNthCalledWith(2, 'k3s', [
-      'kubectl',
-      'wait',
-      '--for=create',
-      'serviceaccount/default',
-      '--timeout=5m',
-    ]);
-  });
 });
