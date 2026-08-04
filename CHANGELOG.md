@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.1](https://github.com/compartmentdev/compartment/compare/v0.10.0...v0.10.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **cli:** clarify install prompts ([#280](https://github.com/compartmentdev/compartment/issues/280)) ([6b79696](https://github.com/compartmentdev/compartment/commit/6b79696fe3dbc2735665798158c5cdafb56ea52f))
+* **console:** remove legacy installer URL ([#278](https://github.com/compartmentdev/compartment/issues/278)) ([82d3500](https://github.com/compartmentdev/compartment/commit/82d35002c3d035773eade59a9c287f36d9cbde50))
+
 ## [0.10.0](https://github.com/compartmentdev/compartment/compare/v0.9.2...v0.10.0) (2026-08-04)
 
 

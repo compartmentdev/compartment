@@ -33,7 +33,6 @@ const forbiddenRuntimeTerms = [
   ['inside ', 'Docker'].join(''),
   ['install one Compartment runtime on a ', 'server'].join(''),
   ['CLI creates and repairs that host ', 'directory'].join(''),
-  ['/install-operate/install-', 'domain/'].join(''),
   ['Release executes on the target ', 'node'].join(''),
   ['Node owns release ', 'execution'].join(''),
   ['Runtime packages such as `', 'node`'].join(''),
@@ -49,6 +48,7 @@ const forbiddenRuntimeTerms = [
   ['Bootstrapped self-hosted ', 'runtime'].join(''),
   ['Updated self-hosted ', 'runtime'].join(''),
   ['runtime ', 'verifier'].join(''),
+  ['https://compartment.dev', '/k/install.sh'].join(''),
 ];
 
 const forbiddenRemovedTopologyTerms = [

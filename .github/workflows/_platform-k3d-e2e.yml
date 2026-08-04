@@ -71,8 +71,8 @@ jobs:
           HELM_UNITTEST_VERSION: 1.1.1
           K3D_SHA256: dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e
           K3D_VERSION: v5.8.3
-          KUBECTL_SHA256: 12e97f9d23a9f6cbb87b89becd6bd291e1a858a3379a4e11e2c822c4c1530052
-          KUBECTL_VERSION: v1.35.7
+          KUBECTL_SHA256: 90f75ea6ecc9ea5633262e1c0b83a40560003b30fc94a04cb099404fcef0c224
+          KUBECTL_VERSION: v1.35.5
         run: |
           curl --fail --location --show-error \
             --retry 5 \

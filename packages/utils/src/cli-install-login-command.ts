@@ -3,7 +3,7 @@ import type { CliInstallLoginCommandInput } from './cli-install-login-command.ty
 
 export type { CliInstallLoginCommandInput } from './cli-install-login-command.types';
 
-const compartmentPublicInstallerUrl: string = 'https://compartment.dev/k/install.sh';
+const compartmentPublicInstallerUrl: string = 'https://compartment.dev/install.sh';
 const localConsoleHostname: string = 'console.localhost';
 const localCliApiHostname: string = '127.0.0.1';
 const cliInstallLoginCommandPrefix: readonly string[] = [
