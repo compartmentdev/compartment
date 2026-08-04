@@ -49,6 +49,7 @@ const forbiddenRuntimeTerms = [
   ['Bootstrapped self-hosted ', 'runtime'].join(''),
   ['Updated self-hosted ', 'runtime'].join(''),
   ['runtime ', 'verifier'].join(''),
+  ['https://compartment.dev', '/k/install.sh'].join(''),
 ];
 
 const forbiddenRemovedTopologyTerms = [
