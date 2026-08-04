@@ -189,6 +189,10 @@ elif [ "$init_update" = "1" ]; then
     printf 'The provided owner, domain, remote, or login arguments are only valid with --init-install or --init-login.\n' >&2
     exit 1
   fi
+  if [ -n "$install_target" ] || [ "$install_check" = "1" ] || [ "$install_yes" = "1" ] || [ -n "$install_admin_password_file" ]; then
+    printf 'Use --target, --check, --yes, and --admin-password-file only with --init-install.\n' >&2
+    exit 1
+  fi
 elif [ "$init_login" = "1" ]; then
   if [ -z "$init_api_url" ]; then
     printf 'Expected --api-url <url> with --init-login.\n' >&2
@@ -200,6 +204,10 @@ elif [ "$init_login" = "1" ]; then
   fi
   if [ -n "$install_base_domain" ] || [ -n "$init_organization_slug" ] || [ -n "$install_chart_path" ] || [ -n "$install_kube_context" ] || [ -n "$install_namespace" ] || [ -n "$install_release_name" ] || [ -n "$install_remote" ]; then
     printf 'Use Kubernetes lifecycle options only with --init-install or --init-update.\n' >&2
+    exit 1
+  fi
+  if [ -n "$install_target" ] || [ "$install_check" = "1" ] || [ "$install_yes" = "1" ] || [ -n "$install_admin_password_file" ]; then
+    printf 'Use --target, --check, --yes, and --admin-password-file only with --init-install.\n' >&2
     exit 1
   fi
 else
@@ -734,6 +742,9 @@ format_init_install_command() {
   fi
   if [ "$install_yes" = "1" ]; then
     format_install_command="${format_install_command} --yes"
+  fi
+  if [ -n "$install_admin_password_file" ]; then
+    format_install_command="${format_install_command} --admin-password-file $(quote_shell_argument "$install_admin_password_file")"
   fi
 
   printf '%s' "$format_install_command"

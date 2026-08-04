@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { delimiter, join } from 'node:path';
 import type { ManagedVmHostInventory, ManagedVmObservedState } from '../src/services/managed-vm-provisioning.types';
 import { createCliCapture, readCliStderr, readCliStdout, type CliCommandCapture } from './cli-test.harness';
 
@@ -110,6 +113,37 @@ describe('managed VM install command boundary', (): void => {
     expect(mocks.execa).not.toHaveBeenCalled();
   });
 
+  it('detects an existing cluster from a multi-path KUBECONFIG at the command boundary', async (): Promise<void> => {
+    const directory: string = await mkdtemp(join(tmpdir(), 'managed-vm-kubeconfig-'));
+    const kubeconfigPath: string = join(directory, 'config');
+    const originalKubeconfig: string | undefined = process.env.KUBECONFIG;
+    await writeFile(
+      kubeconfigPath,
+      `current-context: existing
+contexts: [{ name: existing, context: { cluster: local, user: owner } }]
+clusters: [{ name: local, cluster: {} }]
+users: [{ name: owner, user: {} }]
+`,
+    );
+    process.env.KUBECONFIG = `${join(directory, 'missing')}${delimiter}${kubeconfigPath}`;
+    mocks.execa.mockResolvedValue({ exitCode: 0, stderr: '', stdout: 'yes\n' });
+    try {
+      const capture: CliCommandCapture = createCliCapture({ isTTY: true });
+      const { runCli } = await import('../src/app');
+
+      expect(await runCli(['install', '--managed-domain', '--check'], capture.io)).toBe(0);
+      expect(mocks.canonicalInstall).toHaveBeenCalledOnce();
+      expect(mocks.provision).not.toHaveBeenCalled();
+    } finally {
+      if (originalKubeconfig === undefined) {
+        delete process.env.KUBECONFIG;
+      } else {
+        process.env.KUBECONFIG = originalKubeconfig;
+      }
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it('runs confirmed root automation without sudo and preserves the owner password at the canonical boundary', async (): Promise<void> => {
     const getuid: GetUid | undefined = process.getuid;
     if (getuid === undefined) {
@@ -132,6 +166,43 @@ describe('managed VM install command boundary', (): void => {
           managedDomain: true,
           values: '/etc/compartment/values.yaml',
         }),
+      );
+    } finally {
+      process.getuid = getuid;
+    }
+  });
+
+  it('consumes stdin password once during confirmed root automation', async (): Promise<void> => {
+    const getuid: GetUid | undefined = process.getuid;
+    if (getuid === undefined) {
+      throw new Error('This test requires process.getuid.');
+    }
+    process.getuid = (): number => 0;
+    try {
+      const capture: CliCommandCapture = createCliCapture();
+      capture.stdin.end('correct horse battery staple\n');
+      const { runCli } = await import('../src/app');
+
+      expect(
+        await runCli(
+          [
+            'install',
+            '--target',
+            'vm',
+            '--email',
+            'owner@example.com',
+            '--organization',
+            'Acme',
+            '--admin-password-file',
+            '-',
+            '--yes',
+          ],
+          capture.io,
+        ),
+      ).toBe(0);
+      expect(mocks.canonicalInstall).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ adminPassword: 'correct horse battery staple' }),
       );
     } finally {
       process.getuid = getuid;
@@ -209,5 +280,5 @@ function freshState(): ManagedVmObservedState {
 }
 
 function publicAddress(): string {
-  return `203.0.${String(113)}.10`;
+  return `8.8.${String(4)}.4`;
 }

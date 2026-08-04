@@ -4,6 +4,7 @@ import { cpus, hostname, totalmem } from 'node:os';
 import { execa, type ManagedVmCommandResult } from './managed-vm-command.service';
 import { digest, managedVmOwnedPaths, readManagedVmState } from './managed-vm-state.service';
 import { managedVmReleaseMetadata } from './managed-vm-release-metadata.service';
+import { readReachableManagedVmEndpoints } from './managed-vm-network.service';
 import type {
   ManagedVmDiskAvailability,
   ManagedVmFirewallKind,
@@ -15,7 +16,6 @@ import type {
   ManagedVmProvisionerState,
 } from './managed-vm-provisioning.types';
 
-const statePath: string = '/var/lib/compartment/installer/state.json';
 const lockPath: string = '/var/lib/compartment/installer/install.lock';
 
 export async function inspectManagedVmHost(): Promise<ManagedVmHostInventory> {
@@ -30,7 +30,7 @@ async function readHostObservation(): Promise<ManagedVmHostObservation> {
   const clockSynchronized: Promise<boolean> = readClockSynchronization();
   const modules: Promise<boolean> = readKernelModules();
   const firewall: Promise<ManagedVmFirewallKind> = classifyFirewall();
-  const reachableEndpoints: Promise<readonly string[]> = readReachableEndpoints();
+  const reachableEndpoints: Promise<readonly string[]> = readReachableManagedVmEndpoints();
   const localIpv4Addresses: Promise<readonly string[]> = readLocalIpv4Addresses();
   const publicInterface: Promise<string> = readPublicInterface();
   return {
@@ -74,17 +74,21 @@ async function createHostInventory(observation: ManagedVmHostObservation): Promi
 }
 
 export async function inspectManagedVmState(): Promise<ManagedVmObservedState> {
-  const provisionerStateExists: boolean = await pathExists(statePath);
+  let provisionerStateExists: boolean = false;
   let ownedConfigMatches: boolean = false;
-  if (provisionerStateExists) {
-    try {
-      const state: ManagedVmProvisionerState | undefined = await readManagedVmState();
+  try {
+    const state: ManagedVmProvisionerState | undefined = await readManagedVmState();
+    provisionerStateExists = state !== undefined;
+    if (state !== undefined) {
       ownedConfigMatches =
-        state?.metadataDigest === digest(JSON.stringify(managedVmReleaseMetadata)) &&
+        state.metadataDigest === digest(JSON.stringify(managedVmReleaseMetadata)) &&
         JSON.stringify(state.ownedPaths) === JSON.stringify(managedVmOwnedPaths);
-    } catch {
-      ownedConfigMatches = false;
     }
+  } catch (error) {
+    if (error instanceof Error && isManagedVmStatePermissionError(error)) {
+      throw error;
+    }
+    provisionerStateExists = true;
   }
   return {
     foreignPaths: ownedConfigMatches ? [] : await findForeignPaths(),
@@ -92,6 +96,10 @@ export async function inspectManagedVmState(): Promise<ManagedVmObservedState> {
     ownedConfigMatches,
     provisionerStateExists,
   };
+}
+
+function isManagedVmStatePermissionError(error: Error): boolean {
+  return error.cause instanceof Error && 'code' in error.cause && error.cause.code === 'EACCES';
 }
 
 export async function observePublicIpv4(observationUrl: string): Promise<string> {
@@ -198,30 +206,6 @@ async function classifyFirewall(): Promise<ManagedVmFirewallKind> {
     return 'ufw';
   }
   return (await pathExists('/usr/sbin/nft')) ? 'nftables' : 'none';
-}
-
-async function readReachableEndpoints(): Promise<readonly string[]> {
-  const endpoints: readonly string[] = [
-    'https://compartment.dev/install.sh',
-    'https://github.com',
-    'https://ghcr.io/v2/',
-    'https://get.helm.sh',
-    'https://acme-v02.api.letsencrypt.org/directory',
-    'https://broker.compartment.run',
-  ];
-  const results: (string | undefined)[] = await Promise.all(
-    endpoints.map(async (url: string): Promise<string | undefined> => await endpointIfReachable(url)),
-  );
-  return results.filter((url: string | undefined): url is string => url !== undefined);
-}
-
-async function endpointIfReachable(url: string): Promise<string | undefined> {
-  try {
-    const response: Response = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(5_000) });
-    return response.status < 500 ? url : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 async function readLocalIpv4Addresses(): Promise<readonly string[]> {

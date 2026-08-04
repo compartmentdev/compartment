@@ -28,9 +28,17 @@ export function isManagedVmInstallStageComplete(
   return managedVmInstallStages.indexOf(completed) >= managedVmInstallStages.indexOf(candidate);
 }
 
+export function isManagedVmInstallStage(value: string): value is ManagedVmInstallStage {
+  return managedVmInstallStages.includes(value as ManagedVmInstallStage);
+}
+
 export function isManagedVmUpdateStageComplete(
   completed: ManagedVmUpdateStage,
   candidate: ManagedVmUpdateStage,
 ): boolean {
   return managedVmUpdateStages.indexOf(completed) >= managedVmUpdateStages.indexOf(candidate);
+}
+
+export function isManagedVmUpdateStage(value: string): value is ManagedVmUpdateStage {
+  return managedVmUpdateStages.includes(value as ManagedVmUpdateStage);
 }

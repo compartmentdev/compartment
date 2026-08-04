@@ -5,14 +5,14 @@ import type {
   ManagedVmInstallStage,
   ManagedVmOwnedPath,
   ManagedVmProvisionerState,
-  ManagedVmReleaseMetadata,
   ManagedVmUpdateState,
 } from './managed-vm-provisioning.types';
 import { managedVmReleaseMetadata } from './managed-vm-release-metadata.service';
 import { isManagedVmInstallStageComplete } from './managed-vm-stage.service';
+import { parseManagedVmState } from './managed-vm-state-validation.service';
 
 export const managedVmStateDirectory: string = '/var/lib/compartment/installer';
-export const managedVmStatePath: string = `${managedVmStateDirectory}/state.json`;
+const managedVmStatePath: string = `${managedVmStateDirectory}/state.json`;
 export const managedVmOwnedPaths: readonly ManagedVmOwnedPath[] = [
   { path: '/etc/compartment', stage: 'preparing-host' },
   { path: '/etc/compartment/firewall.nft', stage: 'preparing-host' },
@@ -37,20 +37,17 @@ export const managedVmOwnedPaths: readonly ManagedVmOwnedPath[] = [
   { path: '/var/lib/rancher/k3s', stage: 'installing-k3s' },
 ];
 
-interface ManagedVmStateBoundary extends Omit<
-  Partial<ManagedVmProvisionerState>,
-  'ownedFileDigests' | 'releaseMetadata'
-> {
-  ownedFileDigests?: Readonly<Record<string, string>> | null | undefined;
-  releaseMetadata?: ManagedVmReleaseMetadata | null | undefined;
-}
-
 export async function readManagedVmState(): Promise<ManagedVmProvisionerState | undefined> {
   try {
     return parseManagedVmState(await readFile(managedVmStatePath, 'utf8'));
   } catch (error) {
     if (error instanceof Error && isMissing(error)) {
       return undefined;
+    }
+    if (error instanceof Error && isPermissionDenied(error)) {
+      throw new Error(`Managed-VM state at ${managedVmStatePath} is root-owned; rerun this command with sudo.`, {
+        cause: error,
+      });
     }
     throw error;
   }
@@ -141,27 +138,6 @@ async function writeStateAtomically(state: ManagedVmProvisionerState): Promise<v
   await rename(temporaryPath, managedVmStatePath);
 }
 
-function parseManagedVmState(content: string): ManagedVmProvisionerState {
-  const candidate: ManagedVmStateBoundary = JSON.parse(content) as ManagedVmStateBoundary;
-  if (
-    typeof candidate.installationId !== 'string' ||
-    typeof candidate.completedStage !== 'string' ||
-    typeof candidate.configDigest !== 'string' ||
-    typeof candidate.metadataDigest !== 'string' ||
-    typeof candidate.ownedFileDigests !== 'object' ||
-    candidate.ownedFileDigests === null ||
-    !Array.isArray(candidate.resolvedArtifacts) ||
-    typeof candidate.releaseMetadata !== 'object' ||
-    candidate.releaseMetadata === null ||
-    !Array.isArray(candidate.ownedPaths) ||
-    typeof candidate.startedAt !== 'string' ||
-    typeof candidate.updatedAt !== 'string'
-  ) {
-    throw new Error(`Managed-VM state at ${managedVmStatePath} is invalid.`);
-  }
-  return candidate as ManagedVmProvisionerState;
-}
-
 async function collectManagedVmOwnedFileDigests(
   state: ManagedVmProvisionerState,
   completedStage: ManagedVmInstallStage,
@@ -203,4 +179,8 @@ export function digest(content: string | Buffer): string {
 
 function isMissing(error: Error): boolean {
   return 'code' in error && error.code === 'ENOENT';
+}
+
+function isPermissionDenied(error: Error): boolean {
+  return 'code' in error && error.code === 'EACCES';
 }

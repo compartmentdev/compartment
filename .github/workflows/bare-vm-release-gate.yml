@@ -115,6 +115,10 @@ jobs:
           ssh "ubuntu@${FRESH_VM_HOST}" 'sudo compartment system status --output json' > status.json
           jq -e '.host.k3sActive == true and .host.installationId != "" and .platform.ready == true' status.json
 
+      - name: Remove disposable VM password file
+        if: always()
+        run: ssh "ubuntu@${FRESH_VM_HOST}" 'rm -f /tmp/compartment-owner-password /tmp/compartment-install.sh'
+
       - name: Probe public and isolated ports externally
         run: |
           base_domain="$(ssh "ubuntu@${FRESH_VM_HOST}" "sudo sed -n 's/^  baseDomain: //p' /etc/compartment/values.yaml")"
@@ -139,7 +143,7 @@ jobs:
           scp /tmp/compartment-gate-app.tar.gz "ubuntu@${FRESH_VM_HOST}:/tmp/compartment-gate-app.tar.gz"
           ssh "ubuntu@${FRESH_VM_HOST}" 'rm -rf /tmp/compartment-gate-app && mkdir /tmp/compartment-gate-app && tar -C /tmp/compartment-gate-app --strip-components=1 -xzf /tmp/compartment-gate-app.tar.gz && cd /tmp/compartment-gate-app && sudo compartment deploy'
           ssh "ubuntu@${FRESH_VM_HOST}" 'sudo compartment status --output json' > app-status.json
-          jq -e '.. | objects | select(has("status")) | .status' app-status.json >/dev/null
+          jq -e '.deployments | length > 0 and all(.status == "succeeded")' app-status.json >/dev/null
           ssh "ubuntu@${FRESH_VM_HOST}" 'sudo compartment whoami --output json' > owner-session.json
           jq -e --arg email "$OWNER_EMAIL" '.principal.email == $email' owner-session.json
 

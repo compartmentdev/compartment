@@ -63,7 +63,7 @@ async function executeStatusCommand(
   dependencies: CliCommandDependencies,
   options: KubernetesOperatorCommandOptions,
 ): Promise<void> {
-  if (await hasManagedVmInstallation()) {
+  if (!hasExplicitKubernetesTarget(options) && (await hasManagedVmInstallation())) {
     await renderManagedVmStatus(dependencies, options);
     return;
   }
@@ -113,12 +113,22 @@ function registerUpdateCommand(program: Command, dependencies: CliCommandDepende
       .option('--version <version>', 'Platform image tag; defaults to the packaged CLI release'),
   ).action(async (options: KubernetesSystemUpdateCommandOptions): Promise<void> => {
     const version: string = resolveKubernetesSystemUpdateVersion(options.version);
-    if (await hasManagedVmInstallation()) {
+    if (!hasExplicitKubernetesTarget(options) && (await hasManagedVmInstallation())) {
       await executeManagedVmUpdate(dependencies, options, version);
       return;
     }
     await executeExistingKubernetesUpdate(dependencies, options, version);
   });
+}
+
+function hasExplicitKubernetesTarget(options: KubernetesOperatorCommandOptions): boolean {
+  return (
+    options.kubeContext !== undefined ||
+    options.namespace !== undefined ||
+    options.releaseName !== undefined ||
+    options.chart !== undefined ||
+    options.values !== undefined
+  );
 }
 
 async function executeManagedVmUpdate(
