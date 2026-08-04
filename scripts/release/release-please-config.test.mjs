@@ -17,5 +17,10 @@ describe('release-please config', () => {
       .sort();
 
     expect(extraFilePaths.filter((path) => path.endsWith('/package.json'))).toEqual(packageJsonPaths);
+    expect(packageConfig['extra-files']).toContainEqual({
+      type: 'yaml',
+      path: 'deploy/chart/compartment/Chart.yaml',
+      jsonpath: '$.appVersion',
+    });
   });
 });

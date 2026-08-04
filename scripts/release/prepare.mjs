@@ -3,7 +3,11 @@ import { resolve } from 'node:path';
 
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
-import { readReleaseVersion, readWorkspacePackageJsonPaths } from './release-version-files.mjs';
+import {
+  readReleaseVersion,
+  readWorkspacePackageJsonPaths,
+  writeCompartmentChartAppVersion,
+} from './release-version-files.mjs';
 
 const defaultRepositoryRoot = readRepositoryRoot(import.meta.url, 2);
 
@@ -15,6 +19,7 @@ export async function prepareRelease({ releaseVersion, repositoryRoot = defaultR
     packageJsonPaths.map((packageJsonPath) => updatePackageVersion(packageJsonPath, normalizedReleaseVersion)),
   );
   await updateReleasePleaseManifestVersion(repositoryRoot, normalizedReleaseVersion);
+  await writeCompartmentChartAppVersion(repositoryRoot, normalizedReleaseVersion);
 
   return {
     packageCount: packageJsonPaths.length,
@@ -26,7 +31,7 @@ async function main(args) {
   const result = await prepareRelease({ releaseVersion: args[0] });
 
   process.stdout.write(
-    `Prepared release ${result.releaseVersion} in ${result.packageCount} workspace package manifests and .release-please-manifest.json.\n`,
+    `Prepared release ${result.releaseVersion} in ${result.packageCount} workspace package manifests, .release-please-manifest.json, and deploy/chart/compartment/Chart.yaml.\n`,
   );
 }
 

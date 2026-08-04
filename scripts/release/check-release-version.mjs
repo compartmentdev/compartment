@@ -4,6 +4,7 @@ import { readRequiredOptionValue } from '../lib/options.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 import {
+  readCompartmentChartAppVersion,
   readPackageVersion,
   readReleasePleaseManifestVersion,
   readReleaseVersion,
@@ -29,6 +30,13 @@ export async function assertReleaseVersion({ releaseVersion, repositoryRoot }) {
   const manifestVersion = await readReleasePleaseManifestVersion(repositoryRoot);
   if (manifestVersion !== normalizedReleaseVersion) {
     mismatches.push(`.release-please-manifest.json has "."=${manifestVersion}, expected ${normalizedReleaseVersion}`);
+  }
+
+  const chartAppVersion = await readCompartmentChartAppVersion(repositoryRoot);
+  if (chartAppVersion !== normalizedReleaseVersion) {
+    mismatches.push(
+      `deploy/chart/compartment/Chart.yaml has appVersion ${chartAppVersion}, expected ${normalizedReleaseVersion}`,
+    );
   }
 
   if (mismatches.length !== 0) {
@@ -73,7 +81,7 @@ async function main(args) {
   });
 
   process.stdout.write(
-    `Release version ${result.releaseVersion} matches ${result.packageCount.toString()} package manifests and .release-please-manifest.json.\n`,
+    `Release version ${result.releaseVersion} matches ${result.packageCount.toString()} package manifests, .release-please-manifest.json, and deploy/chart/compartment/Chart.yaml.\n`,
   );
 }
 
