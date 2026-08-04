@@ -118,7 +118,11 @@ async function isPreparedHostHealthy(): Promise<boolean> {
 }
 
 async function isK3sInstallationHealthy(): Promise<boolean> {
-  const pathsHealthy: boolean = await requiredPathsExist(['/usr/local/bin/k3s', '/usr/local/bin/k3s-uninstall.sh']);
+  const pathsHealthy: boolean = await requiredPathsExist([
+    '/usr/local/bin/k3s',
+    '/usr/local/bin/k3s-uninstall.sh',
+    '/usr/local/bin/kubectl',
+  ]);
   const service: ManagedVmCommandResult = await execa('systemctl', ['is-active', 'k3s'], { reject: false });
   return pathsHealthy && service.exitCode === 0;
 }

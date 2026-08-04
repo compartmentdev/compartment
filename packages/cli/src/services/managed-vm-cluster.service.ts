@@ -64,7 +64,6 @@ export async function installManagedVmK3s(artifacts: ManagedVmDownloadedArtifact
   await chmod(artifacts.k3sInstallScriptPath, 0o700);
   await execa('/usr/bin/env', [
     'INSTALL_K3S_SKIP_DOWNLOAD=true',
-    'INSTALL_K3S_SYMLINK=skip',
     `INSTALL_K3S_EXEC=server --config ${k3sConfigPath}`,
     artifacts.k3sInstallScriptPath,
   ]);
