@@ -8,6 +8,15 @@ const docsSidebar = [
     items: [docsHomeSidebarItem, 'quickstart/install-compartment', 'quickstart/first-deploy'],
   },
   {
+    label: 'Install and Operate',
+    items: [
+      'install-operate/install-modes',
+      'install-operate/install-domain',
+      'install-operate/system-operations',
+      'guides/operate-managed-vm',
+    ],
+  },
+  {
     label: 'Deploy Apps',
     items: [
       'deploy-apps/deploy-using-cli',
@@ -31,15 +40,6 @@ const docsSidebar = [
       'manage-access/audit-logs',
       'manage-access/troubleshoot-access',
       'manage-access/single-sign-on',
-    ],
-  },
-  {
-    label: 'Install and Operate',
-    items: [
-      'install-operate/install-modes',
-      'install-operate/install-domain',
-      'install-operate/system-operations',
-      'guides/operate-managed-vm',
     ],
   },
   {
@@ -70,6 +70,11 @@ const docsLlmsCustomSets = [
     description: 'introductory pages for understanding Compartment, installing the CLI, and deploying the first app',
   },
   {
+    label: 'Install and Operate',
+    paths: ['install-operate/**', 'guides/operate-managed-vm'],
+    description: 'Kubernetes install targets, domains, platform operations, and managed VM lifecycle',
+  },
+  {
     label: 'Deploy Apps',
     paths: ['deploy-apps/**'],
     description: 'deployment workflows, project descriptors, app URLs, runtime variables, resources, and route rules',
@@ -78,11 +83,6 @@ const docsLlmsCustomSets = [
     label: 'Manage Access',
     paths: ['manage-access/**'],
     description: 'login, activation, organizations, users, roles, groups, assignments, audit logs, and SSO',
-  },
-  {
-    label: 'Install and Operate',
-    paths: ['install-operate/**', 'guides/operate-managed-vm'],
-    description: 'Kubernetes install targets, domains, platform operations, and managed VM lifecycle',
   },
   {
     label: 'Reference',
