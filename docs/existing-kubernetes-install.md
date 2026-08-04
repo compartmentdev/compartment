@@ -10,14 +10,14 @@ The existing-Kubernetes installer is the supported self-hosted installation chan
 resolves the current branch commit and matching immutable CLI OCI artifact by digest, then verifies its Cosign
 identity, OIDC issuer, and workflow commit before pulling it. No channel flag or raw branch URL is required.
 
-The supported test matrix uses five isolated k3d shards. Every shard owns one cluster and installs its selected
+The supported test matrix uses isolated k3d shards. Every shard owns one cluster and installs its selected
 Ingress Controller and pinned cert-manager prerequisite once:
 
 - `managed-install`: managed DNS, TLS, first-owner installation, and retained-stage retry;
-- `build-matrix-a`: install, NetworkPolicy enforcement, Dockerfile builds, registry push and node pull, rollout, and
-  image lifecycle;
-- `build-matrix-b`: a two-node ingress-nginx cluster, with the existing Traefik controller left available, plus
-  install, Railpack, and static build variants;
+- `install-ha-network-policy`: install, HA, and NetworkPolicy enforcement;
+- `build-matrix-a-*`: install, Dockerfile and source builds, registry push and node pull, rollout, and image lifecycle;
+- `build-matrix-b-*`: two-node ingress-nginx clusters, with the existing Traefik controller left available, plus
+  install, Railpack, and static build variants distributed across three partitions;
 - `user-flow`: install plus authenticated CLI, organization, project, domain, promote, and rollback flows;
 - `console`: install plus Console, G1 isolation, private-route denial, and product-log gates.
 

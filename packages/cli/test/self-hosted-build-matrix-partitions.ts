@@ -5,25 +5,25 @@ export interface SelfHostedBuildMatrixPartitionDefinition {
 
 export const selfHostedBuildMatrixPartitions: Readonly<Record<string, SelfHostedBuildMatrixPartitionDefinition>> =
   Object.freeze({
-    a: Object.freeze({
-      multiServiceFixtureNames: Object.freeze(['java-api-frontend']),
-      singleServiceFixtureNames: Object.freeze([
-        'dockerfile',
-        'dockerfile-monorepo',
-        'railpack',
-        'railpack-pnpm-workspace',
-        'python',
-      ]),
+    'a-1': Object.freeze({
+      multiServiceFixtureNames: Object.freeze([]),
+      singleServiceFixtureNames: Object.freeze(['railpack', 'railpack-pnpm-workspace']),
     }),
-    b: Object.freeze({
+    'a-2': Object.freeze({
+      multiServiceFixtureNames: Object.freeze(['java-api-frontend']),
+      singleServiceFixtureNames: Object.freeze(['dockerfile', 'dockerfile-monorepo', 'python']),
+    }),
+    'b-1': Object.freeze({
       multiServiceFixtureNames: Object.freeze(['multi-service']),
-      singleServiceFixtureNames: Object.freeze([
-        'railpack-build-packages',
-        'railpack-monorepo',
-        'vite-react',
-        'static-vite-react',
-        'static-poison',
-      ]),
+      singleServiceFixtureNames: Object.freeze(['railpack-monorepo']),
+    }),
+    'b-2': Object.freeze({
+      multiServiceFixtureNames: Object.freeze([]),
+      singleServiceFixtureNames: Object.freeze(['railpack-build-packages', 'static-poison']),
+    }),
+    'b-3': Object.freeze({
+      multiServiceFixtureNames: Object.freeze([]),
+      singleServiceFixtureNames: Object.freeze(['vite-react', 'static-vite-react']),
     }),
     gvisor: Object.freeze({
       multiServiceFixtureNames: Object.freeze([]),
