@@ -1,5 +1,5 @@
 {
   "cosignBundleFormatFlag": "--new-bundle-format",
   "certificateOidcIssuer": "https://token.actions.githubusercontent.com",
-  "certificateIdentityRegexp": "^https://github\\.com/compartmentdev/compartment/\\.github/workflows/(publish-self-hosted-(main|release)\\.yml@refs/(heads/main|tags/v[0-9]+\\.[0-9]+\\.[0-9]+)|publish-self-hosted-kubernetes\\.yml@refs/heads/kubernetes)$"
+  "certificateIdentityRegexp": "^https://github\\.com/compartmentdev/compartment/\\.github/workflows/(publish-self-hosted-main\\.yml@refs/heads/main|publish-self-hosted-release\\.yml@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+)$"
 }

@@ -21,47 +21,43 @@ describe('build-cli-sea', () => {
     );
     temporaryDirectories.length = 0;
   });
-  it.each(['main', 'kubernetes'])(
-    'embeds buildCommitSha and SEA assets for the %s distribution channel',
-    async (testedDistributionChannel) => {
-      const temporaryDirectory = await createTemporaryDirectory();
-      const fixture = await createBuildCliSeaFixture(temporaryDirectory);
-      await execFile(
-        process.execPath,
-        [
-          buildCliSeaScriptPath,
-          '--distribution-channel',
-          testedDistributionChannel,
-          '--build-commit-sha',
-          buildCommitSha,
-          '--output-dir',
-          fixture.outputDirectory,
-        ],
-        {
-          cwd: repositoryRoot,
-          env: {
-            ...process.env,
-            CAPTURE_BUILD_INFO_PATH: fixture.captureBuildInfoPath,
-            CAPTURE_BUILD_INFO_SCRIPT_PATH: fixture.captureBuildInfoScriptPath,
-            CAPTURE_SEA_ASSETS_PATH: fixture.captureSeaAssetsPath,
-            PATH: `${fixture.stubCommandDirectory}:${defaultPath}`,
-            REAL_NODE_BINARY: process.execPath,
-          },
+  it('embeds buildCommitSha and SEA assets for the main distribution channel', async () => {
+    const temporaryDirectory = await createTemporaryDirectory();
+    const fixture = await createBuildCliSeaFixture(temporaryDirectory);
+    await execFile(
+      process.execPath,
+      [
+        buildCliSeaScriptPath,
+        '--distribution-channel',
+        distributionChannel,
+        '--build-commit-sha',
+        buildCommitSha,
+        '--output-dir',
+        fixture.outputDirectory,
+      ],
+      {
+        cwd: repositoryRoot,
+        env: {
+          ...process.env,
+          CAPTURE_BUILD_INFO_PATH: fixture.captureBuildInfoPath,
+          CAPTURE_BUILD_INFO_SCRIPT_PATH: fixture.captureBuildInfoScriptPath,
+          CAPTURE_SEA_ASSETS_PATH: fixture.captureSeaAssetsPath,
+          PATH: `${fixture.stubCommandDirectory}:${defaultPath}`,
+          REAL_NODE_BINARY: process.execPath,
         },
-      );
-      const capturedBuildInfo = await readCapturedBuildInfo(fixture.captureBuildInfoPath);
-      const capturedSeaAssets = JSON.parse(await readFile(fixture.captureSeaAssetsPath, 'utf8'));
-      expect(capturedBuildInfo.buildCommitSha).toBe(buildCommitSha);
-      expect(capturedBuildInfo).not.toHaveProperty(['defaultRegistry', 'ImageTag'].join(''));
-      expect(capturedBuildInfo.distributionChannel).toBe(testedDistributionChannel);
-      expect(capturedSeaAssets).toEqual({
-        'cli-build-info.json': expect.any(String),
-        'compartment-chart.tgz': expect.any(String),
-        cosign: expect.stringContaining('/cosign'),
-      });
-    },
-    20_000,
-  );
+      },
+    );
+    const capturedBuildInfo = await readCapturedBuildInfo(fixture.captureBuildInfoPath);
+    const capturedSeaAssets = JSON.parse(await readFile(fixture.captureSeaAssetsPath, 'utf8'));
+    expect(capturedBuildInfo.buildCommitSha).toBe(buildCommitSha);
+    expect(capturedBuildInfo).not.toHaveProperty(['defaultRegistry', 'ImageTag'].join(''));
+    expect(capturedBuildInfo.distributionChannel).toBe(distributionChannel);
+    expect(capturedSeaAssets).toEqual({
+      'cli-build-info.json': expect.any(String),
+      'compartment-chart.tgz': expect.any(String),
+      cosign: expect.stringContaining('/cosign'),
+    });
+  }, 20_000);
 
   it('fails when a configured cosign asset is not executable', async () => {
     const temporaryDirectory = await createTemporaryDirectory();
@@ -85,6 +81,22 @@ describe('build-cli-sea', () => {
       stderr: expect.stringContaining(
         `Configured COMPARTMENT_CLI_BUNDLED_COSIGN_PATH path is not executable: ${missingCosignPath}`,
       ),
+    });
+  });
+
+  it('rejects the retired kubernetes distribution channel', async () => {
+    const temporaryDirectory = await createTemporaryDirectory();
+
+    await expect(
+      execFile(process.execPath, [
+        buildCliSeaScriptPath,
+        '--distribution-channel',
+        'kubernetes',
+        '--output-dir',
+        join(temporaryDirectory, 'out'),
+      ]),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining('Expected --distribution-channel (source|main|release)'),
     });
   });
 });

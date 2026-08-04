@@ -1,6 +1,6 @@
 import type { JsonValue } from '@compartment/utils';
 
-export type CliDistributionChannel = 'source' | 'main' | 'kubernetes' | 'release';
+export type CliDistributionChannel = 'source' | 'main' | 'release';
 
 export interface CliBuildInfo {
   buildCommitSha?: string | undefined;

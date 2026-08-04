@@ -28,11 +28,11 @@ redacted. Review the archive before sharing it.
 ## Update
 
 ```bash
-curl -fsSL https://compartment.dev/install.sh | sh
+curl -fsSL https://compartment.dev/install.sh | sh -s -- --channel main
 sudo compartment system update
 ```
 
-First install the current verified Kubernetes-channel CLI. Its signed provisioning metadata selects the tested target
+First install the current verified `main`-channel CLI. Its signed provisioning metadata selects the tested target
 release and artifacts. The update command verifies those artifacts, creates an etcd snapshot, advances k3s and cert-manager
 through durable stages, invokes the canonical platform update, and verifies the resulting host and cluster versions.
 Managed Kubernetes components do not update in the background. If an update stops, correct the reported problem and

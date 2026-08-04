@@ -101,8 +101,9 @@ const canonicalRemovalSpecificationPath = 'docs/specs/existing-kubernetes-instal
 const canonicalCaddyDockerfilePath = 'packages/edge/Dockerfile.caddy.self-hosted';
 const publicInstallerPath = 'install.sh';
 const publicInstallerRequiredTerms = [
-  ['channel=', '"kubernetes"'].join(''),
+  ['channel=', '"latest"'].join(''),
   ['https://compartment.dev', '/install.sh'].join(''),
+  ['publish-self-hosted-', 'main.yml@refs/heads/main'].join(''),
   ['"', '$cosign_command', '" verify'].join(''),
   ['--certificate-', 'identity'].join(''),
   ['--certificate-', 'oidc-issuer'].join(''),

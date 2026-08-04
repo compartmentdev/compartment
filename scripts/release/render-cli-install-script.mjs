@@ -63,7 +63,7 @@ function readInstallerRenderOptions(args, repositoryRoot) {
     outputPath !== ''
   ) {
     return {
-      defaultChannel: defaultReleaseVersion === '' ? 'kubernetes' : 'latest',
+      defaultChannel: 'latest',
       defaultReleaseVersion,
       releaseRepository,
       outputPath,

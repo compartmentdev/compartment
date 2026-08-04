@@ -11,8 +11,8 @@ fi
 cli_oci_repository="ghcr.io/compartmentdev/compartment-cli"
 cosign_version="2.6.1"
 oras_version="1.3.3"
-kubernetes_cli_certificate_identity="https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes"
-kubernetes_cli_certificate_oidc_issuer="https://token.actions.githubusercontent.com"
+main_cli_certificate_identity="https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-main.yml@refs/heads/main"
+main_cli_certificate_oidc_issuer="https://token.actions.githubusercontent.com"
 channel="__COMPARTMENT_DEFAULT_CHANNEL__"
 version="__COMPARTMENT_DEFAULT_RELEASE_VERSION__"
 version_argument="0"
@@ -43,7 +43,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --channel)
       if [ "$#" -lt 2 ]; then
-        printf 'Expected --channel <latest|main|kubernetes>.\n' >&2
+        printf 'Expected --channel <latest|main>.\n' >&2
         exit 1
       fi
       channel="$2"
@@ -227,7 +227,7 @@ case "$install_target" in
 esac
 
 case "$channel" in
-  latest|main|kubernetes)
+  latest|main)
     ;;
   *)
     printf 'Unsupported channel: %s\n' "$channel" >&2
@@ -292,18 +292,16 @@ validate_semantic_version() {
 
 if [ -n "$version" ]; then
   case "$channel" in
-    kubernetes)
+    main)
       validated_version="$(printf '%s\n' "$version" | sed -n 's/^sha-\([0-9a-f]\{40\}\)$/sha-\1/p')"
       if [ "$validated_version" != "$version" ]; then
-        printf 'Invalid version for the kubernetes channel: %s. Expected sha- followed by 40 lowercase hexadecimal characters.\n' \
+        printf 'Invalid version for the main channel: %s. Expected sha- followed by 40 lowercase hexadecimal characters.\n' \
           "$version" >&2
         exit 1
       fi
       ;;
-    latest|main)
+    latest)
       case "$version" in
-        main)
-          ;;
         sha-*)
           validated_version="$(printf '%s\n' "$version" | sed -n 's/^sha-\([0-9a-f]\{40\}\)$/sha-\1/p')"
           if [ "$validated_version" != "$version" ]; then
@@ -346,29 +344,8 @@ resolve_main_release_tag() {
   printf '%s' "$resolved_release_tag"
 }
 
-resolve_kubernetes_release_tag() {
-  kubernetes_ref_url="https://api.github.com/repos/${release_repository}/git/ref/heads/kubernetes"
-  kubernetes_commit_sha="$(
-    curl -fsSL "$kubernetes_ref_url" \
-      | tr -d '\n' \
-      | sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{40\}\)".*/\1/p' \
-      | head -n 1
-  )"
-
-  if [ -z "$kubernetes_commit_sha" ]; then
-    printf 'Missing kubernetes commit SHA in %s\n' "$kubernetes_ref_url" >&2
-    exit 1
-  fi
-
-  resolved_release_tag="sha-${kubernetes_commit_sha}"
-  if [ "$verbose" = "1" ]; then
-    printf 'Resolved kubernetes to %s\n' "$resolved_release_tag" >&2
-  fi
-  printf '%s' "$resolved_release_tag"
-}
-
-resolve_last_published_kubernetes_release_tag() {
-  successful_runs_url="https://api.github.com/repos/${release_repository}/actions/workflows/publish-self-hosted-kubernetes.yml/runs?branch=kubernetes&status=success&per_page=1"
+resolve_last_published_main_release_tag() {
+  successful_runs_url="https://api.github.com/repos/${release_repository}/actions/workflows/publish-self-hosted-main.yml/runs?branch=main&status=success&per_page=1"
   last_published_commit_sha="$(
     curl -fsSL "$successful_runs_url" \
       | tr -d '\n' \
@@ -398,8 +375,8 @@ resolve_last_published_kubernetes_release_tag() {
 
   if ! "$cosign_command" verify \
     --new-bundle-format \
-    --certificate-identity "$kubernetes_cli_certificate_identity" \
-    --certificate-oidc-issuer "$kubernetes_cli_certificate_oidc_issuer" \
+    --certificate-identity "$main_cli_certificate_identity" \
+    --certificate-oidc-issuer "$main_cli_certificate_oidc_issuer" \
     --certificate-github-workflow-sha "$last_published_commit_sha" \
     "${cli_oci_repository}@${validated_last_published_digest}" >/dev/null 2>&1; then
     return 1
@@ -428,7 +405,7 @@ verify_download_checksum() {
   fi
 }
 
-prepare_kubernetes_cli_tools() {
+prepare_main_cli_tools() {
   tools_directory="$1"
   tools_target_os="$2"
   tools_target_arch="$3"
@@ -442,7 +419,7 @@ prepare_kubernetes_cli_tools() {
       tools_upstream_arch="arm64"
       ;;
     *)
-      printf 'Unsupported Kubernetes CLI tool architecture: %s\n' "$tools_target_arch" >&2
+      printf 'Unsupported main CLI tool architecture: %s\n' "$tools_target_arch" >&2
       exit 1
       ;;
   esac
@@ -522,7 +499,7 @@ prepare_kubernetes_cli_tools() {
   fi
 }
 
-resolve_kubernetes_cli_digest_ref() {
+resolve_main_cli_digest_ref() {
   cli_tag_ref="$1"
   oras_resolve_error_path="${temp_directory}/oras-resolve.stderr"
   if ! cli_manifest_digest="$("$oras_command" resolve "$cli_tag_ref" 2>"$oras_resolve_error_path")"; then
@@ -533,27 +510,26 @@ resolve_kubernetes_cli_digest_ref() {
     fi
     case "$oras_resolve_error" in
       *"not found"* | *"manifest unknown"*)
-        if [ "$channel" = "kubernetes" ] && [ "$version_argument" = "1" ]; then
-          printf 'Kubernetes CLI image tag %s was not found in the registry. Check that the build was published and that the version is not mistyped.\n' \
+        if [ "$version_argument" = "1" ]; then
+          printf 'Main CLI image tag %s was not found in the registry. Check that the build was published and that the version is not mistyped.\n' \
             "$resolved_release_tag" >&2
-          printf 'To install the current kubernetes channel tip instead, omit --version:\n' >&2
-          printf '%s --channel kubernetes\n' "$installer_command" >&2
-        elif [ "$channel" = "kubernetes" ] \
-          && last_published_release_tag="$(resolve_last_published_kubernetes_release_tag)"; then
-          printf 'Images for %s are still publishing. Install the latest fully published kubernetes build with:\n' \
+          printf 'To install the current main channel tip instead, omit --version:\n' >&2
+          printf '%s --channel main\n' "$installer_command" >&2
+        elif last_published_release_tag="$(resolve_last_published_main_release_tag)"; then
+          printf 'Images for %s are still publishing. Install the latest fully published main build with:\n' \
             "$resolved_release_tag" >&2
-          printf '%s --channel kubernetes --version %s\n' \
+          printf '%s --channel main --version %s\n' \
             "$installer_command" "$last_published_release_tag" >&2
         else
           printf 'Images for %s are not published, and the installer could not verify a fallback automatically.\n' \
             "$resolved_release_tag" >&2
-          printf 'Open https://github.com/%s/actions/workflows/publish-self-hosted-kubernetes.yml, select the latest successful run, and copy its full commit SHA into:\n' \
+          printf 'Open https://github.com/%s/actions/workflows/publish-self-hosted-main.yml, select the latest successful run, and copy its full commit SHA into:\n' \
             "$release_repository" >&2
-          printf '%s --channel kubernetes --version sha-COMMIT_SHA\n' "$installer_command" >&2
+          printf '%s --channel main --version sha-COMMIT_SHA\n' "$installer_command" >&2
         fi
         ;;
       *)
-        printf 'Failed to resolve Kubernetes CLI image %s. Check registry access and retry.\n' "$cli_tag_ref" >&2
+        printf 'Failed to resolve main CLI image %s. Check registry access and retry.\n' "$cli_tag_ref" >&2
         ;;
     esac
     return 1
@@ -570,18 +546,18 @@ resolve_kubernetes_cli_digest_ref() {
   printf '%s@%s' "$cli_oci_repository" "$validated_cli_manifest_digest"
 }
 
-verify_kubernetes_cli_artifact() {
+verify_main_cli_artifact() {
   cli_digest_ref="$1"
   cli_workflow_sha="$2"
   verification_output_path="${temp_directory}/cosign-verify.output"
   if ! "$cosign_command" verify \
     --new-bundle-format \
-    --certificate-identity "$kubernetes_cli_certificate_identity" \
-    --certificate-oidc-issuer "$kubernetes_cli_certificate_oidc_issuer" \
+    --certificate-identity "$main_cli_certificate_identity" \
+    --certificate-oidc-issuer "$main_cli_certificate_oidc_issuer" \
     --certificate-github-workflow-sha "$cli_workflow_sha" \
     "$cli_digest_ref" >"$verification_output_path" 2>&1; then
     cat "$verification_output_path" >&2
-    printf 'Failed to verify Kubernetes CLI artifact %s\n' "$cli_digest_ref" >&2
+    printf 'Failed to verify main CLI artifact %s\n' "$cli_digest_ref" >&2
     exit 1
   fi
   if [ "$verbose" = "1" ]; then
@@ -1098,13 +1074,9 @@ esac
 
 artifact_name="compartment-${target_os}-${target_arch}.tar.gz"
 
-if [ "$channel" != "kubernetes" ]; then
+if [ "$channel" != "main" ]; then
   if [ -n "$version" ]; then
     case "$version" in
-      main)
-        resolved_release_tag="$(resolve_main_release_tag)"
-        release_path="releases/download/${resolved_release_tag}"
-        ;;
       sha-*)
         release_path="releases/download/${version}"
         ;;
@@ -1113,12 +1085,7 @@ if [ "$channel" != "kubernetes" ]; then
         ;;
     esac
   else
-    if [ "$channel" = "main" ]; then
-      resolved_release_tag="$(resolve_main_release_tag)"
-      release_path="releases/download/${resolved_release_tag}"
-    else
-      release_path="releases/latest/download"
-    fi
+    release_path="releases/latest/download"
   fi
 
   base_url="https://github.com/${release_repository}/${release_path}"
@@ -1132,17 +1099,17 @@ trap 'rm -rf "$temp_directory"' EXIT INT TERM
 artifact_path="${temp_directory}/${artifact_name}"
 checksums_path="${temp_directory}/checksums.txt"
 
-if [ "$channel" = "kubernetes" ]; then
+if [ "$channel" = "main" ]; then
   if [ -n "$version" ]; then
     resolved_release_tag="$version"
   else
-    resolved_release_tag="$(resolve_kubernetes_release_tag)"
+    resolved_release_tag="$(resolve_main_release_tag)"
   fi
-  resolved_kubernetes_commit_sha="${resolved_release_tag#sha-}"
-  prepare_kubernetes_cli_tools "${temp_directory}/tools" "$target_os" "$target_arch"
+  resolved_main_commit_sha="${resolved_release_tag#sha-}"
+  prepare_main_cli_tools "${temp_directory}/tools" "$target_os" "$target_arch"
   cli_tag_ref="${cli_oci_repository}:${resolved_release_tag}"
-  cli_digest_ref="$(resolve_kubernetes_cli_digest_ref "$cli_tag_ref")"
-  verify_kubernetes_cli_artifact "$cli_digest_ref" "$resolved_kubernetes_commit_sha"
+  cli_digest_ref="$(resolve_main_cli_digest_ref "$cli_tag_ref")"
+  verify_main_cli_artifact "$cli_digest_ref" "$resolved_main_commit_sha"
   oras_pull_output_path="${temp_directory}/oras-pull.output"
   if ! "$oras_command" pull \
     --platform "${target_os}/${tools_upstream_arch}" \

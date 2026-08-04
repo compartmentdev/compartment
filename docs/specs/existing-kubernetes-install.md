@@ -1,8 +1,8 @@
 # Existing Kubernetes Installation
 
-Status: implementation plan
+Status: implementation record; the branch cutover is complete, while individual sections may describe later phases
 
-Target branch: `kubernetes`
+Target branch: `main`
 
 ## Purpose
 
@@ -48,9 +48,8 @@ previous dedicated-cluster Caddy architecture.
 17. Dockerfile and OCI image build support remains. `packages/docker` is retained only for BuildKit command shaping
     and image-build concerns still used by the Kubernetes pipeline.
 18. Existing preview Kubernetes installations are not migrated. The cutover supports fresh installation only.
-19. Existing-cluster implementation and testing may merge incrementally into `kubernetes`. Temporary installation
-    breakage and incomplete signed artifacts are accepted because that channel is not currently a supported
-    compatibility boundary.
+19. Existing-cluster implementation and testing merge through `main`. Rolling artifacts are published under immutable
+    commit tags; stable artifacts are published through semver releases.
 20. The existing-cluster path remains operator-owned and never mutates the host or cluster prerequisites.
 21. The CLI-managed VM path installs the release-owned k3s channel and prerequisites, then invokes the same canonical
     installer. It does not add a second chart or platform installation contract.
@@ -780,9 +779,8 @@ fix-forward procedure. Product rollback compatibility is not required for this u
 - Keep additional prerequisite setup within two minutes of wall time per affected shard, reuse one prerequisite
   installation per cluster, and rebalance the E2E shard allocation when that budget is exceeded.
 - Record the final shard count, wall-time budget, and owner of each expensive cluster scenario.
-- Point `https://compartment.dev/k/install.sh` at a website-owned 307 redirect to the Kubernetes branch's root
-  `install.sh`, and verify the public handoff without requiring users to use a raw-branch URL, hidden channel flag, or
-  separate bootstrap instructions.
+- Serve the root stable `install.sh` at `https://compartment.dev/install.sh`, and verify the public handoff without
+  requiring users to use a raw-branch URL, hidden channel flag, or separate bootstrap instructions.
 - Verify concise descriptor validation output for both supported descriptor files.
 - Update engineering and public documentation.
 - Declare the channel supported only after the old architecture is absent from code, docs, release artifacts, and
@@ -801,8 +799,8 @@ exact delete list.
 - Update image publication only where registry-auth or Caddy image contents change.
 - Update k3d and cluster e2e workflows for an existing Ingress Controller and cert-manager.
 - Rebalance the E2E shard allocation and record the prerequisite setup wall-time budget.
-- Update `https://compartment.dev/k/install.sh` to redirect with HTTP 307 to the Kubernetes branch's root `install.sh`
-  when the channel is declared supported. Do not copy or synchronize the installer into the website repository.
+- Keep `https://compartment.dev/install.sh` on the root stable installer. Do not copy or synchronize the installer
+  into the website repository.
 
 ### CLI
 
@@ -1058,8 +1056,7 @@ of the cluster lifecycle.
 
 ### Public bootstrap
 
-- `https://compartment.dev/k/install.sh` redirects with HTTP 307 to the root `install.sh` on the Kubernetes branch
-  when the channel is declared supported; that branch file remains the sole source of truth.
+- `https://compartment.dev/install.sh` serves the root stable installer from `main`.
 - The bootstrap resolves and verifies the signed release artifact.
 - A user does not need a raw GitHub branch URL, `--channel kubernetes`, or undocumented bootstrap path.
 - The public bootstrap followed by `compartment install` completes the supported existing-cluster flow.
