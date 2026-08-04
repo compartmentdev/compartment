@@ -1,6 +1,11 @@
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import type { DockerBuildImageResult, DockerProgressLine } from '@compartment/docker';
-import type { KubeJobResult, KubeJobSpec, KubeRunJobOptions } from '@compartment/kube-runtime';
+import {
+  KubeJobLogAttachmentError,
+  type KubeJobResult,
+  type KubeJobSpec,
+  type KubeRunJobOptions,
+} from '@compartment/kube-runtime';
 import type { WorkerBuildSandboxConfig } from '../src/config';
 import { runWorkerBuildJob } from '../src/services/worker-build-job.service';
 import type { RunWorkerBuildJobInput } from '../src/services/worker-build-job.types';
@@ -87,6 +92,28 @@ describe('runWorkerBuildJob', (): void => {
     expect(finalize).toHaveBeenCalledOnce();
   });
 
+  it('ignores malformed streamed progress records without failing a successful build', async (): Promise<void> => {
+    const finalize: Mock<() => Promise<void>> = vi.fn(async (): Promise<void> => await Promise.resolve());
+    const validProgress: DockerProgressLine = { message: '#5 complete', stream: 'stdout' };
+    const runJob: Mock<
+      (spec: KubeJobSpec, persisted: undefined, options: KubeRunJobOptions) => Promise<KubeJobResult>
+    > = vi.fn(async (_spec: KubeJobSpec, _persisted: undefined, options: KubeRunJobOptions): Promise<KubeJobResult> => {
+      await options.onLogChunk?.(`${JSON.stringify({ type: 'progress' })}\n`);
+      await options.onLogChunk?.(`${JSON.stringify({ progress: { stream: 'stderr' }, type: 'progress' })}\n`);
+      await options.onLogChunk?.(`${JSON.stringify({ progress: validProgress, type: 'progress' })}\n`);
+      return await Promise.resolve(successfulResult(finalize, '#5 complete'));
+    });
+    const reporter: Mock = vi.fn();
+
+    await expect(runWorkerBuildJob({ runJob }, buildConfig(), buildInput(reporter))).resolves.toMatchObject({
+      pushed: true,
+    });
+
+    expect(reporter).toHaveBeenCalledOnce();
+    expect(reporter).toHaveBeenCalledWith(validProgress);
+    expect(finalize).toHaveBeenCalledOnce();
+  });
+
   it('finalizes after a progress reporter failure', async (): Promise<void> => {
     const finalize: Mock<() => Promise<void>> = vi.fn(async (): Promise<void> => await Promise.resolve());
     const runJob: Mock<
@@ -127,6 +154,21 @@ describe('runWorkerBuildJob', (): void => {
     await expect(runWorkerBuildJob({ runJob }, buildConfig(), buildInput(vi.fn()))).rejects.toThrow(
       'log connection failed',
     );
+    expect(finalize).toHaveBeenCalledOnce();
+  });
+
+  it('ignores unavailable live-log attachment when the captured build succeeds', async (): Promise<void> => {
+    const finalize: Mock<() => Promise<void>> = vi.fn(async (): Promise<void> => await Promise.resolve());
+    const runJob: Mock<
+      (spec: KubeJobSpec, persisted: undefined, options: KubeRunJobOptions) => Promise<KubeJobResult>
+    > = vi.fn(async (_spec: KubeJobSpec, _persisted: undefined, options: KubeRunJobOptions): Promise<KubeJobResult> => {
+      options.onLogError?.(new KubeJobLogAttachmentError(new Error('container logs unavailable')));
+      return await Promise.resolve(successfulResult(finalize, '#6 done'));
+    });
+
+    await expect(runWorkerBuildJob({ runJob }, buildConfig(), buildInput(vi.fn()))).resolves.toMatchObject({
+      pushed: true,
+    });
     expect(finalize).toHaveBeenCalledOnce();
   });
 

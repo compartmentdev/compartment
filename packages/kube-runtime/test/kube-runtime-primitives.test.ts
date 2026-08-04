@@ -270,7 +270,7 @@ describe('KubeRuntime Job primitive', (): void => {
     });
     expect(resolved).toBe(false);
     observation.setTerminalJob(jobName);
-    await Promise.resolve();
+    await vi.waitFor((): void => expect(coreApi.readNamespacedPodLog).toHaveBeenCalledOnce());
     expect(resolved).toBe(false);
     logStream?.end();
 

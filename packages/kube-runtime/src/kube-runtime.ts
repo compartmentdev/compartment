@@ -15,6 +15,7 @@ import {
 } from './kube-job-projection';
 import { kubeJobName } from './kube-naming';
 import type { TerminalJobResult } from './kube-runtime-job-result.types';
+import type { JobLogStream } from './kube-job-log-stream.types';
 import { createOrValidate } from './kube-provisioning-validation';
 import {
   applyObject,
@@ -185,7 +186,7 @@ export class KubeRuntime {
     if (options?.onLogChunk === undefined) {
       return await completion;
     }
-    const stream: Promise<void> = followJobLogs(
+    const stream: JobLogStream = followJobLogs(
       this.kubeConfig,
       observation,
       spec.namespace,

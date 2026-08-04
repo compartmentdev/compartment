@@ -1,14 +1,18 @@
 import type { DockerBuildImageResult, DockerProgressLine } from '@compartment/docker';
-import type {
-  KubeJobEmptyDirVolume,
-  KubeJobResult,
-  KubeRunJobOptions,
-  KubeJobSidecar,
-  KubeJobSpec,
-  KubeRuntime,
+import {
+  KubeJobLogAttachmentError,
+  type KubeJobEmptyDirVolume,
+  type KubeJobResult,
+  type KubeRunJobOptions,
+  type KubeJobSidecar,
+  type KubeJobSpec,
+  type KubeRuntime,
 } from '@compartment/kube-runtime';
+import type { JsonValue } from '@compartment/utils';
 import type { WorkerBuildSandboxConfig } from '../config';
 import type { RunWorkerBuildJobInput, WorkerBuildJobInput, WorkerBuildJobLogRecord } from './worker-build-job.types';
+
+type JsonObject = Record<string, JsonValue>;
 
 const buildKitAddress: string = 'tcp://127.0.0.1:1234';
 const buildJobInputEnvironmentName: string = 'COMPARTMENT_BUILD_JOB_INPUT';
@@ -19,12 +23,13 @@ export async function runWorkerBuildJob(
   config: WorkerBuildSandboxConfig,
   input: RunWorkerBuildJobInput,
 ): Promise<DockerBuildImageResult> {
-  const progress: BuildProgressStream = new BuildProgressStream(input.onProgressLine);
+  const progress: BuildProgressStream | undefined =
+    input.onProgressLine === undefined ? undefined : new BuildProgressStream(input.onProgressLine);
   const options: KubeRunJobOptions | undefined =
-    input.onProgressLine === undefined ? undefined : new WorkerBuildJobRunOptions(progress);
+    progress === undefined ? undefined : new WorkerBuildJobRunOptions(progress);
   const capture: KubeJobResult = await runtime.runJob(buildKubeJobSpec(config, input), undefined, options);
   try {
-    await progress.drain();
+    await progress?.drain();
     if (capture.status !== 'succeeded') {
       throw new Error(
         `Sandboxed build Job ${capture.jobName} ${capture.status}: ${readCapturedBuildFailure(capture.logs)}`,
@@ -42,7 +47,11 @@ class WorkerBuildJobRunOptions implements KubeRunJobOptions {
   readonly onLogChunk: (chunk: string) => Promise<void> = async (chunk: string): Promise<void> =>
     await this.progress.write(chunk);
 
-  readonly onLogError: (error: Error) => void = (error: Error): void => this.progress.fail(error);
+  readonly onLogError: (error: Error) => void = (error: Error): void => {
+    if (!(error instanceof KubeJobLogAttachmentError)) {
+      this.progress.fail(error);
+    }
+  };
 }
 
 export function readWorkerBuildJobInputEnvironment(env: NodeJS.ProcessEnv): {
@@ -133,7 +142,7 @@ class BuildProgressStream {
   private error: Error | null = null;
   private unprocessed: string = '';
 
-  public constructor(private readonly reporter: ((line: DockerProgressLine) => void | Promise<void>) | undefined) {}
+  public constructor(private readonly reporter: (line: DockerProgressLine) => void | Promise<void>) {}
 
   public async write(chunk: string): Promise<void> {
     this.unprocessed += chunk;
@@ -163,9 +172,6 @@ class BuildProgressStream {
   }
 
   private async publishLine(line: string): Promise<void> {
-    if (this.reporter === undefined) {
-      return await Promise.resolve();
-    }
     const record: WorkerBuildJobLogRecord | undefined = readBuildLogRecord(line);
     if (record?.type === 'progress') {
       await this.reporter(record.progress);
@@ -208,8 +214,49 @@ function readBuildLogRecords(logs: string): WorkerBuildJobLogRecord[] {
 
 function readBuildLogRecord(line: string): WorkerBuildJobLogRecord | undefined {
   try {
-    return JSON.parse(line) as WorkerBuildJobLogRecord;
+    const parsed: JsonValue = JSON.parse(line) as JsonValue;
+    return readWorkerBuildJobLogRecord(parsed);
   } catch {
     return undefined;
   }
+}
+
+function readWorkerBuildJobLogRecord(value: JsonValue): WorkerBuildJobLogRecord | undefined {
+  if (!isJsonObject(value) || typeof value.type !== 'string') {
+    return undefined;
+  }
+  if (value.type === 'failure') {
+    return typeof value.message === 'string' ? { message: value.message, type: 'failure' } : undefined;
+  }
+  if (value.type === 'progress') {
+    const progress: DockerProgressLine | undefined = readDockerProgressLine(value.progress);
+    return progress === undefined ? undefined : { progress, type: 'progress' };
+  }
+  if (value.type === 'result') {
+    const result: DockerBuildImageResult | undefined = readDockerBuildImageResult(value.result);
+    return result === undefined ? undefined : { result, type: 'result' };
+  }
+  return undefined;
+}
+
+function readDockerProgressLine(value: JsonValue | undefined): DockerProgressLine | undefined {
+  if (
+    !isJsonObject(value) ||
+    typeof value.message !== 'string' ||
+    (value.stream !== 'stderr' && value.stream !== 'stdout')
+  ) {
+    return undefined;
+  }
+  return { message: value.message, stream: value.stream };
+}
+
+function readDockerBuildImageResult(value: JsonValue | undefined): DockerBuildImageResult | undefined {
+  if (!isJsonObject(value) || typeof value.imageRef !== 'string' || typeof value.pushed !== 'boolean') {
+    return undefined;
+  }
+  return { imageRef: value.imageRef, pushed: value.pushed };
+}
+
+function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

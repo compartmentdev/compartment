@@ -1,9 +1,11 @@
 import { Log, type LogOptions } from '@kubernetes/client-node';
 import { getEventListeners } from 'node:events';
 import type { Writable } from 'node:stream';
-import { describe, expect, it, vi, type MockInstance } from 'vitest';
-import { followJobLogs } from '../src/kube-job-log-stream';
+import { describe, expect, it, vi, type Mock, type MockInstance } from 'vitest';
+import { completeJobWithLogStream, followJobLogs, KubeJobLogAttachmentError } from '../src/kube-job-log-stream';
 import { waitForJobPod } from '../src/kube-job-log-observation';
+import type { JobLogStream } from '../src/kube-job-log-stream.types';
+import type { TerminalJobResult } from '../src/kube-runtime-job-result.types';
 import type {
   KubeObservation,
   KubeObservationHealth,
@@ -58,7 +60,7 @@ describe('Kubernetes Job log stream', (): void => {
       (chunk: string): void => {
         chunks.push(chunk);
       },
-    );
+    ).finished;
 
     expect(followLog).toHaveBeenCalledOnce();
     expect(chunks).toEqual(['terminal output\n']);
@@ -91,7 +93,7 @@ describe('Kubernetes Job log stream', (): void => {
       'job-name',
       controller.signal,
       vi.fn(),
-    );
+    ).finished;
 
     await vi.advanceTimersByTimeAsync(500);
 
@@ -113,12 +115,36 @@ describe('Kubernetes Job log stream', (): void => {
       'job-name',
       controller.signal,
       vi.fn(),
-    );
+    ).finished;
     await vi.waitFor((): void => expect(followLog).toHaveBeenCalledOnce());
 
     controller.abort(new Error('deadline reached'));
 
     await expect(pending).rejects.toThrow('deadline reached');
+  });
+
+  it('stops unattached log retries after terminal completion', async (): Promise<void> => {
+    const attachmentError: Error = new Error('container logs unavailable');
+    const followLog: MockInstance<FollowLog> = vi.spyOn(Log.prototype, 'log').mockRejectedValue(attachmentError);
+    const onLogError: Mock<(error: Error) => void> = vi.fn();
+    const stream: JobLogStream = followJobLogs(
+      {} as never,
+      new PodObservation(),
+      'ns',
+      'job-name',
+      new AbortController().signal,
+      vi.fn(),
+    );
+
+    await vi.waitFor((): void => expect(followLog).toHaveBeenCalledOnce());
+    await expect(
+      completeJobWithLogStream(Promise.resolve(terminalResult()), stream, new AbortController(), onLogError),
+    ).resolves.toMatchObject({ status: 'succeeded' });
+
+    expect(followLog).toHaveBeenCalledOnce();
+    const reported: Error | undefined = onLogError.mock.calls[0]?.[0];
+    expect(reported).toBeInstanceOf(KubeJobLogAttachmentError);
+    expect((reported as KubeJobLogAttachmentError).attachmentError).toBe(attachmentError);
   });
 
   it('preserves UTF-8 characters split across transport chunks', async (): Promise<void> => {
@@ -144,9 +170,26 @@ describe('Kubernetes Job log stream', (): void => {
       (chunk: string): void => {
         chunks.push(chunk);
       },
-    );
+    ).finished;
 
     expect(chunks.join('')).toBe('building 🚀\n');
+  });
+
+  it('routes synchronous chunk handler failures through the stream error path', async (): Promise<void> => {
+    const observation: PodObservation = new PodObservation();
+    vi.spyOn(Log.prototype, 'log').mockImplementation(
+      async (_namespace: string, _podName: string, _container: string, stream: Writable): Promise<AbortController> => {
+        stream.end('invalid chunk\n');
+        observation.complete();
+        return await Promise.resolve(new AbortController());
+      },
+    );
+
+    await expect(
+      followJobLogs({} as never, observation, 'ns', 'job-name', new AbortController().signal, (): void => {
+        throw new Error('progress handler failed');
+      }).finished,
+    ).rejects.toThrow('progress handler failed');
   });
 
   it('follows each retry Pod once', async (): Promise<void> => {
@@ -169,7 +212,7 @@ describe('Kubernetes Job log stream', (): void => {
       (chunk: string): void => {
         chunks.push(chunk);
       },
-    );
+    ).finished;
 
     await vi.waitFor((): void => expect(followLog).toHaveBeenCalledTimes(1));
     observation.recordFailedAttempt();
@@ -199,6 +242,17 @@ class AbortOnSubscribeObservation implements KubeObservation {
   async stop(): Promise<void> {
     await Promise.resolve();
   }
+}
+
+function terminalResult(): TerminalJobResult {
+  return {
+    completedAt: new Date(),
+    exitCode: 0,
+    jobName: 'job-name',
+    logs: '',
+    podName: 'job-pod',
+    status: 'succeeded',
+  };
 }
 
 class PodObservation implements KubeObservation {

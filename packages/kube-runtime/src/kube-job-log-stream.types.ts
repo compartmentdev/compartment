@@ -1,4 +1,7 @@
 import type { Writable } from 'node:stream';
+import type { KubeJobLogChunkHandler, KubeJobLogErrorHandler } from './kube-job-spec.types';
+
+export type { KubeJobLogChunkHandler, KubeJobLogErrorHandler };
 
 export interface LogOutput {
   finished: Promise<Error | null>;
@@ -7,6 +10,11 @@ export interface LogOutput {
 
 export interface ActiveLogOutput extends LogOutput {
   controller: AbortController;
+}
+
+export interface JobLogStream {
+  finished: Promise<void>;
+  stopUnattachedRetries: () => void;
 }
 
 export interface JobStatus {
@@ -22,7 +30,12 @@ export interface JobStatusCondition {
 
 export interface JobContainerStatus {
   name?: string | undefined;
-  state?: { running?: object | undefined; terminated?: object | undefined } | undefined;
+  state?: JobContainerState | undefined;
+}
+
+export interface JobContainerState {
+  running?: object | undefined;
+  terminated?: object | undefined;
 }
 
 export interface PodStatus {

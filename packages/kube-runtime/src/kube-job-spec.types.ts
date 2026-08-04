@@ -56,9 +56,13 @@ export interface KubeJobResult {
   finalize(): Promise<void>;
 }
 
+export type KubeJobLogChunkHandler = (chunk: string) => void | Promise<void>;
+
+export type KubeJobLogErrorHandler = (error: Error) => void;
+
 export interface KubeRunJobOptions {
-  onLogChunk?: ((chunk: string) => void | Promise<void>) | undefined;
-  onLogError?: ((error: Error) => void) | undefined;
+  onLogChunk?: KubeJobLogChunkHandler | undefined;
+  onLogError?: KubeJobLogErrorHandler | undefined;
 }
 
 export interface KubePersistedJobResult {
