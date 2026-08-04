@@ -119,8 +119,8 @@ import {
   loginSystemUserFlowAdmin,
   prepareSystemUserFlowAppDeployment,
   prepareSystemUserFlowVariables,
-  type SystemUserFlowAppDeployment,
 } from './system-user-flow.shared.e2e.harness';
+import type { SystemUserFlowAppDeployment } from './system-user-flow.shared.e2e.types';
 
 const deploymentLifecycleCaseTimeoutMs: number = deploymentRunCompletionTimeoutMs + 8 * 60_000;
 

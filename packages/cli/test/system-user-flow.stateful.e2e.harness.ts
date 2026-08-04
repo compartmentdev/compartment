@@ -1,6 +1,5 @@
 import { it } from 'vitest';
 import {
-  type SystemUserFlowAppDeployment,
   configureSystemUserFlowAuthSettings,
   createSystemUserFlowContext,
   loginSystemUserFlowAdmin,
@@ -8,6 +7,7 @@ import {
   prepareSystemUserFlowStagingEnvironment,
   prepareSystemUserFlowVariables,
 } from './system-user-flow.shared.e2e.harness';
+import type { SystemUserFlowAppDeployment } from './system-user-flow.shared.e2e.types';
 import {
   selfHostedUserSetupTimeoutMs,
   useSelfHostedUserSetupHarness,
@@ -15,8 +15,7 @@ import {
 } from './self-hosted-user-setup.e2e.harness';
 import { registerSystemUserFlowStatefulTeardownCases } from './system-user-flow.stateful-teardown.e2e-cases';
 import { appBuildMessage, SystemUserFlowContext } from './system-user-flow.e2e.harness';
-
-export type SystemUserFlowStatefulShard = 'backup-rollback' | 'access-audit';
+import type { SystemUserFlowStatefulShard } from './system-user-flow.stateful.e2e.types';
 
 export function registerSystemUserFlowStatefulShard(shard: SystemUserFlowStatefulShard): void {
   const setup: SelfHostedUserSetupHarness = useSelfHostedUserSetupHarness();

@@ -53,29 +53,7 @@ import {
 } from './self-hosted-user-setup-cli-response.harness';
 import { waitForRunningResource } from './self-hosted-user-setup-deployment-flow.harness';
 import { appBuildMessage, appMessage, directFlagValue, SystemUserFlowContext } from './system-user-flow.e2e.harness';
-
-interface SystemUserFlowVariableSetup {
-  readonly initialVariableGroups: VariableGroupListResponse;
-  readonly createdGroup: VariableGroupResponse;
-  readonly groupsAfterCreate: VariableGroupListResponse;
-  readonly messageGroup: VariableGroupResponse;
-  readonly shownGroup: VariableGroupResponse;
-  readonly binding: VariableGroupBindingResponse;
-  readonly variableGroupUsages: VariableGroupUsagesResponse;
-  readonly directVariablePayload: VariableResponse;
-  readonly buildVariablePayload: VariableResponse;
-}
-
-export interface SystemUserFlowAppDeployment {
-  readonly databaseUrlBindingPayload: VariableResponse;
-  readonly deployPayload: SelfHostedDeployCommandResponse;
-  readonly appProjectId: string;
-  readonly bootstrapPayload: ResourceResponse;
-  readonly resourceReleaseDeployPayload: SelfHostedDeployCommandResponse;
-  readonly routeUrl: string;
-  readonly activeDeployment: DeploymentReadSummary;
-  readonly adminAppSessionCookie: string;
-}
+import type { SystemUserFlowAppDeployment, SystemUserFlowVariableSetup } from './system-user-flow.shared.e2e.types';
 
 export async function createSystemUserFlowContext(setup: SelfHostedUserSetupHarness): Promise<SystemUserFlowContext> {
   const runtime: SelfHostedUserSetupRuntime = await setup.install();

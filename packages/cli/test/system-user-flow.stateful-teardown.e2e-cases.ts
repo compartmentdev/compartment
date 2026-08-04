@@ -128,7 +128,7 @@ import {
   viewerPassword,
   type SystemUserFlowContext,
 } from './system-user-flow.e2e.harness';
-import type { SystemUserFlowStatefulShard } from './system-user-flow.stateful.e2e.harness';
+import type { SystemUserFlowStatefulShard } from './system-user-flow.stateful.e2e.types';
 
 export function registerSystemUserFlowStatefulTeardownCases(
   context: SystemUserFlowContext,
