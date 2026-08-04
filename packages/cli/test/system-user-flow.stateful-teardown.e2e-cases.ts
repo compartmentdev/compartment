@@ -127,235 +127,246 @@ import {
   viewerPassword,
   type SystemUserFlowContext,
 } from './system-user-flow.e2e.harness';
+import type { SystemUserFlowStatefulShard } from './system-user-flow.stateful.e2e.harness';
 
-export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserFlowContext): void {
-  it(
-    'case 5/8: backs up and restores the app database resource',
-    async (): Promise<void> => {
-      const { app, admin, routeUrl, adminAppSessionCookie, completedCaseCount } = context;
-      expectSelfHostedUserSetupStepCompleted(completedCaseCount, 4);
-      const resourcesPayload: ResourceListResponse = await admin.runJson(
-        `resource list --project ${app.projectName}`,
-        resourceListResponseSchema,
-      );
-      expect(resourcesPayload.resources).toEqual([
-        expect.objectContaining({
-          name: app.resourceName,
-          status: 'running',
-        }),
-      ]);
+export function registerSystemUserFlowStatefulTeardownCases(
+  context: SystemUserFlowContext,
+  shard: SystemUserFlowStatefulShard,
+): void {
+  if (shard === 'backup-rollback') {
+    it(
+      'case 5/8: backs up and restores the app database resource',
+      async (): Promise<void> => {
+        const { app, admin, routeUrl, adminAppSessionCookie, completedCaseCount } = context;
+        expectSelfHostedUserSetupStepCompleted(completedCaseCount, 4);
+        const resourcesPayload: ResourceListResponse = await admin.runJson(
+          `resource list --project ${app.projectName}`,
+          resourceListResponseSchema,
+        );
+        expect(resourcesPayload.resources).toEqual([
+          expect.objectContaining({
+            name: app.resourceName,
+            status: 'running',
+          }),
+        ]);
 
-      const resourcePayload: ResourceResponse = await admin.runJson(
-        `resource inspect --project ${app.projectName} --resource ${app.resourceName}`,
-        resourceResponseSchema,
-      );
-      expect(resourcePayload.resource.status).toBe('running');
+        const resourcePayload: ResourceResponse = await admin.runJson(
+          `resource inspect --project ${app.projectName} --resource ${app.resourceName}`,
+          resourceResponseSchema,
+        );
+        expect(resourcePayload.resource.status).toBe('running');
 
-      const resourceLogsPayload: ResourceLogsResponse = await admin.runJson(
-        `resource logs --project ${app.projectName} --resource ${app.resourceName} --tail 50`,
-        resourceLogsResponseSchema,
-      );
-      expect(resourceLogsPayload.resource.name).toBe(app.resourceName);
-      expect(resourceLogsPayload.lines.length).toBeGreaterThan(0);
-      expect(
-        resourceLogsPayload.lines.every((line: ResourceLogLine): boolean => line.resourceName === app.resourceName),
-      ).toBe(true);
-      expect(resourceLogsPayload.lines.some((line: ResourceLogLine): boolean => line.stream === 'stderr')).toBe(true);
+        const resourceLogsPayload: ResourceLogsResponse = await admin.runJson(
+          `resource logs --project ${app.projectName} --resource ${app.resourceName} --tail 50`,
+          resourceLogsResponseSchema,
+        );
+        expect(resourceLogsPayload.resource.name).toBe(app.resourceName);
+        expect(resourceLogsPayload.lines.length).toBeGreaterThan(0);
+        expect(
+          resourceLogsPayload.lines.every((line: ResourceLogLine): boolean => line.resourceName === app.resourceName),
+        ).toBe(true);
+        expect(resourceLogsPayload.lines.some((line: ResourceLogLine): boolean => line.stream === 'stderr')).toBe(true);
 
-      const stoppedResourcePayload: ResourceResponse = await admin.runJson(
-        `resource stop --project ${app.projectName} --resource ${app.resourceName}`,
-        resourceResponseSchema,
-      );
-      expect(stoppedResourcePayload.resource.status).toBe('stopped');
+        const stoppedResourcePayload: ResourceResponse = await admin.runJson(
+          `resource stop --project ${app.projectName} --resource ${app.resourceName}`,
+          resourceResponseSchema,
+        );
+        expect(stoppedResourcePayload.resource.status).toBe('stopped');
 
-      const startedResourcePayload: ResourceResponse = await admin.runJson(
-        `resource start --project ${app.projectName} --resource ${app.resourceName}`,
-        resourceResponseSchema,
-      );
-      expect(startedResourcePayload.resource.status).toBe('running');
+        const startedResourcePayload: ResourceResponse = await admin.runJson(
+          `resource start --project ${app.projectName} --resource ${app.resourceName}`,
+          resourceResponseSchema,
+        );
+        expect(startedResourcePayload.resource.status).toBe('running');
 
-      const missingBackup: SelfHostedUserSetupCommandResult = await admin.runFailure(
-        `resource backup show --project ${app.projectName} --backup rbak_missing --output json`,
-      );
-      expect(missingBackup.stderr).toContain(missingResourceBackupMessage);
+        const missingBackup: SelfHostedUserSetupCommandResult = await admin.runFailure(
+          `resource backup show --project ${app.projectName} --backup rbak_missing --output json`,
+        );
+        expect(missingBackup.stderr).toContain(missingResourceBackupMessage);
 
-      await writeAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue);
-      await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue, true);
+        await writeAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue);
+        await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue, true);
 
-      const backupId: string = await expectK3dBackupRetentionFlow(
-        admin,
-        app.directory,
-        app.projectName,
-        app.resourceName,
-      );
+        const backupId: string = await expectK3dBackupRetentionFlow(
+          admin,
+          app.directory,
+          app.projectName,
+          app.resourceName,
+        );
 
-      const rollbackTargetStatus: DeploymentStatusResponse = await admin.runJson(
-        `status --project ${app.projectName}`,
-        deploymentStatusCommandResponseParser,
-      );
-      const activeDeployment: DeploymentReadSummary = requireSingleActiveDeployment(
-        rollbackTargetStatus,
-        app.serviceName,
-      );
-      context.activeDeployment = activeDeployment;
-      const rollbackTargetInspectPayload: DeploymentInspectResponse = await admin.runJson(
-        `inspect --project ${app.projectName}`,
-        deploymentInspectResponseSchema,
-      );
-      const rollbackTargetDeployment: DeploymentInspectTarget = requireSingleInspectedActiveDeployment(
-        rollbackTargetInspectPayload,
-        app.serviceName,
-      );
-      const rollbackTargetRuntimeImageRef: string = requireDeploymentRuntimeImageRef(rollbackTargetDeployment);
-      context.rollbackTargetRuntimeImageRef = rollbackTargetRuntimeImageRef;
+        const rollbackTargetStatus: DeploymentStatusResponse = await admin.runJson(
+          `status --project ${app.projectName}`,
+          deploymentStatusCommandResponseParser,
+        );
+        const activeDeployment: DeploymentReadSummary = requireSingleActiveDeployment(
+          rollbackTargetStatus,
+          app.serviceName,
+        );
+        context.activeDeployment = activeDeployment;
+        const rollbackTargetInspectPayload: DeploymentInspectResponse = await admin.runJson(
+          `inspect --project ${app.projectName}`,
+          deploymentInspectResponseSchema,
+        );
+        const rollbackTargetDeployment: DeploymentInspectTarget = requireSingleInspectedActiveDeployment(
+          rollbackTargetInspectPayload,
+          app.serviceName,
+        );
+        const rollbackTargetRuntimeImageRef: string = requireDeploymentRuntimeImageRef(rollbackTargetDeployment);
+        context.rollbackTargetRuntimeImageRef = rollbackTargetRuntimeImageRef;
 
-      const backupShowPayload: ResourceBackupShowResponse = await admin.runJson(
-        `resource backup show --project ${app.projectName} --backup ${backupId}`,
-        resourceBackupShowResponseSchema,
-      );
-      expect(backupShowPayload.backup.id).toBe(backupId);
+        const backupShowPayload: ResourceBackupShowResponse = await admin.runJson(
+          `resource backup show --project ${app.projectName} --backup ${backupId}`,
+          resourceBackupShowResponseSchema,
+        );
+        expect(backupShowPayload.backup.id).toBe(backupId);
 
-      const backupListPayload: ResourceBackupListResponse = await admin.runJson(
-        `resource backup list --project ${app.projectName} --resource ${app.resourceName}`,
-        resourceBackupListResponseSchema,
-      );
-      expect(backupListPayload.backups.some((backup: ResourceBackupSummary): boolean => backup.id === backupId)).toBe(
-        true,
-      );
+        const backupListPayload: ResourceBackupListResponse = await admin.runJson(
+          `resource backup list --project ${app.projectName} --resource ${app.resourceName}`,
+          resourceBackupListResponseSchema,
+        );
+        expect(backupListPayload.backups.some((backup: ResourceBackupSummary): boolean => backup.id === backupId)).toBe(
+          true,
+        );
 
-      await writeAppDatabaseValue(routeUrl, adminAppSessionCookie, afterBackupValue);
-      await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, afterBackupValue, true);
+        await writeAppDatabaseValue(routeUrl, adminAppSessionCookie, afterBackupValue);
+        await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, afterBackupValue, true);
 
-      const restorePayload: ResourceRestoreResponse = await admin.runJson(
-        `resource backup restore --project ${app.projectName} --resource ${app.resourceName} --backup ${backupId} --yes`,
-        resourceRestoreResponseSchema,
-      );
-      expect(restorePayload.success).toBe(true);
-      await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue, true);
-      await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, afterBackupValue, false);
-      await expectAppEnvMessage(routeUrl, adminAppSessionCookie, appMessage);
+        const restorePayload: ResourceRestoreResponse = await admin.runJson(
+          `resource backup restore --project ${app.projectName} --resource ${app.resourceName} --backup ${backupId} --yes`,
+          resourceRestoreResponseSchema,
+        );
+        expect(restorePayload.success).toBe(true);
+        await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue, true);
+        await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, afterBackupValue, false);
+        await expectAppEnvMessage(routeUrl, adminAppSessionCookie, appMessage);
 
-      const restoreAsPayload: ResourceRestoreAsResponse = await admin.runJson(
-        `resource backup restore --project ${app.projectName} --backup ${backupId} --as ${restoredResourceName}`,
-        resourceRestoreAsResponseSchema,
-      );
-      expect(restoreAsPayload.success).toBe(true);
-      expect(restoreAsPayload.resource.name).toBe(restoredResourceName);
-      expect(restoreAsPayload.resource.status).toBe('running');
+        const restoreAsPayload: ResourceRestoreAsResponse = await admin.runJson(
+          `resource backup restore --project ${app.projectName} --backup ${backupId} --as ${restoredResourceName}`,
+          resourceRestoreAsResponseSchema,
+        );
+        expect(restoreAsPayload.success).toBe(true);
+        expect(restoreAsPayload.resource.name).toBe(restoredResourceName);
+        expect(restoreAsPayload.resource.status).toBe('running');
 
-      const deleteRestoredResourcePayload: ResourceDeleteResponse = await admin.runJson(
-        `resource delete --project ${app.projectName} --resource ${restoredResourceName} --delete-data --yes`,
-        resourceDeleteResponseSchema,
-      );
-      expect(deleteRestoredResourcePayload.success).toBe(true);
-      expect(deleteRestoredResourcePayload.retainedVolumes).toEqual([]);
-      context.completedCaseCount = 5;
-    },
-    selfHostedUserSetupTimeoutMs,
-  );
+        const deleteRestoredResourcePayload: ResourceDeleteResponse = await admin.runJson(
+          `resource delete --project ${app.projectName} --resource ${restoredResourceName} --delete-data --yes`,
+          resourceDeleteResponseSchema,
+        );
+        expect(deleteRestoredResourcePayload.success).toBe(true);
+        expect(deleteRestoredResourcePayload.retainedVolumes).toEqual([]);
+        context.completedCaseCount = 5;
+      },
+      selfHostedUserSetupTimeoutMs,
+    );
 
-  it(
-    'case 6/8: redeploys, rolls back, and promotes staging to production',
-    async (): Promise<void> => {
-      const {
-        app,
-        admin,
-        routeUrl,
-        activeDeployment,
-        rollbackTargetRuntimeImageRef,
-        adminAppSessionCookie,
-        completedCaseCount,
-      } = context;
-      expectSelfHostedUserSetupStepCompleted(completedCaseCount, 5);
-      await admin.runJson(
-        `variable group put ${app.variableGroupName} E2E_MESSAGE ${rollbackMessage}`,
-        variableGroupResponseSchema,
-      );
-      await admin.runJson(
-        `variable set E2E_BUILD_MESSAGE ${rollbackBuildMessage} --env ${app.environmentName}`,
-        variableResponseSchema,
-        { cwd: app.directory },
-      );
-      await admin.runJson(
-        `variable set E2E_BUILD_MESSAGE ${rollbackBuildMessage} --env staging`,
-        variableResponseSchema,
-        { cwd: app.directory },
-      );
+    it(
+      'case 6/8: redeploys, rolls back, and promotes staging to production',
+      async (): Promise<void> => {
+        const {
+          app,
+          admin,
+          routeUrl,
+          activeDeployment,
+          rollbackTargetRuntimeImageRef,
+          adminAppSessionCookie,
+          completedCaseCount,
+        } = context;
+        expectSelfHostedUserSetupStepCompleted(completedCaseCount, 5);
+        await admin.runJson(
+          `variable group put ${app.variableGroupName} E2E_MESSAGE ${rollbackMessage}`,
+          variableGroupResponseSchema,
+        );
+        await admin.runJson(
+          `variable set E2E_BUILD_MESSAGE ${rollbackBuildMessage} --env ${app.environmentName}`,
+          variableResponseSchema,
+          { cwd: app.directory },
+        );
+        await admin.runJson(
+          `variable set E2E_BUILD_MESSAGE ${rollbackBuildMessage} --env staging`,
+          variableResponseSchema,
+          { cwd: app.directory },
+        );
 
-      const secondDeployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
-        'deploy',
-        deployCommandResponseParser,
-        { cwd: app.directory },
-      );
-      const secondDeployment: DeploymentReadSummary = requireSingleActiveDeployment(
-        secondDeployPayload,
-        app.serviceName,
-      );
-      expect(secondDeployment.id).not.toBe(activeDeployment.id);
-      await expectAppEnvMessage(routeUrl, adminAppSessionCookie, rollbackMessage);
-      await expectAppBuildMessage(routeUrl, adminAppSessionCookie, rollbackBuildMessage);
+        const secondDeployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
+          'deploy',
+          deployCommandResponseParser,
+          { cwd: app.directory },
+        );
+        const secondDeployment: DeploymentReadSummary = requireSingleActiveDeployment(
+          secondDeployPayload,
+          app.serviceName,
+        );
+        expect(secondDeployment.id).not.toBe(activeDeployment.id);
+        await expectAppEnvMessage(routeUrl, adminAppSessionCookie, rollbackMessage);
+        await expectAppBuildMessage(routeUrl, adminAppSessionCookie, rollbackBuildMessage);
 
-      const rollbackPayload: DeploymentStatusResponse = await admin.runJson(
-        `rollback --project ${app.projectName}`,
-        deploymentStatusResponseSchema,
-      );
-      const rolledBackDeployment: DeploymentReadSummary = requireSingleActiveDeployment(
-        rollbackPayload,
-        app.serviceName,
-      );
-      expect(rolledBackDeployment.id).not.toBe(secondDeployment.id);
-      expect(rolledBackDeployment.status).toBe('succeeded');
-      await expectAppEnvMessage(routeUrl, adminAppSessionCookie, rollbackMessage);
-      await expectAppBuildMessage(routeUrl, adminAppSessionCookie, appBuildMessage);
+        const rollbackPayload: DeploymentStatusResponse = await admin.runJson(
+          `rollback --project ${app.projectName}`,
+          deploymentStatusResponseSchema,
+        );
+        const rolledBackDeployment: DeploymentReadSummary = requireSingleActiveDeployment(
+          rollbackPayload,
+          app.serviceName,
+        );
+        expect(rolledBackDeployment.id).not.toBe(secondDeployment.id);
+        expect(rolledBackDeployment.status).toBe('succeeded');
+        await expectAppEnvMessage(routeUrl, adminAppSessionCookie, rollbackMessage);
+        await expectAppBuildMessage(routeUrl, adminAppSessionCookie, appBuildMessage);
 
-      const rollbackInspectPayload: DeploymentInspectResponse = await admin.runJson(
-        `inspect --project ${app.projectName}`,
-        deploymentInspectResponseSchema,
-      );
-      expect(
-        requireDeploymentRuntimeImageRef(
-          requireSingleInspectedActiveDeployment(rollbackInspectPayload, app.serviceName),
-        ),
-      ).toBe(rollbackTargetRuntimeImageRef);
+        const rollbackInspectPayload: DeploymentInspectResponse = await admin.runJson(
+          `inspect --project ${app.projectName}`,
+          deploymentInspectResponseSchema,
+        );
+        expect(
+          requireDeploymentRuntimeImageRef(
+            requireSingleInspectedActiveDeployment(rollbackInspectPayload, app.serviceName),
+          ),
+        ).toBe(rollbackTargetRuntimeImageRef);
 
-      const stagingDeployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
-        'deploy --env staging',
-        deployCommandResponseParser,
-        { cwd: app.directory },
-      );
-      const stagingDeployment: DeploymentReadSummary = requireSingleActiveDeployment(
-        stagingDeployPayload,
-        app.serviceName,
-      );
-      expect(stagingDeployment.status).toBe('succeeded');
+        const stagingDeployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
+          'deploy --env staging',
+          deployCommandResponseParser,
+          { cwd: app.directory },
+        );
+        const stagingDeployment: DeploymentReadSummary = requireSingleActiveDeployment(
+          stagingDeployPayload,
+          app.serviceName,
+        );
+        expect(stagingDeployment.status).toBe('succeeded');
 
-      const promotedPayload: DeploymentStatusResponse = await admin.runJson(
-        `promote --project ${app.projectName} --from staging --to production`,
-        deploymentStatusResponseSchema,
-      );
-      const promotedDeployment: DeploymentReadSummary = requireSingleActiveDeployment(promotedPayload, app.serviceName);
-      expect(promotedDeployment.id).not.toBe(stagingDeployment.id);
-      expect(promotedDeployment.status).toBe('succeeded');
-      const promotedDeploymentId: string = promotedDeployment.id;
-      context.promotedDeploymentId = promotedDeploymentId;
+        const promotedPayload: DeploymentStatusResponse = await admin.runJson(
+          `promote --project ${app.projectName} --from staging --to production`,
+          deploymentStatusResponseSchema,
+        );
+        const promotedDeployment: DeploymentReadSummary = requireSingleActiveDeployment(
+          promotedPayload,
+          app.serviceName,
+        );
+        expect(promotedDeployment.id).not.toBe(stagingDeployment.id);
+        expect(promotedDeployment.status).toBe('succeeded');
+        const promotedDeploymentId: string = promotedDeployment.id;
+        context.promotedDeploymentId = promotedDeploymentId;
 
-      const productionStatus: DeploymentStatusResponse = await admin.runJson(
-        `status --project ${app.projectName} --env production`,
-        deploymentStatusCommandResponseParser,
-      );
-      expect(requireSingleActiveDeployment(productionStatus, app.serviceName).id).toBe(promotedDeployment.id);
+        const productionStatus: DeploymentStatusResponse = await admin.runJson(
+          `status --project ${app.projectName} --env production`,
+          deploymentStatusCommandResponseParser,
+        );
+        expect(requireSingleActiveDeployment(productionStatus, app.serviceName).id).toBe(promotedDeployment.id);
 
-      const stagingStatus: DeploymentStatusResponse = await admin.runJson(
-        `status --project ${app.projectName} --env staging`,
-        deploymentStatusCommandResponseParser,
-      );
-      expect(requireSingleActiveDeployment(stagingStatus, app.serviceName).id).toBe(stagingDeployment.id);
+        const stagingStatus: DeploymentStatusResponse = await admin.runJson(
+          `status --project ${app.projectName} --env staging`,
+          deploymentStatusCommandResponseParser,
+        );
+        expect(requireSingleActiveDeployment(stagingStatus, app.serviceName).id).toBe(stagingDeployment.id);
 
-      await expectAppEnvMessage(routeUrl, adminAppSessionCookie, rollbackMessage);
-      context.completedCaseCount = 6;
-    },
-    selfHostedUserSetupTimeoutMs,
-  );
+        await expectAppEnvMessage(routeUrl, adminAppSessionCookie, rollbackMessage);
+        context.completedCaseCount = 6;
+      },
+      selfHostedUserSetupTimeoutMs,
+    );
+
+    return;
+  }
 
   it(
     'case 7/8: invites a user, grants app access, and keeps writes denied',
@@ -370,7 +381,7 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
         promotedDeploymentId,
         completedCaseCount,
       } = context;
-      expectSelfHostedUserSetupStepCompleted(completedCaseCount, 6);
+      expectSelfHostedUserSetupStepCompleted(completedCaseCount, 4);
       const invitePayload: InviteUserResponse = await admin.runJson(
         `user invite ${viewerEmail}`,
         inviteUserResponseSchema,

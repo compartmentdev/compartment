@@ -32,6 +32,8 @@ jobs:
           - build-matrix-b-3
           - gvisor-build
           - user-flow
+          - user-flow-stateful-a
+          - user-flow-stateful-b
           - console
           - system-update
     env:

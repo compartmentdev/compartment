@@ -36,6 +36,8 @@ Run one isolated shard at a time:
 ```bash
 pnpm platform:e2e:run managed-install
 pnpm platform:e2e:run user-flow
+pnpm platform:e2e:run user-flow-stateful-a
+pnpm platform:e2e:run user-flow-stateful-b
 pnpm platform:e2e:run install-ha-network-policy
 pnpm platform:e2e:run build-matrix-a-1
 pnpm platform:e2e:run build-matrix-b-1

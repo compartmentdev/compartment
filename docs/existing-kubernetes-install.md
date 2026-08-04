@@ -18,7 +18,9 @@ Ingress Controller and pinned cert-manager prerequisite once:
 - `build-matrix-a-*`: install, Dockerfile and source builds, registry push and node pull, rollout, and image lifecycle;
 - `build-matrix-b-*`: two-node ingress-nginx clusters, with the existing Traefik controller left available, plus
   install, Railpack, and static build variants distributed across three partitions;
-- `user-flow`: install plus authenticated CLI, organization, project, domain, promote, and rollback flows;
+- `user-flow`: install plus authenticated CLI, organization, project, and domain flows;
+- `user-flow-stateful-a`: backup, restore, redeploy, rollback, and staging promotion flows;
+- `user-flow-stateful-b`: access control, session invalidation, audit export, and project archive flows;
 - `console`: install plus Console, G1 isolation, private-route denial, and product-log gates.
 
 Ingress Controller plus cert-manager setup has a 120-second wall-time budget in every shard. The lifecycle harness

@@ -17,14 +17,10 @@ import {
   organizationSettingsResponseSchema,
   projectListResponseSchema,
   projectShowResponseSchema,
-  resourceResponseSchema,
   removeVariableResponseSchema,
   ssoOidcProviderListResponseSchema,
   ssoOidcProviderResponseSchema,
-  variableGroupBindingResponseSchema,
-  variableGroupListResponseSchema,
   variableGroupResponseSchema,
-  variableGroupUsagesResponseSchema,
   variableListResponseSchema,
   variableResponseSchema,
   whoamiCommandResponseSchema,
@@ -53,32 +49,20 @@ import {
   type ProjectListResponse,
   type ProjectOverviewSummary,
   type ProjectShowResponse,
-  type ResourceResponse,
   type RemoveVariableResponse,
   type SsoOidcProviderListResponse,
   type SsoOidcProviderSummary,
-  type VariableGroupBindingResponse,
-  type VariableGroupListResponse,
-  type VariableGroupResponse,
-  type VariableGroupUsage,
-  type VariableGroupUsagesResponse,
-  type VariableGroupVariable,
   type VariableDetail,
   type VariableListItem,
   type VariableListResponse,
   type VariableResponse,
   type WhoAmICommandResponse,
 } from '@compartment/contracts';
-import {
-  disableSelfHostedUserSetupResourceRelease,
-  enableSelfHostedUserSetupResourceRelease,
-  type SelfHostedUserSetupAppFixture,
-} from './self-hosted-user-setup-app-fixture';
+import type { SelfHostedUserSetupAppFixture } from './self-hosted-user-setup-app-fixture';
 import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import type { SelfHostedUserSetupCommandResult } from './self-hosted-user-setup-command.harness';
 import {
   buildSelfHostedAppHostname,
-  buildSelfHostedAdvertisedCompartmentUrl,
   configureSelfHostedTrustedOutboundHosts,
   expectSelfHostedUserSetupStepCompleted,
   selfHostedUserSetupTimeoutMs,
@@ -86,17 +70,6 @@ import {
   type SelfHostedUserSetupHarness,
   type SelfHostedUserSetupRuntime,
 } from './self-hosted-user-setup.e2e.harness';
-import {
-  expectAppBuildMessage,
-  expectAppDirectFlag,
-  expectAppEnvMessage,
-  expectAppLogoutRevokesAppOnly,
-  expectControlPlaneLogoutRevokesApp,
-  expectTrustedAppIngress,
-  readAppBrowserSessionsWithRetry,
-  readAppSessionCookieWithRetry,
-} from './self-hosted-user-setup-app-probe.harness';
-import type { SelfHostedUserSetupBrowserSessions } from './self-hosted-user-setup-http.harness';
 import {
   deployCommandResponseParser,
   deploymentStatusCommandResponseParser,
@@ -112,7 +85,6 @@ import {
   requireDetachedDeploymentRunId,
   waitForDeploymentRuntimeLog,
   waitForDeploymentRunCompletion,
-  waitForRunningResource,
 } from './self-hosted-user-setup-deployment-flow.harness';
 import { expectCompartmentSkillInstallOnboarding } from './self-hosted-user-setup-agent-onboarding.harness';
 import { expectCurrentOrganizationSlug } from './cli-response-test.harness';
@@ -141,15 +113,20 @@ import {
   noConfiguredLoginMessage,
   oidcIssuerHost,
   oidcIssuerUrl,
-  SystemUserFlowContext,
+  type SystemUserFlowContext,
 } from './system-user-flow.e2e.harness';
-import { registerSystemUserFlowStatefulTeardownCases } from './system-user-flow.stateful-teardown.e2e-cases';
+import {
+  createSystemUserFlowContext,
+  loginSystemUserFlowAdmin,
+  prepareSystemUserFlowAppDeployment,
+  prepareSystemUserFlowVariables,
+  type SystemUserFlowAppDeployment,
+} from './system-user-flow.shared.e2e.harness';
 
 const deploymentLifecycleCaseTimeoutMs: number = deploymentRunCompletionTimeoutMs + 8 * 60_000;
 
 export function registerSystemUserFlowDeployLifecycleCases(): void {
   const setup: SelfHostedUserSetupHarness = useSelfHostedUserSetupHarness();
-  const context: SystemUserFlowContext = new SystemUserFlowContext();
 
   let runtime: SelfHostedUserSetupRuntime;
   let advertisedCompartmentUrl: string;
@@ -158,24 +135,18 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
   let viewer: SelfHostedUserSetupCli;
   let routeUrl: string;
   let activeDeployment: DeploymentReadSummary;
-  let adminAppSessionCookie: string;
   let appProjectId: string;
   let completedCaseCount: number = 0;
 
   it(
     'case 1/8: installs the single-server system and logs in from a fresh CLI',
     async (): Promise<void> => {
-      runtime = await setup.install();
-      context.runtime = runtime;
-      advertisedCompartmentUrl = buildSelfHostedAdvertisedCompartmentUrl(runtime.compartmentUrl);
-      context.advertisedCompartmentUrl = advertisedCompartmentUrl;
-      app = await setup.createAppFixture({ includeBackupRetentionSchedule: true });
-      context.app = app;
-      admin = await setup.createFreshCli();
-      context.admin = admin;
-      viewer = await setup.createFreshCli();
-      context.viewer = viewer;
-
+      const initializedContext: SystemUserFlowContext = await createSystemUserFlowContext(setup);
+      runtime = initializedContext.runtime;
+      advertisedCompartmentUrl = initializedContext.advertisedCompartmentUrl;
+      app = initializedContext.app;
+      admin = initializedContext.admin;
+      viewer = initializedContext.viewer;
       await expectBlockedPublicControlPlanePaths(advertisedCompartmentUrl);
       await expectK3dWorkerNamespaceIsolation();
 
@@ -185,14 +156,7 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
       const viewerBeforeLogin: SelfHostedUserSetupCommandResult = await viewer.runFailure('whoami --output json');
       expect(viewerBeforeLogin.stderr).toContain(noConfiguredLoginMessage);
 
-      await admin.runBrowserLogin(
-        `login --api-url ${runtime.apiUrl} --email ${runtime.adminEmail} --output json`,
-        {
-          email: runtime.adminEmail,
-          password: runtime.adminPassword,
-        },
-        { requestOrigin: runtime.apiUrl },
-      );
+      await loginSystemUserFlowAdmin(initializedContext);
 
       const identity: WhoAmICommandResponse = await admin.runJson('whoami', whoamiCommandResponseSchema);
       expect(identity.apiUrl).toBe(runtime.apiUrl);
@@ -260,7 +224,6 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
       const sourceListPayload: GitSourceListResponse = await admin.runJson('source list', gitSourceListResponseSchema);
       expect(sourceListPayload.sources).toEqual([]);
       completedCaseCount = 1;
-      context.completedCaseCount = completedCaseCount;
     },
     selfHostedUserSetupTimeoutMs,
   );
@@ -417,7 +380,6 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
         ),
       ).toBe(false);
       completedCaseCount = 2;
-      context.completedCaseCount = completedCaseCount;
     },
     selfHostedUserSetupTimeoutMs,
   );
@@ -426,100 +388,7 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
     'case 3/8: deploys an app with variable groups, generated resource env, and descriptor resource-output env',
     async (): Promise<void> => {
       expectSelfHostedUserSetupStepCompleted(completedCaseCount, 2);
-      const initialVariableGroups: VariableGroupListResponse = await admin.runJson(
-        'variable group list',
-        variableGroupListResponseSchema,
-      );
-      expect(initialVariableGroups.variableGroups).toEqual([]);
-
-      const createdGroup: VariableGroupResponse = await admin.runJson(
-        `variable group create ${app.variableGroupName}`,
-        variableGroupResponseSchema,
-      );
-      expect(createdGroup.variableGroup.name).toBe(app.variableGroupName);
-
-      const groupsAfterCreate: VariableGroupListResponse = await admin.runJson(
-        'variable group list',
-        variableGroupListResponseSchema,
-      );
-      expect(groupsAfterCreate.variableGroups).toEqual([
-        expect.objectContaining({
-          name: app.variableGroupName,
-          variableCount: 0,
-        }),
-      ]);
-
-      const messageGroup: VariableGroupResponse = await admin.runJson(
-        `variable group put ${app.variableGroupName} E2E_MESSAGE ${appMessage}`,
-        variableGroupResponseSchema,
-      );
-      expect(messageGroup.variableGroup.variables).toEqual([
-        expect.objectContaining({
-          keyName: 'E2E_MESSAGE',
-          sensitivity: 'plain',
-        } satisfies Partial<VariableGroupVariable>),
-      ]);
-
-      const shownGroup: VariableGroupResponse = await admin.runJson(
-        `variable group show ${app.variableGroupName}`,
-        variableGroupResponseSchema,
-      );
-      expect(shownGroup.variableGroup.variables).toEqual([
-        expect.objectContaining({
-          keyName: 'E2E_MESSAGE',
-          sensitivity: 'plain',
-        } satisfies Partial<VariableGroupVariable>),
-      ]);
-
-      const binding: VariableGroupBindingResponse = await admin.runJson(
-        `variable bind ${app.variableGroupName} --env ${app.environmentName}`,
-        variableGroupBindingResponseSchema,
-        { cwd: app.directory },
-      );
-      expect(binding.variableGroupName).toBe(app.variableGroupName);
-
-      const variableGroupUsages: VariableGroupUsagesResponse = await admin.runJson(
-        `variable group usages ${app.variableGroupName}`,
-        variableGroupUsagesResponseSchema,
-      );
-      expect(variableGroupUsages.usages).toEqual([
-        expect.objectContaining({
-          environmentName: app.environmentName,
-          projectName: app.projectName,
-          resourceName: null,
-          serviceName: null,
-        } satisfies Partial<VariableGroupUsage>),
-      ]);
-
-      const directVariablePayload: VariableResponse = await admin.runJson(
-        `variable set DIRECT_FLAG ${directFlagValue} --env ${app.environmentName}`,
-        variableResponseSchema,
-        { cwd: app.directory },
-      );
-      expect(directVariablePayload.variable).toEqual(
-        expect.objectContaining({
-          keyName: 'DIRECT_FLAG',
-          sensitivity: 'plain',
-          sourceType: 'direct',
-          value: directFlagValue,
-          valueHidden: false,
-        } satisfies Partial<VariableDetail>),
-      );
-
-      const buildVariablePayload: VariableResponse = await admin.runJson(
-        `variable set E2E_BUILD_MESSAGE ${appBuildMessage} --env ${app.environmentName}`,
-        variableResponseSchema,
-        { cwd: app.directory },
-      );
-      expect(buildVariablePayload.variable).toEqual(
-        expect.objectContaining({
-          keyName: 'E2E_BUILD_MESSAGE',
-          sensitivity: 'plain',
-          sourceType: 'direct',
-          value: appBuildMessage,
-          valueHidden: false,
-        } satisfies Partial<VariableDetail>),
-      );
+      await prepareSystemUserFlowVariables(admin, app);
 
       const importedVariablePayload: ImportVariablesResponse = await admin.runJson(
         `variable import --file ${app.importedVariableFileName} --env ${app.environmentName}`,
@@ -569,91 +438,15 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
       );
       expect(missingServiceVariable.stderr).toContain(missingServiceMessage);
 
-      const databaseUrlBindingPayload: VariableResponse = await admin.runJson(
-        `variable set DATABASE_URL --service ${app.serviceName} --from-resource ${app.resourceName}.connection-url`,
-        variableResponseSchema,
-        { cwd: app.directory },
+      const appDeployment: SystemUserFlowAppDeployment = await prepareSystemUserFlowAppDeployment(
+        admin,
+        app,
+        runtime,
+        advertisedCompartmentUrl,
       );
-      expect(databaseUrlBindingPayload.serviceName).toBe(app.serviceName);
-      expect(databaseUrlBindingPayload.variable).toEqual(
-        expect.objectContaining({
-          keyName: 'DATABASE_URL',
-          scopeServiceName: app.serviceName,
-          scopeType: 'service',
-          sourceResourceOutput: `${app.resourceName}.connection-url`,
-          sourceType: 'resource_output',
-          valueHidden: true,
-        } satisfies Partial<VariableDetail>),
-      );
-
-      const deployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
-        'deploy',
-        deployCommandResponseParser,
-        {
-          cwd: app.directory,
-        },
-      );
-      const deployedProject: ProjectShowResponse = await admin.runJson('project show', projectShowResponseSchema, {
-        cwd: app.directory,
-      });
-      if (deployedProject.project === null) {
-        throw new Error('Expected the deployed project to be remotely connected.');
-      }
-      appProjectId = deployedProject.project.id;
-      expect(requireSingleActiveDeployment(deployPayload, app.serviceName).status).toBe('succeeded');
-      expect(deployPayload.resources).toEqual([
-        expect.objectContaining({
-          name: app.resourceName,
-        }),
-      ]);
-
-      const bootstrapPayload: ResourceResponse = await admin.runJson(
-        `resource bootstrap --project ${app.projectName} --resource ${app.resourceName}`,
-        resourceResponseSchema,
-      );
-      expect(bootstrapPayload.resource.name).toBe(app.resourceName);
-      await waitForRunningResource(admin, app.projectName, app.resourceName);
-      await enableSelfHostedUserSetupResourceRelease(app);
-      const resourceReleaseDeployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
-        'deploy',
-        deployCommandResponseParser,
-        { cwd: app.directory },
-      );
-      expect(requireSingleActiveDeployment(resourceReleaseDeployPayload, app.serviceName).status).toBe('succeeded');
-      await disableSelfHostedUserSetupResourceRelease(app);
-      const statusPayload: DeploymentStatusResponse = await admin.runJson(
-        `status --project ${app.projectName}`,
-        deploymentStatusCommandResponseParser,
-      );
-      routeUrl = requireRouteUrl(statusPayload, app.serviceName);
-      context.routeUrl = routeUrl;
-      activeDeployment = requireSingleActiveDeployment(statusPayload, app.serviceName);
-      context.activeDeployment = activeDeployment;
-      let adminBrowserSessions: SelfHostedUserSetupBrowserSessions = await readAppBrowserSessionsWithRetry(routeUrl, {
-        email: runtime.adminEmail,
-        password: runtime.adminPassword,
-      });
-      adminAppSessionCookie = adminBrowserSessions.appSessionCookie;
-      context.adminAppSessionCookie = adminAppSessionCookie;
-      await expectAppEnvMessage(routeUrl, adminAppSessionCookie, appMessage);
-      await expectAppDirectFlag(routeUrl, adminAppSessionCookie, directFlagValue);
-      await expectAppBuildMessage(routeUrl, adminAppSessionCookie, appBuildMessage);
-      await expectTrustedAppIngress(routeUrl, adminAppSessionCookie, runtime.adminEmail, runtime.organizationSlug);
-      await expectAppLogoutRevokesAppOnly(advertisedCompartmentUrl, routeUrl, adminBrowserSessions, runtime.adminEmail);
-
-      adminBrowserSessions = await readAppBrowserSessionsWithRetry(routeUrl, {
-        email: runtime.adminEmail,
-        password: runtime.adminPassword,
-      });
-      await expectControlPlaneLogoutRevokesApp(advertisedCompartmentUrl, routeUrl, adminBrowserSessions);
-
-      adminAppSessionCookie = await readAppSessionCookieWithRetry(routeUrl, {
-        email: runtime.adminEmail,
-        password: runtime.adminPassword,
-      });
-      context.adminAppSessionCookie = adminAppSessionCookie;
-      await expectAppEnvMessage(routeUrl, adminAppSessionCookie, appMessage);
-      await expectAppBuildMessage(routeUrl, adminAppSessionCookie, appBuildMessage);
+      appProjectId = appDeployment.appProjectId;
+      routeUrl = appDeployment.routeUrl;
+      activeDeployment = appDeployment.activeDeployment;
 
       const serviceVariablePayload: VariableResponse = await admin.runJson(
         `variable set SERVICE_FLAG enabled --service ${app.serviceName}`,
@@ -714,7 +507,6 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
         await writeFile(descriptorPath, originalDescriptorContents, 'utf8');
       }
       completedCaseCount = 3;
-      context.completedCaseCount = completedCaseCount;
     },
     selfHostedUserSetupTimeoutMs,
   );
@@ -843,7 +635,6 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
         deploymentStatusCommandResponseParser,
       );
       activeDeployment = requireSingleActiveDeployment(detachedStatus, app.serviceName);
-      context.activeDeployment = activeDeployment;
       expect(activeDeployment.deploymentRunId).toBe(detachedDeploymentRunId);
 
       await admin.runJson(
@@ -885,10 +676,7 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
       );
       await expectK3dProjectNamespaceActive(appProjectId);
       completedCaseCount = 4;
-      context.completedCaseCount = completedCaseCount;
     },
     deploymentLifecycleCaseTimeoutMs,
   );
-
-  registerSystemUserFlowStatefulTeardownCases(context);
 }

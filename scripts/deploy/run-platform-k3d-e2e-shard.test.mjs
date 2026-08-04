@@ -10,7 +10,7 @@ import {
   readPlatformK3dShardSuites,
   runWithPlatformK3dCleanup,
 } from './platform-k3d-e2e-shard-support.mjs';
-import { platformK3dShardNames } from './platform-k3d-e2e-shards.mjs';
+import { platformK3dShardNames, platformK3dSystemUserSuitePaths } from './platform-k3d-e2e-shards.mjs';
 import { prepareSystemUpdateBaseline } from './run-platform-k3d-e2e-shard.mjs';
 
 describe('platform k3d e2e shard runner', () => {
@@ -142,7 +142,14 @@ describe('platform k3d e2e shard runner', () => {
       );
     }
     expect(readPlatformK3dShardSuites('gvisor-build')).toEqual(['install', 'build-matrix']);
-    expect(readPlatformK3dShardSuites('user-flow')).toEqual(['install', 'system-user']);
+    expect(readPlatformK3dShardSuites('user-flow')).toEqual(['install', 'system-user-core']);
+    expect(readPlatformK3dShardSuites('user-flow-stateful-a')).toEqual(['install', 'system-user-stateful-a']);
+    expect(readPlatformK3dShardSuites('user-flow-stateful-b')).toEqual(['install', 'system-user-stateful-b']);
+    expect(platformK3dSystemUserSuitePaths).toEqual({
+      'system-user-core': 'test/system-user-flow.e2e.test.ts',
+      'system-user-stateful-a': 'test/system-user-flow.stateful-backup-rollback.e2e.test.ts',
+      'system-user-stateful-b': 'test/system-user-flow.stateful-access-audit.e2e.test.ts',
+    });
     expect(readPlatformK3dShardSuites('console')).toEqual(['install', 'console', 'g1', 'product-log']);
     expect(readPlatformK3dShardSuites('managed-install')).toEqual([
       'public-operator-install',
