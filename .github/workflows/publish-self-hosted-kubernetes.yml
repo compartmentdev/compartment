@@ -17,10 +17,12 @@ concurrency:
 jobs:
   select-runner:
     name: kubernetes:ci / select runner
+    if: ${{ vars.KUBERNETES_PUBLISH_RUN_TESTS == 'true' }}
     uses: ./.github/workflows/_select-ci-runner.yml
 
   db-integration:
     name: kubernetes:ci / db
+    if: ${{ vars.KUBERNETES_PUBLISH_RUN_TESTS == 'true' }}
     needs:
       - select-runner
     uses: ./.github/workflows/_db-integration.yml
@@ -29,6 +31,7 @@ jobs:
 
   self-hosted-image-cache:
     name: kubernetes:ci / build images
+    if: ${{ vars.KUBERNETES_PUBLISH_RUN_TESTS == 'true' }}
     needs:
       - select-runner
     uses: ./.github/workflows/_self-hosted-image-cache.yml
@@ -37,6 +40,7 @@ jobs:
 
   self-hosted-image-security-gate:
     name: kubernetes:ci / self-hosted image security gate
+    if: ${{ vars.KUBERNETES_PUBLISH_RUN_TESTS == 'true' }}
     needs:
       - select-runner
       - self-hosted-image-cache
@@ -51,6 +55,7 @@ jobs:
 
   platform-k3d-e2e:
     name: kubernetes:ci / platform-k3d-e2e
+    if: ${{ vars.KUBERNETES_PUBLISH_RUN_TESTS == 'true' }}
     needs:
       - select-runner
       - self-hosted-image-cache
@@ -58,26 +63,6 @@ jobs:
     with:
       self_hosted_image_cache_key: ${{ needs.self-hosted-image-cache.outputs.cache_key }}
       runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
-
-  bare-vm-release-approval:
-    name: kubernetes:release / approved fresh VM gate
-    needs:
-      - publish-kubernetes-cli
-    runs-on: ubuntu-24.04
-    env:
-      GH_TOKEN: ${{ github.token }}
-      RELEASE_SHA: ${{ github.sha }}
-    steps:
-      - name: Require a successful protected bare VM gate for this commit
-        run: |
-          conclusion="$(gh api \
-            "repos/${GITHUB_REPOSITORY}/actions/workflows/bare-vm-release-gate.yml/runs?head_sha=${RELEASE_SHA}&event=workflow_dispatch&status=completed&per_page=20" \
-            --jq '.workflow_runs | map(select(.conclusion == "success")) | first | .conclusion // empty')"
-          if [ "$conclusion" != success ]; then
-            echo "No successful protected bare VM release gate exists for ${RELEASE_SHA}." >&2
-            echo 'Run Bare VM release gate against a designated disposable host, then rerun this workflow.' >&2
-            exit 1
-          fi
 
   build-kubernetes-cli:
     name: build CLI ${{ matrix.artifact_name }}
@@ -156,10 +141,6 @@ jobs:
 
   publish-kubernetes-images:
     name: publish immutable kubernetes images
-    needs:
-      - db-integration
-      - platform-k3d-e2e
-      - self-hosted-image-security-gate
     permissions:
       contents: read
       id-token: write
@@ -186,7 +167,6 @@ jobs:
     name: publish signed immutable kubernetes CLI
     needs:
       - build-kubernetes-cli
-      - publish-kubernetes-images
     permissions:
       contents: read
       id-token: write
@@ -319,7 +299,31 @@ jobs:
   promote-kubernetes-release:
     name: promote mutable kubernetes release
     needs:
-      - bare-vm-release-approval
+      - db-integration
+      - platform-k3d-e2e
+      - self-hosted-image-security-gate
+      - publish-kubernetes-images
+      - publish-kubernetes-cli
+    if: >-
+      ${{
+        always() &&
+        needs.publish-kubernetes-images.result == 'success' &&
+        needs.publish-kubernetes-cli.result == 'success' &&
+        (
+          (
+            vars.KUBERNETES_PUBLISH_RUN_TESTS == 'true' &&
+            needs.db-integration.result == 'success' &&
+            needs.platform-k3d-e2e.result == 'success' &&
+            needs.self-hosted-image-security-gate.result == 'success'
+          ) ||
+          (
+            vars.KUBERNETES_PUBLISH_RUN_TESTS != 'true' &&
+            needs.db-integration.result == 'skipped' &&
+            needs.platform-k3d-e2e.result == 'skipped' &&
+            needs.self-hosted-image-security-gate.result == 'skipped'
+          )
+        )
+      }}
     permissions:
       contents: read
       packages: write

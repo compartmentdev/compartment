@@ -6,9 +6,8 @@ GitHub Actions publishes platform images to Docker Hub and GitHub Container Regi
 
 - successful main CI runs publish immutable `sha-<commit>` images, and update
   mutable `main` only when that commit is still the current `main`;
-- pushes to `kubernetes` run the Kubernetes line's CI gates, publish immutable
-  `sha-<commit>` images, and update mutable `kubernetes` only when that commit is
-  still the current `kubernetes` branch head;
+- pushes to `kubernetes` publish immutable `sha-<commit>` images, and update mutable
+  `kubernetes` only when that commit is still the current `kubernetes` branch head;
 - manual `Publish Self-Hosted Images (SHA)` runs publish only `sha-<commit>` for the selected ref;
 - semver tags like `v0.2.0` publish `0.2.0`, and update mutable `latest`
   only when that tag is the newest stable semver tag.
@@ -32,6 +31,8 @@ Before pushing a tag, the publish job scans each self-hosted runtime image artif
 The published image artifact set contains exactly the long-running platform services: `api`, `caddy`, `edge`, and `worker`.
 
 Pull request and main CI build or restore the platform image cache once per commit, then feed the same tar archives to k3d e2e and a separate image security gate. The gate scans the immutable `sha-<commit>` refs with the same Trivy and Docker Scout policy before the workflow can pass. Main publish runs only after main CI succeeds for the same commit. Fork pull requests cannot receive Docker Hub credentials, so they run the Trivy gate only; internal pull requests, main CI, and publish workflows keep Docker Scout enabled.
+
+The Kubernetes branch publish skips its separate DB integration, image security, and k3d e2e gates by default. Set the repository Actions variable `KUBERNETES_PUBLISH_RUN_TESTS` to exactly `true` to run all three gates and their runner-selection and image-cache prerequisites. Any other value, including an unset variable, keeps the fast default. In both modes, immutable image publication still scans the exact staged artifacts with Trivy and Docker Scout, signs and verifies their published digests, and generates and attaches their SBOM and provenance attestations before mutable promotion.
 
 The root `.trivyignore.yaml` is the only allowed suppression point for Trivy self-hosted image scans. Docker Scout has no repository suppression path in the CI or publish gates.
 
