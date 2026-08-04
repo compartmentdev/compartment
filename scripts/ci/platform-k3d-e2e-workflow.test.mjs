@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
 import { platformK3dShardDefinitions, platformK3dShardNames } from '../deploy/platform-k3d-e2e-shards.mjs';
+import { readSelfHostedBuildMatrixPartition } from '../../packages/cli/test/self-hosted-build-matrix-partitions';
 
 const workflowPath = new URL('../../.github/workflows/_platform-k3d-e2e.yml', import.meta.url);
 const ciWorkflowPath = new URL('../../.github/workflows/ci.yml', import.meta.url);
@@ -21,10 +22,29 @@ describe('platform k3d e2e workflow', () => {
       matrix: { shard: platformK3dShardNames },
     });
     expect(job.name).toContain('${{ matrix.shard }}');
-    expect(job.env.COMPARTMENT_E2E_GVISOR_ENABLED).toBe("${{ matrix.shard == 'gvisor-build' && '1' || '0' }}");
-    expect(platformK3dShardDefinitions['gvisor-build'].suites).toEqual(['install', 'gvisor-build']);
-    expect(platformK3dShardDefinitions['build-matrix-a'].suites).toContain('build-matrix-a');
-    expect(platformK3dShardDefinitions['build-matrix-b'].suites).toContain('build-matrix-b');
+    expect(job.env.COMPARTMENT_E2E_GVISOR_ENABLED).toBeUndefined();
+    expect(platformK3dShardDefinitions['gvisor-build']).toMatchObject({
+      buildMatrixPartition: 'gvisor',
+      gvisorEnabled: true,
+      suites: ['install', 'build-matrix'],
+    });
+    const buildMatrixShards = Object.values(platformK3dShardDefinitions).filter(
+      (definition) => definition.suites.includes('build-matrix') && !definition.gvisorEnabled,
+    );
+    expect(buildMatrixShards).toHaveLength(5);
+    expect(buildMatrixShards.every((definition) => definition.suites.join(',') === 'install,build-matrix')).toBe(true);
+    expect(buildMatrixShards.map((definition) => definition.buildMatrixPartition).toSorted()).toEqual([
+      'a-1',
+      'a-2',
+      'b-1',
+      'b-2',
+      'b-3',
+    ]);
+    for (const definition of Object.values(platformK3dShardDefinitions)) {
+      if (definition.buildMatrixPartition !== undefined) {
+        expect(readSelfHostedBuildMatrixPartition(definition.buildMatrixPartition)).toBeDefined();
+      }
+    }
     const toolInstallStep = job.steps.find(
       (step) => step.name === 'Install pinned k3d, kubectl, Helm, and helm-unittest',
     );

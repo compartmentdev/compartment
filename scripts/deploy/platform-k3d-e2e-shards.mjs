@@ -1,17 +1,38 @@
+const installSuite = 'install';
+const buildMatrixSuite = 'build-matrix';
+
 export const platformK3dShardDefinitions = Object.freeze({
-  'build-matrix-a': Object.freeze({
-    index: 1,
-    suites: Object.freeze(['install', 'ha', 'network-policy', 'build-matrix-a']),
+  'managed-install': defineShard(0, ['public-operator-install', 'managed-install', 'retained-state']),
+  'install-ha-network-policy': defineShard(1, [installSuite, 'ha', 'network-policy'], {
+    clusterName: 'compartment-e2e-install-ha-np',
   }),
-  'build-matrix-b': Object.freeze({ index: 2, suites: Object.freeze(['install', 'build-matrix-b']) }),
-  'gvisor-build': Object.freeze({ index: 5, suites: Object.freeze(['install', 'gvisor-build']) }),
-  'user-flow': Object.freeze({ index: 3, suites: Object.freeze(['install', 'system-user']) }),
-  console: Object.freeze({ index: 4, suites: Object.freeze(['install', 'console', 'g1', 'product-log']) }),
-  'managed-install': Object.freeze({
-    index: 0,
-    suites: Object.freeze(['public-operator-install', 'managed-install', 'retained-state']),
+  'build-matrix-a-1': defineBuildMatrixShard(2, 'a-1'),
+  'build-matrix-a-2': defineBuildMatrixShard(3, 'a-2'),
+  'build-matrix-b-1': defineBuildMatrixShard(4, 'b-1', 'nginx'),
+  'build-matrix-b-2': defineBuildMatrixShard(5, 'b-2', 'nginx'),
+  'build-matrix-b-3': defineBuildMatrixShard(6, 'b-3', 'nginx'),
+  'gvisor-build': defineShard(7, [installSuite, buildMatrixSuite], {
+    buildMatrixPartition: 'gvisor',
+    gvisorEnabled: true,
   }),
-  'system-update': Object.freeze({ index: 6, suites: Object.freeze(['install', 'system-update']) }),
+  'user-flow': defineShard(8, [installSuite, 'system-user']),
+  console: defineShard(9, [installSuite, 'console', 'g1', 'product-log']),
+  'system-update': defineShard(10, [installSuite, 'system-update']),
 });
 
 export const platformK3dShardNames = Object.freeze(Object.keys(platformK3dShardDefinitions));
+
+function defineBuildMatrixShard(index, buildMatrixPartition, ingressClass = 'traefik') {
+  return defineShard(index, [installSuite, buildMatrixSuite], { buildMatrixPartition, ingressClass });
+}
+
+function defineShard(index, suites, options = {}) {
+  return Object.freeze({
+    buildMatrixPartition: options.buildMatrixPartition,
+    clusterName: options.clusterName,
+    gvisorEnabled: options.gvisorEnabled ?? false,
+    index,
+    ingressClass: options.ingressClass ?? 'traefik',
+    suites: Object.freeze(suites),
+  });
+}

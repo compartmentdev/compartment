@@ -36,8 +36,9 @@ Run one isolated shard at a time:
 ```bash
 pnpm platform:e2e:run managed-install
 pnpm platform:e2e:run user-flow
-pnpm platform:e2e:run build-matrix-a
-pnpm platform:e2e:run build-matrix-b
+pnpm platform:e2e:run install-ha-network-policy
+pnpm platform:e2e:run build-matrix-a-1
+pnpm platform:e2e:run build-matrix-b-1
 pnpm platform:e2e:run console
 ```
 
@@ -50,7 +51,6 @@ To retain a failed stand for investigation, set `COMPARTMENT_E2E_KEEP_ON_FAILURE
 CI uses the same opt-in through the `COMPARTMENT_E2E_KEEP_ON_FAILURE` Actions variable; leave it unset for the clean
 default.
 
-The shards use explicit reproducible k3s images. Most exercise the current supported Kubernetes minor; `build-matrix-b`
-exercises the previous supported minor while also adding one agent and ingress-nginx. All shards pin cert-manager and
+The shards use explicit reproducible k3s images. The `build-matrix-b-*` shards add one agent and ingress-nginx. All shards pin cert-manager and
 leave bundled Traefik available. Controller plus cert-manager setup is measured once per cluster and must finish
 within 120 seconds.

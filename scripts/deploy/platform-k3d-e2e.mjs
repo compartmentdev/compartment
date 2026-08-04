@@ -59,7 +59,7 @@ const imageCacheLockOwnerToken = `e2e-${clusterName}`;
 const pebbleCaContainerName = `${clusterName}-pebble-ca`;
 const shouldExtractPebbleCa =
   process.env.COMPARTMENT_E2E_SHARD === undefined || process.env.COMPARTMENT_E2E_SHARD === 'managed-install';
-const isIngressNginxShard = process.env.COMPARTMENT_E2E_SHARD === 'build-matrix-b';
+const isIngressNginxShard = process.env.COMPARTMENT_E2E_INGRESS_CLASS === 'nginx';
 const ingressClassName = isIngressNginxShard ? 'nginx' : 'traefik';
 const registryTestCaPath = join(dirname(platformValuesPath), `${clusterName}-registry-test-ca.crt`);
 const registryTestCaKeyPath = join(dirname(platformValuesPath), `${clusterName}-registry-test-ca.key`);
@@ -404,8 +404,7 @@ async function createCluster() {
     await waitForIngressController('kube-system', 'traefik', prerequisiteSetupStartedAt, prerequisiteSetupDeadline);
   }
   const certManagerApplyTimeoutSeconds = readPrerequisiteWaitTimeoutSeconds(prerequisiteSetupStartedAt);
-  runCommand(
-    'kubectl',
+  await runKubectlWithTransientApiRetry(
     [
       '--context',
       contextName,
@@ -464,8 +463,7 @@ export function buildCertManagerReadinessWaitCommands(timeoutSeconds) {
 
 async function installIngressNginx(prerequisiteSetupStartedAt, prerequisiteSetupDeadline) {
   const applyTimeoutSeconds = readPrerequisiteWaitTimeoutSeconds(prerequisiteSetupStartedAt);
-  runCommand(
-    'kubectl',
+  await runKubectlWithTransientApiRetry(
     [
       '--context',
       contextName,
@@ -474,7 +472,7 @@ async function installIngressNginx(prerequisiteSetupStartedAt, prerequisiteSetup
       '--filename',
       ingressNginxManifestUrl,
     ],
-    repositoryRoot,
+    { deadline: prerequisiteSetupDeadline },
   );
   runCommand(
     'kubectl',

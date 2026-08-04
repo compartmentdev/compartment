@@ -23,7 +23,7 @@ export function buildPlatformK3dShardEnvironment(shardName, baseEnv = process.en
     throw new Error(`Unknown platform k3d e2e shard: ${shardName}`);
   }
   const portOffset = definition.index * 100;
-  const clusterName = baseEnv.COMPARTMENT_E2E_CLUSTER_NAME ?? `compartment-e2e-${shardName}`;
+  const clusterName = baseEnv.COMPARTMENT_E2E_CLUSTER_NAME ?? definition.clusterName ?? `compartment-e2e-${shardName}`;
   const httpPort = baseEnv.COMPARTMENT_E2E_HTTP_PORT ?? (18_080 + portOffset).toString();
   const stateDirectory = `.compartment/platform-k3d-${shardName}`;
   const environment = {
@@ -32,10 +32,10 @@ export function buildPlatformK3dShardEnvironment(shardName, baseEnv = process.en
     COMPARTMENT_E2E_CLUSTER_NAME: clusterName,
     COMPARTMENT_E2E_COMPARTMENT_URL: `http://console.compartment.localhost:${httpPort}`,
     COMPARTMENT_E2E_DIAGNOSTICS_PATH: `.compartment/platform-k3d-diagnostics-${shardName}`,
-    COMPARTMENT_E2E_GVISOR_ENABLED: shardName === 'gvisor-build' ? '1' : '0',
+    COMPARTMENT_E2E_GVISOR_ENABLED: definition.gvisorEnabled ? '1' : '0',
     COMPARTMENT_E2E_HTTP_PORT: httpPort,
     COMPARTMENT_E2E_HTTPS_PORT: baseEnv.COMPARTMENT_E2E_HTTPS_PORT ?? (18_443 + portOffset).toString(),
-    COMPARTMENT_E2E_INGRESS_CLASS: shardName === 'build-matrix-b' ? 'nginx' : 'traefik',
+    COMPARTMENT_E2E_INGRESS_CLASS: definition.ingressClass,
     COMPARTMENT_E2E_KUBE_CONTEXT: `k3d-${clusterName}`,
     COMPARTMENT_E2E_MANAGED_NAMESPACE: baseEnv.COMPARTMENT_E2E_MANAGED_NAMESPACE ?? `compartment-managed-${shardName}`,
     COMPARTMENT_E2E_MANAGED_VALUES_PATH: `${stateDirectory}/managed-values.yaml`,
@@ -54,6 +54,10 @@ export function buildPlatformK3dShardEnvironment(shardName, baseEnv = process.en
     COMPARTMENT_CLI_BUNDLED_COSIGN_PATH: 'scripts/deploy/fixtures/cosign-k3d-e2e.mjs',
     COMPARTMENT_SELF_HOSTED_USER_SETUP_E2E: '1',
   };
+  delete environment.COMPARTMENT_E2E_BUILD_MATRIX_PARTITION;
+  if (definition.buildMatrixPartition !== undefined) {
+    environment.COMPARTMENT_E2E_BUILD_MATRIX_PARTITION = definition.buildMatrixPartition;
+  }
   readPlatformK3dEnvironment(environment);
   return environment;
 }
