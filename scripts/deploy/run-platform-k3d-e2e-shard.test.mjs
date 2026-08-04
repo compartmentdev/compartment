@@ -46,6 +46,7 @@ describe('platform k3d e2e shard runner', () => {
     expect(new Set(environments.map((env) => env.COMPARTMENT_E2E_CLUSTER_NAME))).toHaveLength(
       platformK3dShardNames.length,
     );
+    expect(environments.every((env) => env.COMPARTMENT_E2E_CLUSTER_NAME.length <= 32)).toBe(true);
     for (const name of [
       'COMPARTMENT_E2E_REGISTRY_NAME',
       'COMPARTMENT_E2E_REGISTRY_PORT',

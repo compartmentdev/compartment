@@ -404,8 +404,7 @@ async function createCluster() {
     await waitForIngressController('kube-system', 'traefik', prerequisiteSetupStartedAt, prerequisiteSetupDeadline);
   }
   const certManagerApplyTimeoutSeconds = readPrerequisiteWaitTimeoutSeconds(prerequisiteSetupStartedAt);
-  runCommand(
-    'kubectl',
+  await runKubectlWithTransientApiRetry(
     [
       '--context',
       contextName,
@@ -464,8 +463,7 @@ export function buildCertManagerReadinessWaitCommands(timeoutSeconds) {
 
 async function installIngressNginx(prerequisiteSetupStartedAt, prerequisiteSetupDeadline) {
   const applyTimeoutSeconds = readPrerequisiteWaitTimeoutSeconds(prerequisiteSetupStartedAt);
-  runCommand(
-    'kubectl',
+  await runKubectlWithTransientApiRetry(
     [
       '--context',
       contextName,
@@ -474,7 +472,7 @@ async function installIngressNginx(prerequisiteSetupStartedAt, prerequisiteSetup
       '--filename',
       ingressNginxManifestUrl,
     ],
-    repositoryRoot,
+    { deadline: prerequisiteSetupDeadline },
   );
   runCommand(
     'kubectl',

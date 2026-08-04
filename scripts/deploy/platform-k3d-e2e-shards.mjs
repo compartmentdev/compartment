@@ -3,7 +3,9 @@ const buildMatrixSuite = 'build-matrix';
 
 export const platformK3dShardDefinitions = Object.freeze({
   'managed-install': defineShard(0, ['public-operator-install', 'managed-install', 'retained-state']),
-  'install-ha-network-policy': defineShard(1, [installSuite, 'ha', 'network-policy']),
+  'install-ha-network-policy': defineShard(1, [installSuite, 'ha', 'network-policy'], {
+    clusterName: 'compartment-e2e-install-ha-np',
+  }),
   'build-matrix-a-1': defineBuildMatrixShard(2, 'a-1'),
   'build-matrix-a-2': defineBuildMatrixShard(3, 'a-2'),
   'build-matrix-b-1': defineBuildMatrixShard(4, 'b-1', 'nginx'),
@@ -27,6 +29,7 @@ function defineBuildMatrixShard(index, buildMatrixPartition, ingressClass = 'tra
 function defineShard(index, suites, options = {}) {
   return Object.freeze({
     buildMatrixPartition: options.buildMatrixPartition,
+    clusterName: options.clusterName,
     gvisorEnabled: options.gvisorEnabled ?? false,
     index,
     ingressClass: options.ingressClass ?? 'traefik',
