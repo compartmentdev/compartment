@@ -16,12 +16,14 @@ import type {
   ManagedVmProvisionerState,
 } from '../../services/managed-vm-provisioning.types';
 import { provisionManagedVmCluster } from '../../services/managed-vm-provisioner.service';
-import { renderManagedVmFirewallRules } from '../../services/managed-vm-firewall.service';
 import { persistManagedVmStage } from '../../services/managed-vm-state.service';
 import type { CliCommandDependencies } from '../command.types';
 import { resolveInstallIdentityPrompts, withResolvedInstallIdentity } from './install.command.identity';
 import { executeCanonicalKubernetesInstallCommand } from './install.command.kubernetes';
 import type { InstallCommandOptions, ResolvedInstallIdentityPrompts } from './install.command.types';
+import { promptCanonicalInstallDomain } from './install.command.kubernetes-wizard-domain';
+import type { KubernetesInstallDomainInput } from '../../services/kubernetes-install-input.service.types';
+import { buildManagedVmReview, parseManagedVmObservedAddress } from './install.command.vm.helpers';
 
 const observationUrl: string = 'https://1.1.1.1/cdn-cgi/trace';
 
@@ -56,24 +58,42 @@ async function reviewAndExecuteManagedVmMutation(
   options: InstallCommandOptions,
   preflight: ManagedVmPreflightResult,
 ): Promise<void> {
-  const identity: ResolvedInstallIdentityPrompts = await resolveInstallIdentityPrompts(dependencies, options);
-  renderManagedVmReview(dependencies, preflight, identity);
+  const resolvedOptions: InstallCommandOptions = await resolveManagedVmDomainOptions(dependencies, options);
+  const identity: ResolvedInstallIdentityPrompts = await resolveInstallIdentityPrompts(dependencies, resolvedOptions);
+  renderManagedVmReview(dependencies, preflight, identity, resolvedOptions);
   const confirmed: boolean = options.yes === true || (await promptMutationConfirmation(dependencies.io));
   if (!confirmed) {
     throw new Error('Installation cancelled before host changes.');
   }
   if (typeof process.getuid === 'function' && process.getuid() === 0) {
-    await runPrivilegedManagedVmInstall(dependencies, withResolvedInstallIdentity(options, identity), preflight);
+    await runPrivilegedManagedVmInstall(
+      dependencies,
+      withResolvedInstallIdentity(resolvedOptions, identity),
+      preflight,
+    );
     return;
   }
-  await reexecManagedVmInstall(dependencies, options, identity);
+  await reexecManagedVmInstall(dependencies, resolvedOptions, identity);
+}
+
+async function resolveManagedVmDomainOptions(
+  dependencies: CliCommandDependencies,
+  options: InstallCommandOptions,
+): Promise<InstallCommandOptions> {
+  if (options.managedDomain === true || options.baseDomain !== undefined) {
+    return options;
+  }
+  const domain: KubernetesInstallDomainInput = await promptCanonicalInstallDomain(dependencies.io);
+  return domain.mode === 'managed'
+    ? { ...options, managedDomain: true }
+    : { ...options, baseDomain: domain.baseDomain };
 }
 
 async function runManagedVmPreflight(): Promise<ManagedVmPreflightResult> {
   const [inventory, state, publicAddress] = await Promise.all([
     inspectManagedVmHost(),
     inspectManagedVmState(),
-    observePublicIpv4(observationUrl).then(parseObservedAddress),
+    observePublicIpv4(observationUrl).then(parseManagedVmObservedAddress),
   ]);
   return evaluateManagedVmPreflight(inventory, state, publicAddress);
 }
@@ -108,7 +128,6 @@ async function executeManagedVmPlatformInstall(
       ingressClass: 'traefik',
       ingressEndpoint: preflight.publicAddress,
       kubeContext: 'default',
-      managedDomain: true,
       storageClass: 'local-path',
       values: managedVmValuesPath,
     });
@@ -152,14 +171,18 @@ function buildPrivilegedArgs(
   handoffPath: string,
 ): string[] {
   return [
-    ...buildPrivilegedCommandArgs(dependencies, handoffPath),
+    ...buildPrivilegedCommandArgs(dependencies, options, handoffPath),
     ...buildPrivilegedIdentityArgs(identity, passwordPath),
     '--output',
     options.output,
   ];
 }
 
-function buildPrivilegedCommandArgs(dependencies: CliCommandDependencies, handoffPath: string): string[] {
+function buildPrivilegedCommandArgs(
+  dependencies: CliCommandDependencies,
+  options: InstallCommandOptions,
+  handoffPath: string,
+): string[] {
   return [
     '--',
     ...dependencies.commandPrefix,
@@ -170,8 +193,18 @@ function buildPrivilegedCommandArgs(dependencies: CliCommandDependencies, handof
     '--privileged-vm-handoff',
     handoffPath,
     '--yes',
-    '--managed-domain',
+    ...buildPrivilegedDomainArgs(options),
   ];
+}
+
+function buildPrivilegedDomainArgs(options: InstallCommandOptions): string[] {
+  if (options.managedDomain === true) {
+    return ['--managed-domain'];
+  }
+  if (options.baseDomain === undefined) {
+    throw new Error('Managed VM domain must be resolved before privileged installation.');
+  }
+  return ['--base-domain', options.baseDomain];
 }
 
 function buildPrivilegedIdentityArgs(identity: ResolvedInstallIdentityPrompts, passwordPath: string): string[] {
@@ -222,41 +255,7 @@ function renderManagedVmReview(
   dependencies: CliCommandDependencies,
   preflight: ManagedVmPreflightResult,
   identity: ResolvedInstallIdentityPrompts,
+  options: InstallCommandOptions,
 ): void {
-  dependencies.io.stderr(`\nInstallation review
-  Target: this VM
-  Domain: managed
-  Owner: ${identity.adminEmail}
-  Organization: ${identity.organizationName}
-
-Managed Kubernetes
-  Kubernetes: k3s ${preflight.metadata.k3sVersion} (${preflight.metadata.k3sChannel})
-  kubectl: provided by k3s
-  Helm: ${preflight.metadata.helmVersion}
-  Sandbox: gVisor ${preflight.metadata.gvisorVersion}
-  Topology: single node, embedded etcd
-
-Host changes
-  /usr/local/bin/compartment, k3s, helm, runsc, containerd-shim-runsc-v1
-  /etc/compartment, /etc/containerd, and /etc/rancher/k3s
-  /var/lib/rancher/k3s and /var/lib/compartment/installer
-  systemd services: compartment-firewall, k3s
-  Firewall rules on ${preflight.inventory.publicInterface}:
-${indent(renderManagedVmFirewallRules(preflight.inventory.publicInterface), '    ')}
-`);
-}
-
-function parseObservedAddress(body: string): string {
-  const traceAddress: string | undefined = body
-    .split('\n')
-    .find((line: string): boolean => line.startsWith('ip='))
-    ?.slice(3);
-  return traceAddress ?? body;
-}
-
-function indent(value: string, prefix: string): string {
-  return value
-    .split('\n')
-    .map((line: string): string => `${prefix}${line}`)
-    .join('\n');
+  dependencies.io.stderr(buildManagedVmReview(preflight, identity, options));
 }

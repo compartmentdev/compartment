@@ -183,8 +183,8 @@ async function resolveValues(
     dependencies.io,
     options,
     inventory,
-    async (contextName: string): Promise<KubernetesInstallResourceInventory> =>
-      await readKubernetesInstallResourceInventory({ resolvedKubeconfig: kubeconfig }, contextName),
+    async (contextName: string, namespace: string): Promise<KubernetesInstallResourceInventory> =>
+      await readKubernetesInstallResourceInventory({ resolvedKubeconfig: kubeconfig }, contextName, namespace),
     createIssuerInspector(kubeconfig),
     createKubernetesInstallRetainedStateReader(kubeconfig),
   );

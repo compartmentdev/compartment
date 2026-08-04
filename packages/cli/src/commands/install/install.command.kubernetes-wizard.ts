@@ -3,12 +3,13 @@ import {
   promptNewPassword,
   promptRegisterEmail,
   promptRegisterOrganization,
-  promptVisibleText,
   writeInstallOrganizationDetailsHeading,
 } from '../../prompts/prompt';
-import { readPromptLine } from '../../prompts/prompt-reader';
 import type { KubernetesInstallInputValues } from './install.command.input.types';
-import type { KubernetesInstallResourceInventory } from '../../services/kubernetes-install-inventory.service.types';
+import type {
+  KubernetesInstallIssuerChoice,
+  KubernetesInstallResourceInventory,
+} from '../../services/kubernetes-install-inventory.service.types';
 import type {
   KubernetesContextChoice,
   KubernetesInstallWizardDomain,
@@ -16,7 +17,6 @@ import type {
   KubernetesInstallWizardClusterSelection,
   KubernetesInstallWizardOwner,
   KubernetesInstallWizardResult,
-  KubernetesStorageClassChoice,
   ReadKubernetesInstallResourceInventory,
   ReadKubernetesInstallRetainedState,
   InspectKubernetesInstallIssuer,
@@ -27,6 +27,30 @@ import { confirmKubernetesInstall, renderKubernetesInstallReview } from './insta
 import { resolveKubernetesInstallWizardDomainForSelection } from './install.command.kubernetes-wizard-domain';
 import type { RetainedKubernetesInstallState } from '../../services/kubernetes-install.service.types';
 import { buildKubernetesInstallWizardValues } from './install.command.kubernetes-wizard-values';
+import {
+  confirmInstallTarget,
+  selectInstallContext,
+  selectInstallIngressClass,
+  selectInstallStorageClass,
+} from './install.command.kubernetes-wizard-resources';
+
+interface FinishKubernetesInstallWizardInput {
+  context: KubernetesContextChoice;
+  ingressClass: string;
+  inspectIssuer: InspectKubernetesInstallIssuer;
+  issuers: readonly KubernetesInstallIssuerChoice[];
+  options: InstallCommandOptions;
+  retainedState: RetainedKubernetesInstallState | null;
+  storageClass: string;
+}
+
+interface PrepareFinishKubernetesInstallWizardInput {
+  context: KubernetesContextChoice;
+  inspectIssuer: InspectKubernetesInstallIssuer;
+  options: InstallCommandOptions;
+  readResources: ReadKubernetesInstallResourceInventory;
+  readRetainedState: ReadKubernetesInstallRetainedState;
+}
 
 export async function resolveCanonicalKubernetesInstallWizard(
   io: CliIo,
@@ -36,45 +60,73 @@ export async function resolveCanonicalKubernetesInstallWizard(
   inspectIssuer: InspectKubernetesInstallIssuer,
   readRetainedState: ReadKubernetesInstallRetainedState = async (): Promise<null> => await Promise.resolve(null),
 ): Promise<KubernetesInstallWizardResult> {
-  const context: KubernetesContextChoice = await selectContext(io, options.kubeContext, inventory.contexts);
-  await confirmTarget(io);
-  const resources: KubernetesInstallResourceInventory = await readResources(context.name);
+  const context: KubernetesContextChoice = await selectInstallContext(io, options.kubeContext, inventory.contexts);
+  await confirmInstallTarget(io);
+  return await finishWizard(
+    io,
+    await prepareFinishWizardInput(io, { context, inspectIssuer, options, readResources, readRetainedState }),
+  );
+}
+
+async function prepareFinishWizardInput(
+  io: CliIo,
+  input: PrepareFinishKubernetesInstallWizardInput,
+): Promise<FinishKubernetesInstallWizardInput> {
+  const { context, inspectIssuer, options, readResources, readRetainedState } = input;
   const namespace: string = options.namespace ?? 'compartment';
-  const releaseName: string = options.releaseName ?? 'compartment';
+  const resources: KubernetesInstallResourceInventory = await readResources(context.name, namespace);
   const retainedState: RetainedKubernetesInstallState | null = await readRetainedState(
     context.name,
     namespace,
-    releaseName,
+    options.releaseName ?? 'compartment',
   );
-  const ingressClass: string = await selectIngressClass(io, options.ingressClass, resources.ingressClasses);
-  const storageClass: string = await selectStorageClass(io, options.storageClass, resources.storageClasses);
-  return await finishWizard(io, options, context, ingressClass, storageClass, inspectIssuer, retainedState);
+  const ingressClass: string = await selectInstallIngressClass(io, options.ingressClass, resources.ingressClasses);
+  const storageClass: string = await selectInstallStorageClass(io, options.storageClass, resources.storageClasses);
+  return {
+    context,
+    ingressClass,
+    inspectIssuer,
+    issuers: resources.issuers,
+    options,
+    retainedState,
+    storageClass,
+  };
 }
 
 async function finishWizard(
   io: CliIo,
-  options: InstallCommandOptions,
-  context: KubernetesContextChoice,
-  ingressClass: string,
-  storageClass: string,
-  inspectIssuer: InspectKubernetesInstallIssuer,
-  retainedState: RetainedKubernetesInstallState | null,
+  input: FinishKubernetesInstallWizardInput,
 ): Promise<KubernetesInstallWizardResult> {
   const resolved: ResolvedKubernetesInstallWizardReview = await resolveWizardReview(
     io,
-    options,
-    context.name,
-    ingressClass,
-    storageClass,
-    inspectIssuer,
-    retainedState,
+    input.options,
+    input.context.name,
+    input.ingressClass,
+    input.storageClass,
+    input.issuers,
+    input.inspectIssuer,
+    input.retainedState,
   );
-  renderKubernetesInstallReview(io, resolved.input, context.apiServer, resolved.domain.tlsReview, retainedState);
+  renderResolvedWizardReview(io, input, resolved);
   await confirmKubernetesInstall(io);
   return {
     input: resolved.input,
-    values: buildKubernetesInstallWizardValues(resolved.domain, ingressClass, storageClass),
+    values: buildKubernetesInstallWizardValues(resolved.domain, input.ingressClass, input.storageClass),
   };
+}
+
+function renderResolvedWizardReview(
+  io: CliIo,
+  input: FinishKubernetesInstallWizardInput,
+  resolved: ResolvedKubernetesInstallWizardReview,
+): void {
+  renderKubernetesInstallReview(
+    io,
+    resolved.input,
+    input.context.apiServer,
+    resolved.domain.tlsReview,
+    input.retainedState,
+  );
 }
 
 async function resolveWizardReview(
@@ -83,10 +135,11 @@ async function resolveWizardReview(
   kubeContext: string,
   ingressClass: string,
   storageClass: string,
+  issuers: readonly KubernetesInstallIssuerChoice[],
   inspectIssuer: InspectKubernetesInstallIssuer,
   retainedState: RetainedKubernetesInstallState | null,
 ): Promise<ResolvedKubernetesInstallWizardReview> {
-  const selection: KubernetesInstallWizardClusterSelection = { ingressClass, kubeContext, storageClass };
+  const selection: KubernetesInstallWizardClusterSelection = { ingressClass, issuers, kubeContext, storageClass };
   const domain: KubernetesInstallWizardDomain = await resolveKubernetesInstallWizardDomainForSelection(
     io,
     options,
@@ -150,115 +203,4 @@ function buildWizardInput(
     releaseName: options.releaseName ?? 'compartment',
     storageClass,
   };
-}
-
-async function selectIngressClass(
-  io: CliIo,
-  configured: string | undefined,
-  choices: readonly string[],
-): Promise<string> {
-  return await selectNamedResource(io, 'IngressClass', configured, choices);
-}
-
-async function selectContext(
-  io: CliIo,
-  configured: string | undefined,
-  contexts: readonly KubernetesContextChoice[],
-): Promise<KubernetesContextChoice> {
-  if (configured !== undefined) {
-    const selected: KubernetesContextChoice | undefined = contexts.find(
-      (context: KubernetesContextChoice): boolean => context.name === configured,
-    );
-    if (selected === undefined) {
-      throw new Error(`Kubernetes context "${configured}" does not exist.`);
-    }
-    return selected;
-  }
-  return await selectChoice(
-    io,
-    'Kubernetes context',
-    contexts,
-    (context: KubernetesContextChoice): string => context.name,
-  );
-}
-
-async function confirmTarget(io: CliIo): Promise<void> {
-  const answer: string = (await readPromptLine(io, `Install Compartment into this cluster? [Y/n]: `))
-    .trim()
-    .toLowerCase();
-  if (answer !== '' && answer !== 'y' && answer !== 'yes') {
-    throw new Error('Installation cancelled.');
-  }
-}
-
-async function selectStorageClass(
-  io: CliIo,
-  configured: string | undefined,
-  choices: readonly KubernetesStorageClassChoice[],
-): Promise<string> {
-  if (configured !== undefined) {
-    return await selectNamedResource(
-      io,
-      'StorageClass',
-      configured,
-      choices.map((choice: KubernetesStorageClassChoice): string => choice.name),
-    );
-  }
-  const defaults: KubernetesStorageClassChoice[] = readDefaultStorageClasses(choices);
-  if (defaults.length === 1) {
-    return defaults[0]!.name;
-  }
-  return (await selectStorageChoice(io, choices)).name;
-}
-
-async function selectStorageChoice(
-  io: CliIo,
-  choices: readonly KubernetesStorageClassChoice[],
-): Promise<KubernetesStorageClassChoice> {
-  return await selectChoice(
-    io,
-    'StorageClass',
-    choices,
-    (choice: KubernetesStorageClassChoice): string => `${choice.name}${choice.default ? ' (default)' : ''}`,
-  );
-}
-
-async function selectNamedResource(
-  io: CliIo,
-  label: string,
-  configured: string | undefined,
-  choices: readonly string[],
-): Promise<string> {
-  if (configured !== undefined) {
-    if (!choices.includes(configured)) {
-      throw new Error(`${label} "${configured}" does not exist.`);
-    }
-    return configured;
-  }
-  return choices.length === 1
-    ? choices[0]!
-    : await selectChoice(io, label, choices, (choice: string): string => choice);
-}
-
-function readDefaultStorageClasses(choices: readonly KubernetesStorageClassChoice[]): KubernetesStorageClassChoice[] {
-  return choices.filter((choice: KubernetesStorageClassChoice): boolean => choice.default);
-}
-
-async function selectChoice<T>(
-  io: CliIo,
-  label: string,
-  choices: readonly T[],
-  render: (choice: T) => string,
-): Promise<T> {
-  if (choices.length === 0) {
-    throw new Error(`No eligible ${label} values were found.`);
-  }
-  io.stderr(`${label}:\n`);
-  choices.forEach((choice: T, index: number): void => io.stderr(`  ${String(index + 1)}. ${render(choice)}\n`));
-  const answer: string = await promptVisibleText(io, label, '1');
-  const index: number = Number(answer) - 1;
-  if (!Number.isInteger(index) || index < 0 || index >= choices.length) {
-    throw new Error(`${label} selection must be between 1 and ${String(choices.length)}.`);
-  }
-  return choices[index]!;
 }

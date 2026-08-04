@@ -8,6 +8,7 @@ import type {
 import type {
   KubernetesContextChoice,
   KubernetesInstallInventory,
+  KubernetesInstallIssuerChoice,
   KubernetesInstallResourceInventory,
   KubernetesStorageClassChoice,
 } from '../../services/kubernetes-install-inventory.service.types';
@@ -17,6 +18,7 @@ import type { RetainedKubernetesInstallState } from '../../services/kubernetes-i
 export type KubernetesInstallWizardInventory = KubernetesInstallInventory;
 export type ReadKubernetesInstallResourceInventory = (
   contextName: string,
+  namespace: string,
 ) => Promise<KubernetesInstallResourceInventory>;
 export type InspectKubernetesInstallIssuer = (
   contextName: string,
@@ -55,6 +57,7 @@ export interface ResolvedKubernetesInstallWizardReview {
 
 export interface KubernetesInstallWizardClusterSelection {
   ingressClass: string;
+  issuers: readonly KubernetesInstallIssuerChoice[];
   kubeContext: string;
   storageClass: string;
 }

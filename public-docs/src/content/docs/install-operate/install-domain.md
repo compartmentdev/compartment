@@ -8,6 +8,10 @@ that domain. This install domain is separate from any [custom domain added to on
 
 The installer supports two domain ownership models on both managed-VM and existing-Kubernetes targets.
 
+In an interactive install, both targets show the same domain choice. A managed-VM install carries that choice into
+the canonical Kubernetes install without asking for issuer kind or name; its internal registry PKI and node trust
+and its gVisor/runsc runtime are automatic.
+
 ## Managed Compartment domain
 
 The managed domain is the default when you do not pass `--base-domain`. The installer allocates the domain, retains
@@ -47,6 +51,13 @@ The bundled private registry has a separate certificate for its retained Service
 `registry.issuerRef` must reference a cert-manager CA issuer whose CA is already trusted by every eligible Kubernetes
 node and by the machine running the CLI. A public ACME issuer and a self-signed issuer do not satisfy this registry
 trust requirement.
+
+The existing-Kubernetes installer discovers `Issuer` resources in the installation namespace and `ClusterIssuer`
+resources cluster-wide. You select one of those exact resources, with the first discovered choice as the displayed
+default. If the cert-manager CRDs or all issuers are absent, install cert-manager and create a CA issuer whose CA is
+trusted by every eligible node and the CLI machine, then rerun the installer. The CLI prints the pinned cert-manager
+install and issuer discovery commands when either prerequisite is absent. Compartment does not create the issuer or
+distribute CA trust on an existing cluster.
 
 ## Change an existing install domain
 

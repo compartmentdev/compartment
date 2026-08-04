@@ -8,6 +8,8 @@ import type {
   KubernetesConfigView,
   KubernetesInstallInventory,
   KubernetesInstallInventoryInput,
+  KubernetesInstallIssuerChoice,
+  KubernetesInstallIssuerKind,
   KubernetesInstallResourceInventory,
   KubernetesInventoryList,
   KubernetesInventoryResource,
@@ -15,6 +17,14 @@ import type {
 } from './kubernetes-install-inventory.service.types';
 
 const defaultStorageClassAnnotation: string = 'storageclass.kubernetes.io/is-default-class';
+const certManagerVersion: string = 'v1.21.0';
+
+interface KubernetesInstallResourceLists {
+  clusterIssuers: KubernetesInventoryList;
+  ingressClasses: KubernetesInventoryList;
+  issuers: KubernetesInventoryList;
+  storageClasses: KubernetesInventoryList;
+}
 
 export async function readKubernetesInstallInventory(
   input: KubernetesInstallInventoryInput,
@@ -29,21 +39,76 @@ export async function readKubernetesInstallInventory(
 export async function readKubernetesInstallResourceInventory(
   input: KubernetesInstallInventoryInput,
   contextName: string,
+  namespace: string,
 ): Promise<KubernetesInstallResourceInventory> {
-  const [ingressClasses, storageClasses]: [KubernetesInventoryList, KubernetesInventoryList] = await Promise.all([
-    readJson<KubernetesInventoryList>(
-      clusterCommand(input, contextName, ['get', 'ingressclasses.networking.k8s.io', '--output=json']),
-      'IngressClasses',
-    ),
-    readJson<KubernetesInventoryList>(
-      clusterCommand(input, contextName, ['get', 'storageclasses.storage.k8s.io', '--output=json']),
-      'StorageClasses',
-    ),
+  const lists: KubernetesInstallResourceLists = await readResourceLists(input, contextName, namespace);
+  return {
+    ingressClasses: readResourceNames(lists.ingressClasses),
+    issuers: [
+      ...readIssuerChoices(lists.issuers, 'Issuer'),
+      ...readIssuerChoices(lists.clusterIssuers, 'ClusterIssuer'),
+    ],
+    storageClasses: readStorageClasses(lists.storageClasses),
+  };
+}
+
+async function readResourceLists(
+  input: KubernetesInstallInventoryInput,
+  contextName: string,
+  namespace: string,
+): Promise<KubernetesInstallResourceLists> {
+  const [ingressClasses, storageClasses, issuers, clusterIssuers]: KubernetesInventoryList[] = await Promise.all([
+    readClusterList(input, contextName, 'ingressclasses.networking.k8s.io', 'IngressClasses'),
+    readClusterList(input, contextName, 'storageclasses.storage.k8s.io', 'StorageClasses'),
+    readNamespacedIssuerList(input, contextName, namespace),
+    readClusterIssuerList(input, contextName),
   ]);
   return {
-    ingressClasses: readResourceNames(ingressClasses),
-    storageClasses: readStorageClasses(storageClasses),
+    clusterIssuers: clusterIssuers!,
+    ingressClasses: ingressClasses!,
+    issuers: issuers!,
+    storageClasses: storageClasses!,
   };
+}
+
+async function readClusterList(
+  input: KubernetesInstallInventoryInput,
+  contextName: string,
+  resource: string,
+  subject: string,
+): Promise<KubernetesInventoryList> {
+  return await readJson<KubernetesInventoryList>(
+    clusterCommand(input, contextName, ['get', resource, '--output=json']),
+    subject,
+  );
+}
+
+async function readNamespacedIssuerList(
+  input: KubernetesInstallInventoryInput,
+  contextName: string,
+  namespace: string,
+): Promise<KubernetesInventoryList> {
+  const args: string[] = ['--namespace', namespace, 'get', 'issuers.cert-manager.io', '--output=json'];
+  return await readCertManagerResources<KubernetesInventoryList>(clusterCommand(input, contextName, args), 'Issuers');
+}
+
+async function readClusterIssuerList(
+  input: KubernetesInstallInventoryInput,
+  contextName: string,
+): Promise<KubernetesInventoryList> {
+  const command: string[] = clusterCommand(input, contextName, [
+    'get',
+    'clusterissuers.cert-manager.io',
+    '--output=json',
+  ]);
+  return await readCertManagerResources<KubernetesInventoryList>(command, 'ClusterIssuers');
+}
+
+function readIssuerChoices(
+  list: KubernetesInventoryList,
+  kind: KubernetesInstallIssuerKind,
+): KubernetesInstallIssuerChoice[] {
+  return readResourceNames(list).map((name: string): KubernetesInstallIssuerChoice => ({ kind, name }));
 }
 
 function readContexts(config: KubernetesConfigView): KubernetesContextChoice[] {
@@ -87,6 +152,26 @@ function clusterCommand(
   args: readonly string[],
 ): string[] {
   return ['kubectl', '--kubeconfig', input.resolvedKubeconfig.path, '--context', contextName, ...args];
+}
+
+async function readCertManagerResources<T>(command: readonly string[], subject: string): Promise<T> {
+  try {
+    return await readJson<T>(command, subject);
+  } catch (error) {
+    const detail: string = error instanceof Error ? error.message : String(error);
+    if (/doesn['’]t have a resource type|the server could not find the requested resource/iu.test(detail)) {
+      throw missingCertManagerPrerequisiteError();
+    }
+    throw error;
+  }
+}
+
+function missingCertManagerPrerequisiteError(): Error {
+  return new Error(`Missing prerequisite: cert-manager CRDs are not installed.
+Run:
+  kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/${certManagerVersion}/cert-manager.yaml
+  kubectl --namespace cert-manager wait deployment --all --for=condition=Available --timeout=5m
+Then apply your CA Issuer or ClusterIssuer manifest, distribute its CA to every node and this machine, and rerun compartment install.`);
 }
 
 async function readJson<T>(command: readonly string[], subject: string): Promise<T> {

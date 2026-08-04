@@ -56,5 +56,13 @@ export interface KubernetesInstallInventory {
 
 export interface KubernetesInstallResourceInventory {
   ingressClasses: readonly string[];
+  issuers: readonly KubernetesInstallIssuerChoice[];
   storageClasses: readonly KubernetesStorageClassChoice[];
 }
+
+export interface KubernetesInstallIssuerChoice {
+  kind: KubernetesInstallIssuerKind;
+  name: string;
+}
+
+export type KubernetesInstallIssuerKind = 'ClusterIssuer' | 'Issuer';

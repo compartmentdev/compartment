@@ -236,6 +236,58 @@ users: [{ name: owner, user: {} }]
     }
   });
 
+  it('prompts for an operator-owned domain and carries it through the privileged canonical install', async (): Promise<void> => {
+    const getuid: GetUid | undefined = process.getuid;
+    if (getuid === undefined) {
+      throw new Error('This test requires process.getuid.');
+    }
+    process.getuid = (): number => 0;
+    try {
+      const capture: CliCommandCapture = createCliCapture();
+      capture.stdin.end('2\napps.example.com\n');
+      const { runCli } = await import('../src/app');
+
+      expect(await runCli([...ownerInstallArgsWithoutDomain(), '--yes'], capture.io)).toBe(0);
+
+      const output: string = readCliStderr(capture);
+      expect(output).toContain('Domain:\n  1. Managed Compartment domain [default]\n  2. Operator-owned base domain');
+      expect(output).toContain('Domain: apps.example.com');
+      expect(output).toContain(
+        'Automatic components: cert-manager, internal registry CA/Issuer, node CA trust, gVisor/runsc',
+      );
+      expect(output).not.toContain('issuer name');
+      expect(mocks.canonicalInstall).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ baseDomain: 'apps.example.com', values: '/etc/compartment/values.yaml' }),
+      );
+    } finally {
+      process.getuid = getuid;
+    }
+  });
+
+  it('uses the managed domain default from the common domain prompt', async (): Promise<void> => {
+    const getuid: GetUid | undefined = process.getuid;
+    if (getuid === undefined) {
+      throw new Error('This test requires process.getuid.');
+    }
+    process.getuid = (): number => 0;
+    try {
+      const capture: CliCommandCapture = createCliCapture();
+      capture.stdin.end('\n');
+      const { runCli } = await import('../src/app');
+
+      expect(await runCli([...ownerInstallArgsWithoutDomain(), '--yes'], capture.io)).toBe(0);
+
+      expect(readCliStderr(capture)).not.toContain('issuer name');
+      expect(mocks.canonicalInstall).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ managedDomain: true, values: '/etc/compartment/values.yaml' }),
+      );
+    } finally {
+      process.getuid = getuid;
+    }
+  });
+
   it('preserves the complete owner identity while resuming a confirmed root install', async (): Promise<void> => {
     const getuid: GetUid | undefined = process.getuid;
     if (getuid === undefined) {
@@ -311,6 +363,7 @@ users: [{ name: owner, user: {} }]
             'Acme',
             '--admin-password-file',
             '-',
+            '--managed-domain',
             '--yes',
           ],
           capture.io,
@@ -354,6 +407,10 @@ users: [{ name: owner, user: {} }]
 });
 
 function ownerInstallArgs(): string[] {
+  return [...ownerInstallArgsWithoutDomain(), '--managed-domain'];
+}
+
+function ownerInstallArgsWithoutDomain(): string[] {
   return [
     'install',
     '--target',

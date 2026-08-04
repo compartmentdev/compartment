@@ -6,6 +6,10 @@ description: Check, update, diagnose, recover, and remove a Compartment-managed 
 Use these commands only on a VM provisioned by `compartment install --target vm`. Existing Kubernetes clusters keep
 their operator-managed lifecycle.
 
+During initial provisioning, Compartment automatically installs cert-manager, creates the internal registry CA and
+Issuer, adds the CA to the managed node trust store, and installs gVisor/runsc. These are managed host components;
+do not pre-create an issuer, patch node trust, or install the runtime before installation.
+
 ## Check status
 
 ```bash
