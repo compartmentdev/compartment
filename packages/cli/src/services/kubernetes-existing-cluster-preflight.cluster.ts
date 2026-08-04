@@ -4,6 +4,7 @@ import type { KubernetesInstallInput } from './kubernetes-install-input.service.
 import type {
   KubernetesApiResource,
   KubernetesApiResourceList,
+  KubernetesClusterConnection,
   KubernetesExistingClusterPreflightCheck,
   KubernetesObject,
   KubernetesObjectMetadata,
@@ -28,9 +29,12 @@ import {
   type KubernetesApiRequirement,
   type KubernetesPermissionRequirement,
 } from './kubernetes-existing-cluster-preflight.requirements';
+import {
+  formatKubernetesVersionRequirement,
+  isSupportedKubernetesVersion,
+} from './kubernetes-install-compatibility.service';
 
-const minimumKubernetesMinor: number = 30;
-export async function assertClusterVersion(input: KubernetesInstallInput): Promise<string> {
+export async function assertClusterVersion(input: KubernetesClusterConnection): Promise<string> {
   const result: CommandResult = await runCommand(buildPreflightKubectl(input, ['version', '--output=json']));
   if (result.exitCode === 127) {
     throw new KubernetesExistingClusterPreflightError('cluster', 'kubectl is not installed or not on PATH.');
@@ -41,11 +45,10 @@ export async function assertClusterVersion(input: KubernetesInstallInput): Promi
     `Cannot reach Kubernetes cluster for context "${input.kubeContext}".`,
   );
   const version: string | undefined = response.serverVersion?.gitVersion;
-  const match: RegExpExecArray | null = version === undefined ? null : /^v1\.(\d+)(?:\.|$)/u.exec(version);
-  if (match === null || Number(match[1]) < minimumKubernetesMinor) {
+  if (version === undefined || !isSupportedKubernetesVersion(version)) {
     throw unsupportedVersion(version);
   }
-  return version!;
+  return version;
 }
 
 export async function assertRequiredApiResources(input: KubernetesInstallInput): Promise<void> {
@@ -201,7 +204,7 @@ export function assertExactHelmOwnership(
 function unsupportedVersion(version: string | undefined): KubernetesExistingClusterPreflightError {
   return new KubernetesExistingClusterPreflightError(
     'cluster',
-    `Kubernetes 1.${String(minimumKubernetesMinor)} or newer is required; detected ${version ?? 'an unknown version'}.`,
+    `Kubernetes ${formatKubernetesVersionRequirement()} is required; detected ${version ?? 'an unknown version'}.`,
   );
 }
 

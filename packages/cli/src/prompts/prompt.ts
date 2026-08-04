@@ -205,6 +205,10 @@ export async function promptMutationConfirmation(io: CliIo): Promise<boolean> {
   return await promptYesNoChoice(io, 'Continue and request sudo access? [y/N]: ', false);
 }
 
+export async function promptManagedKubernetesInstall(io: CliIo): Promise<boolean> {
+  return await promptYesNoChoice(io, 'Install managed Kubernetes on this VM? [Y/n]: ', true);
+}
+
 async function promptYesNoChoice(io: CliIo, label: string, defaultValue: boolean): Promise<boolean> {
   for (;;) {
     const answer: string = (await readPromptLine(io, label)).trim().toLowerCase();

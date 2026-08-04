@@ -78,12 +78,18 @@ function createCertManagerRolloutCommands(): readonly (readonly string[])[] {
 }
 
 async function areManagedVmPrerequisitesHealthy(): Promise<boolean> {
-  const commands: readonly (readonly string[])[] = [
-    ['kubectl', 'get', 'storageclass', 'local-path'],
+  const creationCommands: readonly (readonly string[])[] = [
+    ['kubectl', 'wait', '--for=create', 'storageclass/local-path', '--timeout=15s'],
+    ['kubectl', '--namespace', 'kube-system', 'wait', '--for=create', 'deployment/coredns', '--timeout=15s'],
+    ['kubectl', '--namespace', 'kube-system', 'wait', '--for=create', 'deployment/traefik', '--timeout=15s'],
+  ];
+  if (!(await runHealthChecks(creationCommands))) {
+    return false;
+  }
+  return await runHealthChecks([
     ['kubectl', '--namespace', 'kube-system', 'rollout', 'status', 'deployment/coredns', '--timeout=15s'],
     ['kubectl', '--namespace', 'kube-system', 'rollout', 'status', 'deployment/traefik', '--timeout=15s'],
-  ];
-  return await runHealthChecks(commands);
+  ]);
 }
 
 async function runHealthChecks(commands: readonly (readonly string[])[]): Promise<boolean> {

@@ -5,11 +5,9 @@ export interface KubernetesInstallLocalToolRequirement {
   versionCommand: readonly string[];
 }
 
-export interface SemanticVersion {
-  major: number;
-  minor: number;
-  patch: number;
-  prerelease?: string | undefined;
+export interface KubernetesInstallLocalToolVersions {
+  helm: string;
+  kubectl: string;
 }
 
 export interface KubectlVersionOutput {

@@ -8,7 +8,9 @@ import { persistDevInstallSession } from './install.command.session';
 import type { InstallCommandOptions, ResolvedInstallIdentityPrompts } from './install.command.types';
 import { assertDevInstallOptions } from './install.command.validation';
 import { executeCanonicalKubernetesInstallCommand } from './install.command.kubernetes';
-import { executeManagedVmInstallCommand, resolveInstallCommandTarget } from './install.command.vm';
+import { executeManagedVmInstallCommand } from './install.command.vm';
+import type { InstallTargetDiscovery } from '../../services/managed-vm-target.service';
+import { resolveInstallCommandTarget } from './install.command.target';
 
 export function registerInstallCommand(program: Command, dependencies: CliCommandDependencies): void {
   const command: Command = addInstallIdentityOptions(
@@ -62,12 +64,16 @@ async function executeInstallCommand(
     return;
   }
 
-  const target: 'kubernetes' | 'vm' = await resolveInstallCommandTarget(dependencies, options);
-  if (target === 'vm') {
+  const target: InstallTargetDiscovery = await resolveInstallCommandTarget(dependencies, options);
+  if (target.target === 'vm') {
     await executeManagedVmInstallCommand(dependencies, options);
     return;
   }
-  await executeCanonicalKubernetesInstallCommand(dependencies, options);
+  await executeCanonicalKubernetesInstallCommand(
+    dependencies,
+    options,
+    target.kind === 'kubernetes' ? target : undefined,
+  );
 }
 
 async function executeDevInstallCommand(

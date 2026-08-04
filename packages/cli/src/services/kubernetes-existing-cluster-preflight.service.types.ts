@@ -1,5 +1,10 @@
 import type { KubernetesInstallInput } from './kubernetes-install-input.service.types';
 
+export interface KubernetesClusterConnection {
+  kubeconfigPath: string;
+  kubeContext: string;
+}
+
 export type KubernetesExistingClusterPreflightCheck =
   | 'api resources'
   | 'cert-manager'

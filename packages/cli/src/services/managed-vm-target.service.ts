@@ -1,72 +1,83 @@
-import { readFile } from 'node:fs/promises';
-import { parse } from 'yaml';
-import { execa, type ManagedVmCommandResult } from './managed-vm-command.service';
-import type { InstallTarget, InstallTargetSelectionInput } from './managed-vm-target.service.types';
+import { runCommand } from '../command-runner';
+import type { CommandResult } from '../command-runner.types';
+import { KubernetesInstallKubeconfigResolutionError } from './kubernetes-install-kubeconfig.error';
+import { resolveKubernetesInstallKubeconfig } from './kubernetes-install-kubeconfig.service';
+import type { ResolvedKubernetesKubeconfig } from './kubernetes-install-kubeconfig.service.types';
+import { formatMissingKubernetesInstallTool } from './kubernetes-install-local-tools.service';
+import type { InstallTargetDiscovery, InstallTargetSelectionInput } from './managed-vm-target.service.types';
 
-export type { InstallTarget } from './managed-vm-target.service.types';
+export type { InstallTargetDiscovery } from './managed-vm-target.service.types';
 
-interface KubeconfigNamedEntry<TValue> {
-  context?: TValue | undefined;
-  name?: string | undefined;
-}
-
-interface KubeconfigContext {
-  cluster?: string | undefined;
-  user?: string | undefined;
-}
-
-interface KubeconfigDocument {
-  clusters?: readonly KubeconfigNamedEntry<never>[] | undefined;
-  contexts?: readonly KubeconfigNamedEntry<KubeconfigContext>[] | undefined;
-  'current-context'?: string | undefined;
-  users?: readonly KubeconfigNamedEntry<never>[] | undefined;
-}
-
-export async function selectInstallTarget(input: InstallTargetSelectionInput): Promise<InstallTarget> {
+export async function selectInstallTarget(input: InstallTargetSelectionInput): Promise<InstallTargetDiscovery> {
   if (input.explicitTarget !== undefined) {
-    return input.explicitTarget;
+    return { kind: 'explicit', target: input.explicitTarget };
   }
   if (!input.interactive) {
     throw new Error('--target vm|kubernetes is required without an interactive terminal.');
   }
   if (input.managedStateExists) {
-    return 'vm';
+    return { kind: 'managed-resume', target: 'vm' };
   }
-  return (await hasUsableKubeconfig(input.kubeconfigPaths)) ? 'kubernetes' : 'vm';
+  return await discoverKubernetesTarget(input);
 }
 
-async function hasUsableKubeconfig(paths: readonly string[]): Promise<boolean> {
-  const results: boolean[] = await Promise.all(paths.map(hasValidCurrentContext));
-  return results.includes(true);
+async function discoverKubernetesTarget(input: InstallTargetSelectionInput): Promise<InstallTargetDiscovery> {
+  const kubeconfig: ResolvedKubernetesKubeconfig | InstallTargetDiscovery = await resolveDiscoveredKubeconfig(input);
+  if ('kind' in kubeconfig) {
+    return kubeconfig;
+  }
+  const reachable: CommandResult = await checkDiscoveredKubernetesAccess(kubeconfig);
+  const reason: string | undefined = readUnusableClusterReason(reachable, kubeconfig);
+  return reason === undefined
+    ? { kind: 'kubernetes', kubeconfig, target: 'kubernetes' }
+    : { kind: 'unavailable-kubernetes', kubeconfig, reason, target: 'kubernetes' };
 }
 
-async function hasValidCurrentContext(path: string): Promise<boolean> {
+async function resolveDiscoveredKubeconfig(
+  input: InstallTargetSelectionInput,
+): Promise<ResolvedKubernetesKubeconfig | InstallTargetDiscovery> {
+  let kubeconfig: ResolvedKubernetesKubeconfig;
   try {
-    const document: KubeconfigDocument = parse(await readFile(path, 'utf8')) as KubeconfigDocument;
-    const currentContextName: string | undefined = document['current-context'];
-    if (!hasValidContextReferences(document, currentContextName)) {
-      return false;
+    kubeconfig = await resolveKubernetesInstallKubeconfig({
+      ...(input.contextName === undefined ? {} : { contextName: input.contextName }),
+      env: input.env,
+      homeDirectory: input.homeDirectory,
+    });
+  } catch (error) {
+    if (error instanceof KubernetesInstallKubeconfigResolutionError && error.reason === 'no-usable-cluster') {
+      return { kind: 'no-cluster', target: 'vm' };
     }
-    const reachable: ManagedVmCommandResult = await execa(
-      'kubectl',
-      ['--kubeconfig', path, '--request-timeout=5s', 'auth', 'can-i', 'get', 'namespaces'],
-      { reject: false },
-    );
-    return reachable.exitCode === 0 && reachable.stdout.trim() === 'yes';
-  } catch {
-    return false;
+    throw error;
   }
+  return kubeconfig;
 }
 
-function hasValidContextReferences(document: KubeconfigDocument, currentContextName: string | undefined): boolean {
-  const currentContext: KubeconfigContext | undefined = document.contexts?.find(
-    (entry: KubeconfigNamedEntry<KubeconfigContext>): boolean => entry.name === currentContextName,
-  )?.context;
-  return (
-    currentContextName !== undefined &&
-    currentContext !== undefined &&
-    document.clusters?.some((entry: KubeconfigNamedEntry<never>): boolean => entry.name === currentContext.cluster) ===
-      true &&
-    document.users?.some((entry: KubeconfigNamedEntry<never>): boolean => entry.name === currentContext.user) === true
-  );
+async function checkDiscoveredKubernetesAccess(kubeconfig: ResolvedKubernetesKubeconfig): Promise<CommandResult> {
+  return await runCommand([
+    'kubectl',
+    '--kubeconfig',
+    kubeconfig.path,
+    '--context',
+    kubeconfig.contextName,
+    '--request-timeout=5s',
+    'auth',
+    'can-i',
+    'get',
+    'namespaces',
+  ]);
+}
+
+function readUnusableClusterReason(
+  result: CommandResult,
+  kubeconfig: ResolvedKubernetesKubeconfig,
+): string | undefined {
+  if (result.failure?.kind === 'command-not-found') {
+    return formatMissingKubernetesInstallTool('kubectl');
+  }
+  if (result.exitCode !== 0) {
+    return `Cannot reach Kubernetes cluster "${kubeconfig.contextName}" at ${kubeconfig.clusterServer}.`;
+  }
+  return result.stdout.trim() === 'yes'
+    ? undefined
+    : `Kubernetes identity for context "${kubeconfig.contextName}" cannot get namespaces.`;
 }

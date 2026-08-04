@@ -8,13 +8,14 @@ import type { CliInstallResult } from '../src/install.types';
 import { KubernetesInstallKubeconfigResolutionError } from '../src/services/kubernetes-install-kubeconfig.error';
 import type { KubernetesInstallDeploymentResult } from '../src/services/kubernetes-install.service.types';
 import type { ResolvedKubernetesKubeconfig } from '../src/services/kubernetes-install-kubeconfig.service.types';
+import type { KubernetesInstallLocalToolVersions } from '../src/services/kubernetes-install-local-tools.service.types';
 import { createCliCapture, readCliStderr, type CliCommandCapture } from './cli-test.harness';
 
 type DeployInstall = () => Promise<KubernetesInstallDeploymentResult>;
 type InstallOwner = () => Promise<CliInstallResult>;
 type PersistSession = () => Promise<void>;
 type ResolveIdentity = () => Promise<ResolvedInstallIdentityPrompts>;
-type AssertLocalTools = () => Promise<void>;
+type AssertLocalTools = () => Promise<KubernetesInstallLocalToolVersions>;
 type ResolveKubeconfig = () => Promise<ResolvedKubernetesKubeconfig>;
 
 interface InstallCommandMocks {
@@ -67,7 +68,7 @@ vi.mock('../src/commands/install/install.command.session', (): object => ({
 
 describe('install command boundary', (): void => {
   beforeEach((): void => {
-    mocks.assertLocalTools.mockReset().mockResolvedValue(undefined);
+    mocks.assertLocalTools.mockReset().mockResolvedValue({ helm: 'v4.1.4', kubectl: 'v1.35.5' });
     mocks.deployInstall.mockReset().mockResolvedValue(createDeploymentResult());
     mocks.installOwner.mockReset().mockResolvedValue(createInstallResult());
     mocks.persistSession.mockReset().mockResolvedValue(undefined);
@@ -159,7 +160,7 @@ describe('install command boundary', (): void => {
     expect(mocks.assertLocalTools).toHaveBeenCalledTimes(1);
   });
 
-  it('validates non-interactive input before discovering the cluster or checking tools', async (): Promise<void> => {
+  it('validates non-interactive input before checking local tools', async (): Promise<void> => {
     mocks.assertLocalTools.mockRejectedValueOnce(
       new Error('helm not found on PATH. Install Helm >= 4.0.0 and re-run install.'),
     );
@@ -170,7 +171,7 @@ describe('install command boundary', (): void => {
     expect(exitCode).toBe(1);
     expect(readCliStderr(capture)).toContain('Missing required install input');
     expect(readCliStderr(capture)).not.toContain('helm not found on PATH');
-    expect(mocks.resolveKubeconfig).not.toHaveBeenCalled();
+    expect(mocks.resolveKubeconfig).toHaveBeenCalledTimes(1);
     expect(mocks.assertLocalTools).not.toHaveBeenCalled();
   });
 
@@ -199,6 +200,13 @@ describe('install command boundary', (): void => {
   });
 
   it('reports conflicting domain flags at the domain boundary', async (): Promise<void> => {
+    const materializedDirectory: string = await mkdtemp(resolve(tmpdir(), 'compartment-command-kubeconfig-'));
+    mocks.resolveKubeconfig.mockResolvedValueOnce({
+      clusterServer: 'https://cluster.example.test:6443',
+      contextName: 'production',
+      materializedDirectory,
+      path: resolve(materializedDirectory, 'kubeconfig.json'),
+    });
     const capture: CliCommandCapture = createCliCapture();
 
     const exitCode: number = await runCli(
@@ -209,6 +217,7 @@ describe('install command boundary', (): void => {
     expect(exitCode).toBe(1);
     expect(readCliStderr(capture)).toContain('--managed-domain cannot be combined with --base-domain.');
     expect(readCliStderr(capture)).not.toContain('public installer');
+    await expect(stat(materializedDirectory)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('keeps Kubernetes deployment options out of the dev install path', async (): Promise<void> => {

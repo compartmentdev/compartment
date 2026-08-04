@@ -46,14 +46,17 @@ describe('managed VM stage health', (): void => {
     );
   });
 
-  it('requires CoreDNS and Traefik rollouts to be ready', async (): Promise<void> => {
+  it('requires packaged K3s prerequisites to exist and become ready', async (): Promise<void> => {
     command.mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '' });
     command.mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '' });
     command.mockResolvedValueOnce({ exitCode: 1, stderr: 'deployment is not ready', stdout: '' });
     const { isManagedVmStageHealthy } = await import('../src/services/managed-vm-cluster-health.service');
 
     await expect(isManagedVmStageHealthy('verifying-prerequisites')).resolves.toBe(false);
-    expect(command).toHaveBeenCalledWith('k3s', expect.arrayContaining(['rollout', 'status', 'deployment/traefik']), {
+    expect(command).toHaveBeenCalledWith('k3s', expect.arrayContaining(['--for=create', 'deployment/traefik']), {
+      reject: false,
+    });
+    expect(command).not.toHaveBeenCalledWith('k3s', expect.arrayContaining(['rollout', 'status']), {
       reject: false,
     });
   });
