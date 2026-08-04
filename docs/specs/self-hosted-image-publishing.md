@@ -4,10 +4,8 @@ This document captures the internal publication rules for platform images instal
 
 GitHub Actions publishes platform images to Docker Hub and GitHub Container Registry as attested OCI indexes:
 
-- successful main CI runs publish immutable `sha-<commit>` images, and update
-  mutable `main` only when that commit is still the current `main`;
-- pushes to `kubernetes` publish immutable `sha-<commit>` images, and update mutable
-  `kubernetes` only when that commit is still the current `kubernetes` branch head;
+- pushes to `main` publish immutable `sha-<commit>` images, and update mutable
+  `main` only when that commit is still the current `main` branch head;
 - manual `Publish Self-Hosted Images (SHA)` runs publish only `sha-<commit>` for the selected ref;
 - semver tags like `v0.2.0` publish `0.2.0`, and update mutable `latest`
   only when that tag is the newest stable semver tag.
@@ -16,11 +14,9 @@ Publishing requires `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`. Stable semver ta
 come from release-please; the tag publish workflow validates the tag version against
 checked-in release metadata before building images.
 
-The `kubernetes` tag is the edge channel for the parallel Kubernetes product line.
-It is published to both Docker Hub and GHCR from the branch workflow and is not a
-stable release: release-please, semver tags, and `latest` remain part of the release
-channel. Use the immutable `sha-<commit>` tag when pinning a specific Kubernetes
-line build.
+The `main` tag is the rolling channel. It is published to both Docker Hub and GHCR from the branch workflow and is
+not a stable release: release-please, semver tags, and `latest` remain part of the stable release channel. Use the
+immutable `sha-<commit>` tag when pinning a specific rolling build.
 
 Release-please creates stable GitHub Releases as drafts while forcing immediate
 git tag creation. The tag publish workflow uploads CLI archives and checksums to
@@ -28,15 +24,22 @@ that draft, then publishes the stable release only after the upload succeeds.
 
 Before pushing a tag, the publish job scans each self-hosted runtime image artifact with Trivy and Docker Scout and fails before publication on fixable high or critical vulnerabilities. The scan does not stop on the first failing image; it reports every failing image before exiting.
 
-The published image artifact set contains exactly the long-running platform services: `api`, `caddy`, `edge`, and `worker`.
+The published image artifact set contains exactly the platform services: `api`, `caddy`, `dns01-solver`, `edge`, and
+`worker`.
 
-Pull request and main CI build or restore the platform image cache once per commit, then feed the same tar archives to k3d e2e and a separate image security gate. The gate scans the immutable `sha-<commit>` refs with the same Trivy and Docker Scout policy before the workflow can pass. Main publish runs only after main CI succeeds for the same commit. Fork pull requests cannot receive Docker Hub credentials, so they run the Trivy gate only; internal pull requests, main CI, and publish workflows keep Docker Scout enabled.
+Pull request and main CI build or restore the platform image cache once per commit, then feed the same tar archives to
+k3d e2e and a separate image security gate. The gate scans the immutable `sha-<commit>` refs with the same Trivy and
+Docker Scout policy before the workflow can pass. Fork pull requests cannot receive Docker Hub credentials, so they
+run the Trivy gate only; internal pull requests, main CI, and publish workflows keep Docker Scout enabled.
 
-The Kubernetes branch publish skips its separate DB integration, image security, and k3d e2e gates by default. Set the repository Actions variable `KUBERNETES_PUBLISH_RUN_TESTS` to exactly `true` to run all three gates and their runner-selection and image-cache prerequisites. Any other value, including an unset variable, keeps the fast default. In both modes, immutable image publication still scans the exact staged artifacts with Trivy and Docker Scout, signs and verifies their published digests, and generates and attaches their SBOM and provenance attestations before mutable promotion.
+The rolling main publisher scans the exact staged artifacts with Trivy and Docker Scout, signs and verifies their
+published digests, and generates and attaches their SBOM and provenance attestations before mutable promotion.
 
 The root `.trivyignore.yaml` is the only allowed suppression point for Trivy self-hosted image scans. Docker Scout has no repository suppression path in the CI or publish gates.
 
-Before promoting Docker Hub tags, the publish job pushes each attested image to a workflow-scoped staging tag, scans that staged image with Trivy and Docker Scout, and only then promotes the same image index to the public `main`, `kubernetes`, `sha-<commit>`, semver, or `latest` tags.
+Before promoting Docker Hub tags, the publish job pushes each attested image to a workflow-scoped staging tag, scans
+that staged image with Trivy and Docker Scout, and only then promotes the same image index to the public `main`,
+`sha-<commit>`, semver, or `latest` tags.
 
 After promoting a tag, the publish job resolves the tag to a concrete image digest and secures each unique runtime image digest:
 
@@ -50,8 +53,8 @@ After promoting a tag, the publish job resolves the tag to a concrete image dige
 
 Mutable tags such as `main` and `latest` share the same digest signature, SBOM attestation, and provenance attestation as their immutable `sha-<commit>` or semver tag when they resolve to the same digest.
 
-Before every CLI-owned Helm activation, the installer verifies the effective `api`, `worker`, `edge`, and `caddy`
-references against this signing policy and passes only the resolved digests to the chart.
+Before every CLI-owned Helm activation, the installer verifies the effective `api`, `worker`, `edge`, `caddy`, and
+`dns01-solver` references against this signing policy and passes only the resolved digests to the chart.
 
 ## Retry after partial publish
 
@@ -63,7 +66,7 @@ gh run rerun <run-id> --failed
 gh run watch <run-id> --exit-status
 ```
 
-For `main` and `kubernetes` branch-channel publishes, workflow-scoped staging tags may be replaced, a missing immutable
+For `main` branch-channel publishes, workflow-scoped staging tags may be replaced, a missing immutable
 tag in either registry is recreated from the digest scanned by the current run, and an existing immutable tag is
 accepted only when it matches that scanned digest. Signing, signature verification, SBOM generation, and provenance
 generation may be repeated for the same digest. Mutable channel tags are promoted only after both registries complete

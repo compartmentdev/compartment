@@ -31,7 +31,7 @@ import type {
 import { resolvePreflightKubeconfig } from './install.command.preflight';
 import { renderInstallResult } from './install.command.result';
 import { persistInstallSession } from './install.command.session';
-import type { InstallCommandOptions, InstallWizardIssuerReference, InstallWizardValues } from './install.command.types';
+import type { InstallCommandOptions, InstallWizardIssuerReference } from './install.command.types';
 import {
   materializeInstallWizardValues,
   readOperatorInstallInputValues,
@@ -45,29 +45,32 @@ import { inspectOperatorIssuer } from '../../services/kubernetes-operator-issuer
 import type { KubernetesOperatorIssuerAssessment } from '../../services/kubernetes-operator-issuer-trust.service.types';
 import { resolveInstallManagedDomainBrokerUrl } from './install.command.options';
 import { createKubernetesInstallRetainedStateReader } from './install.command.kubernetes-wizard-retained-state';
-
-interface ResolvedInstallValuesPath {
-  material?: MaterializedInstallWizardValues | undefined;
-  path: string;
-}
-
-interface ResolvedCommandInstallValues {
-  input: Omit<KubernetesInstallInputValues, 'valuesPath'>;
-  wizardValues?: InstallWizardValues | undefined;
-}
+import type { KubernetesInstallTargetDiscovery } from '../../services/managed-vm-target.service.types';
+import type { KubernetesInstallLocalToolVersions } from '../../services/kubernetes-install-local-tools.service.types';
+import { verifyKubernetesInstallTarget } from './install.command.kubernetes-target';
+import type {
+  BoundaryInstallValues,
+  ResolvedCommandInstallValues,
+  ResolvedInstallValuesPath,
+} from './install.command.kubernetes.types';
 
 export async function executeCanonicalKubernetesInstallCommand(
   dependencies: CliCommandDependencies,
   options: InstallCommandOptions,
+  detectedTarget?: KubernetesInstallTargetDiscovery,
 ): Promise<void> {
-  const boundaryValues: Omit<KubernetesInstallInputValues, 'valuesPath'> | undefined = await readBoundaryValues(
-    dependencies,
-    options,
-  );
-  const kubeconfig: ResolvedKubernetesKubeconfig = await resolvePreflightKubeconfig(dependencies, options.kubeContext);
+  const kubeconfig: ResolvedKubernetesKubeconfig =
+    detectedTarget?.kubeconfig ?? (await resolvePreflightKubeconfig(dependencies, options.kubeContext));
   try {
-    await withKubernetesLocalTools(async (): Promise<void> => {
-      await executeWithKubeconfig(dependencies, options, kubeconfig, boundaryValues);
+    const boundaryValues: BoundaryInstallValues | undefined = await readBoundaryValues(dependencies, options);
+    await withKubernetesLocalTools(async (localTools: KubernetesInstallLocalToolVersions): Promise<void> => {
+      await verifyKubernetesInstallTarget(dependencies, kubeconfig, localTools, detectedTarget !== undefined);
+      await executeWithKubeconfig(
+        dependencies,
+        detectedTarget === undefined ? options : { ...options, kubeContext: kubeconfig.contextName },
+        kubeconfig,
+        boundaryValues,
+      );
     });
   } finally {
     if (kubeconfig.materializedDirectory !== undefined) {

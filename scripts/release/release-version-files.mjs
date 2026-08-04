@@ -1,11 +1,34 @@
 import { execFile as execFileCallback } from 'node:child_process';
-import { access, readdir, readFile } from 'node:fs/promises';
+import { access, readdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { parseDocument } from 'yaml';
 
 const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const workspacePackageJsonPathPattern = /^packages\/[^/]+\/package\.json$/;
 const execFile = promisify(execFileCallback);
+
+export async function readCompartmentChartAppVersion(repositoryRoot) {
+  const chartDocument = await readCompartmentChartDocument(repositoryRoot);
+  const appVersion = chartDocument.get('appVersion');
+  if (typeof appVersion === 'string' && appVersion !== '') {
+    return appVersion;
+  }
+
+  throw new Error('Expected deploy/chart/compartment/Chart.yaml to define a non-empty string appVersion.');
+}
+
+export async function writeCompartmentChartAppVersion(repositoryRoot, releaseVersion) {
+  const chartPath = resolve(repositoryRoot, 'deploy/chart/compartment/Chart.yaml');
+  const chartDocument = await readCompartmentChartDocument(repositoryRoot);
+  const currentAppVersion = chartDocument.get('appVersion');
+  if (typeof currentAppVersion !== 'string' || currentAppVersion === '') {
+    throw new Error('Expected deploy/chart/compartment/Chart.yaml to define a non-empty string appVersion.');
+  }
+
+  chartDocument.set('appVersion', releaseVersion);
+  await writeFile(chartPath, chartDocument.toString(), 'utf8');
+}
 
 export function readReleaseVersion(value) {
   if (value !== undefined && semverPattern.test(value)) {
@@ -103,4 +126,14 @@ export async function readReleasePleaseManifestVersion(repositoryRoot) {
   }
 
   throw new Error('Expected .release-please-manifest.json to define a non-empty "." version.');
+}
+
+async function readCompartmentChartDocument(repositoryRoot) {
+  const chartPath = resolve(repositoryRoot, 'deploy/chart/compartment/Chart.yaml');
+  const chartDocument = parseDocument(await readFile(chartPath, 'utf8'), { uniqueKeys: true });
+  if (chartDocument.errors.length !== 0) {
+    throw new Error(`Invalid deploy/chart/compartment/Chart.yaml: ${chartDocument.errors[0].message}`);
+  }
+
+  return chartDocument;
 }

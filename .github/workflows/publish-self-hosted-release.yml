@@ -44,6 +44,15 @@ jobs:
         with:
           node-version-file: .nvmrc
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093
+        with:
+          version: 10.6.3
+          cache: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Check release version files
         env:
           RELEASE_VERSION: ${{ steps.release.outputs.value }}
@@ -66,11 +75,12 @@ jobs:
 
       - name: Archive self-hosted images
         run: |
-          docker image save \
-            docker.io/compartmentdev/compartment-api:${{ steps.release.outputs.value }} \
-            docker.io/compartmentdev/compartment-caddy:${{ steps.release.outputs.value }} \
-            docker.io/compartmentdev/compartment-edge:${{ steps.release.outputs.value }} \
-            docker.io/compartmentdev/compartment-worker:${{ steps.release.outputs.value }} \
+          mapfile -t self_hosted_services < <(node ./scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs)
+          image_refs=()
+          for service in "${self_hosted_services[@]}"; do
+            image_refs+=("docker.io/compartmentdev/compartment-${service}:${{ steps.release.outputs.value }}")
+          done
+          docker image save "${image_refs[@]}" \
             | gzip -1 > ./.compartment/release-assets/self-hosted-images.tar.gz
 
       - name: Upload self-hosted image artifact

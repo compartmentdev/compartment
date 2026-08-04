@@ -113,9 +113,34 @@ export async function configureManagedVmRegistryIssuer(): Promise<void> {
 }
 
 export async function verifyManagedVmPrerequisites(): Promise<void> {
-  await execa('k3s', ['kubectl', 'get', 'storageclass', 'local-path']);
-  await execa('k3s', ['kubectl', '--namespace', 'kube-system', 'get', 'deployment', 'coredns']);
-  await execa('k3s', ['kubectl', '--namespace', 'kube-system', 'get', 'deployment', 'traefik']);
+  await waitForManagedVmResource('storageclass/local-path');
+  await waitForManagedVmDeployment('coredns');
+  await waitForManagedVmDeployment('traefik');
+}
+
+async function waitForManagedVmResource(resource: string): Promise<void> {
+  await execa('k3s', ['kubectl', 'wait', '--for=create', resource, '--timeout=5m']);
+}
+
+async function waitForManagedVmDeployment(deployment: string): Promise<void> {
+  await execa('k3s', [
+    'kubectl',
+    '--namespace',
+    'kube-system',
+    'wait',
+    '--for=create',
+    `deployment/${deployment}`,
+    '--timeout=5m',
+  ]);
+  await execa('k3s', [
+    'kubectl',
+    '--namespace',
+    'kube-system',
+    'rollout',
+    'status',
+    `deployment/${deployment}`,
+    '--timeout=5m',
+  ]);
 }
 
 function renderK3sConfig(publicAddress: string): string {

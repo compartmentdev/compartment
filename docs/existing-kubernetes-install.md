@@ -3,12 +3,10 @@
 This guide prepares an existing Kubernetes cluster for `compartment install`. Compartment does not install, upgrade,
 or remove Kubernetes, an Ingress Controller, cert-manager, a CNI, or a StorageClass.
 
-## Supported installation channel
+## Supported installer
 
-The existing-Kubernetes installer is the supported self-hosted installation channel. The public bootstrap at
-`https://compartment.dev/install.sh` serves the root installer approved for the `kubernetes` channel. That installer
-resolves the current branch commit and matching immutable CLI OCI artifact by digest, then verifies its Cosign
-identity, OIDC issuer, and workflow commit before pulling it. No channel flag or raw branch URL is required.
+The public bootstrap at `https://compartment.dev/install.sh` installs the latest stable release and verifies its
+checksums before installation. No raw branch URL or channel parameter is required.
 
 The supported test matrix uses isolated k3d shards. Every shard owns one cluster and installs its selected
 Ingress Controller and pinned cert-manager prerequisite once:
@@ -25,15 +23,17 @@ Ingress Controller plus cert-manager setup has a 120-second wall-time budget in 
 measures and enforces that budget, and the shard owner is the suite named above. A shard reuses the same prerequisite
 installation for all of its scenarios.
 
-The supported contract is the current and previous tested Kubernetes minors plus the required capability checks.
-CI currently exercises Kubernetes 1.36 and 1.35. Exact k3s builds remain reproducible CI inputs and managed-VM
-installation evidence, not a customer-facing compatibility pin.
+The compatibility contract requires Kubernetes 1.30 or newer plus the required capability checks. Exact managed k3s
+builds are reproducible installation inputs, not an upper compatibility limit for existing clusters.
 
 ## Required cluster capabilities
 
-Provide a cluster from the supported minor window, a working kube context, an installed and ready Ingress
+Provide Kubernetes 1.30 or newer, a working kube context, an installed and ready Ingress
 Controller with an IngressClass, cert-manager v1.21.0 with its CRDs and controller components ready, a usable
 StorageClass, and a CNI that enforces the NetworkPolicy features used by Compartment.
+
+The machine running the installer also requires Helm 4.0.0 or newer and kubectl 1.30.0 or newer. kubectl must be
+within one minor version of the target Kubernetes API server.
 
 The private registry uses the retained Service IPv4 ClusterIP directly and requires a cert-manager CA Issuer whose CA
 is already trusted by every node container runtime. The installer does not configure registry DNS or mutate node

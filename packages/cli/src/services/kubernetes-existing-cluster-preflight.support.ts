@@ -1,16 +1,16 @@
 import type { JsonValue } from '@compartment/utils';
 import type { CommandResult } from '../command-runner.types';
 import { readCommandDiagnostics, type CommandDiagnosticsOptions } from './kubernetes-command.support';
-import type { KubernetesInstallInput } from './kubernetes-install-input.service.types';
 import type {
+  KubernetesClusterConnection,
   KubernetesExistingClusterPreflightCheck,
   KubernetesObject,
   KubernetesObjectList,
   KubernetesObjectMetadata,
 } from './kubernetes-existing-cluster-preflight.service.types';
+import { kubernetesInstallCompatibility } from './kubernetes-install-compatibility.service';
 
-export const certManagerInstallInstruction: string =
-  'Install cert-manager v1.21.0: kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.21.0/cert-manager.yaml';
+export const certManagerInstallInstruction: string = `Install cert-manager ${kubernetesInstallCompatibility.managed.certManager.version}: kubectl apply -f ${kubernetesInstallCompatibility.managed.certManager.url}`;
 export const defaultStorageClassAnnotation: string = 'storageclass.kubernetes.io/is-default-class';
 export const ingressDefaultAnnotation: string = 'ingressclass.kubernetes.io/is-default-class';
 export const helmReleaseNameAnnotation: string = 'meta.helm.sh/release-name';
@@ -27,7 +27,7 @@ export class KubernetesExistingClusterPreflightError extends Error {
   }
 }
 
-export function buildPreflightKubectl(input: KubernetesInstallInput, args: readonly string[]): string[] {
+export function buildPreflightKubectl(input: KubernetesClusterConnection, args: readonly string[]): string[] {
   return [
     'kubectl',
     '--kubeconfig',

@@ -36,7 +36,7 @@ export async function resolveCanonicalKubernetesInstallWizard(
   readRetainedState: ReadKubernetesInstallRetainedState = async (): Promise<null> => await Promise.resolve(null),
 ): Promise<KubernetesInstallWizardResult> {
   const context: KubernetesContextChoice = await selectContext(io, options.kubeContext, inventory.contexts);
-  await confirmTarget(io, context);
+  await confirmTarget(io);
   const resources: KubernetesInstallResourceInventory = await readResources(context.name);
   const namespace: string = options.namespace ?? 'compartment';
   const releaseName: string = options.releaseName ?? 'compartment';
@@ -180,8 +180,8 @@ async function selectContext(
   );
 }
 
-async function confirmTarget(io: CliIo, context: KubernetesContextChoice): Promise<void> {
-  const answer: string = (await readPromptLine(io, `Use cluster "${context.name}" at ${context.apiServer}? [Y/n]: `))
+async function confirmTarget(io: CliIo): Promise<void> {
+  const answer: string = (await readPromptLine(io, `Install Compartment into this cluster? [Y/n]: `))
     .trim()
     .toLowerCase();
   if (answer !== '' && answer !== 'y' && answer !== 'yes') {

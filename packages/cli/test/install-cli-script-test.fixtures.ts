@@ -3,14 +3,12 @@ import { join } from 'node:path';
 
 export const expectedArtifactName: string = 'compartment-linux-x64.tar.gz';
 export const expectedInstalledVersion: string = '0.1.0-main+1234567';
-const expectedMainCommitSha: string = '1234567890abcdef1234567890abcdef12345678';
+export const expectedMainCommitSha: string = 'abcdef1234567890abcdef1234567890abcdef12';
 export const expectedMainReleaseTag: string = `sha-${expectedMainCommitSha}`;
-export const expectedKubernetesCommitSha: string = 'abcdef1234567890abcdef1234567890abcdef12';
-export const expectedKubernetesReleaseTag: string = `sha-${expectedKubernetesCommitSha}`;
 const expectedCliManifestDigest: string = `sha256:${'c'.repeat(64)}`;
 export const expectedCliDigestRef: string = `ghcr.io/compartmentdev/compartment-cli@${expectedCliManifestDigest}`;
-export const expectedPublishedKubernetesCommitSha: string = '9876543210abcdef9876543210abcdef98765432';
-export const expectedPublishedKubernetesReleaseTag: string = `sha-${expectedPublishedKubernetesCommitSha}`;
+export const expectedPublishedMainCommitSha: string = '9876543210abcdef9876543210abcdef98765432';
+export const expectedPublishedMainReleaseTag: string = `sha-${expectedPublishedMainCommitSha}`;
 const expectedPublishedCliManifestDigest: string = `sha256:${'d'.repeat(64)}`;
 export const expectedPublishedCliDigestRef: string = `ghcr.io/compartmentdev/compartment-cli@${expectedPublishedCliManifestDigest}`;
 
@@ -152,14 +150,14 @@ case "$url" in
   https://api.github.com/repos/example/compartment/git/ref/heads/main)
     printf '{"object":{"sha":"${expectedMainCommitSha}"}}\\n'
     ;;
-  https://api.github.com/repos/example/compartment/git/ref/heads/kubernetes)
-    printf '{"object":{"sha":"${expectedKubernetesCommitSha}"}}\\n'
+  https://api.github.com/repos/example/compartment/git/ref/heads/main)
+    printf '{"object":{"sha":"${expectedMainCommitSha}"}}\\n'
     ;;
-  "https://api.github.com/repos/example/compartment/actions/workflows/publish-self-hosted-kubernetes.yml/runs?branch=kubernetes&status=success&per_page=1")
+  "https://api.github.com/repos/example/compartment/actions/workflows/publish-self-hosted-main.yml/runs?branch=main&status=success&per_page=1")
     if [ "$published_fallback_outcome" = "lookup-missing" ]; then
       printf '{"workflow_runs":[]}\\n'
     else
-      printf '{"workflow_runs":[{"head_sha":"${expectedPublishedKubernetesCommitSha}"}]}\\n'
+      printf '{"workflow_runs":[{"head_sha":"${expectedPublishedMainCommitSha}"}]}\\n'
     fi
     ;;
   https://github.com/sigstore/cosign/releases/download/v2.6.1/cosign-*)
@@ -210,8 +208,8 @@ fi
 mkdir -p "$state_dir"
 printf '%s\\n' "$*" >> "\${state_dir}/cosign.log"
 
-expected_tip_args="verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedKubernetesCommitSha} ${expectedCliDigestRef}"
-expected_published_args="verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedPublishedKubernetesCommitSha} ${expectedPublishedCliDigestRef}"
+expected_tip_args="verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-main.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedMainCommitSha} ${expectedCliDigestRef}"
+expected_published_args="verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-main.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedPublishedMainCommitSha} ${expectedPublishedCliDigestRef}"
 if [ "$*" != "$expected_tip_args" ] && [ "$*" != "$expected_published_args" ]; then
   printf 'Unexpected cosign args: %s\\n' "$*" >&2
   exit 1
@@ -269,7 +267,7 @@ printf '%s\\n' "$*" >> "\${state_dir}/oras.log"
 case "\${1:-}" in
   resolve)
     case "$*" in
-      "resolve ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}")
+      "resolve ghcr.io/compartmentdev/compartment-cli:${expectedMainReleaseTag}")
         if [ "$oras_resolve_outcome" = "missing" ]; then
           printf 'Error response from registry: failed to resolve digest: not found\\n' >&2
           exit 1
@@ -280,7 +278,7 @@ case "\${1:-}" in
         fi
         printf '${expectedCliManifestDigest}\\n'
         ;;
-      "resolve ghcr.io/compartmentdev/compartment-cli:${expectedPublishedKubernetesReleaseTag}")
+      "resolve ghcr.io/compartmentdev/compartment-cli:${expectedPublishedMainReleaseTag}")
         if [ "$published_fallback_outcome" = "resolve-missing" ]; then
           printf 'Error response from registry: failed to resolve digest: not found\\n' >&2
           exit 1

@@ -12,6 +12,11 @@
       "force-tag-creation": true,
       "extra-files": [
         {
+          "type": "yaml",
+          "path": "deploy/chart/compartment/Chart.yaml",
+          "jsonpath": "$.appVersion"
+        },
+        {
           "type": "json",
           "path": "packages/api/package.json",
           "jsonpath": "$.version"

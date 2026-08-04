@@ -14,6 +14,7 @@ interface ManagedVmCommandMocks {
   inspectState: Mock;
   observePublicIpv4: Mock;
   provision: Mock;
+  runCommand: Mock;
 }
 
 const mocks: ManagedVmCommandMocks = vi.hoisted(
@@ -24,6 +25,7 @@ const mocks: ManagedVmCommandMocks = vi.hoisted(
     inspectState: vi.fn(),
     observePublicIpv4: vi.fn(),
     provision: vi.fn(),
+    runCommand: vi.fn(),
   }),
 );
 
@@ -33,6 +35,7 @@ vi.mock('../src/services/managed-vm-host-runtime.service', (): object => ({
   observePublicIpv4: mocks.observePublicIpv4,
 }));
 vi.mock('../src/services/managed-vm-command.service', (): object => ({ execa: mocks.execa }));
+vi.mock('../src/command-runner', (): object => ({ runCommand: mocks.runCommand }));
 vi.mock('../src/services/managed-vm-provisioner.service', (): object => ({
   provisionManagedVmCluster: mocks.provision,
 }));
@@ -52,6 +55,7 @@ describe('managed VM install command boundary', (): void => {
     mocks.observePublicIpv4.mockResolvedValue(`ip=${publicAddress()}\n`);
     mocks.provision.mockResolvedValue({ completedStage: 'verifying-prerequisites' });
     mocks.execa.mockResolvedValue({ exitCode: 0, stderr: '', stdout: '' });
+    mocks.runCommand.mockResolvedValue({ exitCode: 0, stderr: '', stdout: 'yes\n' });
   });
 
   it('prints the complete read-only preflight as JSON without reviewing or mutating', async (): Promise<void> => {
@@ -130,6 +134,28 @@ describe('managed VM install command boundary', (): void => {
     expect(mocks.execa).not.toHaveBeenCalled();
   });
 
+  it('offers managed Kubernetes when automatic discovery finds no cluster', async (): Promise<void> => {
+    const originalKubeconfig: string | undefined = process.env.KUBECONFIG;
+    process.env.KUBECONFIG = join(tmpdir(), 'compartment-missing-kubeconfig');
+    try {
+      const capture: CliCommandCapture = createCliCapture({ isTTY: true });
+      capture.stdin.end('\nn\n');
+      const { runCli } = await import('../src/app');
+
+      expect(await runCli(['install', ...ownerInstallArgs().slice(3)], capture.io)).toBe(1);
+      expect(readCliStderr(capture)).toContain('No usable Kubernetes cluster detected.');
+      expect(readCliStderr(capture)).toContain('Kubernetes 1.30 or newer with the required APIs');
+      expect(readCliStderr(capture)).toContain('Install managed Kubernetes on this VM? [Y/n]:');
+      expect(readCliStderr(capture)).toContain('cancelled before host changes');
+    } finally {
+      if (originalKubeconfig === undefined) {
+        delete process.env.KUBECONFIG;
+      } else {
+        process.env.KUBECONFIG = originalKubeconfig;
+      }
+    }
+  });
+
   it('detects an existing cluster from a multi-path KUBECONFIG at the command boundary', async (): Promise<void> => {
     const directory: string = await mkdtemp(join(tmpdir(), 'managed-vm-kubeconfig-'));
     const kubeconfigPath: string = join(directory, 'config');
@@ -138,7 +164,7 @@ describe('managed VM install command boundary', (): void => {
       kubeconfigPath,
       `current-context: existing
 contexts: [{ name: existing, context: { cluster: local, user: owner } }]
-clusters: [{ name: local, cluster: {} }]
+clusters: [{ name: local, cluster: { server: https://127.0.0.1:6443 } }]
 users: [{ name: owner, user: {} }]
 `,
     );

@@ -12,24 +12,9 @@ compartment install
 
 This is the supported clean-VM path for an Ubuntu 24.04 LTS x86_64 host. The bootstrap downloads and verifies the CLI
 without root. The CLI checks the host, shows one mutation review, and requests sudo only after you confirm it. On a
-clean host without a usable Kubernetes context, it selects the managed-VM target automatically and installs the
-tested k3s channel, Helm, cert-manager, registry trust, and Compartment.
+clean host without a usable Kubernetes context, it offers to install managed Kubernetes before installing Helm,
+cert-manager, registry trust, and Compartment.
 
-The default command follows the tip of the `kubernetes` channel. To reproduce an installation with a specific
-published build, pin its full immutable tag:
-
-```bash
-curl -fsSL https://compartment.dev/install.sh | sh -s -- \
-  --channel kubernetes \
-  --version sha-0123456789abcdef0123456789abcdef01234567
-```
-
-`--channel` selects where the installer resolves artifacts (`latest`, `main`, or `kubernetes`), while `--version`
-selects an exact tag within that channel. Kubernetes pins must use `sha-` followed by the full 40-character lowercase
-commit SHA. The installer verifies the pinned artifact with the same digest and Cosign identity checks as the channel
-tip. If a new Kubernetes tip is still publishing, the installer prints a copyable command for the latest fully
-published and signed build after verifying it. If automatic discovery is unavailable, it links the successful
-publication runs and prints the command template to complete with that run's full commit SHA.
 Add `--verbose` to show Cosign, ORAS, and checksum diagnostics during installation.
 
 ## Prepare a clean VM
@@ -53,9 +38,9 @@ Do not put the password on the command line.
 
 ## Use an existing Kubernetes cluster
 
-The existing-Kubernetes path remains available for operator-managed clusters. Compartment supports the current and
-previous tested Kubernetes minors when the required API and runtime capability checks pass. CI currently exercises
-Kubernetes 1.36 and 1.35. Exact k3s patches are reproducible release inputs, not the public compatibility contract.
+The existing-Kubernetes path remains available for operator-managed clusters. Compartment requires Kubernetes 1.30
+or newer and verifies the required APIs and runtime capabilities before installation. The exact managed k3s version
+is an installation pin, not an upper compatibility limit for existing clusters.
 
 A single-node installation is not highly available: a node outage interrupts the control plane and any tenant
 workloads scheduled on that node.
@@ -63,7 +48,8 @@ workloads scheduled on that node.
 Before installation, also provide:
 
 - `helm` 4.0.0 or newer on `PATH` (`helm version --short`);
-- `kubectl` 1.30.0 or newer on `PATH`, compatible with the target Kubernetes server (`kubectl version --client`);
+- `kubectl` 1.30.0 or newer on `PATH` and within one minor version of the target Kubernetes API server
+  (`kubectl version --client`);
 - an Issuer or ClusterIssuer for operator-owned public domains;
 - a separate cert-manager CA Issuer or ClusterIssuer for the private registry, with its CA already trusted by every
   node container runtime and the machine running the CLI;
