@@ -131,6 +131,24 @@ describe('managed VM preflight', (): void => {
 
     expect(result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'ports')?.passed).toBe(false);
   });
+
+  it('reports the observed and local addresses when the public IPv4 is not assigned to the host', (): void => {
+    const localAddresses: readonly string[] = [ipv4([46, 225, 172, 160]), ipv4([10, 0, 0, 2])];
+    const observedAddress: string = ipv4([8, 8, 8, 8]);
+    const result: ManagedVmPreflightResult = evaluateManagedVmPreflight(
+      { ...supportedInventory(), localIpv4Addresses: localAddresses },
+      freshState(),
+      observedAddress,
+    );
+
+    expect(
+      result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'public-address-match'),
+    ).toEqual({
+      detail: `observed public IPv4 ${observedAddress} is not assigned to this host; local IPv4 addresses: ${localAddresses.join(', ')}`,
+      name: 'public-address-match',
+      passed: false,
+    });
+  });
 });
 
 function supportedInventory(): ManagedVmHostInventory {

@@ -17,7 +17,7 @@ export async function readReachableManagedVmEndpoints(): Promise<readonly string
 async function endpointIfReachable(url: string): Promise<string | undefined> {
   try {
     const response: Response = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(5_000) });
-    return response.ok || response.status === 401 || response.status === 403 ? url : undefined;
+    return response.status < 500 ? url : undefined;
   } catch {
     return undefined;
   }

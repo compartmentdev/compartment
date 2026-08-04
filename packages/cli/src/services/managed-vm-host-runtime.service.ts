@@ -181,9 +181,18 @@ async function readDiskAvailability(): Promise<ManagedVmDiskAvailability> {
     execa('df', ['--output=iavail', '/var/lib']),
   ]);
   return {
-    freeBytes: Number(bytes.stdout.split('\n').at(-1)?.trim() ?? '0'),
-    freeInodes: Number(inodes.stdout.split('\n').at(-1)?.trim() ?? '0'),
+    freeBytes: readLastOutputValue(bytes.stdout),
+    freeInodes: readLastOutputValue(inodes.stdout),
   };
+}
+
+function readLastOutputValue(stdout: string): number {
+  const value: string | undefined = stdout
+    .split('\n')
+    .map((line: string): string => line.trim())
+    .filter(Boolean)
+    .at(-1);
+  return Number(value ?? '0');
 }
 
 async function readClockSynchronization(): Promise<boolean> {

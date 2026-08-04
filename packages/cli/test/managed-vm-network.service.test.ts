@@ -6,8 +6,8 @@ afterEach((): void => {
 });
 
 describe('managed VM download reachability', (): void => {
-  it('accepts success and expected authentication responses only', async (): Promise<void> => {
-    const statuses: number[] = [200, 204, 401, 403, 404, 429];
+  it('accepts any response that proves the endpoint is reachable', async (): Promise<void> => {
+    const statuses: number[] = [307, 401, 403, 404, 405, 429];
     const fetchMock: Mock<typeof fetch> = vi.fn<typeof fetch>();
     for (const status of statuses) {
       fetchMock.mockResolvedValueOnce(new Response(undefined, { status }));
@@ -19,6 +19,8 @@ describe('managed VM download reachability', (): void => {
       'https://github.com',
       'https://ghcr.io/v2/',
       'https://get.helm.sh',
+      'https://acme-v02.api.letsencrypt.org/directory',
+      'https://broker.compartment.run',
     ]);
   });
 
