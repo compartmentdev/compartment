@@ -157,8 +157,8 @@ async function openLogOutputWithRetry(
   let lastAttachmentError: Error | null = null;
   for (;;) {
     throwIfJobLogAborted(signal, podName);
-    if (retrySignal.aborted && lastAttachmentError !== null) {
-      throw lastAttachmentError;
+    if (lastAttachmentError !== null) {
+      throwIfRetryAborted(signal, retrySignal, lastAttachmentError);
     }
     try {
       return await openLogOutput(kubeConfig, namespace, podName, onLogChunk);
