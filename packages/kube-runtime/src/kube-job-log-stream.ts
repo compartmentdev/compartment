@@ -88,9 +88,18 @@ async function followPodLogs(
   const abort: () => void = (): void => abortLogOutput(output);
   registerOutputAbort(signal, abort);
   try {
-    await waitForActiveOutput(output);
+    await waitForActiveOutputOrAbort(output);
   } finally {
     signal.removeEventListener('abort', abort);
+  }
+}
+
+async function waitForActiveOutputOrAbort(output: ActiveLogOutput): Promise<void> {
+  try {
+    await waitForActiveOutput(output);
+  } catch (error) {
+    abortLogOutput(output);
+    throw error;
   }
 }
 

@@ -177,11 +177,12 @@ describe('Kubernetes Job log stream', (): void => {
 
   it('routes synchronous chunk handler failures through the stream error path', async (): Promise<void> => {
     const observation: PodObservation = new PodObservation();
+    const controller: AbortController = new AbortController();
     vi.spyOn(Log.prototype, 'log').mockImplementation(
       async (_namespace: string, _podName: string, _container: string, stream: Writable): Promise<AbortController> => {
         stream.end('invalid chunk\n');
         observation.complete();
-        return await Promise.resolve(new AbortController());
+        return await Promise.resolve(controller);
       },
     );
 
@@ -190,6 +191,7 @@ describe('Kubernetes Job log stream', (): void => {
         throw new Error('progress handler failed');
       }).finished,
     ).rejects.toThrow('progress handler failed');
+    expect(controller.signal.aborted).toBe(true);
   });
 
   it('follows each retry Pod once', async (): Promise<void> => {
