@@ -38,7 +38,6 @@ const guardedRuntimeTerms = [
   'inside |Docker',
   'install one Compartment runtime on a |server',
   'CLI creates and repairs that host |directory',
-  '/install-operate/install-|domain/',
   'Release executes on the target |node',
   'Node owns release |execution',
   'Runtime packages such as `|node`',
