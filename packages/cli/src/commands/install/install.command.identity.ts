@@ -22,6 +22,18 @@ export async function resolveInstallIdentityPrompts(
   };
 }
 
+export function withResolvedInstallIdentity(
+  options: InstallCommandOptions,
+  identity: ResolvedInstallIdentityPrompts,
+): InstallCommandOptions {
+  return {
+    ...options,
+    adminPassword: identity.adminPassword,
+    email: identity.adminEmail,
+    organization: identity.organizationName,
+  };
+}
+
 async function resolveInstallAdminPassword(
   dependencies: CliIoCommandDependencies,
   options: InstallCommandOptions,

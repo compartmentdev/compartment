@@ -21,7 +21,7 @@ import { renderManagedVmFirewallRules } from '../../services/managed-vm-firewall
 import { persistManagedVmStage } from '../../services/managed-vm-state.service';
 import { selectInstallTarget, type InstallTarget } from '../../services/managed-vm-target.service';
 import type { CliCommandDependencies } from '../command.types';
-import { resolveInstallIdentityPrompts } from './install.command.identity';
+import { resolveInstallIdentityPrompts, withResolvedInstallIdentity } from './install.command.identity';
 import { executeCanonicalKubernetesInstallCommand } from './install.command.kubernetes';
 import type {
   InstallCommandOptions,
@@ -82,7 +82,7 @@ async function reviewAndExecuteManagedVmMutation(
     throw new Error('Installation cancelled before host changes.');
   }
   if (typeof process.getuid === 'function' && process.getuid() === 0) {
-    await runPrivilegedManagedVmInstall(dependencies, { ...options, adminPassword: identity.adminPassword }, preflight);
+    await runPrivilegedManagedVmInstall(dependencies, withResolvedInstallIdentity(options, identity), preflight);
     return;
   }
   await reexecManagedVmInstall(dependencies, options, identity);
