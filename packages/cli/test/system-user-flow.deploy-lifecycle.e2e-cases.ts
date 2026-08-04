@@ -106,6 +106,7 @@ import {
   type SelfHostedDeployCommandResponse,
 } from './self-hosted-user-setup-cli-response.harness';
 import {
+  deploymentRunCompletionTimeoutMs,
   expectBlockedPublicControlPlanePaths,
   expectExplicitProjectLifecycleFlow,
   requireDetachedDeploymentRunId,
@@ -143,6 +144,8 @@ import {
   SystemUserFlowContext,
 } from './system-user-flow.e2e.harness';
 import { registerSystemUserFlowStatefulTeardownCases } from './system-user-flow.stateful-teardown.e2e-cases';
+
+const deploymentLifecycleCaseTimeoutMs: number = deploymentRunCompletionTimeoutMs + 8 * 60_000;
 
 export function registerSystemUserFlowDeployLifecycleCases(): void {
   const setup: SelfHostedUserSetupHarness = useSelfHostedUserSetupHarness();
@@ -884,7 +887,7 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
       completedCaseCount = 4;
       context.completedCaseCount = completedCaseCount;
     },
-    selfHostedUserSetupTimeoutMs,
+    deploymentLifecycleCaseTimeoutMs,
   );
 
   registerSystemUserFlowStatefulTeardownCases(context);
