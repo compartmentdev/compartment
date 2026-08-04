@@ -321,12 +321,36 @@ export async function expectExplicitProjectLifecycleFlow(
     projectDeleteResponseSchema,
   );
   expect(deletedProject.projectName).toBe(projectName);
-  await expectK3dProjectNamespaceDeleted(projectId);
-
-  const deletedStatus: SelfHostedUserSetupCommandResult = await cli.runFailure(
-    `status --project ${projectName} --output json`,
-  );
+  const deletedStatus: SelfHostedUserSetupCommandResult = await waitForProjectDeletionTerminalState(cli, projectName);
   expect(deletedStatus.stderr).toContain(missingProjectMessage);
+  await expectK3dProjectNamespaceDeleted(projectId);
+}
+
+async function waitForProjectDeletionTerminalState(
+  cli: SelfHostedUserSetupCli,
+  projectName: string,
+): Promise<SelfHostedUserSetupCommandResult> {
+  let lastResult: SelfHostedUserSetupCommandResult | null = null;
+  for (let attempt: number = 0; attempt < deploymentRunPollAttempts; attempt += 1) {
+    lastResult = await cli.runFailure(`status --project ${projectName} --output json`);
+    if (lastResult.stderr.includes(missingProjectMessage)) {
+      return lastResult;
+    }
+    if (!lastResult.stderr.includes(archivedProjectMessage)) {
+      throw new Error(
+        `Unexpected project status while waiting for ${projectName} deletion. Exit code: ${lastResult.exitCode}. ` +
+          `Stdout: ${JSON.stringify(lastResult.stdout)}. Stderr: ${JSON.stringify(lastResult.stderr)}.`,
+      );
+    }
+    await sleep(deploymentRunPollDelayMs);
+  }
+  throw new Error(
+    `Timed out waiting for project ${projectName} deletion to reach the not-found terminal state after ${
+      deploymentRunPollAttempts * deploymentRunPollDelayMs
+    }ms. Last exit code: ${lastResult?.exitCode ?? 'unavailable'}. Last stdout: ${JSON.stringify(
+      lastResult?.stdout ?? '',
+    )}. Last stderr: ${JSON.stringify(lastResult?.stderr ?? '')}.`,
+  );
 }
 
 function isStoppedDeployment(serviceName: string): (deployment: StoppedDeploymentCandidate) => boolean {
