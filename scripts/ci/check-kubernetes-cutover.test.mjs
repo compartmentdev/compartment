@@ -184,10 +184,11 @@ describe('Kubernetes cutover gate', () => {
     expect(listRepositoryPaths(repository)).toContain('packages/cli/dist/installer.js');
   });
 
-  it('requires the public bootstrap to default to the signed Kubernetes artifact', () => {
+  it('requires the public bootstrap to default to stable and verify signed main artifacts', () => {
     const validInstaller = renderLines([
-      ['channel=', '"kubernetes"'].join(''),
+      ['channel=', '"latest"'].join(''),
       ['https://compartment.dev', '/install.sh'].join(''),
+      ['publish-self-hosted-', 'main.yml@refs/heads/main'].join(''),
       ['"', '$cosign_command', '" verify'].join(''),
       ['--certificate-', 'identity'].join(''),
       ['--certificate-', 'oidc-issuer'].join(''),
@@ -195,7 +196,7 @@ describe('Kubernetes cutover gate', () => {
     ]);
 
     expect(findPublicInstallerViolations('install.sh', validInstaller)).toEqual([]);
-    expect(findPublicInstallerViolations('install.sh', 'channel="latest"')).toHaveLength(6);
+    expect(findPublicInstallerViolations('install.sh', 'channel="main"')).toHaveLength(7);
     expect(
       findPublicInstallerViolations(
         'install.sh',

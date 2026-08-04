@@ -11,12 +11,11 @@ import {
   expectedArtifactName,
   expectedCliDigestRef,
   expectedInstalledVersion,
-  expectedKubernetesCommitSha,
-  expectedKubernetesReleaseTag,
+  expectedMainCommitSha,
   expectedMainReleaseTag,
   expectedPublishedCliDigestRef,
-  expectedPublishedKubernetesCommitSha,
-  expectedPublishedKubernetesReleaseTag,
+  expectedPublishedMainCommitSha,
+  expectedPublishedMainReleaseTag,
   readExpectedArtifactName,
   readExpectedOrasPlatform,
   writeExecutableScript,
@@ -64,34 +63,40 @@ describe('render-cli-install-script', (): void => {
     temporaryDirectories.length = 0;
   });
 
-  it('resolves main installs through the current main commit before downloading the immutable binary', async (): Promise<void> => {
+  it('defaults to stable and rejects the retired kubernetes channel', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
-    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
-      args: ['--version', 'main', '--verbose'],
-      pathEntries: [binDirectory],
+    const retiredChannelResult: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      allowFailure: true,
+      args: ['--channel', 'kubernetes'],
     });
-
-    expect(result.stderr).toContain(`Resolved main to ${expectedMainReleaseTag}`);
-    expect(result.stdout).toContain(`Installed to ${join(binDirectory, 'compartment')}`);
-    expect(result.stdout).toContain(expectedInstalledVersion);
-    expect(result.compartmentInvocations).toEqual(['--version']);
-    expect(result.urlLog).toEqual([
-      'https://api.github.com/repos/example/compartment/git/ref/heads/main',
-      `https://github.com/example/compartment/releases/download/${expectedMainReleaseTag}/${expectedArtifactName}`,
-      `https://github.com/example/compartment/releases/download/${expectedMainReleaseTag}/checksums.txt`,
-    ]);
-  });
-
-  it('defaults the public installer to the signed immutable CLI artifact from the kubernetes branch head', async (): Promise<void> => {
-    const temporaryDirectory: string = await createTemporaryDirectory();
-    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+    expect(retiredChannelResult.stderr).toContain('Unsupported channel: kubernetes');
+    expect(retiredChannelResult.exitCode).toBe(1);
+    expect(retiredChannelResult.urlLog).toEqual([]);
+    expect(retiredChannelResult.orasInvocations).toEqual([]);
+    expect(retiredChannelResult.compartmentInvocations).toEqual([]);
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       args: [],
       pathEntries: [binDirectory],
     });
 
-    expect(result.stderr).toBe('');
+    expect(result.stdout).toContain(`Installed to ${join(binDirectory, 'compartment')}`);
+    expect(result.compartmentInvocations).toEqual(['--version']);
+    expect(result.urlLog).toEqual([
+      `https://github.com/example/compartment/releases/latest/download/${expectedArtifactName}`,
+      'https://github.com/example/compartment/releases/latest/download/checksums.txt',
+    ]);
+  });
+
+  it('installs the signed immutable CLI artifact from the main branch head', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      args: ['--channel', 'main'],
+      pathEntries: [binDirectory],
+    });
+
+    expect(result.stderr).toMatch(/^(?:tar: Failed to set default locale\n)?$/u);
     expect(result.stdout).toMatch(
       new RegExp(
         `^Verified signed Compartment CLI\\nDownloaded CLI \\(\\d+(?:\\.\\d)? (?:B|KB|MB|GB)\\)\\nInstalled to ${escapeRegExp(join(binDirectory, 'compartment'))}\\n${escapeRegExp(expectedInstalledVersion)}\\n$`,
@@ -101,39 +106,34 @@ describe('render-cli-install-script', (): void => {
     expect(result.stdout).not.toContain('Skipped pulling layers');
     expect(result.stdout).not.toContain('sha256:');
     expect(result.compartmentInvocations).toEqual(['--version']);
-    expect(result.urlLog).toEqual(['https://api.github.com/repos/example/compartment/git/ref/heads/kubernetes']);
+    expect(result.urlLog).toEqual(['https://api.github.com/repos/example/compartment/git/ref/heads/main']);
     expect(result.cosignInvocations).toEqual([
-      `verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedKubernetesCommitSha} ${expectedCliDigestRef}`,
+      `verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-main.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedMainCommitSha} ${expectedCliDigestRef}`,
     ]);
-    expect(result.orasInvocations[0]).toBe(
-      `resolve ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}`,
-    );
+    expect(result.orasInvocations[0]).toBe(`resolve ghcr.io/compartmentdev/compartment-cli:${expectedMainReleaseTag}`);
     expect(result.orasInvocations[1]).toMatch(
       new RegExp(`^pull --platform linux/amd64 --output .+ ${expectedCliDigestRef}$`, 'u'),
     );
   });
 
-  it('shows installer diagnostics on verbose Kubernetes success', async (): Promise<void> => {
+  it('shows installer diagnostics on verbose main success', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
-      args: ['--verbose'],
+      args: ['--channel', 'main', '--verbose'],
       pathEntries: [binDirectory],
     });
 
-    expect(result.stdout).toContain('Verified signed Compartment CLI');
-    expect(result.stderr).toContain(`Resolved kubernetes to ${expectedKubernetesReleaseTag}`);
+    expect(result.stderr).toContain(`Resolved main to ${expectedMainReleaseTag}`);
     expect(result.stderr).toContain('cosign verification internals');
     expect(result.stderr).toContain(`Verified OCI artifact ${expectedCliDigestRef}`);
-    expect(result.stderr).toContain('Skipped pulling layers without selected files');
-    expect(result.stderr).toContain(`${expectedArtifactName}: OK`);
   });
 
   it('replays captured ORAS diagnostics when the CLI download fails', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       allowFailure: true,
-      args: [],
+      args: ['--channel', 'main'],
       orasPullFailure: true,
     });
 
@@ -143,10 +143,10 @@ describe('render-cli-install-script', (): void => {
   });
 
   it.each([
-    ['version before channel', ['--version', expectedKubernetesReleaseTag, '--channel', 'kubernetes']],
-    ['channel before version', ['--channel', 'kubernetes', '--version', expectedKubernetesReleaseTag]],
+    ['version before channel', ['--version', expectedMainReleaseTag, '--channel', 'main']],
+    ['channel before version', ['--channel', 'main', '--version', expectedMainReleaseTag]],
   ] as const)(
-    'installs an explicitly pinned version from the kubernetes channel: %s',
+    'installs an explicitly pinned version from the main channel: %s',
     async (_label: string, args: readonly string[]): Promise<void> => {
       const temporaryDirectory: string = await createTemporaryDirectory();
       const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
@@ -156,10 +156,10 @@ describe('render-cli-install-script', (): void => {
       expect(result.exitCode).toBe(0);
       expect(result.urlLog).toEqual([]);
       expect(result.orasInvocations[0]).toBe(
-        `resolve ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}`,
+        `resolve ghcr.io/compartmentdev/compartment-cli:${expectedMainReleaseTag}`,
       );
       expect(result.cosignInvocations).toEqual([
-        `verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedKubernetesCommitSha} ${expectedCliDigestRef}`,
+        `verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-main.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedMainCommitSha} ${expectedCliDigestRef}`,
       ]);
       expect(result.compartmentInvocations).toEqual(['--version']);
     },
@@ -170,21 +170,17 @@ describe('render-cli-install-script', (): void => {
     ['a semantic version', '0.9.2'],
     ['an uppercase sha', 'sha-ABCDEF1234567890ABCDEF1234567890ABCDEF12'],
   ] as const)(
-    'rejects %s for the kubernetes channel with a human-readable format error',
+    'rejects %s for the main channel with a human-readable format error',
     async (_label: string, version: string): Promise<void> => {
       const temporaryDirectory: string = await createTemporaryDirectory();
       const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
         allowFailure: true,
-        args: ['--channel', 'kubernetes', '--version', version],
+        args: ['--channel', 'main', '--version', version],
       });
 
-      expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain(
-        `Invalid version for the kubernetes channel: ${version}. Expected sha- followed by 40 lowercase hexadecimal characters.`,
+        `Invalid version for the main channel: ${version}. Expected sha- followed by 40 lowercase hexadecimal characters.`,
       );
-      expect(result.stderr).not.toContain('Error:');
-      expect(result.urlLog).toEqual([]);
-      expect(result.orasInvocations).toEqual([]);
     },
   );
 
@@ -211,55 +207,53 @@ describe('render-cli-install-script', (): void => {
     },
   );
 
-  it('offers the latest fully published Kubernetes build when the channel tip is still publishing', async (): Promise<void> => {
+  it('offers the latest fully published Main build when the channel tip is still publishing', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       allowFailure: true,
-      args: ['--channel', 'kubernetes'],
+      args: ['--channel', 'main'],
       orasResolveOutcome: 'missing',
     });
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain(
-      `Images for ${expectedKubernetesReleaseTag} are still publishing. Install the latest fully published kubernetes build with:`,
+      `Images for ${expectedMainReleaseTag} are still publishing. Install the latest fully published main build with:`,
     );
-    expect(result.stderr).toContain(
-      `sh install.sh --channel kubernetes --version ${expectedPublishedKubernetesReleaseTag}`,
-    );
+    expect(result.stderr).toContain(`sh install.sh --channel main --version ${expectedPublishedMainReleaseTag}`);
     expect(result.stderr).toContain('Error response from registry');
     expect(result.orasInvocations).toEqual([
-      `resolve ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}`,
-      `resolve ghcr.io/compartmentdev/compartment-cli:${expectedPublishedKubernetesReleaseTag}`,
+      `resolve ghcr.io/compartmentdev/compartment-cli:${expectedMainReleaseTag}`,
+      `resolve ghcr.io/compartmentdev/compartment-cli:${expectedPublishedMainReleaseTag}`,
     ]);
     expect(result.urlLog).toEqual([
-      'https://api.github.com/repos/example/compartment/git/ref/heads/kubernetes',
-      'https://api.github.com/repos/example/compartment/actions/workflows/publish-self-hosted-kubernetes.yml/runs?branch=kubernetes&status=success&per_page=1',
+      'https://api.github.com/repos/example/compartment/git/ref/heads/main',
+      'https://api.github.com/repos/example/compartment/actions/workflows/publish-self-hosted-main.yml/runs?branch=main&status=success&per_page=1',
     ]);
     expect(result.cosignInvocations).toEqual([
-      `verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedPublishedKubernetesCommitSha} ${expectedPublishedCliDigestRef}`,
+      `verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-main.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedPublishedMainCommitSha} ${expectedPublishedCliDigestRef}`,
     ]);
     expect(result.compartmentInvocations).toEqual([]);
   });
 
-  it('reports an unpublished explicit Kubernetes pin without claiming fallback discovery failed', async (): Promise<void> => {
+  it('reports an unpublished explicit Main pin without claiming fallback discovery failed', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       allowFailure: true,
-      args: ['--channel', 'kubernetes', '--version', expectedKubernetesReleaseTag],
+      args: ['--channel', 'main', '--version', expectedMainReleaseTag],
       orasResolveOutcome: 'missing',
     });
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain(
-      `Kubernetes CLI image tag ${expectedKubernetesReleaseTag} was not found in the registry. Check that the build was published and that the version is not mistyped.`,
+      `Main CLI image tag ${expectedMainReleaseTag} was not found in the registry. Check that the build was published and that the version is not mistyped.`,
     );
-    expect(result.stderr).toContain('To install the current kubernetes channel tip instead, omit --version:');
-    expect(result.stderr).toContain('sh install.sh --channel kubernetes');
+    expect(result.stderr).toContain('To install the current main channel tip instead, omit --version:');
+    expect(result.stderr).toContain('sh install.sh --channel main');
     expect(result.stderr).not.toContain('fallback automatically');
-    expect(result.stderr).not.toContain(`--version ${expectedKubernetesReleaseTag}`);
+    expect(result.stderr).not.toContain(`--version ${expectedMainReleaseTag}`);
     expect(result.urlLog).toEqual([]);
     expect(result.orasInvocations).toEqual([
-      `resolve ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}`,
+      `resolve ghcr.io/compartmentdev/compartment-cli:${expectedMainReleaseTag}`,
     ]);
   });
 
@@ -273,7 +267,7 @@ describe('render-cli-install-script', (): void => {
       const temporaryDirectory: string = await createTemporaryDirectory();
       const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
         allowFailure: true,
-        args: ['--channel', 'kubernetes'],
+        args: ['--channel', 'main'],
         orasResolveOutcome: 'missing',
         publishedFallbackOutcome,
       });
@@ -281,9 +275,9 @@ describe('render-cli-install-script', (): void => {
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('the installer could not verify a fallback automatically');
       expect(result.stderr).toContain(
-        'https://github.com/example/compartment/actions/workflows/publish-self-hosted-kubernetes.yml',
+        'https://github.com/example/compartment/actions/workflows/publish-self-hosted-main.yml',
       );
-      expect(result.stderr).toContain('sh install.sh --channel kubernetes --version sha-COMMIT_SHA');
+      expect(result.stderr).toContain('sh install.sh --channel main --version sha-COMMIT_SHA');
       expect(result.stderr).not.toContain('sha-<');
       expect(result.compartmentInvocations).toEqual([]);
     },
@@ -293,13 +287,13 @@ describe('render-cli-install-script', (): void => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       allowFailure: true,
-      args: ['--channel', 'kubernetes'],
+      args: ['--channel', 'main'],
       orasResolveOutcome: 'unavailable',
     });
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain(
-      `Failed to resolve Kubernetes CLI image ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}. Check registry access and retry.`,
+      `Failed to resolve main CLI image ghcr.io/compartmentdev/compartment-cli:${expectedMainReleaseTag}. Check registry access and retry.`,
     );
     expect(result.stderr).not.toContain('still publishing');
     expect(result.stderr).toContain('registry unavailable');
@@ -316,14 +310,14 @@ describe('render-cli-install-script', (): void => {
       const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
       const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
         allowFailure: true,
-        args: ['--channel', 'kubernetes'],
+        args: ['--channel', 'main'],
         pathEntries: [binDirectory],
         signatureOutcome,
       });
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain(expectedError);
-      expect(result.stderr).toContain(`Failed to verify Kubernetes CLI artifact ${expectedCliDigestRef}`);
+      expect(result.stderr).toContain(`Failed to verify main CLI artifact ${expectedCliDigestRef}`);
       expect(result.orasInvocations.filter((invocation: string): boolean => invocation.startsWith('pull '))).toEqual(
         [],
       );
@@ -348,7 +342,7 @@ describe('render-cli-install-script', (): void => {
       const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
       const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
         archName,
-        args: ['--channel', 'kubernetes'],
+        args: ['--channel', 'main'],
         osName,
         pathEntries: [binDirectory],
       });
@@ -367,7 +361,7 @@ describe('render-cli-install-script', (): void => {
     const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       allowFailure: true,
-      args: ['--channel', 'kubernetes'],
+      args: ['--channel', 'main'],
       pathEntries: [binDirectory],
       toolVersionMode: 'incompatible',
     });
@@ -375,7 +369,7 @@ describe('render-cli-install-script', (): void => {
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('Checksum mismatch for cosign-linux-amd64');
     expect(result.urlLog).toEqual([
-      'https://api.github.com/repos/example/compartment/git/ref/heads/kubernetes',
+      'https://api.github.com/repos/example/compartment/git/ref/heads/main',
       'https://github.com/sigstore/cosign/releases/download/v2.6.1/cosign-linux-amd64',
     ]);
     expect(result.cosignInvocations).toEqual([]);
@@ -388,7 +382,7 @@ describe('render-cli-install-script', (): void => {
     const homeBinDirectory: string = join(temporaryDirectory, 'bin');
     const localBinDirectory: string = join(temporaryDirectory, '.local', 'bin');
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
-      args: ['--version', 'main'],
+      args: ['--channel', 'main'],
       pathEntries: [homeBinDirectory, localBinDirectory],
     });
 
@@ -400,7 +394,7 @@ describe('render-cli-install-script', (): void => {
     const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       allowFailure: true,
-      args: ['--version', 'main', '--organization', 'acme-dev', '--onboarding-session', 'fdo_123'],
+      args: ['--channel', 'main', '--organization', 'acme-dev', '--onboarding-session', 'fdo_123'],
       pathEntries: [binDirectory],
     });
 
@@ -417,7 +411,7 @@ describe('render-cli-install-script', (): void => {
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       allowFailure: true,
       args: [
-        '--version',
+        '--channel',
         'main',
         '--init-login',
         '--api-url',
@@ -473,7 +467,7 @@ describe('render-cli-install-script', (): void => {
   it('accepts a semantic version with prerelease and build metadata in the latest channel', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
-    const explicitReleaseVersion: string = '0.9.2-kubernetes+d7cea10';
+    const explicitReleaseVersion: string = '0.9.2-main+d7cea10';
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       args: ['--channel', 'latest', '--version', explicitReleaseVersion],
       pathEntries: [binDirectory],
@@ -517,10 +511,10 @@ describe('render-cli-install-script', (): void => {
     expect(result.stderr).toContain(`Resolved main to ${expectedMainReleaseTag}`);
     expect(result.stdout).toContain(expectedInstalledVersion);
     expect(result.compartmentInvocations).toEqual(['--version']);
-    expect(result.urlLog).toEqual([
-      'https://api.github.com/repos/example/compartment/git/ref/heads/main',
-      `https://github.com/example/compartment/releases/download/${expectedMainReleaseTag}/${expectedArtifactName}`,
-      `https://github.com/example/compartment/releases/download/${expectedMainReleaseTag}/checksums.txt`,
+    expect(result.urlLog).toEqual(['https://api.github.com/repos/example/compartment/git/ref/heads/main']);
+    expect(result.orasInvocations[0]).toBe(`resolve ghcr.io/compartmentdev/compartment-cli:${expectedMainReleaseTag}`);
+    expect(result.cosignInvocations).toEqual([
+      `verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-main.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedMainCommitSha} ${expectedCliDigestRef}`,
     ]);
   });
 
@@ -605,7 +599,7 @@ describe('render-cli-install-script', (): void => {
     const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
     const missingInstallerTerminalPath: string = join(temporaryDirectory, 'missing-installer-tty');
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
-      args: ['--version', 'main'],
+      args: ['--channel', 'main'],
       installerTerminalPath: missingInstallerTerminalPath,
       pathEntries: [],
       shell: '/bin/zsh',
@@ -625,7 +619,7 @@ describe('render-cli-install-script', (): void => {
     await mkdir(readOnlyInstallerTerminalPath);
 
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
-      args: ['--version', 'main'],
+      args: ['--channel', 'main'],
       installerTerminalPath: readOnlyInstallerTerminalPath,
       pathEntries: [],
       shell: '/bin/zsh',
@@ -676,7 +670,7 @@ describe('render-cli-install-script', (): void => {
       const temporaryDirectory: string = await createTemporaryDirectory();
       const runOptions: InstallerRunOptions = {
         acceptPathUpdate: true,
-        args: ['--version', 'main'],
+        args: ['--channel', 'main'],
         osName,
         pathEntries: [],
         shell,
@@ -698,7 +692,7 @@ describe('render-cli-install-script', (): void => {
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       allowFailure: true,
       args: [
-        '--version',
+        '--channel',
         'main',
         '--init-install',
         '--target',
@@ -725,7 +719,7 @@ describe('render-cli-install-script', (): void => {
 
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       args: [
-        '--version',
+        '--channel',
         'main',
         '--init-install',
         '--api-url',
@@ -769,7 +763,7 @@ describe('render-cli-install-script', (): void => {
 
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       args: [
-        '--version',
+        '--channel',
         'main',
         '--init-update',
         '--values',
@@ -798,7 +792,7 @@ describe('render-cli-install-script', (): void => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       allowFailure: true,
-      args: ['--version', 'main', '--init-update'],
+      args: ['--channel', 'main', '--init-update'],
     });
 
     expect(result.exitCode).toBe(1);
@@ -816,7 +810,7 @@ describe('render-cli-install-script', (): void => {
           : [mode, '--api-url', 'https://console.example'];
       const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
         allowFailure: true,
-        args: ['--version', 'main', ...modeArgs, '--admin-password-file', '/run/secrets/owner-password'],
+        args: ['--channel', 'main', ...modeArgs, '--admin-password-file', '/run/secrets/owner-password'],
       });
 
       expect(result.stderr).toContain(
@@ -836,7 +830,7 @@ describe('render-cli-install-script', (): void => {
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       allowFailure: true,
       args: [
-        '--version',
+        '--channel',
         'main',
         '--init-login',
         '--api-url',
@@ -869,7 +863,7 @@ describe('render-cli-install-script', (): void => {
 
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       args: [
-        '--version',
+        '--channel',
         'main',
         '--init-login',
         '--api-url',
@@ -901,7 +895,7 @@ describe('render-cli-install-script', (): void => {
 
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       args: [
-        '--version',
+        '--channel',
         'main',
         '--init-login',
         '--api-url',

@@ -6,11 +6,12 @@ Standalone CLI install artifacts are published in `compartmentdev/compartment`:
 
 - public self-hosted image publishing is covered by [Self-Hosted Image Publishing](./self-hosted-image-publishing.md);
 - Node SEA binaries, `install.sh`, and `checksums.txt` are attached to stable GitHub Releases in this repository;
-- the checked-in public `install.sh` defaults to the signed Kubernetes-line OCI artifact from
-  `compartmentdev/compartment`;
+- the checked-in public `install.sh` defaults to the latest stable release;
 - stable release `install.sh` assets install the verified CLI release;
-- rolling `main` binaries publish after successful main CI under immutable `sha-<commit>` prereleases;
-- the installer resolves `install.sh --version main` by reading the current GitHub `main` commit and downloading the matching `sha-<commit>` release, while `install.sh --version sha-<commit>` pins an exact `main` binary.
+- rolling `main` binaries publish as signed OCI artifacts under immutable `sha-<commit>` tags;
+- `install.sh --channel main` reads the current GitHub `main` commit, resolves the matching OCI artifact by digest,
+  and verifies its Cosign identity, GitHub OIDC issuer, and workflow SHA before pulling the platform archive;
+- `install.sh --channel main --version sha-<commit>` pins an exact rolling binary.
 
 Stable CLI releases are tag-driven. Release-please maintains one release PR on `main`; merging it updates checked-in versions and `CHANGELOG.md`, creates the semver tag, and may create the GitHub release before the publish workflow runs. The tag workflow edits the existing `vX.Y.Z` draft release or creates it when missing, renders a self-pinned stable `install.sh`, uploads CLI artifacts, `checksums.txt`, and `install.sh` with `--clobber`, publishes the release, then verifies the release attestation and the `install.sh` asset. Published stable releases are immutable and are not prereleases. If the release is already published, the workflow validates the existing asset digests instead of replacing assets.
 
@@ -18,11 +19,10 @@ Stable `checksums.txt` includes the CLI archives and `install.sh`. The checksum 
 
 Releases created before repository release immutability was enabled are not retroactively attested.
 
-The Kubernetes-line public entry at `https://compartment.dev/install.sh` must serve the root `install.sh` approved by
-the `kubernetes` publication workflow. The installer resolves the current
-`kubernetes` commit, resolves `ghcr.io/compartmentdev/compartment-cli` to an immutable digest, and verifies the Cosign
-certificate identity, GitHub OIDC issuer, and exact workflow SHA before pulling the platform-specific archive. Stable
-release installer assets remain pinned to their release version.
+The public entry at `https://compartment.dev/install.sh` serves the root installer. With no channel flag it follows
+the latest stable release. The rolling `main` channel resolves `ghcr.io/compartmentdev/compartment-cli` to an
+immutable digest and verifies the main publish workflow identity, GitHub OIDC issuer, and exact workflow SHA before
+pulling the platform-specific archive. Stable release installer assets remain pinned to their release version.
 
 ## Local Smoke
 

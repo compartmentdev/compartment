@@ -32,7 +32,7 @@ export function readCliBuildInfo(): CliBuildInfo {
 }
 
 function formatCliVersion(buildInfo: CliBuildInfo): string {
-  if (buildInfo.distributionChannel !== 'main' && buildInfo.distributionChannel !== 'kubernetes') {
+  if (buildInfo.distributionChannel !== 'main') {
     return buildInfo.cliVersion;
   }
 
@@ -78,7 +78,7 @@ function isCliBuildInfoCandidate(value: CliBuildInfoCandidate | JsonValue): valu
 }
 
 function isCliDistributionChannel(value: JsonValue | undefined): value is CliDistributionChannel {
-  return value === 'source' || value === 'main' || value === 'kubernetes' || value === 'release';
+  return value === 'source' || value === 'main' || value === 'release';
 }
 
 function isOptionalBuildCommitSha(value: string | JsonValue | undefined): boolean {

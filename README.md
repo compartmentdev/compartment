@@ -9,7 +9,7 @@
 <h1 align="center">Compartment</h1>
 
 <p align="center">
-  Self-hosted deployment infrastructure for internal tools, private apps, and public services.
+  Kubernetes deployment infrastructure for internal tools, private apps, and public services.
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 
 ## What Is Compartment?
 
-Compartment is a self-hosted deployment system for teams that need a controlled place to run software on their own infrastructure. It provides the runtime, URLs, access model, deployment history, and operations surface around applications that already live in normal repositories.
+Compartment is a self-hosted Kubernetes deployment system for teams that need a controlled place to run software on their own infrastructure. It installs into an existing cluster or provisions a managed single-node Kubernetes host, then provides the runtime, URLs, access model, deployment history, and operations surface around applications that already live in normal repositories.
 
 The project is CLI-first and repository-first. Add a `compartment.yml`, deploy from a checkout or connected Git repository, and run the result through a self-hosted control plane. If an app can build into a container image with Docker or [Railpack](https://railpack.com/), it can usually fit the Compartment model.
 
@@ -49,7 +49,7 @@ Teams use Compartment when software that started as a script, internal app, work
 
 ## Quickstart
 
-On a clean Ubuntu 24.04 VM, install the verified CLI and start the managed installation:
+Install the verified CLI and start the managed installation:
 
 ```bash
 curl -fsSL https://compartment.dev/install.sh | sh

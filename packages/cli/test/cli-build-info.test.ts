@@ -44,18 +44,6 @@ describe('readCliVersion', (): void => {
     expect(readCliVersion()).toBe(`${readCliPackageVersion()}-main+1234567`);
   });
 
-  it('formats kubernetes builds with the embedded short commit sha', (): void => {
-    mocks.readSeaAssetText.mockReturnValue(
-      JSON.stringify({
-        buildCommitSha: '1234567890abcdef1234567890abcdef12345678',
-        cliVersion: readCliPackageVersion(),
-        distributionChannel: 'kubernetes',
-      }),
-    );
-
-    expect(readCliVersion()).toBe(`${readCliPackageVersion()}-kubernetes+1234567`);
-  });
-
   it('keeps stable release output on the plain CLI version', (): void => {
     mocks.readSeaAssetText.mockReturnValue(
       JSON.stringify({
@@ -66,6 +54,18 @@ describe('readCliVersion', (): void => {
     );
 
     expect(readCliVersion()).toBe(readCliPackageVersion());
+  });
+
+  it('rejects embedded build info for the retired kubernetes channel', (): void => {
+    mocks.readSeaAssetText.mockReturnValue(
+      JSON.stringify({
+        buildCommitSha: '1234567890abcdef1234567890abcdef12345678',
+        cliVersion: '99.99.99',
+        distributionChannel: 'kubernetes',
+      }),
+    );
+
+    expect((): string => readCliVersion()).toThrow('Invalid embedded CLI build info');
   });
 });
 

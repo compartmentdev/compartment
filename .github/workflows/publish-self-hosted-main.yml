@@ -1,52 +1,21 @@
 name: Publish Self-Hosted Images (Main)
 
 on:
-  workflow_run:
-    workflows:
-      - Main CI
-    types:
-      - completed
+  push:
     branches:
       - main
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: publish-self-hosted-main
   queue: max
 
-env:
-  PUBLISH_SHA: ${{ github.event.workflow_run.head_sha }}
-
 jobs:
-  publish-main-images:
-    name: publish main + sha
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    permissions:
-      contents: read
-      id-token: write
-      packages: write
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          persist-credentials: false
-          ref: ${{ env.PUBLISH_SHA }}
-
-      - name: Publish self-hosted image channel
-        uses: ./.github/actions/publish-self-hosted-channel
-        with:
-          channel: main
-          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
-          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
-          publish-sha: ${{ env.PUBLISH_SHA }}
-
   build-main-cli:
     name: build CLI ${{ matrix.artifact_name }}
-    needs: publish-main-images
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     strategy:
@@ -65,7 +34,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          ref: ${{ env.PUBLISH_SHA }}
+          persist-credentials: false
+          ref: ${{ github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -86,22 +56,22 @@ jobs:
         with:
           cosign-release: v2.6.1
 
-      - name: Build rolling CLI binary
+      - name: Build main CLI binary
         run: |
           pnpm cli:build:sea \
             --distribution-channel main \
-            --build-commit-sha "${PUBLISH_SHA}" \
+            --build-commit-sha "${GITHUB_SHA}" \
             --output-dir ./.compartment/cli-dist
 
       - name: Smoke test CLI binary
         run: |
           version_output="$(./.compartment/cli-dist/compartment --version)"
-          expected_version_suffix="-main+$(printf '%s' "${PUBLISH_SHA}" | cut -c1-7)"
+          expected_version_suffix="-main+$(printf '%s' "${GITHUB_SHA}" | cut -c1-7)"
           case "$version_output" in
             *"$expected_version_suffix")
               ;;
             *)
-              echo "Expected rolling CLI version to include ${expected_version_suffix}, received: ${version_output}" >&2
+              echo "Expected main CLI version to include ${expected_version_suffix}, received: ${version_output}" >&2
               exit 1
               ;;
           esac
@@ -119,27 +89,62 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: ./.compartment/release-assets/${{ matrix.artifact_name }}
 
-  publish-main-cli:
-    name: publish rolling CLI release
-    needs: build-main-cli
+  publish-main-images:
+    name: publish immutable main images
     permissions:
-      contents: write
+      contents: read
+      id-token: write
+      packages: write
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      RELEASE_REPOSITORY: ${{ github.repository }}
+    timeout-minutes: 120
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          ref: ${{ env.PUBLISH_SHA }}
           persist-credentials: false
+          ref: ${{ github.sha }}
 
-      - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+      - name: Publish self-hosted image channel
+        uses: ./.github/actions/publish-self-hosted-channel
         with:
-          node-version-file: .nvmrc
+          channel: main
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          publish-sha: ${{ github.sha }}
+          promote-mutable: 'false'
+
+  publish-main-cli:
+    name: publish signed immutable main CLI
+    needs:
+      - build-main-cli
+      - publish-main-images
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CLI_REPOSITORY: ghcr.io/compartmentdev/compartment-cli
+      GH_TOKEN: ${{ github.token }}
+      PUBLISH_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up ORAS
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+        with:
+          url: https://github.com/oras-project/oras/releases/download/v1.3.3/oras_1.3.3_linux_amd64.tar.gz
+          checksum: 9ce999f8d2de03fc03968b29d743077a58783e545e5eaa53917ca177352d0e59
+
+      - name: Set up Cosign
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5
+        with:
+          cosign-release: v2.6.1
 
       - name: Download CLI artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -148,52 +153,173 @@ jobs:
           pattern: compartment-*.tar.gz
           path: ./.compartment/release-assets
 
-      - name: Build release checksums
+      - name: Build CLI checksums
         run: |
           cd ./.compartment/release-assets
           sha256sum compartment-*.tar.gz > checksums.txt
 
-      - name: Resolve immutable main release publish mode
-        id: main-release
+      - name: Log in to GitHub Container Registry
         run: |
-          release_tag="sha-${PUBLISH_SHA}"
+          printf '%s' "$GH_TOKEN" | oras login --username "${GITHUB_ACTOR}" --password-stdin ghcr.io
 
-          release_state="$(node ./scripts/release/read-release-state.mjs --repo "$RELEASE_REPOSITORY" --tag "$release_tag")"
-          if [ "$release_state" = "published" ]; then
-            node ./scripts/release/validate-release-assets.mjs \
-              --repo "$RELEASE_REPOSITORY" \
-              --tag "$release_tag" \
-              --repair-hint "Push a new main commit instead of clobbering immutable assets." \
-              ./.compartment/release-assets/compartment-*.tar.gz \
-              ./.compartment/release-assets/checksums.txt
+      - name: Publish immutable CLI artifact
+        run: |
+          staging_ref="${CLI_REPOSITORY}:staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${PUBLISH_SHA}"
+          immutable_ref="${CLI_REPOSITORY}:sha-${PUBLISH_SHA}"
 
-            echo "upload_assets=false" >> "$GITHUB_OUTPUT"
+          (
+            cd ./.compartment/release-assets
+            publish_platform_artifact() {
+              platform_os="$1"
+              platform_arch="$2"
+              archive_arch="$3"
+              platform_tag="staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${PUBLISH_SHA}-${platform_os}-${platform_arch}"
+              oras push \
+                --artifact-platform "${platform_os}/${platform_arch}" \
+                --artifact-type application/vnd.compartment.cli.platform.v1 \
+                --annotation "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+                "${CLI_REPOSITORY}:${platform_tag}" \
+                "compartment-${platform_os}-${archive_arch}.tar.gz:application/vnd.compartment.cli.archive.v1+gzip" \
+                checksums.txt:text/plain \
+                >/dev/null
+              printf '%s\n' "$platform_tag"
+            }
+
+            darwin_arm64_tag="$(publish_platform_artifact darwin arm64 arm64)"
+            darwin_amd64_tag="$(publish_platform_artifact darwin amd64 x64)"
+            linux_arm64_tag="$(publish_platform_artifact linux arm64 arm64)"
+            linux_amd64_tag="$(publish_platform_artifact linux amd64 x64)"
+            oras manifest index create \
+              --artifact-type application/vnd.compartment.cli.v1 \
+              --annotation "org.opencontainers.image.revision=${PUBLISH_SHA}" \
+              --annotation "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+              "$staging_ref" \
+              "$darwin_arm64_tag" \
+              "$darwin_amd64_tag" \
+              "$linux_arm64_tag" \
+              "$linux_amd64_tag"
+          )
+
+          staging_digest="$(oras resolve "$staging_ref")"
+          if immutable_digest="$(oras resolve "$immutable_ref" 2>./.compartment/immutable-cli-error.txt)"; then
+            if [ "$immutable_digest" != "$staging_digest" ]; then
+              echo "Immutable CLI artifact ${immutable_ref} already points to ${immutable_digest}; expected ${staging_digest}." >&2
+              exit 1
+            fi
+          elif grep -Eiq 'manifest unknown|not found' ./.compartment/immutable-cli-error.txt; then
+            oras cp "$staging_ref" "$immutable_ref"
+          else
+            cat ./.compartment/immutable-cli-error.txt >&2
+            echo "Failed to determine whether immutable CLI artifact ${immutable_ref} exists." >&2
+            exit 1
+          fi
+
+          immutable_digest="$(oras resolve "$immutable_ref")"
+          if [ "$immutable_digest" != "$staging_digest" ]; then
+            echo "Immutable CLI artifact ${immutable_ref} resolved to ${immutable_digest}; expected ${staging_digest}." >&2
+            exit 1
+          fi
+          printf '%s' "$immutable_digest" > ./.compartment/cli-artifact-digest
+
+      - name: Sign and verify CLI artifact
+        run: |
+          cli_digest="$(cat ./.compartment/cli-artifact-digest)"
+          digest_ref="${CLI_REPOSITORY}@${cli_digest}"
+          certificate_identity="https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-main.yml@refs/heads/main"
+
+          cosign sign --yes --new-bundle-format "$digest_ref"
+          cosign verify \
+            --new-bundle-format \
+            --certificate-identity "$certificate_identity" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-sha "$PUBLISH_SHA" \
+            "$digest_ref"
+
+      - name: Verify anonymous CLI artifact pulls
+        run: |
+          printf '{"auths":{}}\n' > ./.compartment/anonymous-registry-config.json
+          expected_digest="$(cat ./.compartment/cli-artifact-digest)"
+          anonymous_digest="$(oras resolve \
+            --registry-config ./.compartment/anonymous-registry-config.json \
+            "${CLI_REPOSITORY}:sha-${PUBLISH_SHA}")"
+          if [ "$anonymous_digest" != "$expected_digest" ]; then
+            echo "Anonymous CLI artifact resolved to ${anonymous_digest}; expected ${expected_digest}." >&2
+            exit 1
+          fi
+
+  promote-main-release:
+    name: promote mutable main release
+    needs:
+      - publish-main-images
+      - publish-main-cli
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CLI_REPOSITORY: ghcr.io/compartmentdev/compartment-cli
+      GH_TOKEN: ${{ github.token }}
+      PUBLISH_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: .nvmrc
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+      - name: Set up ORAS
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+        with:
+          url: https://github.com/oras-project/oras/releases/download/v1.3.3/oras_1.3.3_linux_amd64.tar.gz
+          checksum: 9ce999f8d2de03fc03968b29d743077a58783e545e5eaa53917ca177352d0e59
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Promote mutable main release
+        run: |
+          current_main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [ -z "$current_main_sha" ]; then
+            echo 'Expected current main ref SHA.' >&2
+            exit 1
+          fi
+          if [ "$current_main_sha" != "$PUBLISH_SHA" ]; then
+            echo "Skipping mutable promotion because ${PUBLISH_SHA} is no longer the main branch head."
             exit 0
           fi
+          mapfile -t services < <(node ./scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs)
+          for service in "${services[@]}"; do
+            docker buildx imagetools create \
+              --tag "docker.io/compartmentdev/compartment-${service}:main" \
+              "docker.io/compartmentdev/compartment-${service}:sha-${PUBLISH_SHA}"
+            docker buildx imagetools create \
+              --tag "ghcr.io/compartmentdev/compartment-${service}:main" \
+              "ghcr.io/compartmentdev/compartment-${service}:sha-${PUBLISH_SHA}"
+          done
 
-          if [ "$release_state" = "draft" ]; then
-            gh release edit "$release_tag" --repo "$RELEASE_REPOSITORY" --title "$release_tag" --notes "Compartment CLI main build from ${PUBLISH_SHA}." --prerelease --draft
-          else
-            gh release create "$release_tag" --repo "$RELEASE_REPOSITORY" --title "$release_tag" --notes "Compartment CLI main build from ${PUBLISH_SHA}." --prerelease --target "$PUBLISH_SHA" --draft
+          cli_digest="$(oras resolve "${CLI_REPOSITORY}:sha-${PUBLISH_SHA}")"
+          oras cp "${CLI_REPOSITORY}:sha-${PUBLISH_SHA}" "${CLI_REPOSITORY}:main"
+          promoted_digest="$(oras resolve "${CLI_REPOSITORY}:main")"
+          if [ "$promoted_digest" != "$cli_digest" ]; then
+            echo "Mutable main CLI tag resolved to ${promoted_digest}; expected ${cli_digest}." >&2
+            exit 1
           fi
-
-          echo "upload_assets=true" >> "$GITHUB_OUTPUT"
-
-      - name: Upload immutable main CLI artifacts
-        if: steps.main-release.outputs.upload_assets == 'true'
-        run: |
-          release_tag="sha-${PUBLISH_SHA}"
-          gh release upload "$release_tag" ./.compartment/release-assets/compartment-*.tar.gz ./.compartment/release-assets/checksums.txt \
-            --repo "$RELEASE_REPOSITORY" \
-            --clobber
-
-      - name: Publish immutable main release
-        if: steps.main-release.outputs.upload_assets == 'true'
-        run: |
-          release_tag="sha-${PUBLISH_SHA}"
-          gh release edit "$release_tag" \
-            --repo "$RELEASE_REPOSITORY" \
-            --title "$release_tag" \
-            --notes "Compartment CLI main build from ${PUBLISH_SHA}." \
-            --prerelease \
-            --draft=false
