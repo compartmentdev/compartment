@@ -6,32 +6,15 @@ description: Install Compartment on a clean Ubuntu VM or into an existing Kubern
 ## Install the CLI
 
 ```bash
-curl -fsSL https://compartment.dev/install.sh | sh -s -- --channel main
+curl -fsSL https://compartment.dev/install.sh | sh
 compartment install
 ```
-
-Until the first Kubernetes stable release, `--channel main` installs the latest published Kubernetes build. Stable
-releases use the same command without a channel flag.
 
 This is the supported clean-VM path for an Ubuntu 24.04 LTS x86_64 host. The bootstrap downloads and verifies the CLI
 without root. The CLI checks the host, shows one mutation review, and requests sudo only after you confirm it. On a
 clean host without a usable Kubernetes context, it selects the managed-VM target automatically and installs the
 tested k3s channel, Helm, cert-manager, registry trust, and Compartment.
 
-To reproduce a rolling installation with a specific published build, pin its full immutable tag:
-
-```bash
-curl -fsSL https://compartment.dev/install.sh | sh -s -- \
-  --channel main \
-  --version sha-0123456789abcdef0123456789abcdef01234567
-```
-
-`--channel` selects stable `latest` or rolling `main`, while `--version` selects an exact tag within that channel.
-Main pins must use `sha-` followed by the full 40-character lowercase commit SHA. The installer verifies the pinned
-artifact with the same digest and Cosign identity checks as the channel tip. If a new main tip is still publishing,
-the installer prints a copyable command for the latest fully
-published and signed build after verifying it. If automatic discovery is unavailable, it links the successful
-publication runs and prints the command template to complete with that run's full commit SHA.
 Add `--verbose` to show Cosign, ORAS, and checksum diagnostics during installation.
 
 ## Prepare a clean VM

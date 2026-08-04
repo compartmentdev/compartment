@@ -49,14 +49,12 @@ Teams use Compartment when software that started as a script, internal app, work
 
 ## Quickstart
 
-Until the first Kubernetes stable release, install the verified CLI from `main` and start the managed installation:
+Install the verified CLI and start the managed installation:
 
 ```bash
-curl -fsSL https://compartment.dev/install.sh | sh -s -- --channel main
+curl -fsSL https://compartment.dev/install.sh | sh
 compartment install
 ```
-
-Stable releases use the same command without `--channel main`.
 
 When no usable Kubernetes context exists, the CLI selects the managed-VM target, checks the host, shows one mutation
 review, and requests sudo only after confirmation. Operators can instead select an existing cluster explicitly with

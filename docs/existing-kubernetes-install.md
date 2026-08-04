@@ -3,12 +3,10 @@
 This guide prepares an existing Kubernetes cluster for `compartment install`. Compartment does not install, upgrade,
 or remove Kubernetes, an Ingress Controller, cert-manager, a CNI, or a StorageClass.
 
-## Supported installation channels
+## Supported installer
 
-The public bootstrap at `https://compartment.dev/install.sh` defaults to the latest stable release. Before the first
-Kubernetes stable release, use `--channel main` for the rolling Kubernetes build. The rolling installer resolves the
-current `main` commit and matching immutable CLI OCI artifact by digest, then verifies its Cosign identity, OIDC
-issuer, and workflow commit before pulling it. No raw branch URL is required.
+The public bootstrap at `https://compartment.dev/install.sh` installs the latest stable release and verifies its
+checksums before installation. No raw branch URL or channel parameter is required.
 
 The supported test matrix uses isolated k3d shards. Every shard owns one cluster and installs its selected
 Ingress Controller and pinned cert-manager prerequisite once:
