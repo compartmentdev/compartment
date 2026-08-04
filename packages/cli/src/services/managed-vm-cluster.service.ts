@@ -72,6 +72,7 @@ export async function installManagedVmK3s(artifacts: ManagedVmDownloadedArtifact
 
 export async function waitForManagedVmKubernetes(): Promise<void> {
   await execa('k3s', ['kubectl', 'wait', 'node', '--all', '--for=condition=Ready', '--timeout=5m']);
+  await execa('k3s', ['kubectl', 'wait', '--for=create', 'serviceaccount/default', '--timeout=5m']);
 }
 
 export async function installManagedVmCertManager(manifestPath: string): Promise<void> {
