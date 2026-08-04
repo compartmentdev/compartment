@@ -28,8 +28,12 @@ import type { SelfHostedUserSetupCommandResult } from './self-hosted-user-setup-
 import { deploymentStatusCommandResponseParser } from './self-hosted-user-setup-cli-response.harness';
 import { expectK3dProjectNamespaceDeleted, seedK3dProjectTeardownFixture } from './self-hosted-user-setup-k3d.harness';
 
-const deploymentRunPollAttempts: number = process.env.COMPARTMENT_E2E_GVISOR_ENABLED === '1' ? 900 : 90;
 const deploymentRunPollDelayMs: number = 2_000;
+const deploymentRunPollAttempts: number = process.env.COMPARTMENT_E2E_GVISOR_ENABLED === '1' ? 900 : 90;
+const deploymentBuildLifecycleTimeoutMs: number = 30 * 60_000;
+const deploymentRunFailurePropagationGraceMs: number = 2 * 60_000;
+export const deploymentRunCompletionTimeoutMs: number =
+  deploymentBuildLifecycleTimeoutMs + deploymentRunFailurePropagationGraceMs;
 const kubernetesResourceStartupTimeoutMs: number = 180_000;
 const blockedPublicControlPlanePollAttempts: number = 6;
 const blockedPublicControlPlanePollDelayMs: number = 1_000;
@@ -149,8 +153,9 @@ export async function waitForDeploymentRunCompletion(
   projectName: string,
   deploymentRunId: string,
 ): Promise<DeploymentRunLogsResponse> {
+  const deadline: number = Date.now() + deploymentRunCompletionTimeoutMs;
   let lastPayload: DeploymentRunLogsResponse | null = null;
-  for (let attempt: number = 0; attempt < deploymentRunPollAttempts; attempt += 1) {
+  do {
     const payload: DeploymentRunLogsResponse = await cli.runJson(
       `deployment logs --project ${projectName} --run ${deploymentRunId}`,
       deploymentRunLogsResponseSchema,
@@ -161,13 +166,16 @@ export async function waitForDeploymentRunCompletion(
     if (completedStep?.status === 'succeeded') {
       return payload;
     }
-    if (completedStep?.status === 'failed') {
+    if (payload.deployment.status === 'failed' || completedStep?.status === 'failed') {
       throw new Error(`Deployment run ${deploymentRunId} failed.`);
+    }
+    if (payload.deployment.status === 'stopped') {
+      throw new Error(`Deployment run ${deploymentRunId} stopped.`);
     }
 
     lastPayload = payload;
     await sleep(deploymentRunPollDelayMs);
-  }
+  } while (Date.now() < deadline);
 
   throw new Error(
     `Timed out waiting for deployment run ${deploymentRunId}. Last payload: ${JSON.stringify(lastPayload)}`,
@@ -321,12 +329,36 @@ export async function expectExplicitProjectLifecycleFlow(
     projectDeleteResponseSchema,
   );
   expect(deletedProject.projectName).toBe(projectName);
-  await expectK3dProjectNamespaceDeleted(projectId);
-
-  const deletedStatus: SelfHostedUserSetupCommandResult = await cli.runFailure(
-    `status --project ${projectName} --output json`,
-  );
+  const deletedStatus: SelfHostedUserSetupCommandResult = await waitForProjectDeletionTerminalState(cli, projectName);
   expect(deletedStatus.stderr).toContain(missingProjectMessage);
+  await expectK3dProjectNamespaceDeleted(projectId);
+}
+
+async function waitForProjectDeletionTerminalState(
+  cli: SelfHostedUserSetupCli,
+  projectName: string,
+): Promise<SelfHostedUserSetupCommandResult> {
+  let lastResult: SelfHostedUserSetupCommandResult | null = null;
+  for (let attempt: number = 0; attempt < deploymentRunPollAttempts; attempt += 1) {
+    lastResult = await cli.runFailure(`status --project ${projectName} --output json`);
+    if (lastResult.stderr.includes(missingProjectMessage)) {
+      return lastResult;
+    }
+    if (!lastResult.stderr.includes(archivedProjectMessage)) {
+      throw new Error(
+        `Unexpected project status while waiting for ${projectName} deletion. Exit code: ${lastResult.exitCode}. ` +
+          `Stdout: ${JSON.stringify(lastResult.stdout)}. Stderr: ${JSON.stringify(lastResult.stderr)}.`,
+      );
+    }
+    await sleep(deploymentRunPollDelayMs);
+  }
+  throw new Error(
+    `Timed out waiting for project ${projectName} deletion to reach the not-found terminal state after ${
+      deploymentRunPollAttempts * deploymentRunPollDelayMs
+    }ms. Last exit code: ${lastResult?.exitCode ?? 'unavailable'}. Last stdout: ${JSON.stringify(
+      lastResult?.stdout ?? '',
+    )}. Last stderr: ${JSON.stringify(lastResult?.stderr ?? '')}.`,
+  );
 }
 
 function isStoppedDeployment(serviceName: string): (deployment: StoppedDeploymentCandidate) => boolean {

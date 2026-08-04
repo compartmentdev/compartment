@@ -4,7 +4,7 @@ set -eu
 
 release_repository="${COMPARTMENT_RELEASES_REPOSITORY:-__COMPARTMENT_RELEASES_REPOSITORY__}"
 if [ "$release_repository" = "compartmentdev/compartment" ]; then
-  installer_command="curl -fsSL https://compartment.dev/k/install.sh | sh -s --"
+  installer_command="curl -fsSL https://compartment.dev/install.sh | sh -s --"
 else
   installer_command="sh install.sh"
 fi
@@ -33,6 +33,11 @@ install_namespace=""
 install_release_name=""
 install_remote=""
 install_values_path=""
+install_target=""
+install_check="0"
+install_yes="0"
+install_admin_password_file=""
+verbose="0"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -100,6 +105,22 @@ while [ "$#" -gt 0 ]; do
       install_base_domain="$2"
       shift 2
       ;;
+    --target)
+      install_target="$2"
+      shift 2
+      ;;
+    --check)
+      install_check="1"
+      shift
+      ;;
+    --yes)
+      install_yes="1"
+      shift
+      ;;
+    --admin-password-file)
+      install_admin_password_file="$2"
+      shift 2
+      ;;
     --values)
       install_values_path="$2"
       shift 2
@@ -123,6 +144,10 @@ while [ "$#" -gt 0 ]; do
     --remote)
       install_remote="$2"
       shift 2
+      ;;
+    --verbose)
+      verbose="1"
+      shift
       ;;
     *)
       printf 'Unknown installer argument: %s\n' "$1" >&2
@@ -164,6 +189,10 @@ elif [ "$init_update" = "1" ]; then
     printf 'The provided owner, domain, remote, or login arguments are only valid with --init-install or --init-login.\n' >&2
     exit 1
   fi
+  if [ -n "$install_target" ] || [ "$install_check" = "1" ] || [ "$install_yes" = "1" ] || [ -n "$install_admin_password_file" ]; then
+    printf 'Use --target, --check, --yes, and --admin-password-file only with --init-install.\n' >&2
+    exit 1
+  fi
 elif [ "$init_login" = "1" ]; then
   if [ -z "$init_api_url" ]; then
     printf 'Expected --api-url <url> with --init-login.\n' >&2
@@ -177,12 +206,25 @@ elif [ "$init_login" = "1" ]; then
     printf 'Use Kubernetes lifecycle options only with --init-install or --init-update.\n' >&2
     exit 1
   fi
+  if [ -n "$install_target" ] || [ "$install_check" = "1" ] || [ "$install_yes" = "1" ] || [ -n "$install_admin_password_file" ]; then
+    printf 'Use --target, --check, --yes, and --admin-password-file only with --init-install.\n' >&2
+    exit 1
+  fi
 else
-  if [ -n "$init_api_url" ] || [ -n "$init_email" ] || [ -n "$init_organization" ] || [ -n "$init_organization_slug" ] || [ -n "$init_onboarding_session" ] || [ -n "$install_base_domain" ] || [ -n "$install_chart_path" ] || [ -n "$install_kube_context" ] || [ -n "$install_namespace" ] || [ -n "$install_release_name" ] || [ -n "$install_remote" ] || [ -n "$install_values_path" ]; then
+  if [ -n "$init_api_url" ] || [ -n "$init_email" ] || [ -n "$init_organization" ] || [ -n "$init_organization_slug" ] || [ -n "$init_onboarding_session" ] || [ -n "$install_base_domain" ] || [ -n "$install_chart_path" ] || [ -n "$install_kube_context" ] || [ -n "$install_namespace" ] || [ -n "$install_release_name" ] || [ -n "$install_remote" ] || [ -n "$install_values_path" ] || [ -n "$install_target" ] || [ "$install_check" = "1" ] || [ "$install_yes" = "1" ] || [ -n "$install_admin_password_file" ]; then
     printf 'Use install, update, and login arguments only with --init-install, --init-update, or --init-login.\n' >&2
     exit 1
   fi
 fi
+
+case "$install_target" in
+  ""|vm|kubernetes)
+    ;;
+  *)
+    printf 'Unsupported installation target: %s\n' "$install_target" >&2
+    exit 1
+    ;;
+esac
 
 case "$channel" in
   latest|main|kubernetes)
@@ -298,7 +340,9 @@ resolve_main_release_tag() {
   fi
 
   resolved_release_tag="sha-${main_commit_sha}"
-  printf 'Resolved main to %s\n' "$resolved_release_tag" >&2
+  if [ "$verbose" = "1" ]; then
+    printf 'Resolved main to %s\n' "$resolved_release_tag" >&2
+  fi
   printf '%s' "$resolved_release_tag"
 }
 
@@ -317,7 +361,9 @@ resolve_kubernetes_release_tag() {
   fi
 
   resolved_release_tag="sha-${kubernetes_commit_sha}"
-  printf 'Resolved kubernetes to %s\n' "$resolved_release_tag" >&2
+  if [ "$verbose" = "1" ]; then
+    printf 'Resolved kubernetes to %s\n' "$resolved_release_tag" >&2
+  fi
   printf '%s' "$resolved_release_tag"
 }
 
@@ -482,6 +528,9 @@ resolve_kubernetes_cli_digest_ref() {
   if ! cli_manifest_digest="$("$oras_command" resolve "$cli_tag_ref" 2>"$oras_resolve_error_path")"; then
     oras_resolve_error="$(cat "$oras_resolve_error_path")"
     rm -f "$oras_resolve_error_path"
+    if [ -n "$oras_resolve_error" ]; then
+      printf '%s\n' "$oras_resolve_error" >&2
+    fi
     case "$oras_resolve_error" in
       *"not found"* | *"manifest unknown"*)
         if [ "$channel" = "kubernetes" ] && [ "$version_argument" = "1" ]; then
@@ -524,15 +573,41 @@ resolve_kubernetes_cli_digest_ref() {
 verify_kubernetes_cli_artifact() {
   cli_digest_ref="$1"
   cli_workflow_sha="$2"
+  verification_output_path="${temp_directory}/cosign-verify.output"
   if ! "$cosign_command" verify \
     --new-bundle-format \
     --certificate-identity "$kubernetes_cli_certificate_identity" \
     --certificate-oidc-issuer "$kubernetes_cli_certificate_oidc_issuer" \
     --certificate-github-workflow-sha "$cli_workflow_sha" \
-    "$cli_digest_ref" >/dev/null; then
+    "$cli_digest_ref" >"$verification_output_path" 2>&1; then
+    cat "$verification_output_path" >&2
     printf 'Failed to verify Kubernetes CLI artifact %s\n' "$cli_digest_ref" >&2
     exit 1
   fi
+  if [ "$verbose" = "1" ]; then
+    cat "$verification_output_path" >&2
+    printf 'Verified OCI artifact %s\n' "$cli_digest_ref" >&2
+  fi
+  rm -f "$verification_output_path"
+  printf 'Verified signed Compartment CLI\n'
+}
+
+format_archive_size() {
+  archive_size_bytes="$(wc -c < "$1" | tr -d '[:space:]')"
+  awk -v bytes="$archive_size_bytes" 'BEGIN {
+    split("B KB MB GB", units, " ")
+    size = bytes
+    unit = 1
+    while (size >= 1000 && unit < 4) {
+      size /= 1000
+      unit += 1
+    }
+    if (unit == 1) {
+      printf "%d %s", size, units[unit]
+    } else {
+      printf "%.1f %s", size, units[unit]
+    }
+  }'
 }
 
 can_use_installer_terminal() {
@@ -659,6 +734,18 @@ format_init_install_command() {
   if [ -n "$format_install_remote" ]; then
     format_install_command="${format_install_command} --remote $(quote_shell_argument "$format_install_remote")"
   fi
+  if [ -n "$install_target" ]; then
+    format_install_command="${format_install_command} --target $(quote_shell_argument "$install_target")"
+  fi
+  if [ "$install_check" = "1" ]; then
+    format_install_command="${format_install_command} --check"
+  fi
+  if [ "$install_yes" = "1" ]; then
+    format_install_command="${format_install_command} --yes"
+  fi
+  if [ -n "$install_admin_password_file" ]; then
+    format_install_command="${format_install_command} --admin-password-file $(quote_shell_argument "$install_admin_password_file")"
+  fi
 
   printf '%s' "$format_install_command"
 }
@@ -678,12 +765,24 @@ run_init_install() {
   init_install_remote="$2"
   init_install_command="$(format_init_install_command "$init_install_path" "$init_install_api_url" "$init_install_base_domain" "$init_install_email" "$init_install_organization" "$init_install_organization_slug" "$init_install_kube_context" "$init_install_namespace" "$init_install_release_name" "$init_install_chart_path" "$init_install_remote")"
 
-  if ! can_use_installer_terminal; then
+  if ! can_use_installer_terminal && [ "$install_check" != "1" ] && [ "$install_yes" != "1" ]; then
     printf 'Requested `--init-install`, but no terminal is available for owner setup. Run `%s` from an interactive shell.\n' "$init_install_command" >&2
     exit 1
   fi
 
   set -- install
+  if [ -n "$install_target" ]; then
+    set -- "$@" --target "$install_target"
+  fi
+  if [ "$install_check" = "1" ]; then
+    set -- "$@" --check
+  fi
+  if [ "$install_yes" = "1" ]; then
+    set -- "$@" --yes
+  fi
+  if [ -n "$install_admin_password_file" ]; then
+    set -- "$@" --admin-password-file "$install_admin_password_file"
+  fi
   if [ -n "$init_install_api_url" ]; then
     set -- "$@" --api-url "$init_install_api_url"
   fi
@@ -718,6 +817,11 @@ run_init_install() {
   printf 'Running `%s` for Kubernetes platform and owner setup.\n' "$init_install_command"
   if can_write_installer_terminal; then
     "$init_install_path" "$@" </dev/tty >/dev/tty 2>/dev/tty
+    return 0
+  fi
+
+  if ! can_use_installer_terminal; then
+    "$init_install_path" "$@"
     return 0
   fi
 
@@ -1039,14 +1143,24 @@ if [ "$channel" = "kubernetes" ]; then
   cli_tag_ref="${cli_oci_repository}:${resolved_release_tag}"
   cli_digest_ref="$(resolve_kubernetes_cli_digest_ref "$cli_tag_ref")"
   verify_kubernetes_cli_artifact "$cli_digest_ref" "$resolved_kubernetes_commit_sha"
-  "$oras_command" pull \
+  oras_pull_output_path="${temp_directory}/oras-pull.output"
+  if ! "$oras_command" pull \
     --platform "${target_os}/${tools_upstream_arch}" \
     --output "$temp_directory" \
-    "$cli_digest_ref"
+    "$cli_digest_ref" >"$oras_pull_output_path" 2>&1; then
+    cat "$oras_pull_output_path" >&2
+    exit 1
+  fi
+  if [ "$verbose" = "1" ]; then
+    cat "$oras_pull_output_path" >&2
+  fi
+  rm -f "$oras_pull_output_path"
 else
   curl -fsSL -o "$artifact_path" "$artifact_url"
   curl -fsSL -o "$checksums_path" "$checksums_url"
 fi
+
+printf 'Downloaded CLI (%s)\n' "$(format_archive_size "$artifact_path")"
 
 expected_checksum_line="$(awk -v target="$artifact_name" '$2 == target { print $0 }' "$checksums_path")"
 if [ -z "$expected_checksum_line" ]; then
@@ -1055,7 +1169,15 @@ if [ -z "$expected_checksum_line" ]; then
 fi
 
 if command -v sha256sum >/dev/null 2>&1; then
-  printf '%s\n' "$expected_checksum_line" | (cd "$temp_directory" && sha256sum -c -)
+  checksum_output_path="${temp_directory}/checksum.output"
+  if ! printf '%s\n' "$expected_checksum_line" | (cd "$temp_directory" && sha256sum -c -) >"$checksum_output_path" 2>&1; then
+    cat "$checksum_output_path" >&2
+    exit 1
+  fi
+  if [ "$verbose" = "1" ]; then
+    cat "$checksum_output_path" >&2
+  fi
+  rm -f "$checksum_output_path"
 elif command -v shasum >/dev/null 2>&1; then
   expected_checksum="$(printf '%s\n' "$expected_checksum_line" | awk '{ print $1 }')"
   actual_checksum="$(shasum -a 256 "$artifact_path" | awk '{ print $1 }')"
@@ -1077,7 +1199,7 @@ tar -xzf "$artifact_path" -C "$temp_directory"
 install_path="${bin_dir}/compartment"
 install -m 0755 "${temp_directory}/compartment" "$install_path"
 
-printf 'Installed compartment to %s\n' "$install_path"
+printf 'Installed to %s\n' "$install_path"
 "$install_path" --version
 ensure_bin_directory_on_path "$bin_dir"
 
@@ -1095,5 +1217,3 @@ if [ "$init_login" = "1" ]; then
   run_init_login "$install_path" "$init_api_url" "$init_email" "$init_organization" "$init_onboarding_session"
   exit 0
 fi
-
-printf 'Compartment CLI installed. Run `compartment install` to set up the platform.\n'

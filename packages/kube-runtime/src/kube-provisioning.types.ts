@@ -2,9 +2,11 @@ import type { ProjectNetworkPolicyProjection } from './kube-network-policy-proje
 
 export interface ProjectNamespaceProvisioningRow {
   bootstrapServiceAccount: ProjectProvisioningServiceAccount;
+  installationId: string;
   namespaceId: string;
   networkPolicy: ProjectNetworkPolicyProjection;
   projectId: string;
+  projectName: string;
   registryPullCredentials: ProjectRegistryPullCredentialProjection;
   workerServiceAccount: ProjectProvisioningServiceAccount;
 }

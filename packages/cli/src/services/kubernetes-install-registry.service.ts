@@ -1,4 +1,3 @@
-import type { DomainIssuerReference } from '@compartment/contracts';
 import { z } from 'zod';
 import { isReservedKubernetesInstallLocalhostDomain } from '../kubernetes-install-domain';
 import type { KubernetesInstallDomainMode } from './kubernetes-install.service.types';
@@ -24,6 +23,7 @@ interface KubernetesInstallRegistrySourceValues {
 interface ResolveKubernetesInstallRegistryInput {
   baseDomain?: string | undefined;
   domainMode: KubernetesInstallDomainMode;
+  publicProtocol?: 'http' | 'https' | undefined;
   valuesPath: string;
 }
 
@@ -54,7 +54,11 @@ export async function resolveKubernetesInstallRegistryConfiguration(
   if (input.domainMode === 'managed') {
     return readManagedRegistryConfiguration(values.registry);
   }
-  return readOperatorRegistryConfiguration(requireOperatorBaseDomain(input.baseDomain), values);
+  return readOperatorRegistryConfiguration(
+    requireOperatorBaseDomain(input.baseDomain),
+    input.publicProtocol ?? 'http',
+    values,
+  );
 }
 
 function readManagedRegistryConfiguration(
@@ -68,13 +72,11 @@ function readManagedRegistryConfiguration(
 
 function readOperatorRegistryConfiguration(
   baseDomain: string,
+  publicProtocol: 'http' | 'https',
   values: KubernetesInstallRegistrySourceValues,
 ): KubernetesInstallRegistryConfiguration {
-  assertOperatorPlatformTlsConfiguration(baseDomain, values);
-  const issuer: KubernetesInstallRegistryIssuerReference =
-    values.registry?.issuerRef === undefined
-      ? readPlatformIssuer(values.tls?.issuerRef)
-      : requireRegistryIssuer(values.registry.issuerRef);
+  assertOperatorPlatformTlsConfiguration(baseDomain, publicProtocol, values);
+  const issuer: KubernetesInstallRegistryIssuerReference = requireRegistryIssuer(values.registry?.issuerRef);
   return { registryHostname: '', registryIssuerRef: issuer };
 }
 
@@ -88,28 +90,22 @@ function assertRegistryHostnameIsDerived(registry: KubernetesInstallRegistryValu
 
 function assertOperatorPlatformTlsConfiguration(
   baseDomain: string,
+  publicProtocol: 'http' | 'https',
   values: KubernetesInstallRegistrySourceValues,
 ): void {
   if (isReservedKubernetesInstallLocalhostDomain(baseDomain)) {
     return;
   }
-  if (values.tls?.issuerRef === undefined && (values.tls?.existingSecret ?? '').trim() === '') {
-    throw new Error(
-      'tls.issuerRef or tls.existingSecret is required in --values for an operator-owned public base domain.',
-    );
+  if (values.tls?.issuerRef !== undefined) {
+    throw new Error('tls.issuerRef is not supported for operator-owned domain TLS.');
   }
-  if ((values.tls?.existingSecret ?? '').trim() !== '' && values.registry?.issuerRef === undefined) {
-    throw new Error(
-      'registry.issuerRef is required in --values when operator TLS uses tls.existingSecret because the private registry needs its own Certificate.',
-    );
+  const existingSecret: string = (values.tls?.existingSecret ?? '').trim();
+  if (publicProtocol === 'https' && existingSecret === '') {
+    throw new Error('tls.existingSecret is required in --values when operator TLS uses HTTPS.');
   }
-}
-
-function readPlatformIssuer(issuerRef: DomainIssuerReference | undefined): KubernetesInstallRegistryIssuerReference {
-  if (issuerRef === undefined) {
-    throw new Error('registry.issuerRef or tls.issuerRef must reference a CA trusted by every Kubernetes node.');
+  if (publicProtocol === 'http' && existingSecret !== '') {
+    throw new Error('tls.existingSecret cannot be used when operator TLS uses external HTTP termination.');
   }
-  return { group: 'cert-manager.io', kind: issuerRef.kind, name: issuerRef.name };
 }
 
 function requireRegistryIssuer(

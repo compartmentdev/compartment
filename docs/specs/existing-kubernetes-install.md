@@ -51,10 +51,9 @@ previous dedicated-cluster Caddy architecture.
 19. Existing-cluster implementation and testing may merge incrementally into `kubernetes`. Temporary installation
     breakage and incomplete signed artifacts are accepted because that channel is not currently a supported
     compatibility boundary.
-20. The existing-cluster program does not provide a one-command bare-VM installation. Its bare-VM test path installs
-    default k3s, installs the pinned cert-manager version separately, and then runs `compartment install`.
-21. The later cluster-provisioning program restores the one-command bare-VM flow by installing Kubernetes and every
-    prerequisite before invoking the same canonical installer.
+20. The existing-cluster path remains operator-owned and never mutates the host or cluster prerequisites.
+21. The CLI-managed VM path installs the release-owned k3s channel and prerequisites, then invokes the same canonical
+    installer. It does not add a second chart or platform installation contract.
 
 ## Accepted replacement cost
 

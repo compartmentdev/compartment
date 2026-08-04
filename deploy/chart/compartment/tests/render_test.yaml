@@ -8,6 +8,95 @@ release:
   name: compartment
   namespace: default
 tests:
+  - it: uses normalized platform names for the default release
+    set:
+      platform:
+        startupStage: full
+        installationId: test-install
+        baseDomain: apps.example.com
+      secrets: &normalizedSecrets
+        installToken: test-install-token
+        postgresPassword: test-postgres-password
+        registryCredentialSigningKey: test-registry-signing-key-with-at-least-32-characters
+        edgeToken: test-edge-token
+        productLogIngestToken: test-product-log-token
+        runtimeControlToken: test-runtime-control-token
+        sessionSecret: test-session-secret
+        systemToken: test-system-token
+        tenantSecretsKek: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        variablesMasterKey: test-variables-master-key
+        managedDomainAcmeDnsToken: ''
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: compartment-api
+          any: true
+        template: api.yaml
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: compartment-postgres
+          any: true
+        template: postgres.yaml
+      - containsDocument:
+          apiVersion: v1
+          kind: Namespace
+          name: compartment-build
+          any: true
+        template: buildkit.yaml
+      - containsDocument:
+          apiVersion: v1
+          kind: Namespace
+          name: compartment-observability
+          any: true
+        template: product-log-agent.yaml
+      - containsDocument:
+          apiVersion: v1
+          kind: Namespace
+          name: compartment-project-provisioning
+          any: true
+        template: project-provisioner-rbac.yaml
+
+  - it: retains coherent control-plane state across uninstall
+    set:
+      platform:
+        startupStage: full
+        installationId: test-install
+        baseDomain: apps.example.com
+      edge:
+        replicas: 1
+        snapshots:
+          enabled: true
+      api:
+        replicas: 1
+      secrets: *normalizedSecrets
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+        template: secret.yaml
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+        template: pvc.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+        template: pvc.yaml
+        documentIndex: 1
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+        template: pvc.yaml
+        documentIndex: 2
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+        template: pvc.yaml
+        documentIndex: 3
+
   - it: creates a revision-scoped migration Job for every Helm update
     release:
       revision: 7
@@ -30,7 +119,7 @@ tests:
     asserts:
       - equal:
           path: metadata.name
-          value: compartment-compartment-api-migrate-7
+          value: compartment-api-migrate-7
         template: api-migrate.yaml
       - equal:
           path: spec.template.spec.containers[0].command
@@ -244,7 +333,7 @@ tests:
       - notFailedTemplate: {}
       - equal:
           path: data.COMPARTMENT_API_INTERNAL_HOST
-          value: compartment-compartment-api.default.svc
+          value: compartment-api.default.svc
         template: configmap.yaml
       - equal:
           path: metadata.annotations["helm.sh/resource-policy"]
@@ -297,13 +386,13 @@ tests:
       - containsDocument:
           apiVersion: apps/v1
           kind: Deployment
-          name: compartment-compartment-api
+          name: compartment-api
           any: true
         template: api.yaml
       - containsDocument:
           apiVersion: apps/v1
           kind: Deployment
-          name: compartment-compartment-worker
+          name: compartment-worker
           any: true
         template: worker.yaml
       - contains:
@@ -328,7 +417,7 @@ tests:
           path: spec.template.spec.containers[0].env
           content:
             name: COMPARTMENT_CADDY_SERVICE_NAME
-            value: compartment-compartment-caddy
+            value: compartment-caddy
         template: worker.yaml
       - contains:
           path: spec.template.spec.containers[0].env
@@ -345,13 +434,13 @@ tests:
       - containsDocument:
           apiVersion: apps/v1
           kind: Deployment
-          name: compartment-compartment-edge
+          name: compartment-edge
           any: true
         template: edge.yaml
       - containsDocument:
           apiVersion: apps/v1
           kind: Deployment
-          name: compartment-compartment-caddy
+          name: compartment-caddy
           any: true
         template: caddy.yaml
       - hasDocuments:
@@ -363,7 +452,7 @@ tests:
         documentIndex: 0
       - equal:
           path: metadata.name
-          value: compartment-compartment-waiter
+          value: compartment-waiter
         template: api-migrate-rbac.yaml
         documentIndex: 0
       - isKind:
@@ -376,7 +465,7 @@ tests:
         documentIndex: 4
       - equal:
           path: metadata.name
-          value: compartment-compartment-custom-domain-controller
+          value: compartment-custom-domain-controller
         template: api-migrate-rbac.yaml
         documentIndex: 4
       - isKind:
@@ -385,7 +474,7 @@ tests:
         documentIndex: 5
       - equal:
           path: subjects[0].name
-          value: compartment-compartment-worker
+          value: compartment-worker
         template: api-migrate-rbac.yaml
         documentIndex: 5
       - contains:
@@ -416,7 +505,7 @@ tests:
         documentIndex: 4
       - equal:
           path: metadata.name
-          value: compartment-compartment-log-agent
+          value: compartment-log-agent
         template: product-log-agent.yaml
         documentIndex: 4
       - equal:
@@ -474,7 +563,7 @@ tests:
         documentIndex: 0
       - equal:
           path: metadata.name
-          value: compartment-compartment-project-provisioning
+          value: compartment-project-provisioning
         template: project-provisioner-rbac.yaml
         documentIndex: 0
       - isKind:
@@ -493,7 +582,7 @@ tests:
         documentIndex: 3
       - equal:
           path: metadata.name
-          value: compartment-compartment-project-provisioner
+          value: compartment-project-provisioner
         template: project-provisioner-rbac.yaml
         documentIndex: 6
       - equal:
@@ -590,7 +679,7 @@ tests:
         documentIndex: 6
       - equal:
           path: metadata.name
-          value: compartment-compartment-project-provisioner
+          value: compartment-project-provisioner
         template: project-provisioner-rbac.yaml
         documentIndex: 1
       - isKind:
@@ -602,14 +691,14 @@ tests:
           value:
             apiGroup: rbac.authorization.k8s.io
             kind: Role
-            name: compartment-compartment-project-provisioning-job
+            name: compartment-project-provisioning-job
         template: project-provisioner-rbac.yaml
         documentIndex: 5
       - equal:
           path: subjects
           value:
             - kind: ServiceAccount
-              name: compartment-compartment-project-provisioner
+              name: compartment-project-provisioner
               namespace: default
         template: project-provisioner-rbac.yaml
         documentIndex: 5
@@ -624,7 +713,7 @@ tests:
         documentIndex: 8
       - matchRegex:
           path: spec.matchConditions[0].expression
-          pattern: system:serviceaccount:compartment-compartment-project-provisioning:cpt-
+          pattern: system:serviceaccount:compartment-project-provisioning:cpt-
         template: project-provisioner-rbac.yaml
         documentIndex: 8
       - matchRegex:
@@ -659,7 +748,7 @@ tests:
         documentIndex: 8
       - matchRegex:
           path: spec.validations[1].expression
-          pattern: subject\.name == 'compartment-compartment-worker'
+          pattern: subject\.name == 'compartment-worker'
         template: project-provisioner-rbac.yaml
         documentIndex: 8
       - matchRegex:
@@ -669,7 +758,7 @@ tests:
         documentIndex: 8
       - matchRegex:
           path: spec.validations[2].expression
-          pattern: system:serviceaccount:default:compartment-compartment-project-provisioner
+          pattern: system:serviceaccount:default:compartment-project-provisioner
         template: project-provisioner-rbac.yaml
         documentIndex: 8
       - matchRegex:
@@ -689,19 +778,19 @@ tests:
         documentIndex: 9
       - equal:
           path: roleRef.name
-          value: compartment-compartment-project-provisioner
+          value: compartment-project-provisioner
         template: project-provisioner-rbac.yaml
         documentIndex: 7
       - equal:
           path: subjects[0].name
-          value: compartment-compartment-project-provisioner
+          value: compartment-project-provisioner
         template: project-provisioner-rbac.yaml
         documentIndex: 7
       - equal:
           path: subjects
           value:
             - kind: ServiceAccount
-              name: compartment-compartment-project-provisioner
+              name: compartment-project-provisioner
               namespace: default
         template: project-provisioner-rbac.yaml
         documentIndex: 7
@@ -804,7 +893,7 @@ tests:
         documentIndex: 3
       - equal:
           path: metadata.namespace
-          value: compartment-compartment-project-provisioning
+          value: compartment-project-provisioning
         template: project-provisioner-rbac.yaml
         documentIndex: 4
       - contains:
@@ -850,7 +939,7 @@ tests:
         template: worker.yaml
       - contains:
           path: spec.template.spec.initContainers[1].args
-          content: deployment/compartment-compartment-api
+          content: deployment/compartment-api
         template: worker.yaml
       - matchRegex:
           path: spec.template.spec.initContainers[2].args[0]
@@ -878,7 +967,7 @@ tests:
         template: project-provisioner.yaml
       - contains:
           path: spec.template.spec.initContainers[1].args
-          content: deployment/compartment-compartment-api
+          content: deployment/compartment-api
         template: project-provisioner.yaml
       - matchRegex:
           path: spec.template.spec.initContainers[2].args[0]
@@ -974,11 +1063,11 @@ tests:
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_HOST
-          value: compartment-compartment-registry-auth.default.svc:5001
+          value: compartment-registry-auth.default.svc:5001
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL
-          value: http://compartment-compartment-registry-auth.default.svc:5001
+          value: http://compartment-registry-auth.default.svc:5001
         template: configmap.yaml
       - contains:
           path: spec.template.spec.containers[0].env
@@ -986,7 +1075,7 @@ tests:
             name: COMPARTMENT_INSTALL_TOKEN
             valueFrom:
               secretKeyRef:
-                name: compartment-compartment
+                name: compartment
                 key: install-token
           any: true
         template: api.yaml
@@ -1489,7 +1578,7 @@ tests:
       - containsDocument:
           apiVersion: v1
           kind: PersistentVolumeClaim
-          name: compartment-compartment-edge-snapshots
+          name: compartment-edge-snapshots
           any: true
         template: pvc.yaml
       - contains:
@@ -1497,7 +1586,7 @@ tests:
           content:
             name: snapshots
             persistentVolumeClaim:
-              claimName: compartment-compartment-edge-snapshots
+              claimName: compartment-edge-snapshots
           any: true
         template: edge.yaml
         documentIndex: 1
@@ -1546,7 +1635,7 @@ tests:
           path: spec.template.spec.containers[0].env
           content:
             name: COMPARTMENT_TLS_ISSUER_NAME
-            value: compartment-compartment-custom-domains
+            value: compartment-custom-domains
         template: worker.yaml
         documentIndex: 0
       - hasDocuments:
@@ -1554,7 +1643,7 @@ tests:
         template: registry-auth.yaml
       - equal:
           path: spec.template.spec.volumes[1].secret.secretName
-          value: compartment-compartment-registry-tls
+          value: compartment-registry-tls
         template: registry-auth.yaml
         documentIndex: 2
       - notContains:
@@ -1606,13 +1695,17 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.volumes[1].secret.secretName
-          value: compartment-compartment-registry-tls
+          value: compartment-registry-tls
         template: registry-auth.yaml
         documentIndex: 2
 
   - it: applies fullname override without renaming retained install state
     set:
       fullnameOverride: renamed-compartment
+      platform:
+        startupStage: full
+        installationId: test-override
+        baseDomain: apps.example.com
       secrets: *stableSecrets
     asserts:
       - notFailedTemplate: {}
@@ -1633,6 +1726,24 @@ tests:
           value: renamed-compartment-caddy
         template: caddy.yaml
         documentIndex: 0
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: renamed-compartment-api
+          any: true
+        template: api.yaml
+      - containsDocument:
+          apiVersion: v1
+          kind: Namespace
+          name: renamed-compartment-observability
+          any: true
+        template: product-log-agent.yaml
+      - containsDocument:
+          apiVersion: v1
+          kind: Namespace
+          name: renamed-compartment-project-provisioning
+          any: true
+        template: project-provisioner-rbac.yaml
       - containsDocument:
           apiVersion: v1
           kind: PersistentVolumeClaim

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 const channelActionPath = new URL('../../.github/actions/publish-self-hosted-channel/action.yml', import.meta.url);
 const mainWorkflowPath = new URL('../../.github/workflows/publish-self-hosted-main.yml', import.meta.url);
 const kubernetesWorkflowPath = new URL('../../.github/workflows/publish-self-hosted-kubernetes.yml', import.meta.url);
+const bareVmGateWorkflowPath = new URL('../../.github/workflows/bare-vm-release-gate.yml', import.meta.url);
 
 async function readWorkflow(path) {
   return parse(await readFile(path, 'utf8'));
@@ -32,24 +33,82 @@ describe('self-hosted publish workflows', () => {
     const publishStep = publishJob.steps.find((step) => step.name === 'Publish self-hosted image channel');
 
     expect(workflow.on.push.branches).toEqual(['kubernetes']);
+    const approvalJob = workflow.jobs['bare-vm-release-approval'];
+    const approvalStep = approvalJob.steps.find(
+      (step) => step.name === 'Require a successful protected bare VM gate for this commit',
+    );
+
+    expect(approvalJob.needs).toEqual(['publish-kubernetes-cli']);
+    expect(approvalStep.run).toContain('bare-vm-release-gate.yml/runs?head_sha=${RELEASE_SHA}');
+    expect(approvalStep.run).toContain('event=workflow_dispatch&status=completed');
     expect(publishJob.needs).toEqual(['db-integration', 'platform-k3d-e2e', 'self-hosted-image-security-gate']);
     expect(publishJob.permissions).toEqual({ contents: 'read', 'id-token': 'write', packages: 'write' });
     expect(publishJob['timeout-minutes']).toBe(120);
     expect(publishStep.uses).toBe('./.github/actions/publish-self-hosted-channel');
-    expect(publishStep.with).toMatchObject({ channel: 'kubernetes', 'publish-sha': '${{ github.sha }}' });
+    expect(publishStep.with).toMatchObject({
+      channel: 'kubernetes',
+      'publish-sha': '${{ github.sha }}',
+      'promote-mutable': 'false',
+    });
+    expect(workflow.jobs['promote-kubernetes-release'].needs).toEqual(['bare-vm-release-approval']);
+  });
+
+  it('runs the bare VM gate only on a protected, explicitly designated disposable host', async () => {
+    const workflow = await readWorkflow(bareVmGateWorkflowPath);
+    const job = workflow.jobs['fresh-vm'];
+    const accessStep = job.steps.find((step) => step.name === 'Configure pinned disposable VM access');
+    const probesStep = job.steps.find((step) => step.name === 'Probe public and isolated ports externally');
+    const statusStep = job.steps.find((step) => step.name === 'Verify resumable install and readiness JSON');
+    const deployStep = job.steps.find((step) => step.name === 'Deploy the first application and verify registry pull');
+    const passwordCleanupStep = job.steps.find((step) => step.name === 'Remove disposable VM password file');
+    const resetStep = job.steps.find((step) => step.name === 'Destructively reset the disposable VM');
+
+    expect(workflow.on.workflow_dispatch.inputs).toHaveProperty('host');
+    expect(job.environment).toBe('bare-vm-release-gate');
+    expect(job.env).toEqual({
+      FRESH_VM_HOST: '${{ inputs.host }}',
+      OWNER_EMAIL: '${{ inputs.owner_email }}',
+      OWNER_ORGANIZATION: '${{ inputs.organization }}',
+      RELEASE_SHA: '${{ github.sha }}',
+    });
+    expect(accessStep.env.SSH_KNOWN_HOSTS).toBe('${{ secrets.FRESH_VM_SSH_KNOWN_HOSTS }}');
+    expect(accessStep.run).not.toContain('ssh-keyscan');
+    expect(probesStep.run).toContain('nmap -Pn -p 2379,2380,6443,10250');
+    expect(probesStep.run).toContain('nmap -Pn -sU -p 8472');
+    expect(statusStep.run).toContain("jq -e '.host.k3sActive == true");
+    const installStep = job.steps.find((step) => step.name === 'Install from the public bootstrap');
+    const packagedCliStep = job.steps.find((step) => step.name === 'Verify exact packaged CLI build');
+    expect(installStep.run).toContain('--version "sha-${RELEASE_SHA}"');
+    expect(installStep.run).toContain('--admin-password-file /tmp/compartment-owner-password');
+    expect(packagedCliStep.run).toContain('-kubernetes+');
+    expect(deployStep.run).toContain('sudo compartment deploy');
+    expect(deployStep.run).toContain('all(.status == "succeeded")');
+    expect(deployStep.run).toContain('sudo compartment whoami --output json');
+    expect(job.steps.some((step) => step.name === 'Verify managed update')).toBe(true);
+    expect(job.steps.some((step) => step.name === 'Verify reboot recovery')).toBe(true);
+    expect(resetStep.if).toBe('always()');
+    expect(passwordCleanupStep.if).toBe('always()');
+    expect(passwordCleanupStep.run).toContain('rm -f /tmp/compartment-owner-password');
+    expect(resetStep.run).toContain('test ! -e /var/lib/compartment/installer/state.json');
+
+    const serialized = JSON.stringify(workflow);
+    expect(serialized).not.toContain("'${{ inputs.host }}'");
+    expect(serialized).not.toContain('ssh-keyscan');
   });
 
   it('builds and publishes a signed kubernetes CLI OCI artifact for all supported platforms', async () => {
     const workflow = await readWorkflow(kubernetesWorkflowPath);
     const buildJob = workflow.jobs['build-kubernetes-cli'];
     const publishJob = workflow.jobs['publish-kubernetes-cli'];
+    const promotionJob = workflow.jobs['promote-kubernetes-release'];
     const buildStep = buildJob.steps.find((step) => step.name === 'Build kubernetes CLI binary');
     const orasStep = publishJob.steps.find((step) => step.name === 'Set up ORAS');
     const publishStep = publishJob.steps.find((step) => step.name === 'Publish immutable CLI artifact');
     const anonymousPullStep = publishJob.steps.find((step) => step.name === 'Verify anonymous CLI artifact pulls');
     const signStep = publishJob.steps.find((step) => step.name === 'Sign and verify CLI artifact');
-    const promoteStep = publishJob.steps.find((step) => step.name === 'Promote mutable kubernetes CLI tag');
-    const publicInstallerStep = publishJob.steps.find(
+    const promoteImagesStep = promotionJob.steps.find((step) => step.name === 'Promote mutable kubernetes image tags');
+    const promoteStep = promotionJob.steps.find((step) => step.name === 'Promote mutable kubernetes CLI tag');
+    const publicInstallerStep = promotionJob.steps.find(
       (step) => step.name === 'Verify supported public installer handoff',
     );
 
@@ -78,20 +137,20 @@ describe('self-hosted publish workflows', () => {
     expect(workflow.jobs['publish-kubernetes-cli'].steps.indexOf(anonymousPullStep)).toBeGreaterThan(
       workflow.jobs['publish-kubernetes-cli'].steps.indexOf(signStep),
     );
-    expect(workflow.jobs['publish-kubernetes-cli'].steps.indexOf(promoteStep)).toBeGreaterThan(
-      workflow.jobs['publish-kubernetes-cli'].steps.indexOf(signStep),
-    );
+    expect(publishJob.steps).not.toContain(promoteStep);
+    expect(promotionJob.needs).toEqual(['bare-vm-release-approval']);
+    expect(promoteImagesStep.run).toContain('compartment-${service}:sha-${PUBLISH_SHA}');
+    expect(promoteImagesStep.run).toContain('compartment-${service}:kubernetes');
     expect(promoteStep.run).toContain('git/ref/heads/kubernetes');
     expect(promoteStep.run).toContain('${CLI_REPOSITORY}:kubernetes');
     expect(promoteStep.id).toBe('promote-kubernetes-cli');
     expect(promoteStep.run).toContain('echo \'promoted=false\' >> "$GITHUB_OUTPUT"');
     expect(promoteStep.run).toContain('echo \'promoted=true\' >> "$GITHUB_OUTPUT"');
-    expect(publishJob.steps.indexOf(publicInstallerStep)).toBeGreaterThan(publishJob.steps.indexOf(promoteStep));
+    expect(promotionJob.steps.indexOf(publicInstallerStep)).toBeGreaterThan(promotionJob.steps.indexOf(promoteStep));
     expect(publicInstallerStep.if).toBe("steps.promote-kubernetes-cli.outputs.promoted == 'true'");
-    expect(publicInstallerStep.run).toContain('https://compartment.dev/k/install.sh');
-    expect(publicInstallerStep.run).not.toContain('https://compartment.dev/install.sh');
+    expect(publicInstallerStep.run).toContain('https://compartment.dev/install.sh');
     expect(publicInstallerStep.run).toMatch(
-      /curl -fsSL[\s\S]*--write-out '%\{http_code\}'[\s\S]*https:\/\/compartment\.dev\/k\/install\.sh/u,
+      /curl -fsSL[\s\S]*--write-out '%\{http_code\}'[\s\S]*https:\/\/compartment\.dev\/install\.sh/u,
     );
     expect(publicInstallerStep.run).toContain('received_sha256=""');
     expect(publicInstallerStep.run).toContain('received_size=""');
@@ -116,6 +175,7 @@ describe('self-hosted publish workflows', () => {
     expect(action.inputs).toMatchObject({
       channel: { required: true },
       'publish-sha': { required: true },
+      'promote-mutable': { required: false, default: 'true' },
     });
     expect(action.runs.using).toBe('composite');
     expect(cosignStep.with['cosign-release']).toBe('v2.6.1');
@@ -137,5 +197,6 @@ describe('self-hosted publish workflows', () => {
     expect(mutableStep.run).toContain('current_channel_sha" != "$PUBLISH_SHA');
     expect(mutableStep.run).toContain('docker.io/compartmentdev/compartment-${service}:${CHANNEL}');
     expect(mutableStep.run).toContain('ghcr.io/compartmentdev/compartment-${service}:${CHANNEL}');
+    expect(mutableStep.if).toBe("inputs.promote-mutable == 'true'");
   });
 });

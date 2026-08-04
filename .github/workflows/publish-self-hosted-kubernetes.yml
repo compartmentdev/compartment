@@ -6,6 +6,7 @@ on:
       - kubernetes
 
 permissions:
+  actions: read
   contents: read
   packages: read
 
@@ -57,6 +58,26 @@ jobs:
     with:
       self_hosted_image_cache_key: ${{ needs.self-hosted-image-cache.outputs.cache_key }}
       runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
+
+  bare-vm-release-approval:
+    name: kubernetes:release / approved fresh VM gate
+    needs:
+      - publish-kubernetes-cli
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_SHA: ${{ github.sha }}
+    steps:
+      - name: Require a successful protected bare VM gate for this commit
+        run: |
+          conclusion="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/bare-vm-release-gate.yml/runs?head_sha=${RELEASE_SHA}&event=workflow_dispatch&status=completed&per_page=20" \
+            --jq '.workflow_runs | map(select(.conclusion == "success")) | first | .conclusion // empty')"
+          if [ "$conclusion" != success ]; then
+            echo "No successful protected bare VM release gate exists for ${RELEASE_SHA}." >&2
+            echo 'Run Bare VM release gate against a designated disposable host, then rerun this workflow.' >&2
+            exit 1
+          fi
 
   build-kubernetes-cli:
     name: build CLI ${{ matrix.artifact_name }}
@@ -134,7 +155,7 @@ jobs:
           path: ./.compartment/release-assets/${{ matrix.artifact_name }}
 
   publish-kubernetes-images:
-    name: publish kubernetes + sha
+    name: publish immutable kubernetes images
     needs:
       - db-integration
       - platform-k3d-e2e
@@ -159,9 +180,10 @@ jobs:
           dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
           dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
           publish-sha: ${{ github.sha }}
+          promote-mutable: 'false'
 
   publish-kubernetes-cli:
-    name: publish signed kubernetes CLI
+    name: publish signed immutable kubernetes CLI
     needs:
       - build-kubernetes-cli
       - publish-kubernetes-images
@@ -294,6 +316,70 @@ jobs:
             exit 1
           fi
 
+  promote-kubernetes-release:
+    name: promote mutable kubernetes release
+    needs:
+      - bare-vm-release-approval
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CLI_REPOSITORY: ghcr.io/compartmentdev/compartment-cli
+      GH_TOKEN: ${{ github.token }}
+      PUBLISH_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: .nvmrc
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+      - name: Set up ORAS
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+        with:
+          url: https://github.com/oras-project/oras/releases/download/v1.3.3/oras_1.3.3_linux_amd64.tar.gz
+          checksum: 9ce999f8d2de03fc03968b29d743077a58783e545e5eaa53917ca177352d0e59
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Promote mutable kubernetes image tags
+        run: |
+          current_kubernetes_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/kubernetes" --jq '.object.sha')"
+          if [ "$current_kubernetes_sha" != "$PUBLISH_SHA" ]; then
+            echo "Skipping mutable promotion because ${PUBLISH_SHA} is no longer the kubernetes branch head."
+            exit 0
+          fi
+          mapfile -t services < <(node ./scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs)
+          for service in "${services[@]}"; do
+            docker buildx imagetools create \
+              --tag "docker.io/compartmentdev/compartment-${service}:kubernetes" \
+              "docker.io/compartmentdev/compartment-${service}:sha-${PUBLISH_SHA}"
+            docker buildx imagetools create \
+              --tag "ghcr.io/compartmentdev/compartment-${service}:kubernetes" \
+              "ghcr.io/compartmentdev/compartment-${service}:sha-${PUBLISH_SHA}"
+          done
+
       - name: Promote mutable kubernetes CLI tag
         id: promote-kubernetes-cli
         run: |
@@ -308,8 +394,8 @@ jobs:
             exit 0
           fi
 
-          cli_digest="$(cat ./.compartment/cli-artifact-digest)"
-          oras cp "${CLI_REPOSITORY}@${cli_digest}" "${CLI_REPOSITORY}:kubernetes"
+          cli_digest="$(oras resolve "${CLI_REPOSITORY}:sha-${PUBLISH_SHA}")"
+          oras cp "${CLI_REPOSITORY}:sha-${PUBLISH_SHA}" "${CLI_REPOSITORY}:kubernetes"
           promoted_digest="$(oras resolve "${CLI_REPOSITORY}:kubernetes")"
           if [ "$promoted_digest" != "$cli_digest" ]; then
             echo "Mutable kubernetes CLI tag resolved to ${promoted_digest}; expected ${cli_digest}." >&2
@@ -332,7 +418,7 @@ jobs:
               curl -fsSL \
                 --output ./.compartment/public-install.sh \
                 --write-out '%{http_code}' \
-                https://compartment.dev/k/install.sh
+                https://compartment.dev/install.sh
             )"; then
               curl_succeeded=true
             else

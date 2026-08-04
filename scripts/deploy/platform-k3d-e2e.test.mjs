@@ -9,6 +9,7 @@ import {
   buildPlatformK3dClusterCreateArgs,
   isConsoleReadyStatus,
   isTransientKubernetesApiFailure,
+  isTransientRegistryCreateFailure,
   parseK3dClusterNames,
   parseLoadedImageRefs,
   readPlatformK3dCommand,
@@ -16,8 +17,10 @@ import {
   readPlatformK3dIngressNginxManifestUrl,
   readPlatformK3dEnvironment,
   renderManagedPlatformK3dValues,
+  renderPreviousPlatformK3dValues,
   renderPublicOperatorPlatformK3dValues,
   renderPlatformK3dValues,
+  runK3dRegistryCreateWithRetry,
   runKubectlWithTransientApiRetry,
 } from './platform-k3d-e2e.mjs';
 import {
@@ -52,7 +55,7 @@ describe('platform k3d e2e command boundary', () => {
     expect(args.join(' ')).not.toContain('30080@server');
     expect(args.join(' ')).not.toContain('30900@server');
     expect(args.join(' ')).not.toContain('31500@server');
-    expect(args).toContain('rancher/k3s:v1.33.2-k3s1');
+    expect(args).toContain('rancher/k3s:v1.35.5-k3s1');
     expect(
       args.some((arg) =>
         arg.endsWith(
@@ -167,6 +170,51 @@ describe('platform k3d e2e command boundary', () => {
         stdout: '',
       }),
     ).toBe(true);
+  });
+
+  it('retries only transient registry pulls and cleans partial registries between attempts', async () => {
+    const cleanup = vi.fn().mockRejectedValueOnce(new Error('cleanup failed')).mockResolvedValue(undefined);
+    const waits = [];
+    const commandRunner = vi
+      .fn()
+      .mockReturnValueOnce({
+        status: 1,
+        stderr:
+          "docker failed to pull image 'docker.io/library/registry:2': received unexpected HTTP status: 502 Bad Gateway",
+        stdout: '',
+      })
+      .mockReturnValueOnce({
+        status: 1,
+        stderr:
+          "failed to pull image 'docker.io/library/registry:2': net/http: request canceled (Client.Timeout exceeded while awaiting headers)",
+        stdout: '',
+      })
+      .mockReturnValue({ status: 0, stderr: '', stdout: '' });
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    try {
+      await runK3dRegistryCreateWithRetry(['registry', 'create', 'test'], {
+        cleanup,
+        commandRunner,
+        wait: async (milliseconds) => waits.push(milliseconds),
+      });
+      expect(stderr).toHaveBeenCalledWith(
+        'Failed to clean the partial k3d registry before retrying: Error: cleanup failed\n',
+      );
+    } finally {
+      stderr.mockRestore();
+    }
+
+    expect(commandRunner).toHaveBeenCalledTimes(3);
+    expect(cleanup).toHaveBeenCalledTimes(2);
+    expect(waits).toEqual([1_000, 2_000]);
+    expect(
+      isTransientRegistryCreateFailure({
+        status: 1,
+        stderr: 'invalid port mapping',
+        stdout: '',
+      }),
+    ).toBe(false);
   });
 
   it('waits for cert-manager deployments and a populated webhook endpoint', () => {
@@ -418,11 +466,23 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).toContain('namespace: compartment-build');
     expect(values).toContain('clusterIP: 10.43.250.250');
     expect(values).not.toContain('hostname:');
-    expect(values).toContain('name: compartment-registry-test-issuer');
+    expect(values).toContain(
+      'registry:\n  clusterIP: 10.43.250.250\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer',
+    );
+    expect(values).not.toContain('tls:\n  issuerRef:');
     expect(values).toContain('repository: k3d-compartment-e2e-registry:15500/compartment-api');
     expect(values).toContain(`digest: sha256:${'a'.repeat(64)}`);
     expect(values).not.toContain('ports:\n  http: 18080');
     expect(values).not.toContain('startupStage:');
+  });
+
+  it('keeps registry TLS independent in previous-version upgrade values', () => {
+    const values = renderPreviousPlatformK3dValues();
+
+    expect(values).toContain(
+      'registry:\n  clusterIP: 10.43.250.250\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer',
+    );
+    expect(values).not.toContain('tls:\n  issuerRef:');
   });
 
   it('enables the gVisor RuntimeClass only for an opted-in e2e cluster', () => {
@@ -448,15 +508,21 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).toContain(`digest: sha256:${'d'.repeat(64)}`);
     expect(values).not.toContain('hostname:');
     expect(values).not.toContain('compartment.localhost');
+    expect(values).toContain(
+      'registry:\n  clusterIP: 10.43.250.250\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer',
+    );
   });
 
-  it('writes public operator values with explicit ingress, storage, and certificate issuers', () => {
+  it('writes public operator values with external TLS and a separate registry issuer', () => {
     const values = renderPublicOperatorPlatformK3dValues(createTestImageDigests());
 
     expect(values).toContain('className: traefik');
     expect(values).toContain('storageClass: local-path');
-    expect(values).toContain('name: compartment-public-operator-test-issuer');
-    expect(values).toContain('name: compartment-registry-test-issuer');
+    expect(values).toContain(
+      'registry:\n  clusterIP: 10.43.250.250\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer',
+    );
+    expect(values).toContain('publicProtocol: http');
+    expect(values).not.toContain('tls:\n  issuerRef:');
     expect(values).not.toContain('baseDomain:');
     expect(values).not.toContain('hostname:');
   });

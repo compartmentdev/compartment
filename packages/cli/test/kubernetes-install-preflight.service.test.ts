@@ -8,7 +8,10 @@ import { resolveKubernetesInstallKubeconfig } from '../src/services/kubernetes-i
 import type { ResolvedKubernetesKubeconfig } from '../src/services/kubernetes-install-kubeconfig.service.types';
 import { runKubernetesInstallPreflight } from '../src/services/kubernetes-install-preflight.service';
 import type { KubernetesInstallDeploymentInput } from '../src/services/kubernetes-install.service.types';
-import type { KubernetesInstallPreflightInput } from '../src/services/kubernetes-install-preflight.service.types';
+import type {
+  KubernetesInstallPreflightInput,
+  KubernetesInstallPreflightResult,
+} from '../src/services/kubernetes-install-preflight.service.types';
 
 interface FileSystemPromisesModule {
   readFile: typeof readFile;
@@ -52,6 +55,19 @@ describe('Kubernetes install kubeconfig resolution', (): void => {
     await expect(resolveKubernetesInstallKubeconfig({ env: {}, homeDirectory, k3sPath })).rejects.toThrow(
       /No usable kubeconfig found.*\$KUBECONFIG.*~\/\.kube\/config \(no current context\).*missing-k3s\.yaml \(not found\).*point KUBECONFIG.*keep its Ingress Controller enabled/su,
     );
+  });
+
+  it('classifies a missing explicit context as no usable cluster when the machine has no cluster', async (): Promise<void> => {
+    const root: string = await mkdtemp(join(tmpdir(), 'compartment-kubeconfig-'));
+
+    await expect(
+      resolveKubernetesInstallKubeconfig({
+        contextName: 'production',
+        env: {},
+        homeDirectory: root,
+        k3sPath: join(root, 'missing-k3s.yaml'),
+      }),
+    ).rejects.toMatchObject({ reason: 'no-usable-cluster' });
   });
 
   it('prefers a usable KUBECONFIG path', async (): Promise<void> => {
@@ -153,13 +169,13 @@ describe('Kubernetes install kubeconfig resolution', (): void => {
     const configuredPath: string = join(root, 'configured.yaml');
     await writeFile(configuredPath, usableKubeconfig('https://cluster.example.test:6443'));
 
-    await expect(
-      resolveKubernetesInstallKubeconfig({
-        contextName: 'missing',
-        env: { KUBECONFIG: configuredPath },
-        homeDirectory: root,
-      }),
-    ).rejects.toThrow('context "missing" not found');
+    const resolution: Promise<ResolvedKubernetesKubeconfig> = resolveKubernetesInstallKubeconfig({
+      contextName: 'missing',
+      env: { KUBECONFIG: configuredPath },
+      homeDirectory: root,
+    });
+    await expect(resolution).rejects.toThrow('context "missing" not found');
+    await expect(resolution).rejects.toMatchObject({ reason: 'context-not-found' });
   });
 
   it('does not call an existing but unusable requested context missing', async (): Promise<void> => {
@@ -249,6 +265,19 @@ describe('Kubernetes install cluster preflight', (): void => {
     await expect(runKubernetesInstallPreflight(preflightInput())).rejects.toThrow(
       'kubectl is not installed or not on PATH',
     );
+  });
+
+  it('reports an unreachable API separately from missing cluster and tool guidance', async (): Promise<void> => {
+    mockedRunCommand.mockResolvedValueOnce({
+      exitCode: 1,
+      stderr: 'dial tcp 127.0.0.1:6443: connect: connection refused',
+      stdout: '',
+    });
+
+    const failure: Promise<KubernetesInstallPreflightResult> = runKubernetesInstallPreflight(preflightInput());
+    await expect(failure).rejects.toThrow('Cannot reach Kubernetes cluster at https://127.0.0.1:6443');
+    await expect(failure).rejects.not.toThrow('No usable Kubernetes cluster found');
+    await expect(failure).rejects.not.toThrow('kubectl not found');
   });
 });
 

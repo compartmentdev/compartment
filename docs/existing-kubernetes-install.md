@@ -6,18 +6,18 @@ or remove Kubernetes, an Ingress Controller, cert-manager, a CNI, or a StorageCl
 ## Supported installation channel
 
 The existing-Kubernetes installer is the supported self-hosted installation channel. The public bootstrap at
-`https://compartment.dev/k/install.sh` redirects to the root installer on the `kubernetes` branch. That installer
+`https://compartment.dev/install.sh` serves the root installer approved for the `kubernetes` channel. That installer
 resolves the current branch commit and matching immutable CLI OCI artifact by digest, then verifies its Cosign
 identity, OIDC issuer, and workflow commit before pulling it. No channel flag or raw branch URL is required.
 
-The supported test matrix uses five isolated k3d shards. Every shard owns one cluster and installs its selected
+The supported test matrix uses isolated k3d shards. Every shard owns one cluster and installs its selected
 Ingress Controller and pinned cert-manager prerequisite once:
 
 - `managed-install`: managed DNS, TLS, first-owner installation, and retained-stage retry;
-- `build-matrix-a`: install, NetworkPolicy enforcement, Dockerfile builds, registry push and node pull, rollout, and
-  image lifecycle;
-- `build-matrix-b`: a two-node ingress-nginx cluster, with the existing Traefik controller left available, plus
-  install, Railpack, and static build variants;
+- `install-ha-network-policy`: install, HA, and NetworkPolicy enforcement;
+- `build-matrix-a-*`: install, Dockerfile and source builds, registry push and node pull, rollout, and image lifecycle;
+- `build-matrix-b-*`: two-node ingress-nginx clusters, with the existing Traefik controller left available, plus
+  install, Railpack, and static build variants distributed across three partitions;
 - `user-flow`: install plus authenticated CLI, organization, project, domain, promote, and rollback flows;
 - `console`: install plus Console, G1 isolation, private-route denial, and product-log gates.
 
@@ -25,26 +25,29 @@ Ingress Controller plus cert-manager setup has a 120-second wall-time budget in 
 measures and enforces that budget, and the shard owner is the suite named above. A shard reuses the same prerequisite
 installation for all of its scenarios.
 
-The initial supported release matrix is exact:
-
-| Kubernetes distribution | Topology                 | Ingress Controller                                               | cert-manager |
-| ----------------------- | ------------------------ | ---------------------------------------------------------------- | ------------ |
-| k3s v1.33.2+k3s1        | one server               | bundled Traefik v3.3.6                                           | v1.21.0      |
-| k3s v1.33.2+k3s1        | one server and one agent | ingress-nginx controller v1.13.3, with Traefik v3.3.6 coexisting | v1.21.0      |
-
-Versions or controllers outside this matrix are not part of the supported channel until they are added to the
-release gate. The CLI may accept other Kubernetes 1.30+ clusters during preflight, but that does not expand this
-published compatibility matrix.
+The supported contract is the current and previous tested Kubernetes minors plus the required capability checks.
+CI currently exercises Kubernetes 1.36 and 1.35. Exact k3s builds remain reproducible CI inputs and managed-VM
+installation evidence, not a customer-facing compatibility pin.
 
 ## Required cluster capabilities
 
-Provide a cluster from the supported matrix, a working kube context, the listed installed and ready Ingress
+Provide a cluster from the supported minor window, a working kube context, an installed and ready Ingress
 Controller with an IngressClass, cert-manager v1.21.0 with its CRDs and controller components ready, a usable
 StorageClass, and a CNI that enforces the NetworkPolicy features used by Compartment.
 
 The private registry uses the retained Service IPv4 ClusterIP directly and requires a cert-manager CA Issuer whose CA
 is already trusted by every node container runtime. The installer does not configure registry DNS or mutate node
 host/runtime files. Public ACME issuers cannot issue the private IP certificate.
+
+For an operator-owned base domain, the installation wizard offers exactly two public TLS modes:
+
+- `external` is the default. Compartment serves `console.<base-domain>` and `*.<base-domain>` over HTTP, and the
+  operator terminates TLS outside the platform.
+- `existingSecret` references an existing `kubernetes.io/tls` Secret in the release namespace. The Ingress uses that
+  Secret and Compartment does not create public Certificates.
+
+In both modes, point `console.<base-domain>` and `*.<base-domain>` at the Ingress endpoint. The private registry still
+requires its separate cert-manager CA Issuer because it is addressed through its ClusterIP.
 
 Kube-proxy-based Service routing is required on every node. Kube-proxy-less Cilium is not supported.
 

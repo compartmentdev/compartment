@@ -6,6 +6,7 @@ export interface ProjectProvisionerConfig {
   artifactRegistry: WorkerArtifactRegistryConfig;
   edgeNamespace: string;
   image: string;
+  installationId: string;
   leaderElection: KubeLeaderElectionConfig;
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   platformNamespace: string;

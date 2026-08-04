@@ -223,6 +223,7 @@ fi
 
 case "$signature_outcome" in
   valid)
+    printf 'cosign verification internals\n'
     : > "\${state_dir}/cosign-verified"
     ;;
   unsigned)
@@ -250,6 +251,7 @@ expected_platform="\${COMPARTMENT_TEST_EXPECTED_ORAS_PLATFORM:?}"
 state_dir="\${COMPARTMENT_TEST_STATE_DIR:?}"
 tool_version_mode="\${COMPARTMENT_TEST_TOOL_VERSION_MODE:?}"
 oras_resolve_outcome="\${COMPARTMENT_TEST_ORAS_RESOLVE_OUTCOME:?}"
+oras_pull_outcome="\${COMPARTMENT_TEST_ORAS_PULL_OUTCOME:?}"
 published_fallback_outcome="\${COMPARTMENT_TEST_PUBLISHED_FALLBACK_OUTCOME:?}"
 
 if [ "$*" = "version" ]; then
@@ -292,6 +294,10 @@ case "\${1:-}" in
     esac
     ;;
   pull)
+    if [ "$oras_pull_outcome" = "failure" ]; then
+      printf 'registry download interrupted after 42 MB\n' >&2
+      exit 1
+    fi
     if [ ! -f "\${state_dir}/cosign-verified" ]; then
       printf 'Refusing CLI payload pull before cosign verification.\\n' >&2
       exit 1
@@ -322,6 +328,7 @@ case "\${1:-}" in
     done
     cp "$artifact_path" "$output_path/$expected_artifact_name"
     cp "$checksums_path" "$output_path/checksums.txt"
+    printf 'Skipped pulling layers without selected files\n'
     ;;
   *)
     printf 'Unexpected oras command: %s\\n' "$*" >&2

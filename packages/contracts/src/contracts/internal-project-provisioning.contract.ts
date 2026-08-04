@@ -9,6 +9,7 @@ export interface ProjectProvisioningTargetV2 {
   leaseId: string;
   namespaceId: string;
   projectId: string;
+  projectName: string;
 }
 
 export interface WorkerCompleteProjectProvisioningV2Request {
@@ -38,6 +39,7 @@ const projectProvisioningTargetV2Schema: ContractSchema<ProjectProvisioningTarge
     leaseId: z.string().min(1),
     namespaceId: z.string().min(1),
     projectId: z.string().min(1),
+    projectName: z.string().min(1),
   })
   .strict();
 

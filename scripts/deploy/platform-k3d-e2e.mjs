@@ -44,7 +44,6 @@ const {
   platformOwnerEnvironmentPath,
   previousPlatformValuesPath,
   platformValuesPath,
-  publicOperatorCaPath,
   publicOperatorValuesPath,
   registryHostPort,
   registryName,
@@ -60,7 +59,7 @@ const imageCacheLockOwnerToken = `e2e-${clusterName}`;
 const pebbleCaContainerName = `${clusterName}-pebble-ca`;
 const shouldExtractPebbleCa =
   process.env.COMPARTMENT_E2E_SHARD === undefined || process.env.COMPARTMENT_E2E_SHARD === 'managed-install';
-const isIngressNginxShard = process.env.COMPARTMENT_E2E_SHARD === 'build-matrix-b';
+const isIngressNginxShard = process.env.COMPARTMENT_E2E_INGRESS_CLASS === 'nginx';
 const ingressClassName = isIngressNginxShard ? 'nginx' : 'traefik';
 const registryTestCaPath = join(dirname(platformValuesPath), `${clusterName}-registry-test-ca.crt`);
 const registryTestCaKeyPath = join(dirname(platformValuesPath), `${clusterName}-registry-test-ca.key`);
@@ -73,11 +72,14 @@ const prerequisiteSetupBudgetMs = 120_000;
 const transientKubernetesApiMaxAttempts = 6;
 const transientKubernetesApiInitialDelayMs = 1_000;
 const transientKubernetesApiMaxDelayMs = 16_000;
+const transientRegistryCreateMaxAttempts = 5;
+const transientRegistryCreateInitialDelayMs = 1_000;
+const transientRegistryCreateMaxDelayMs = 8_000;
 const certManagerManifestUrl =
   'https://github.com/cert-manager/cert-manager/releases/download/v1.21.0/cert-manager.yaml';
 const ingressNginxManifestUrl =
   'https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.13.3/deploy/static/provider/baremetal/deploy.yaml';
-const k3sImageRef = 'rancher/k3s:v1.33.2-k3s1';
+const k3sImageRef = process.env.COMPARTMENT_E2E_K3S_IMAGE ?? 'rancher/k3s:v1.35.5-k3s1';
 const ingressNginxHttpNodePort = 30_080;
 const ingressNginxHttpsNodePort = 30_443;
 const pebbleImageRef =
@@ -123,11 +125,6 @@ export function readPlatformK3dEnvironment(env) {
       env,
       'COMPARTMENT_E2E_PLATFORM_VALUES_PATH',
       '.compartment/platform-k3d-e2e-values.yaml',
-    ),
-    publicOperatorCaPath: readStatePathEnv(
-      env,
-      'COMPARTMENT_E2E_PUBLIC_OPERATOR_CA_PATH',
-      '.compartment/platform-k3d-public-operator-ca.crt',
     ),
     publicOperatorValuesPath: readStatePathEnv(
       env,
@@ -260,25 +257,29 @@ export function isConsoleReadyStatus(status) {
 }
 
 export function renderPlatformK3dValues(imageDigestsByServiceName, gvisorEnabled = platformEnvironment.gvisorEnabled) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorEnabled)}ingress:\n  className: ${ingressClassName}\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\ntls:\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: issuer\nbuildkit:\n  namespace: ${platformNamespace}-build\n${renderBuildRuntimeValues(gvisorEnabled)}`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorEnabled)}ingress:\n  className: ${ingressClassName}\n${renderRegistryTlsValues()}platform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\nbuildkit:\n  namespace: ${platformNamespace}-build\n${renderBuildRuntimeValues(gvisorEnabled)}`;
 }
 
 export function renderPreviousPlatformK3dValues() {
-  return `ingress:\n  className: ${ingressClassName}\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\ntls:\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: issuer\nbuildkit:\n  namespace: ${platformNamespace}-build\n`;
+  return `ingress:\n  className: ${ingressClassName}\n${renderRegistryTlsValues()}platform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\nbuildkit:\n  namespace: ${platformNamespace}-build\n`;
 }
 
 export function renderManagedPlatformK3dValues(
   imageDigestsByServiceName,
   gvisorEnabled = platformEnvironment.gvisorEnabled,
 ) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorEnabled)}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\n  targetsJson: '[{"type":"A","value":"8.8.4.4"}]'\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\ntls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nbuildkit:\n  namespace: ${managedNamespace}-build\n${renderBuildRuntimeValues(gvisorEnabled)}`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorEnabled)}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\n  targetsJson: '[{"type":"A","value":"8.8.4.4"}]'\n${renderRegistryTlsValues()}tls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nbuildkit:\n  namespace: ${managedNamespace}-build\n${renderBuildRuntimeValues(gvisorEnabled)}`;
 }
 
 export function renderPublicOperatorPlatformK3dValues(
   imageDigestsByServiceName,
   gvisorEnabled = platformEnvironment.gvisorEnabled,
 ) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorEnabled)}ingress:\n  className: ${ingressClassName}\nstorage:\n  storageClass: local-path\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\ntls:\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-public-operator-test-issuer\nbuildkit:\n  namespace: ${managedNamespace}-public-operator-build\n${renderBuildRuntimeValues(gvisorEnabled)}`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorEnabled)}ingress:\n  className: ${ingressClassName}\nstorage:\n  storageClass: local-path\n${renderRegistryTlsValues()}platform:\n  publicProtocol: http\nbuildkit:\n  namespace: ${managedNamespace}-public-operator-build\n${renderBuildRuntimeValues(gvisorEnabled)}`;
+}
+
+function renderRegistryTlsValues() {
+  return `registry:\n  clusterIP: ${bundledRegistryClusterIp}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\n`;
 }
 
 function renderSandboxRuntimeValues(gvisorEnabled) {
@@ -305,7 +306,7 @@ async function upPlatform(command) {
   try {
     await withPlatformK3dProcessLock(archiveLoadLockDirectory, async () => cleanHistoricalPlatformSourceImages());
     cleanPlatformResources();
-    recreateRegistry();
+    await recreateRegistry();
     recreateBuilder();
     for (const statePath of [
       platformValuesPath,
@@ -313,7 +314,6 @@ async function upPlatform(command) {
       managedPlatformValuesPath,
       pebbleCaPath,
       pebbleRootPath,
-      publicOperatorCaPath,
       publicOperatorValuesPath,
     ]) {
       mkdirSync(dirname(statePath), { recursive: true });
@@ -404,8 +404,7 @@ async function createCluster() {
     await waitForIngressController('kube-system', 'traefik', prerequisiteSetupStartedAt, prerequisiteSetupDeadline);
   }
   const certManagerApplyTimeoutSeconds = readPrerequisiteWaitTimeoutSeconds(prerequisiteSetupStartedAt);
-  runCommand(
-    'kubectl',
+  await runKubectlWithTransientApiRetry(
     [
       '--context',
       contextName,
@@ -420,9 +419,6 @@ async function createCluster() {
   await waitForCertManager(prerequisiteSetupStartedAt, prerequisiteSetupDeadline);
   reportPrerequisiteSetupCost(performance.now() - prerequisiteSetupStartedAt);
   await installRegistryTestIssuer();
-  if (shouldExtractPebbleCa) {
-    await installPublicOperatorTestIssuer();
-  }
 }
 
 function installGvisorRuntimeClass() {
@@ -467,8 +463,7 @@ export function buildCertManagerReadinessWaitCommands(timeoutSeconds) {
 
 async function installIngressNginx(prerequisiteSetupStartedAt, prerequisiteSetupDeadline) {
   const applyTimeoutSeconds = readPrerequisiteWaitTimeoutSeconds(prerequisiteSetupStartedAt);
-  runCommand(
-    'kubectl',
+  await runKubectlWithTransientApiRetry(
     [
       '--context',
       contextName,
@@ -477,7 +472,7 @@ async function installIngressNginx(prerequisiteSetupStartedAt, prerequisiteSetup
       '--filename',
       ingressNginxManifestUrl,
     ],
-    repositoryRoot,
+    { deadline: prerequisiteSetupDeadline },
   );
   runCommand(
     'kubectl',
@@ -573,75 +568,6 @@ async function installRegistryTestIssuer() {
   );
   runCommand('kubectl', ['--context', contextName, 'apply', '--filename', issuerPath], repositoryRoot);
   rmSync(issuerPath, { force: true });
-}
-
-async function installPublicOperatorTestIssuer() {
-  const issuerPath = join(dirname(platformValuesPath), `${clusterName}-public-operator-test-issuer.yaml`);
-  writeFileSync(
-    issuerPath,
-    `apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: compartment-public-operator-test-selfsigned
-spec:
-  selfSigned: {}
----
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: compartment-public-operator-test-ca
-  namespace: cert-manager
-spec:
-  isCA: true
-  commonName: Compartment public operator k3d test CA
-  secretName: compartment-public-operator-test-ca
-  issuerRef:
-    kind: ClusterIssuer
-    name: compartment-public-operator-test-selfsigned
----
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: compartment-public-operator-test-issuer
-spec:
-  ca:
-    secretName: compartment-public-operator-test-ca
-`,
-    { mode: 0o600 },
-  );
-  try {
-    runCommand('kubectl', ['--context', contextName, 'apply', '--filename', issuerPath], repositoryRoot);
-    runCommand(
-      'kubectl',
-      [
-        '--context',
-        contextName,
-        '--namespace',
-        'cert-manager',
-        'wait',
-        'certificate/compartment-public-operator-test-ca',
-        '--for=condition=Ready',
-        `--timeout=${kubernetesReadinessTimeout}`,
-      ],
-      repositoryRoot,
-    );
-    const certificate = captureCommand(
-      'kubectl',
-      [
-        '--context',
-        contextName,
-        '--namespace',
-        'cert-manager',
-        'get',
-        'secret/compartment-public-operator-test-ca',
-        '--output=jsonpath={.data.tls\\.crt}',
-      ],
-      repositoryRoot,
-    );
-    writeFileSync(publicOperatorCaPath, Buffer.from(certificate, 'base64'), { mode: 0o600 });
-  } finally {
-    rmSync(issuerPath, { force: true });
-  }
 }
 
 export async function runKubectlWithTransientApiRetry(args, options = {}) {
@@ -909,7 +835,6 @@ function cleanPlatformState(cleanupErrors) {
     pebbleRootPath,
     platformOwnerEnvironmentPath,
     previousPlatformValuesPath,
-    publicOperatorCaPath,
     publicOperatorValuesPath,
     registryTestCaKeyPath,
     registryTestCaPath,
@@ -1028,7 +953,7 @@ async function assertPrivateRegistryNodePull() {
         '--namespace',
         platformNamespace,
         'exec',
-        'deployment/compartment-compartment-worker',
+        'deployment/compartment-worker',
         '--',
         'node',
         'dist/registry-install-verifier.js',
@@ -1200,9 +1125,72 @@ function registryExists() {
   return parseK3dClusterNames(output).includes(`k3d-${registryName}`);
 }
 
-function recreateRegistry() {
+async function recreateRegistry() {
   deleteRegistry();
-  runCommand('k3d', ['registry', 'create', registryName, '--port', `127.0.0.1:${registryHostPort}`], repositoryRoot);
+  await runK3dRegistryCreateWithRetry(['registry', 'create', registryName, '--port', `127.0.0.1:${registryHostPort}`]);
+}
+
+export async function runK3dRegistryCreateWithRetry(args, options = {}) {
+  const commandRunner =
+    options.commandRunner ?? ((commandArgs) => captureCommandResult('k3d', commandArgs, repositoryRoot));
+  const cleanup = options.cleanup ?? deleteRegistry;
+  const wait = options.wait ?? delay;
+  let lastResult;
+
+  for (let attempt = 1; attempt <= transientRegistryCreateMaxAttempts; attempt += 1) {
+    lastResult = commandRunner(args);
+    writeCommandResultOutput(lastResult);
+    if (lastResult.status === 0) {
+      return;
+    }
+    if (!isTransientRegistryCreateFailure(lastResult) || attempt === transientRegistryCreateMaxAttempts) {
+      throw lastResult.error ?? new Error(`Command failed: k3d ${args.join(' ')}`);
+    }
+
+    try {
+      await cleanup();
+    } catch (cleanupError) {
+      process.stderr.write(`Failed to clean the partial k3d registry before retrying: ${String(cleanupError)}\n`);
+    }
+    const retryDelayMs = Math.min(
+      transientRegistryCreateInitialDelayMs * 2 ** (attempt - 1),
+      transientRegistryCreateMaxDelayMs,
+    );
+    process.stderr.write(
+      `k3d registry creation hit a transient registry error (attempt ${String(attempt)}/${String(transientRegistryCreateMaxAttempts)}); retrying in ${String(retryDelayMs)}ms.\n`,
+    );
+    await wait(retryDelayMs);
+  }
+
+  throw lastResult?.error ?? new Error(`Command failed after registry retry: k3d ${args.join(' ')}`);
+}
+
+export function isTransientRegistryCreateFailure(result) {
+  const output = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.toLowerCase();
+  const isRegistryPullFailure =
+    output.includes('failed to pull image') ||
+    output.includes('docker failed to pull') ||
+    output.includes('registry-1.docker.io') ||
+    output.includes('docker.io/library/registry');
+  return (
+    isRegistryPullFailure &&
+    (/unexpected http status: (?:429|500|502|503|504)\b/u.test(output) ||
+      /received unexpected http status: (?:429|500|502|503|504)\b/u.test(output) ||
+      output.includes('client.timeout exceeded while awaiting headers') ||
+      output.includes('timeout awaiting response headers') ||
+      output.includes('tls handshake timeout') ||
+      output.includes('connection reset by peer') ||
+      output.includes('i/o timeout'))
+  );
+}
+
+function writeCommandResultOutput(result) {
+  if ((result.stdout ?? '') !== '') {
+    process.stdout.write(result.stdout);
+  }
+  if ((result.stderr ?? '') !== '') {
+    process.stderr.write(result.stderr);
+  }
 }
 
 function deleteRegistry() {

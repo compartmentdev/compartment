@@ -1,19 +1,7 @@
 {{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
-{{- if and (eq $installState.effective.platform.startupStage "full") (eq $installState.effective.platform.publicProtocol "https") (empty .Values.tls.existingSecret) -}}
+{{- if and (eq $installState.effective.platform.startupStage "full") (eq $installState.effective.platform.domainMode "managed") (eq $installState.effective.platform.publicProtocol "https") (empty .Values.tls.existingSecret) -}}
 {{- $baseDomain := $installState.effective.platform.baseDomain -}}
 {{- $fullname := include "compartment.fullname" . -}}
-{{- if eq $installState.effective.platform.domainMode "custom" -}}
-{{- include "compartment.certManagerCertificate" (dict
-  "root" .
-  "name" (printf "%s-console" $fullname)
-  "component" "platform-tls"
-  "secretName" (printf "%s-console-tls" $fullname)
-  "issuerRef" .Values.tls.issuerRef
-  "host" (printf "console.%s" $baseDomain)
-  "ipAddress" ""
-) }}
----
-{{- end -}}
 {{- include "compartment.certManagerCertificate" (dict
   "root" .
   "name" (printf "%s-wildcard" $fullname)

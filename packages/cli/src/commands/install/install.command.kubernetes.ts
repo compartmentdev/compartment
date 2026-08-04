@@ -22,7 +22,7 @@ import {
   resolveCanonicalKubernetesInstallInput,
 } from './install.command.input';
 import type { KubernetesInstallInputValues } from './install.command.input.types';
-import { readConfiguredInstallAdminPassword } from './install.command.identity';
+import { readBoundaryInstallAdminPassword } from './install.command.identity';
 import { resolveCanonicalKubernetesInstallWizard } from './install.command.kubernetes-wizard';
 import type {
   InspectKubernetesInstallIssuer,
@@ -60,17 +60,20 @@ export async function executeCanonicalKubernetesInstallCommand(
   dependencies: CliCommandDependencies,
   options: InstallCommandOptions,
 ): Promise<void> {
-  await withKubernetesLocalTools(async (): Promise<void> => {
-    const boundaryValues: Omit<KubernetesInstallInputValues, 'valuesPath'> | undefined = await readBoundaryValues(
-      dependencies,
-      options,
-    );
-    const kubeconfig: ResolvedKubernetesKubeconfig = await resolvePreflightKubeconfig(
-      dependencies,
-      options.kubeContext,
-    );
-    await executeWithKubeconfig(dependencies, options, kubeconfig, boundaryValues);
-  });
+  const boundaryValues: Omit<KubernetesInstallInputValues, 'valuesPath'> | undefined = await readBoundaryValues(
+    dependencies,
+    options,
+  );
+  const kubeconfig: ResolvedKubernetesKubeconfig = await resolvePreflightKubeconfig(dependencies, options.kubeContext);
+  try {
+    await withKubernetesLocalTools(async (): Promise<void> => {
+      await executeWithKubeconfig(dependencies, options, kubeconfig, boundaryValues);
+    });
+  } finally {
+    if (kubeconfig.materializedDirectory !== undefined) {
+      await rm(kubeconfig.materializedDirectory, { force: true, recursive: true });
+    }
+  }
 }
 
 async function readBoundaryValues(
@@ -85,7 +88,12 @@ async function readBoundaryValues(
     options.values === undefined
       ? undefined
       : await readOperatorInstallInputValues(options.values, requiresPublicOperatorTls(options.baseDomain));
-  const values: Omit<KubernetesInstallInputValues, 'valuesPath'> = mergeOperatorBoundaryValues(options, operatorValues);
+  const password: string | undefined = await readBoundaryInstallAdminPassword(dependencies, options);
+  const values: Omit<KubernetesInstallInputValues, 'valuesPath'> = mergeOperatorBoundaryValues(
+    options,
+    operatorValues,
+    password,
+  );
   resolveCanonicalKubernetesInstallInput({ ...values, valuesPath: '<pending>' }, '<pending>');
   return values;
 }
@@ -93,9 +101,10 @@ async function readBoundaryValues(
 function mergeOperatorBoundaryValues(
   options: InstallCommandOptions,
   operatorValues: OperatorInstallInputValues | undefined,
+  password: string | undefined,
 ): Omit<KubernetesInstallInputValues, 'valuesPath'> {
   return {
-    ...readNonInteractiveValues(options),
+    ...readNonInteractiveValues(options, password),
     ...(options.ingressEndpoint === undefined && operatorValues?.clearIngressEndpoint === true
       ? { clearIngressEndpoint: true }
       : {}),
@@ -108,6 +117,7 @@ function mergeOperatorBoundaryValues(
     ...(options.storageClass === undefined && operatorValues !== undefined
       ? { storageClass: operatorValues.storageClass }
       : {}),
+    ...(operatorValues?.publicProtocol === undefined ? {} : { publicProtocol: operatorValues.publicProtocol }),
   };
 }
 
@@ -136,7 +146,7 @@ async function executeWithKubeconfig(
     await runCanonicalInstall(dependencies, options, kubeconfig, values.input, resolvedValuesPath.path, progress);
   } finally {
     progress.stop();
-    await cleanCanonicalMaterial(material, kubeconfig);
+    await cleanCanonicalMaterial(material);
   }
 }
 
@@ -219,21 +229,16 @@ async function runCanonicalInstall(
   renderInstallResult(dependencies.io, options.output, result.install, false);
 }
 
-async function cleanCanonicalMaterial(
-  material: MaterializedInstallWizardValues | undefined,
-  kubeconfig: ResolvedKubernetesKubeconfig,
-): Promise<void> {
+async function cleanCanonicalMaterial(material: MaterializedInstallWizardValues | undefined): Promise<void> {
   if (material !== undefined) {
     await rm(material.directory, { force: true, recursive: true });
   }
-  if (kubeconfig.materializedDirectory !== undefined) {
-    await rm(kubeconfig.materializedDirectory, { force: true, recursive: true });
-  }
 }
 
-function readNonInteractiveValues(options: InstallCommandOptions): Omit<KubernetesInstallInputValues, 'valuesPath'> {
-  const password: string | undefined = options.adminPassword ?? readConfiguredInstallAdminPassword();
-
+function readNonInteractiveValues(
+  options: InstallCommandOptions,
+  password: string | undefined,
+): Omit<KubernetesInstallInputValues, 'valuesPath'> {
   return {
     ...(options.baseDomain === undefined ? {} : { baseDomain: options.baseDomain }),
     ...(options.email === undefined ? {} : { email: options.email }),

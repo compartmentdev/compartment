@@ -99,7 +99,7 @@ tests:
             name: COMPARTMENT_EDGE_TOKEN
             valueFrom:
               secretKeyRef:
-                name: compartment-compartment
+                name: compartment
                 key: edge-token
         template: caddy.yaml
         documentIndex: 1
@@ -148,7 +148,7 @@ tests:
           path: subjects
           content:
             kind: ServiceAccount
-            name: compartment-compartment-worker
+            name: compartment-worker
             namespace: default
         template: leader-election-rbac.yaml
         documentIndex: 1
@@ -156,7 +156,7 @@ tests:
           path: subjects
           content:
             kind: ServiceAccount
-            name: compartment-compartment-project-provisioner
+            name: compartment-project-provisioner
             namespace: default
         template: leader-election-rbac.yaml
         documentIndex: 1

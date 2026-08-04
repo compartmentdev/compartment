@@ -202,7 +202,7 @@ function resolveCustomInstallState(
     ...publicIngress,
     publicProtocol: isReservedKubernetesInstallLocalhostDomain(input.baseDomain)
       ? foundationInstall.publicProtocol
-      : 'https',
+      : (input.publicProtocol ?? 'http'),
     registryHostname,
     registryIssuerRef: input.registryIssuerRef,
     tlsMode: foundationInstall.tlsMode,

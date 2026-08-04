@@ -14,6 +14,7 @@ export interface ManagedKubernetesInstallDomain {
 export interface OperatorKubernetesInstallDomain {
   baseDomain: string;
   mode: 'operator';
+  publicProtocol: 'http' | 'https';
 }
 
 export type KubernetesInstallDomainInput = ManagedKubernetesInstallDomain | OperatorKubernetesInstallDomain;

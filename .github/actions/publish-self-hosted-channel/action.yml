@@ -14,6 +14,10 @@ inputs:
   publish-sha:
     description: Commit to publish as an immutable sha tag
     required: true
+  promote-mutable:
+    description: Whether to promote mutable channel tags after immutable publication
+    required: false
+    default: 'true'
 
 runs:
   using: composite
@@ -242,6 +246,7 @@ runs:
           "${ghcr_args[@]}"
 
     - name: Promote mutable channel tags
+      if: inputs.promote-mutable == 'true'
       shell: bash
       env:
         CHANNEL: ${{ inputs.channel }}

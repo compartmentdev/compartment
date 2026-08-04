@@ -1,11 +1,13 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { runCli } from '../src/app';
 import type { ResolvedInstallIdentityPrompts } from '../src/commands/install/install.command.types';
 import type { CliInstallResult } from '../src/install.types';
+import { KubernetesInstallKubeconfigResolutionError } from '../src/services/kubernetes-install-kubeconfig.error';
 import type { KubernetesInstallDeploymentResult } from '../src/services/kubernetes-install.service.types';
+import type { ResolvedKubernetesKubeconfig } from '../src/services/kubernetes-install-kubeconfig.service.types';
 import { createCliCapture, readCliStderr, type CliCommandCapture } from './cli-test.harness';
 
 type DeployInstall = () => Promise<KubernetesInstallDeploymentResult>;
@@ -13,6 +15,7 @@ type InstallOwner = () => Promise<CliInstallResult>;
 type PersistSession = () => Promise<void>;
 type ResolveIdentity = () => Promise<ResolvedInstallIdentityPrompts>;
 type AssertLocalTools = () => Promise<void>;
+type ResolveKubeconfig = () => Promise<ResolvedKubernetesKubeconfig>;
 
 interface InstallCommandMocks {
   assertLocalTools: Mock<AssertLocalTools>;
@@ -20,6 +23,7 @@ interface InstallCommandMocks {
   installOwner: Mock<InstallOwner>;
   persistSession: Mock<PersistSession>;
   resolveIdentity: Mock<ResolveIdentity>;
+  resolveKubeconfig: Mock<ResolveKubeconfig>;
 }
 
 const mocks: InstallCommandMocks = vi.hoisted(
@@ -29,11 +33,15 @@ const mocks: InstallCommandMocks = vi.hoisted(
     installOwner: vi.fn<InstallOwner>(),
     persistSession: vi.fn<PersistSession>(),
     resolveIdentity: vi.fn<ResolveIdentity>(),
+    resolveKubeconfig: vi.fn<ResolveKubeconfig>(),
   }),
 );
 
 vi.mock('../src/services/kubernetes-install-local-tools.service', (): object => ({
   assertKubernetesInstallLocalTools: mocks.assertLocalTools,
+}));
+vi.mock('../src/services/kubernetes-install-kubeconfig.service', (): object => ({
+  resolveKubernetesInstallKubeconfig: mocks.resolveKubeconfig,
 }));
 vi.mock('../src/install', (): object => ({
   installDev: vi.fn(),
@@ -49,6 +57,7 @@ vi.mock('../src/commands/install/install.command.identity', (): object => ({
     organizationName: prompts.organizationName,
   }),
   readConfiguredInstallAdminPassword: (): undefined => undefined,
+  readBoundaryInstallAdminPassword: async (): Promise<undefined> => await Promise.resolve(undefined),
   resolveInstallIdentityPrompts: mocks.resolveIdentity,
 }));
 vi.mock('../src/commands/install/install.command.session', (): object => ({
@@ -67,6 +76,69 @@ describe('install command boundary', (): void => {
       adminPassword: 'correct horse battery staple',
       organizationName: 'Acme Dev',
     });
+    mocks.resolveKubeconfig.mockReset().mockResolvedValue({
+      clusterServer: 'https://127.0.0.1:6443',
+      contextName: 'default',
+      label: 'k3s',
+      path: '/etc/rancher/k3s/k3s.yaml',
+    });
+  });
+
+  it('reports exact cluster guidance before checking local tools on an empty machine', async (): Promise<void> => {
+    mocks.resolveKubeconfig.mockRejectedValueOnce(
+      new KubernetesInstallKubeconfigResolutionError('No usable kubeconfig found.', 'no-usable-cluster'),
+    );
+    const capture: CliCommandCapture = createCliCapture({ isTTY: true });
+
+    const exitCode: number = await runCli(['install', '--target', 'kubernetes'], capture.io);
+
+    expect(exitCode).toBe(1);
+    expect(readCliStderr(capture)).toBe(
+      '✗ kubeconfig: No usable Kubernetes cluster found.\n\nCompartment installs into an existing Kubernetes cluster.\n\nInstall a supported cluster or set KUBECONFIG to an existing one.\n\nAlso required: kubectl >= 1.30 and Helm >= 4.\n',
+    );
+    expect(mocks.assertLocalTools).not.toHaveBeenCalled();
+  });
+
+  it('keeps empty-machine guidance with an explicit context when no cluster exists', async (): Promise<void> => {
+    mocks.resolveKubeconfig.mockRejectedValueOnce(
+      new KubernetesInstallKubeconfigResolutionError('No usable kubeconfig found.', 'no-usable-cluster'),
+    );
+    const capture: CliCommandCapture = createCliCapture({ isTTY: true });
+
+    const exitCode: number = await runCli(
+      ['install', '--target', 'kubernetes', '--kube-context', 'production'],
+      capture.io,
+    );
+
+    expect(exitCode).toBe(1);
+    expect(readCliStderr(capture)).toContain('No usable Kubernetes cluster found.');
+    expect(readCliStderr(capture)).not.toContain('context "production" not found');
+  });
+
+  it('discovers the K3s kubeconfig before reporting missing Helm', async (): Promise<void> => {
+    mocks.assertLocalTools.mockRejectedValueOnce(new Error('helm not found on PATH. Install Helm >= 4.0.0.'));
+    const capture: CliCommandCapture = createCliCapture({ isTTY: true });
+
+    const exitCode: number = await runCli(['install', '--target', 'kubernetes'], capture.io);
+
+    expect(exitCode).toBe(1);
+    expect(readCliStderr(capture)).toContain('✓ kubeconfig: /etc/rancher/k3s/k3s.yaml (k3s)');
+    expect(readCliStderr(capture)).toContain('helm not found on PATH');
+  });
+
+  it('removes a materialized merged kubeconfig when local tool validation fails', async (): Promise<void> => {
+    const materializedDirectory: string = await mkdtemp(resolve(tmpdir(), 'compartment-command-kubeconfig-'));
+    mocks.resolveKubeconfig.mockResolvedValueOnce({
+      clusterServer: 'https://cluster.example.test:6443',
+      contextName: 'production',
+      materializedDirectory,
+      path: resolve(materializedDirectory, 'kubeconfig.json'),
+    });
+    mocks.assertLocalTools.mockRejectedValueOnce(new Error('kubectl not found on PATH.'));
+    const capture: CliCommandCapture = createCliCapture({ isTTY: true });
+
+    expect(await runCli(['install', '--target', 'kubernetes'], capture.io)).toBe(1);
+    await expect(stat(materializedDirectory)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('rejects a missing local tool before an interactive prompt starts', async (): Promise<void> => {
@@ -77,7 +149,7 @@ describe('install command boundary', (): void => {
     );
     const capture: CliCommandCapture = createCliCapture({ isTTY: true });
 
-    const exitCode: number = await runCli(['install'], capture.io);
+    const exitCode: number = await runCli(['install', '--target', 'kubernetes'], capture.io);
 
     expect(exitCode).toBe(1);
     expect(readCliStderr(capture)).toContain('helm not found on PATH');
@@ -87,33 +159,38 @@ describe('install command boundary', (): void => {
     expect(mocks.assertLocalTools).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects a missing local tool before non-interactive input validation', async (): Promise<void> => {
+  it('validates non-interactive input before discovering the cluster or checking tools', async (): Promise<void> => {
     mocks.assertLocalTools.mockRejectedValueOnce(
       new Error('helm not found on PATH. Install Helm >= 4.0.0 and re-run install.'),
     );
     const capture: CliCommandCapture = createCliCapture();
 
-    const exitCode: number = await runCli(['install', '--output', 'json'], capture.io);
+    const exitCode: number = await runCli(['install', '--target', 'kubernetes', '--output', 'json'], capture.io);
 
     expect(exitCode).toBe(1);
-    expect(readCliStderr(capture)).toContain('helm not found on PATH');
-    expect(readCliStderr(capture)).not.toContain('Missing required install input');
+    expect(readCliStderr(capture)).toContain('Missing required install input');
+    expect(readCliStderr(capture)).not.toContain('helm not found on PATH');
+    expect(mocks.resolveKubeconfig).not.toHaveBeenCalled();
+    expect(mocks.assertLocalTools).not.toHaveBeenCalled();
   });
 
   it('reports the first missing canonical input at the non-interactive CLI boundary', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
 
-    const exitCode: number = await runCli(['install', '--output', 'json'], capture.io);
+    const exitCode: number = await runCli(['install', '--target', 'kubernetes', '--output', 'json'], capture.io);
 
     expect(exitCode).toBe(1);
     expect(readCliStderr(capture)).toContain('Missing required install input: --managed-domain or --base-domain.');
-    expect(mocks.assertLocalTools).toHaveBeenCalledTimes(1);
+    expect(mocks.assertLocalTools).not.toHaveBeenCalled();
   });
 
   it('accepts a managed domain without onboarding authorization', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
 
-    const exitCode: number = await runCli(['install', '--managed-domain', '--output', 'json'], capture.io);
+    const exitCode: number = await runCli(
+      ['install', '--target', 'kubernetes', '--managed-domain', '--output', 'json'],
+      capture.io,
+    );
 
     expect(exitCode).toBe(1);
     expect(readCliStderr(capture)).toContain('Missing required install input: --email.');
@@ -125,7 +202,7 @@ describe('install command boundary', (): void => {
     const capture: CliCommandCapture = createCliCapture();
 
     const exitCode: number = await runCli(
-      ['install', '--managed-domain', '--base-domain', 'apps.example.com'],
+      ['install', '--target', 'kubernetes', '--managed-domain', '--base-domain', 'apps.example.com'],
       capture.io,
     );
 
@@ -192,6 +269,8 @@ describe('install command boundary', (): void => {
       const exitCode: number = await runCli(
         [
           'install',
+          '--target',
+          'kubernetes',
           '--base-domain',
           'apps.example.com',
           '--email',
@@ -211,7 +290,7 @@ describe('install command boundary', (): void => {
       const stderr: string = readCliStderr(capture);
       expect(exitCode).toBe(1);
       expect(stderr).toContain(`${valuesPath}: ingress: is required and must define className`);
-      expect(stderr).toContain(`${valuesPath}: registry.issuerRef: is required when tls.existingSecret is used`);
+      expect(stderr).toContain(`${valuesPath}: registry.issuerRef: is required because the private registry`);
       expect(stderr).not.toMatch(/ZodError|"code"|"expected"|"received"|at parse/u);
     } finally {
       await rm(directory, { force: true, recursive: true });

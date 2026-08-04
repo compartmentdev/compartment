@@ -122,6 +122,31 @@ describe('edge bootstrap service', (): void => {
     expect(metrics.render()).toContain('compartment_edge_snapshot_restore_source{source="disk"} 1');
   });
 
+  it('restores a fresh persisted snapshot without retrying when the API connection times out', async (): Promise<void> => {
+    const store: EdgeAppAccessStateStore = createEdgeAppAccessStateStore();
+    const logger: Logger = pino({ enabled: false });
+    const metrics: EdgeSnapshotMetrics = createEdgeSnapshotMetrics();
+    await writePersistedSnapshot(createAppAccessSnapshot({ upstreamPort: 31003 }));
+    mocks.getAppAccessState.mockRejectedValue(createConnectTimeoutError());
+
+    await bootstrapEdgeAccessStateUntilReady(edgeConfig, store, metrics, logger);
+
+    expect(store.getRoute('billing.localhost')?.upstreamPort).toBe(31003);
+    expect(mocks.getAppAccessState).toHaveBeenCalledTimes(1);
+    expect(metrics.render()).toContain('compartment_edge_snapshot_restore_source{source="disk"} 1');
+  });
+
+  it('does not retry an API connection timeout without a valid persisted snapshot', async (): Promise<void> => {
+    const store: EdgeAppAccessStateStore = createEdgeAppAccessStateStore();
+    mocks.getAppAccessState.mockRejectedValue(createConnectTimeoutError());
+
+    await expect(
+      bootstrapEdgeAccessStateUntilReady(edgeConfig, store, createEdgeSnapshotMetrics(), pino({ enabled: false })),
+    ).rejects.toThrow('fetch failed');
+
+    expect(mocks.getAppAccessState).toHaveBeenCalledTimes(1);
+  });
+
   it('redirects a stale pre-restart session to login after restoring authorization from disk', async (): Promise<void> => {
     await writePersistedSnapshot(createAppAccessSnapshot());
     mocks.getAppAccessState.mockRejectedValue(createConnectionRefusedError());
@@ -414,6 +439,15 @@ function createConnectionRefusedError(): Error {
   const error: Error & { cause: { code: string } } = new Error('fetch failed') as Error & { cause: { code: string } };
   error.cause = {
     code: 'ECONNREFUSED',
+  };
+
+  return error;
+}
+
+function createConnectTimeoutError(): Error {
+  const error: Error & { cause: { code: string } } = new Error('fetch failed') as Error & { cause: { code: string } };
+  error.cause = {
+    code: 'UND_ERR_CONNECT_TIMEOUT',
   };
 
   return error;

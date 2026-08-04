@@ -69,7 +69,7 @@ const k3dKubeContextEnvName: string = 'COMPARTMENT_E2E_KUBE_CONTEXT';
 const k3dPlatformNamespaceEnvName: string = 'COMPARTMENT_E2E_PLATFORM_NAMESPACE';
 const k3dDefaultKubeContext: string = 'k3d-compartment-e2e';
 const k3dDefaultPlatformNamespace: string = 'compartment';
-const k3dPlatformResourceName: string = 'compartment-compartment';
+const k3dPlatformResourceName: string = 'compartment';
 const k3dKubectlCommandTimeoutMs: number = 8 * 60_000;
 const k3dRolloutTimeout: string = '4m';
 const k3dApiServiceProbeAttempts: number = 30;
@@ -180,8 +180,9 @@ export async function seedK3dProjectTeardownFixture(projectId: string): Promise<
 export async function expectK3dProjectNamespaceDeleted(projectId: string): Promise<void> {
   const seed: K3dPlatformSeed = readK3dPlatformSeed();
   const namespace: string = immutableKubeName('cpt', projectId);
+  const deletionDeadline: number = Date.now() + 3 * 60_000;
   let result: SelfHostedUserSetupCommandResult = await readK3dNamespaceIfPresent(seed, namespace);
-  for (let attempt: number = 0; result.stdout.trim() !== '' && attempt < 60; attempt += 1) {
+  while (result.stdout.trim() !== '' && Date.now() < deletionDeadline) {
     await sleep(1_000);
     result = await readK3dNamespaceIfPresent(seed, namespace);
   }

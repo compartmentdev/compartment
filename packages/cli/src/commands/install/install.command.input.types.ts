@@ -11,6 +11,7 @@ export interface KubernetesInstallInputValues {
   namespace?: string | undefined;
   organization?: string | undefined;
   password?: string | undefined;
+  publicProtocol?: 'http' | 'https' | undefined;
   releaseName?: string | undefined;
   storageClass?: string | undefined;
   valuesPath: string;

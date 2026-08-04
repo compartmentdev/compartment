@@ -14,6 +14,7 @@ export type KubernetesExistingClusterPreflightCheck =
 
 export interface KubernetesExistingClusterPreflightInput {
   apiHosts: readonly string[];
+  chartFullname: string;
   install: KubernetesInstallInput;
 }
 

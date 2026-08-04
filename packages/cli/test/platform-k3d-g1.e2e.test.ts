@@ -132,9 +132,9 @@ describeSelfHostedUserSetupE2e('platform k3d G1 edge gate', (): void => {
           cwd: repositoryRoot,
           env: {
             ...process.env,
-            COMPARTMENT_P10_API_DEPLOYMENT: `${platformNamespace}/compartment-compartment-api`,
+            COMPARTMENT_P10_API_DEPLOYMENT: `${platformNamespace}/compartment-api`,
             COMPARTMENT_P10_AUTHORIZED_PROBE_COMMAND: commands.authorized,
-            COMPARTMENT_P10_EDGE_DEPLOYMENT: `${platformNamespace}/compartment-compartment-edge`,
+            COMPARTMENT_P10_EDGE_DEPLOYMENT: `${platformNamespace}/compartment-edge`,
             COMPARTMENT_P10_GRANT_COMMAND: commands.grant,
             COMPARTMENT_P10_KUBE_CONTEXT: platformKubeContext,
             COMPARTMENT_P10_POST_RESTORE_COMMAND: commands.postRestore,

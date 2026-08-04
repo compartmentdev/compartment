@@ -31,6 +31,7 @@ interface SelfHostedUserSetupCliRunOptions {
   readonly cwd?: string | undefined;
   readonly input?: string | undefined;
   readonly interactive?: boolean | undefined;
+  readonly timeoutMs?: number | undefined;
 }
 
 const selfHostedUserSetupJsonOutputOption: string = '--output json';
@@ -101,7 +102,7 @@ export class SelfHostedUserSetupCli {
       env: this.#env,
       input: options.input,
       parser,
-      timeoutMs: this.#timeoutMs,
+      timeoutMs: options.timeoutMs ?? this.#timeoutMs,
     };
     return options.interactive === true
       ? await runBuiltCliInteractiveJsonCommandLine(input)
@@ -117,7 +118,7 @@ export class SelfHostedUserSetupCli {
       cwd: options.cwd,
       env: this.#env,
       input: options.input,
-      timeoutMs: this.#timeoutMs,
+      timeoutMs: options.timeoutMs ?? this.#timeoutMs,
     }).result;
 
     expectSuccessfulCommand(result, command);
@@ -133,7 +134,7 @@ export class SelfHostedUserSetupCli {
       cwd: options.cwd,
       env: this.#env,
       input: options.input,
-      timeoutMs: this.#timeoutMs,
+      timeoutMs: options.timeoutMs ?? this.#timeoutMs,
     };
     const result: SelfHostedUserSetupCommandResult =
       options.interactive === true

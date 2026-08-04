@@ -18,7 +18,23 @@
     // Browser-safe utils entry is consumed through the Vite alias in packages/console/vite.config.ts.
     "packages/utils/src/browser.ts",
   ],
-  "ignoreBinaries": ["astro", "dotenv", "syft"],
+  "ignoreBinaries": [
+    "astro",
+    "dotenv",
+    "ip",
+    "journalctl",
+    "k3s",
+    "kubectl",
+    "lsmod",
+    "nft",
+    "openssl",
+    "ss",
+    "syft",
+    "systemctl",
+    "tar",
+    "timedatectl",
+    "update-ca-certificates",
+  ],
   "ignoreDependencies": ["dotenv-cli"],
   "ignoreIssues": {
     // These broker request schemas are public contract validators for broker implementations outside this workspace.

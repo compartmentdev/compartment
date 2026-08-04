@@ -32,17 +32,16 @@ export function buildPlatformK3dShardEnvironment(shardName, baseEnv = process.en
     COMPARTMENT_E2E_CLUSTER_NAME: clusterName,
     COMPARTMENT_E2E_COMPARTMENT_URL: `http://console.compartment.localhost:${httpPort}`,
     COMPARTMENT_E2E_DIAGNOSTICS_PATH: `.compartment/platform-k3d-diagnostics-${shardName}`,
-    COMPARTMENT_E2E_GVISOR_ENABLED: shardName === 'gvisor-build' ? '1' : '0',
+    COMPARTMENT_E2E_GVISOR_ENABLED: definition.gvisorEnabled ? '1' : '0',
     COMPARTMENT_E2E_HTTP_PORT: httpPort,
     COMPARTMENT_E2E_HTTPS_PORT: baseEnv.COMPARTMENT_E2E_HTTPS_PORT ?? (18_443 + portOffset).toString(),
-    COMPARTMENT_E2E_INGRESS_CLASS: shardName === 'build-matrix-b' ? 'nginx' : 'traefik',
+    COMPARTMENT_E2E_INGRESS_CLASS: definition.ingressClass,
     COMPARTMENT_E2E_KUBE_CONTEXT: `k3d-${clusterName}`,
     COMPARTMENT_E2E_MANAGED_NAMESPACE: baseEnv.COMPARTMENT_E2E_MANAGED_NAMESPACE ?? `compartment-managed-${shardName}`,
     COMPARTMENT_E2E_MANAGED_VALUES_PATH: `${stateDirectory}/managed-values.yaml`,
     COMPARTMENT_E2E_OWNER_ENV_PATH: `${stateDirectory}/owner.env`,
     COMPARTMENT_E2E_PEBBLE_CA_PATH: `${stateDirectory}/pebble.minica.pem`,
     COMPARTMENT_E2E_PEBBLE_ROOT_PATH: `${stateDirectory}/pebble.root.pem`,
-    COMPARTMENT_E2E_PUBLIC_OPERATOR_CA_PATH: `${stateDirectory}/public-operator-ca.crt`,
     COMPARTMENT_E2E_PUBLIC_OPERATOR_VALUES_PATH: `${stateDirectory}/public-operator-values.yaml`,
     COMPARTMENT_E2E_PLATFORM_MODE: 'k3d',
     COMPARTMENT_E2E_PLATFORM_NAMESPACE: baseEnv.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? `compartment-${shardName}`,
@@ -55,6 +54,10 @@ export function buildPlatformK3dShardEnvironment(shardName, baseEnv = process.en
     COMPARTMENT_CLI_BUNDLED_COSIGN_PATH: 'scripts/deploy/fixtures/cosign-k3d-e2e.mjs',
     COMPARTMENT_SELF_HOSTED_USER_SETUP_E2E: '1',
   };
+  delete environment.COMPARTMENT_E2E_BUILD_MATRIX_PARTITION;
+  if (definition.buildMatrixPartition !== undefined) {
+    environment.COMPARTMENT_E2E_BUILD_MATRIX_PARTITION = definition.buildMatrixPartition;
+  }
   readPlatformK3dEnvironment(environment);
   return environment;
 }

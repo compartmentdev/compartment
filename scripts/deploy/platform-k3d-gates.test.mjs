@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   parseDeploymentReferences,
+  parseRestartedContainerReferences,
   parseUnreadyDeploymentReferences,
   parseUnreadyPodReferences,
 } from './collect-platform-k3d-e2e-diagnostics.mjs';
@@ -12,8 +13,58 @@ import {
   parseProductLogBufferBytes,
   parseProductLogBufferMaxBytes,
 } from './run-platform-k3d-product-log-gate.mjs';
+import { findReadyNonTerminatingPodName, isDeploymentConverged } from './run-platform-k3d-retained-state-gate.mjs';
 
 describe('platform k3d diagnostics and product-log gates', () => {
+  it('waits for the current deployment generation and selects only its stable pod', () => {
+    expect(
+      isDeploymentConverged(
+        JSON.stringify({
+          metadata: { generation: 3 },
+          spec: { replicas: 1 },
+          status: {
+            availableReplicas: 1,
+            observedGeneration: 2,
+            readyReplicas: 1,
+            replicas: 1,
+            updatedReplicas: 1,
+          },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isDeploymentConverged(
+        JSON.stringify({
+          metadata: { generation: 3 },
+          spec: { replicas: 1 },
+          status: {
+            availableReplicas: 1,
+            observedGeneration: 3,
+            readyReplicas: 1,
+            replicas: 1,
+            updatedReplicas: 1,
+          },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      findReadyNonTerminatingPodName(
+        JSON.stringify({
+          items: [
+            {
+              metadata: { deletionTimestamp: '2026-08-03T19:55:39Z', name: 'postgres-old' },
+              status: { conditions: [{ status: 'True', type: 'Ready' }], phase: 'Running' },
+            },
+            {
+              metadata: { name: 'postgres-current' },
+              status: { conditions: [{ status: 'True', type: 'Ready' }], phase: 'Running' },
+            },
+          ],
+        }),
+      ),
+    ).toBe('postgres-current');
+  });
+
   it('parses namespaced deployment references', () => {
     expect(parseDeploymentReferences('compartment/api\ncpt-project/app\n')).toEqual([
       { name: 'api', namespace: 'compartment' },
@@ -63,6 +114,27 @@ describe('platform k3d diagnostics and product-log gates', () => {
         }),
       ),
     ).toEqual([{ name: 'console-broken', namespace: 'compartment' }]);
+  });
+
+  it('selects restarted application containers for previous-log diagnostics', () => {
+    expect(
+      parseRestartedContainerReferences(
+        JSON.stringify({
+          items: [
+            {
+              metadata: { name: 'edge-broken', namespace: 'compartment' },
+              status: {
+                containerStatuses: [
+                  { name: 'edge', restartCount: 5 },
+                  { name: 'sidecar', restartCount: 0 },
+                ],
+              },
+            },
+            { metadata: { name: 'pending', namespace: 'compartment' }, status: {} },
+          ],
+        }),
+      ),
+    ).toEqual([{ containerName: 'edge', podName: 'edge-broken', namespace: 'compartment' }]);
   });
 
   it('accepts only non-negative integer command output', () => {

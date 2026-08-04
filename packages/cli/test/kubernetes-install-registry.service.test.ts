@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { resolveKubernetesInstallRegistryConfiguration } from '../src/services/kubernetes-install-registry.service';
-import type { KubernetesInstallRegistryConfiguration } from '../src/services/kubernetes-install-registry.service.types';
 
 const temporaryDirectories: string[] = [];
 
@@ -16,9 +15,9 @@ describe('Kubernetes install registry values', (): void => {
     );
   });
 
-  it('defers the custom registry address and inherits the platform issuer without using the base domain', async (): Promise<void> => {
+  it('defers the custom registry address and uses the independent registry issuer for external TLS', async (): Promise<void> => {
     const valuesPath: string = await writeValues(
-      'tls:\n  issuerRef:\n    kind: ClusterIssuer\n    name: letsencrypt-production\n',
+      'registry:\n  issuerRef:\n    kind: ClusterIssuer\n    name: registry-ca\n',
     );
 
     await expect(
@@ -32,7 +31,7 @@ describe('Kubernetes install registry values', (): void => {
       registryIssuerRef: {
         group: 'cert-manager.io',
         kind: 'ClusterIssuer',
-        name: 'letsencrypt-production',
+        name: 'registry-ca',
       },
     });
   });
@@ -46,6 +45,7 @@ describe('Kubernetes install registry values', (): void => {
       resolveKubernetesInstallRegistryConfiguration({
         baseDomain: 'apps.example.com',
         domainMode: 'custom',
+        publicProtocol: 'https',
         valuesPath,
       }),
     ).resolves.toMatchObject({
@@ -59,27 +59,22 @@ describe('Kubernetes install registry values', (): void => {
       'tls:\n  issuerRef:\n    kind: Issuer\n    name: platform-issuer\nregistry:\n  hostname: registry.other.example\n',
     );
 
-    const customResolution: Promise<KubernetesInstallRegistryConfiguration> =
+    await expect(
       resolveKubernetesInstallRegistryConfiguration({
         baseDomain: 'apps.example.com',
         domainMode: 'custom',
         valuesPath,
-      });
-    const managedResolution: Promise<KubernetesInstallRegistryConfiguration> =
+      }),
+    ).rejects.toThrow('registry.hostname is derived from the retained registry Service ClusterIP');
+    await expect(
       resolveKubernetesInstallRegistryConfiguration({
         domainMode: 'managed',
         valuesPath,
-      });
-
-    await expect(customResolution).rejects.toThrow(
-      'registry.hostname is derived from the retained registry Service ClusterIP',
-    );
-    await expect(managedResolution).rejects.toThrow(
-      'registry.hostname is derived from the retained registry Service ClusterIP',
-    );
+      }),
+    ).rejects.toThrow('registry.hostname is derived from the retained registry Service ClusterIP');
   });
 
-  it('fails before cluster mutation when an interactive public operator install has no TLS ownership', async (): Promise<void> => {
+  it('requires the private registry issuer for external TLS', async (): Promise<void> => {
     const valuesPath: string = await writeValues('{}\n');
 
     await expect(
@@ -88,9 +83,7 @@ describe('Kubernetes install registry values', (): void => {
         domainMode: 'custom',
         valuesPath,
       }),
-    ).rejects.toThrow(
-      'tls.issuerRef or tls.existingSecret is required in --values for an operator-owned public base domain.',
-    );
+    ).rejects.toThrow('registry.issuerRef.name and registry.issuerRef.kind are required');
   });
 
   it('requires a dedicated registry issuer when public TLS uses an existing Secret', async (): Promise<void> => {
@@ -100,9 +93,10 @@ describe('Kubernetes install registry values', (): void => {
       resolveKubernetesInstallRegistryConfiguration({
         baseDomain: 'apps.example.com',
         domainMode: 'custom',
+        publicProtocol: 'https',
         valuesPath,
       }),
-    ).rejects.toThrow('registry.issuerRef is required in --values when operator TLS uses tls.existingSecret');
+    ).rejects.toThrow('registry.issuerRef.name and registry.issuerRef.kind are required');
   });
 
   it('requires a node-trusted registry CA issuer for managed mode', async (): Promise<void> => {

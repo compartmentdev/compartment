@@ -23,12 +23,10 @@ const kubeContext: string = process.env.COMPARTMENT_E2E_KUBE_CONTEXT ?? 'k3d-com
 const managedNamespace: string = process.env.COMPARTMENT_E2E_MANAGED_NAMESPACE ?? 'compartment-managed-managed-install';
 const buildNamespace: string = `${managedNamespace}-public-operator-build`;
 const projectProvisioningNamespace: string = `${releaseName}-compartment-project-provisioning`;
-const httpsPort: string = process.env.COMPARTMENT_E2E_HTTPS_PORT ?? '18443';
-const apiUrl: string = `https://console.${baseDomain}:${httpsPort}`;
+const httpPort: string = process.env.COMPARTMENT_E2E_HTTP_PORT ?? '18080';
+const apiUrl: string = `http://console.${baseDomain}:${httpPort}`;
 const valuesPath: string =
   process.env.COMPARTMENT_E2E_PUBLIC_OPERATOR_VALUES_PATH ?? '.compartment/platform-k3d-public-operator-values.yaml';
-const certificateAuthorityPath: string =
-  process.env.COMPARTMENT_E2E_PUBLIC_OPERATOR_CA_PATH ?? '.compartment/platform-k3d-public-operator-ca.crt';
 const installTimeoutMs: number = 50 * 60_000;
 const commandTimeoutMs: number = 6 * 60_000;
 const tempRootDirectory: string = readSocketSafeTempRootDirectory('pk3p-', 'system-api.sock');
@@ -52,7 +50,7 @@ describe.sequential('production public operator-domain Kubernetes install', (): 
     );
   }, commandTimeoutMs);
 
-  it('rejects public operator values without TLS before Helm', async (): Promise<void> => {
+  it('rejects public operator values without a registry issuer before Helm', async (): Promise<void> => {
     const directory: string = await createTemporaryDirectory();
     const incompleteValuesPath: string = join(directory, 'incomplete-values.yaml');
     await writeFile(incompleteValuesPath, 'ingress:\n  className: traefik\nstorage:\n  storageClass: local-path\n', {
@@ -64,9 +62,7 @@ describe.sequential('production public operator-domain Kubernetes install', (): 
     );
     const output: string = `${failure.stderr}\n${failure.stdout}`;
 
-    expect(output).toContain(
-      `${incompleteValuesPath}: tls: must define either issuerRef or existingSecret for an operator-owned public base domain`,
-    );
+    expect(output).toContain(`${incompleteValuesPath}: registry.issuerRef: is required because the private registry`);
     expect(output).not.toMatch(/ZodError|"code"|"expected"|"received"|at parse/u);
     const helmRelease: SelfHostedUserSetupCommandResult = await runHelm([
       'status',
@@ -94,9 +90,9 @@ describe.sequential('production public operator-domain Kubernetes install', (): 
       );
 
       expect(result.adminEmail).toBe(ownerEmail);
-      expect(result.compartmentUrl).toBe(`https://console.${baseDomain}`);
+      expect(result.compartmentUrl).toBe(`http://console.${baseDomain}`);
       expect(result.organization.slug).toBe(organizationSlug);
-      await expectPlatformCertificatesReady();
+      await expectNoPlatformCertificates();
       await expectDerivedIngressHosts();
       await expectDerivedRegistryTls();
       await expectCaddyBehindSharedIngress();
@@ -107,13 +103,12 @@ describe.sequential('production public operator-domain Kubernetes install', (): 
 });
 
 function buildInstallCommand(selectedValuesPath: string, ownerEmail: string): string {
-  return `install --api-url ${apiUrl} --base-domain ${baseDomain} --values ${selectedValuesPath} --kube-context ${kubeContext} --namespace ${namespace} --release-name ${releaseName} --email ${ownerEmail} --organization "${organizationName}" --organization-slug ${organizationSlug}`;
+  return `install --target kubernetes --api-url ${apiUrl} --base-domain ${baseDomain} --values ${selectedValuesPath} --kube-context ${kubeContext} --namespace ${namespace} --release-name ${releaseName} --email ${ownerEmail} --organization "${organizationName}" --organization-slug ${organizationSlug}`;
 }
 
 async function createFreshCli(adminPassword?: string): Promise<SelfHostedUserSetupCli> {
   const homeDirectory: string = await createTemporaryDirectory();
   const env: NodeJS.ProcessEnv = buildSelfHostedUserSetupClientEnv(homeDirectory);
-  env.NODE_EXTRA_CA_CERTS = certificateAuthorityPath;
   if (adminPassword !== undefined) {
     env.COMPARTMENT_ADMIN_PASSWORD = adminPassword;
   }
@@ -126,16 +121,7 @@ async function createTemporaryDirectory(): Promise<string> {
   return directory;
 }
 
-async function expectPlatformCertificatesReady(): Promise<void> {
-  const wait: SelfHostedUserSetupCommandResult = await runKubectl([
-    'wait',
-    'certificate',
-    '--selector',
-    `app.kubernetes.io/instance=${releaseName},app.kubernetes.io/component=platform-tls`,
-    '--for=condition=Ready',
-    '--timeout=4m',
-  ]);
-  expectSuccessfulCommand(wait, 'wait for public platform Certificates');
+async function expectNoPlatformCertificates(): Promise<void> {
   const names: SelfHostedUserSetupCommandResult = await runKubectl([
     'get',
     'certificate',
@@ -144,7 +130,7 @@ async function expectPlatformCertificatesReady(): Promise<void> {
     '--output=name',
   ]);
   expectSuccessfulCommand(names, 'list public platform Certificates');
-  expect(names.stdout.trim().split('\n')).toHaveLength(2);
+  expect(names.stdout.trim()).toBe('');
 }
 
 async function expectDerivedIngressHosts(): Promise<void> {

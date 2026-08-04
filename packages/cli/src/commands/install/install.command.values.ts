@@ -21,14 +21,20 @@ export interface OperatorInstallInputValues {
   clearIngressEndpoint: boolean;
   ingressClass: string;
   ingressEndpoint?: string | undefined;
+  publicProtocol?: 'http' | 'https' | undefined;
   storageClass: string;
 }
 
 interface OperatorInstallValuesDocument {
   ingress?: OperatorInstallIngressValues | undefined;
+  platform?: OperatorInstallPlatformValues | undefined;
   registry?: OperatorInstallRegistryValues | undefined;
   storage?: OperatorInstallStorageValues | undefined;
   tls?: OperatorInstallTlsValues | undefined;
+}
+
+interface OperatorInstallPlatformValues {
+  publicProtocol?: 'http' | 'https' | undefined;
 }
 
 interface OperatorInstallIngressValues {
@@ -72,6 +78,10 @@ const operatorInstallValuesSchema: z.ZodType<OperatorInstallValuesDocument> = z
       })
       .passthrough()
       .optional(),
+    platform: z
+      .object({ publicProtocol: z.enum(['http', 'https']).optional() })
+      .passthrough()
+      .optional(),
     registry: z
       .object({ issuerRef: kubernetesInstallRegistryIssuerValueFieldsSchema.optional() })
       .passthrough()
@@ -113,7 +123,7 @@ export async function readOperatorInstallInputValues(
   if (!result.success) {
     throw new Error(`${valuesPath}: (root): operator values validation failed`);
   }
-  return readOperatorInputValues(result.data);
+  return readOperatorInputValues(result.data, requireOperatorTls);
 }
 
 function listRequiredOperatorValueIssues(parsed: YamlFileValue, requireOperatorTls: boolean): z.ZodIssue[] {
@@ -133,39 +143,69 @@ function listRequiredOperatorValueIssues(parsed: YamlFileValue, requireOperatorT
 }
 
 function listRequiredOperatorTlsIssues(values: YamlFileObject | undefined): z.ZodIssue[] {
+  const platform: YamlFileObject | undefined = readYamlObject(values?.platform);
   const tls: YamlFileObject | undefined = readYamlObject(values?.tls);
   const registry: YamlFileObject | undefined = readYamlObject(values?.registry);
-  const hasIssuer: boolean = tls?.issuerRef !== undefined;
   const existingSecret: string = typeof tls?.existingSecret === 'string' ? tls.existingSecret.trim() : '';
+  const publicProtocol: string = readOperatorPublicProtocol(platform, existingSecret);
   const issues: z.ZodIssue[] = [];
-  if (!hasIssuer && existingSecret === '') {
+  if (tls?.issuerRef !== undefined) {
     issues.push({
       code: z.ZodIssueCode.custom,
-      message: 'must define either issuerRef or existingSecret for an operator-owned public base domain',
-      path: ['tls'],
+      message: 'is not supported for operator-owned domain TLS; use external HTTP or tls.existingSecret',
+      path: ['tls', 'issuerRef'],
     });
   }
-  if (existingSecret !== '' && registry?.issuerRef === undefined) {
+  issues.push(...listOperatorProtocolIssues(publicProtocol, existingSecret));
+  if (registry?.issuerRef === undefined) {
     issues.push({
       code: z.ZodIssueCode.custom,
-      message: 'is required when tls.existingSecret is used because the private registry needs a Certificate',
+      message: 'is required because the private registry needs a Certificate',
       path: ['registry', 'issuerRef'],
     });
   }
   return issues;
 }
 
+function readOperatorPublicProtocol(platform: YamlFileObject | undefined, existingSecret: string): string {
+  if (typeof platform?.publicProtocol === 'string') {
+    return platform.publicProtocol;
+  }
+  return existingSecret === '' ? 'http' : 'https';
+}
+
+function listOperatorProtocolIssues(publicProtocol: string, existingSecret: string): z.ZodIssue[] {
+  if (publicProtocol === 'https' && existingSecret === '') {
+    return [operatorValueIssue('is required when platform.publicProtocol is https')];
+  }
+  if (publicProtocol === 'http' && existingSecret !== '') {
+    return [operatorValueIssue('cannot be used when platform.publicProtocol is http')];
+  }
+  return [];
+}
+
+function operatorValueIssue(message: string): z.ZodIssue {
+  return { code: z.ZodIssueCode.custom, message, path: ['tls', 'existingSecret'] };
+}
+
 function readYamlObject(value: YamlFileValue | undefined): YamlFileObject | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value : undefined;
 }
 
-function readOperatorInputValues(values: OperatorInstallValuesDocument): OperatorInstallInputValues {
+function readOperatorInputValues(
+  values: OperatorInstallValuesDocument,
+  includePublicProtocol: boolean,
+): OperatorInstallInputValues {
+  const existingSecret: string = values.tls?.existingSecret?.trim() ?? '';
   return {
     clearIngressEndpoint: values.ingress?.endpoint?.value === '',
     ingressClass: values.ingress?.className ?? '',
     ...(values.ingress?.endpoint?.value === undefined || values.ingress.endpoint.value === ''
       ? {}
       : { ingressEndpoint: values.ingress.endpoint.value }),
+    ...(includePublicProtocol
+      ? { publicProtocol: values.platform?.publicProtocol ?? (existingSecret === '' ? 'http' : 'https') }
+      : {}),
     storageClass: values.storage?.storageClass ?? '',
   };
 }

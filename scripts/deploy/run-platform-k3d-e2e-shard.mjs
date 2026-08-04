@@ -124,12 +124,8 @@ async function runShardSuites(suites, env, ownerEnvironmentPath, signal) {
     } else if (suite === 'console') {
       await runInterruptibleCommand('pnpm', ['--filter', '@compartment/console', 'test:e2e:install'], env, signal);
       await runCliE2eSuite(env, 'test/console.e2e.test.ts', signal);
-    } else if (suite === 'build-matrix-a') {
-      await runBuildMatrixPartition(env, 'a', signal);
-    } else if (suite === 'build-matrix-b') {
-      await runBuildMatrixPartition(env, 'b', signal);
-    } else if (suite === 'gvisor-build') {
-      await runBuildMatrixPartition(env, 'gvisor', signal);
+    } else if (suite === 'build-matrix') {
+      await runBuildMatrixPartition(env, signal);
     } else if (suite === 'build-performance') {
       await runCliE2eSuite(env, 'test/system-build-performance.e2e.test.ts', signal);
     } else if (suite === 'g1') {
@@ -213,15 +209,11 @@ function readPushedImageDigest(imageRef, env) {
   return digest;
 }
 
-async function runBuildMatrixPartition(env, partition, signal) {
-  await runCliE2eSuite(
-    {
-      ...env,
-      COMPARTMENT_E2E_BUILD_MATRIX_PARTITION: partition,
-    },
-    'test/system-build-matrix.e2e.test.ts',
-    signal,
-  );
+async function runBuildMatrixPartition(env, signal) {
+  if (env.COMPARTMENT_E2E_BUILD_MATRIX_PARTITION === undefined) {
+    throw new Error('Build matrix shards must define COMPARTMENT_E2E_BUILD_MATRIX_PARTITION.');
+  }
+  await runCliE2eSuite(env, 'test/system-build-matrix.e2e.test.ts', signal);
 }
 
 async function runCliE2eSuite(env, include, signal) {

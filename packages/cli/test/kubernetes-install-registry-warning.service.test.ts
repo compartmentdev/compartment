@@ -70,6 +70,7 @@ function state(domainMode: 'custom' | 'managed'): KubernetesInstallState {
 function input(): KubernetesInstallDeploymentInput {
   return {
     acmeEmail: 'admin@example.com',
+    chartFullname: 'compartment',
     clearConfiguredIngressEndpoint: false,
     configuredIngressEndpoint: null,
     domainMode: 'managed',

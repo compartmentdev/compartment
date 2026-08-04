@@ -16,7 +16,7 @@ tests:
         template: pvc.yaml
       - equal:
           path: metadata.name
-          value: compartment-compartment-registry
+          value: compartment-registry
         template: pvc.yaml
         documentIndex: 1
       - contains:
@@ -31,7 +31,7 @@ tests:
           content:
             name: data
             persistentVolumeClaim:
-              claimName: compartment-compartment-registry
+              claimName: compartment-registry
         template: registry.yaml
         documentIndex: 1
       - notContains:
@@ -88,7 +88,7 @@ tests:
         template: pvc.yaml
       - equal:
           path: metadata.name
-          value: compartment-compartment-postgres
+          value: compartment-postgres
         template: pvc.yaml
       - notContains:
           path: spec.template.spec.containers[0].volumeMounts
@@ -102,7 +102,7 @@ tests:
           content:
             name: data
             persistentVolumeClaim:
-              claimName: compartment-compartment-registry
+              claimName: compartment-registry
         template: registry.yaml
         documentIndex: 1
       - contains:

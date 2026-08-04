@@ -1,5 +1,4 @@
 import type { CliIo } from '../../app.types';
-import { quoteShellArgumentWhenNeeded } from '@compartment/utils';
 import { promptValidatedVisibleText, promptVisibleText } from '../../prompts/prompt';
 import { validateKubernetesResourceName } from '../../services/kubernetes-resource-name';
 import { isReservedKubernetesInstallLocalhostDomain } from '../../kubernetes-install-domain';
@@ -21,16 +20,10 @@ interface ExistingSecretTlsValues {
   tlsReview: string;
 }
 
-const adminPasswordEnvironmentName: string = ['COMPARTMENT', 'ADMIN', 'PASSWORD'].join('_');
-const ownerPasswordPlaceholder: string = ['OWNER', 'PASSWORD'].join('_');
-
 export interface OperatorDomainTlsPromptInput {
   baseDomain: string;
-  ingressClass: string;
   kubeContext: string;
   namespace: string;
-  releaseName: string;
-  storageClass: string;
   inspectIssuer: InspectKubernetesInstallIssuer;
 }
 
@@ -44,16 +37,25 @@ export async function resolveOperatorDomainTls(
   renderTlsChoices(io, input.namespace);
   const mode: string = await promptVisibleText(io, 'TLS', '1');
   if (mode === '1') {
-    return await resolveIssuerTls(io, input);
+    return await resolveExternalTls(io, input);
   }
   if (mode === '2') {
     const secretTls: ExistingSecretTlsValues = await resolveExistingSecretTls(io, input);
-    return { input: { baseDomain: input.baseDomain }, ...secretTls };
+    return { input: { baseDomain: input.baseDomain, publicProtocol: 'https' }, ...secretTls };
   }
-  if (mode === '3') {
-    throw new Error(buildOperatorValuesInstructions(input));
-  }
-  throw new Error('TLS selection must be 1, 2, or 3.');
+  throw new Error('TLS selection must be 1 or 2.');
+}
+
+async function resolveExternalTls(
+  io: CliIo,
+  input: OperatorDomainTlsPromptInput,
+): Promise<KubernetesInstallWizardDomain> {
+  const registry: InstallWizardRegistryValues = await resolveRegistryIpTls(io, input);
+  return {
+    input: { baseDomain: input.baseDomain, publicProtocol: 'http' },
+    registry,
+    tlsReview: `external TLS termination; platform HTTP; registry ${registry.issuerRef.kind}/${registry.issuerRef.name}`,
+  };
 }
 
 async function resolveLocalhostRegistryTls(
@@ -62,7 +64,7 @@ async function resolveLocalhostRegistryTls(
 ): Promise<KubernetesInstallWizardDomain> {
   const registry: InstallWizardRegistryValues = await resolveRegistryIpTls(io, input);
   return {
-    input: { baseDomain: input.baseDomain },
+    input: { baseDomain: input.baseDomain, publicProtocol: 'http' },
     registry,
     tlsReview: `public TLS not required; registry ${registry.issuerRef.kind}/${registry.issuerRef.name}`,
   };
@@ -71,27 +73,10 @@ async function resolveLocalhostRegistryTls(
 function renderTlsChoices(io: CliIo, namespace: string): void {
   io.stderr(
     'TLS for the operator-owned domain:\n' +
-      '  1. cert-manager Issuer or ClusterIssuer [default]\n' +
+      '  1. External TLS termination; platform serves HTTP [default]\n' +
       '  2. Existing kubernetes.io/tls Secret\n' +
-      '  3. Stop and configure an operator values file\n' +
       `Namespaced Issuers and Secrets must exist in namespace "${namespace}".\n`,
   );
-}
-
-async function resolveIssuerTls(
-  io: CliIo,
-  input: OperatorDomainTlsPromptInput,
-): Promise<KubernetesInstallWizardDomain> {
-  const issuerRef: InstallWizardIssuerReference = await promptIssuerReference(io, 'Platform TLS');
-  const assessment: KubernetesOperatorIssuerAssessment = await inspectIssuerTrust(io, input, issuerRef);
-  const registry: InstallWizardRegistryValues =
-    assessment.trust === 'ca' ? { issuerRef } : await resolveRegistryIpTls(io, input);
-  return {
-    input: { baseDomain: input.baseDomain },
-    registry,
-    tls: { issuerRef },
-    tlsReview: `${issuerRef.kind}/${issuerRef.name}; registry ${registry.issuerRef.kind}/${registry.issuerRef.name}`,
-  };
 }
 
 async function resolveExistingSecretTls(
@@ -173,22 +158,4 @@ async function promptIssuerReference(io: CliIo, label: string): Promise<InstallW
       validateKubernetesResourceName(value, `${label} issuer name`),
     ),
   };
-}
-
-function buildOperatorValuesInstructions(input: OperatorDomainTlsPromptInput): string {
-  return (
-    'Operator-owned domain installation stopped before owner setup. Create compartment-values.yaml:\n' +
-    `ingress:\n  className: ${input.ingressClass}\n` +
-    'tls:\n  issuerRef:\n    kind: ClusterIssuer\n    name: <issuer-name>\n' +
-    'registry:\n  issuerRef:\n    kind: ClusterIssuer\n    name: <node-trusted-ca-issuer>\n' +
-    `storage:\n  storageClass: ${input.storageClass}\n` +
-    'Then replace the uppercase placeholders and run:\n' +
-    `${adminPasswordEnvironmentName}='${ownerPasswordPlaceholder}' compartment install ` +
-    `--kube-context ${quoteShellArgumentWhenNeeded(input.kubeContext)} ` +
-    `--namespace ${quoteShellArgumentWhenNeeded(input.namespace)} ` +
-    `--release-name ${quoteShellArgumentWhenNeeded(input.releaseName)} ` +
-    `--base-domain ${quoteShellArgumentWhenNeeded(input.baseDomain)} ` +
-    "--email 'OWNER_EMAIL' --organization 'ORGANIZATION_NAME' " +
-    '--values compartment-values.yaml'
-  );
 }

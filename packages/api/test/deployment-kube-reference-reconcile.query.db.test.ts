@@ -375,7 +375,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
     for (let attempt: number = 1; attempt <= 3; attempt += 1) {
       const claimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
-      expect(claimed?.projectId).toBe('prj_kube');
+      expect(claimed).toMatchObject({ projectId: 'prj_kube', projectName: 'Kube' });
       await completeProjectProvisioning({
         action: 'provision',
         failureMessage: `namespace provisioning attempt ${attempt} failed`,
