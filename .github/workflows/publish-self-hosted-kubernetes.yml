@@ -385,7 +385,9 @@ jobs:
           done
 
       - name: Promote mutable kubernetes CLI tag
+        id: promote-kubernetes-cli
         run: |
+          echo 'promoted=false' >> "$GITHUB_OUTPUT"
           current_kubernetes_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/kubernetes" --jq '.object.sha')"
           if [ -z "$current_kubernetes_sha" ]; then
             echo 'Expected current kubernetes ref SHA.' >&2
@@ -403,3 +405,4 @@ jobs:
             echo "Mutable kubernetes CLI tag resolved to ${promoted_digest}; expected ${cli_digest}." >&2
             exit 1
           fi
+          echo 'promoted=true' >> "$GITHUB_OUTPUT"

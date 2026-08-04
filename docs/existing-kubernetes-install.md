@@ -6,7 +6,7 @@ or remove Kubernetes, an Ingress Controller, cert-manager, a CNI, or a StorageCl
 ## Supported installation channel
 
 The existing-Kubernetes installer is the supported self-hosted installation channel. The public bootstrap at
-`https://compartment.dev/k/install.sh` serves the root installer approved for the `kubernetes` channel. That installer
+`https://compartment.dev/install.sh` serves the root installer approved for the `kubernetes` channel. That installer
 resolves the current branch commit and matching immutable CLI OCI artifact by digest, then verifies its Cosign
 identity, OIDC issuer, and workflow commit before pulling it. No channel flag or raw branch URL is required.
 

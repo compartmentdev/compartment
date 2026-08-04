@@ -131,9 +131,9 @@ describe('self-hosted publish workflows', () => {
     expect(promoteStep.run).toContain('git/ref/heads/kubernetes');
     expect(promoteStep.run).toContain('current_kubernetes_sha" != "$PUBLISH_SHA');
     expect(promoteStep.run).toContain('${CLI_REPOSITORY}:kubernetes');
-    expect(promotionJob.steps).not.toContainEqual(
-      expect.objectContaining({ name: 'Verify supported public installer handoff' }),
-    );
+    expect(promoteStep.id).toBe('promote-kubernetes-cli');
+    expect(promoteStep.run).toContain('echo \'promoted=false\' >> "$GITHUB_OUTPUT"');
+    expect(promoteStep.run).toContain('echo \'promoted=true\' >> "$GITHUB_OUTPUT"');
   });
 
   it('publishes, signs, and verifies both registries through one channel action', async () => {
