@@ -1,13 +1,16 @@
 import type { DockerBuildImageResult, DockerProgressLine } from '@compartment/docker';
-import type {
-  KubeJobEmptyDirVolume,
-  KubeJobResult,
-  KubeJobSidecar,
-  KubeJobSpec,
-  KubeRuntime,
+import {
+  KubeJobLogAttachmentError,
+  type KubeJobEmptyDirVolume,
+  type KubeJobResult,
+  type KubeRunJobOptions,
+  type KubeJobSidecar,
+  type KubeJobSpec,
+  type KubeRuntime,
 } from '@compartment/kube-runtime';
 import type { WorkerBuildSandboxConfig } from '../config';
 import type { RunWorkerBuildJobInput, WorkerBuildJobInput, WorkerBuildJobLogRecord } from './worker-build-job.types';
+import { readBuildLogRecord, readBuildLogRecords } from './worker-build-log-record';
 
 const buildKitAddress: string = 'tcp://127.0.0.1:1234';
 const buildJobInputEnvironmentName: string = 'COMPARTMENT_BUILD_JOB_INPUT';
@@ -18,9 +21,14 @@ export async function runWorkerBuildJob(
   config: WorkerBuildSandboxConfig,
   input: RunWorkerBuildJobInput,
 ): Promise<DockerBuildImageResult> {
-  const capture: KubeJobResult = await runtime.runJob(buildKubeJobSpec(config, input));
+  const progress: BuildProgressStream | undefined =
+    input.onProgressLine === undefined ? undefined : new BuildProgressStream(input.onProgressLine);
+  const options: KubeRunJobOptions | undefined =
+    progress === undefined ? undefined : new WorkerBuildJobRunOptions(progress);
+  const capture: KubeJobResult = await runtime.runJob(buildKubeJobSpec(config, input), undefined, options);
   try {
-    await publishCapturedProgress(capture.logs, input.onProgressLine);
+    await progress?.drain();
+    await progress?.publishCapturedFallback(capture.logs);
     if (capture.status !== 'succeeded') {
       throw new Error(
         `Sandboxed build Job ${capture.jobName} ${capture.status}: ${readCapturedBuildFailure(capture.logs)}`,
@@ -30,6 +38,19 @@ export async function runWorkerBuildJob(
   } finally {
     await capture.finalize();
   }
+}
+
+class WorkerBuildJobRunOptions implements KubeRunJobOptions {
+  constructor(private readonly progress: BuildProgressStream) {}
+
+  readonly onLogChunk: (chunk: string) => Promise<void> = async (chunk: string): Promise<void> =>
+    await this.progress.write(chunk);
+
+  readonly onLogError: (error: Error) => void = (error: Error): void => {
+    if (!(error instanceof KubeJobLogAttachmentError)) {
+      this.progress.fail(error);
+    }
+  };
 }
 
 export function readWorkerBuildJobInputEnvironment(env: NodeJS.ProcessEnv): {
@@ -116,17 +137,61 @@ function buildKitSidecar(config: WorkerBuildSandboxConfig): KubeJobSidecar {
   };
 }
 
-async function publishCapturedProgress(
-  logs: string,
-  reporter: ((line: DockerProgressLine) => void | Promise<void>) | undefined,
-): Promise<void> {
-  if (reporter === undefined) {
-    return;
+class BuildProgressStream {
+  private error: Error | null = null;
+  private publishedProgressCount: number = 0;
+  private unprocessed: string = '';
+
+  public constructor(private readonly reporter: (line: DockerProgressLine) => void | Promise<void>) {}
+
+  public async write(chunk: string): Promise<void> {
+    this.unprocessed += chunk;
+    await this.publishCompleteLines();
   }
-  for (const record of readBuildLogRecords(logs)) {
-    if (record.type === 'progress') {
-      await reporter(record.progress);
+
+  public fail(error: Error): void {
+    this.error = error;
+  }
+
+  public async drain(): Promise<void> {
+    if (this.unprocessed !== '') {
+      await this.publishLine(this.unprocessed);
+      this.unprocessed = '';
     }
+    if (this.error !== null) {
+      throw this.error;
+    }
+  }
+
+  public async publishCapturedFallback(logs: string): Promise<void> {
+    if (this.publishedProgressCount !== 0) {
+      return;
+    }
+    for (const record of readBuildLogRecords(logs)) {
+      if (record.type === 'progress') {
+        await this.publishProgress(record.progress);
+      }
+    }
+  }
+
+  private async publishCompleteLines(): Promise<void> {
+    const lines: string[] = this.unprocessed.split('\n');
+    this.unprocessed = lines.pop() ?? '';
+    for (const line of lines) {
+      await this.publishLine(line);
+    }
+  }
+
+  private async publishLine(line: string): Promise<void> {
+    const record: WorkerBuildJobLogRecord | undefined = readBuildLogRecord(line);
+    if (record?.type === 'progress') {
+      await this.publishProgress(record.progress);
+    }
+  }
+
+  private async publishProgress(progress: DockerProgressLine): Promise<void> {
+    await this.reporter(progress);
+    this.publishedProgressCount += 1;
   }
 }
 
@@ -154,15 +219,4 @@ function readCapturedBuildFailure(logs: string): string {
     )
     .join('\n');
   return terminalProgress === '' ? message : `${message}\nBuildKit terminal output:\n${terminalProgress}`;
-}
-
-function readBuildLogRecords(logs: string): WorkerBuildJobLogRecord[] {
-  return logs.split('\n').flatMap((line: string): WorkerBuildJobLogRecord[] => {
-    try {
-      const record: WorkerBuildJobLogRecord = JSON.parse(line) as WorkerBuildJobLogRecord;
-      return [record];
-    } catch {
-      return [];
-    }
-  });
 }

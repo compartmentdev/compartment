@@ -16,6 +16,7 @@ export type {
   KubeJobSpec,
   KubeLogReference,
   KubePersistedJobResult,
+  KubeRunJobOptions,
 } from './kube-job-spec.types';
 export type { ApplyBundle } from './kube-apply-bundle.types';
 

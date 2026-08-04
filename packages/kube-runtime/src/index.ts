@@ -5,6 +5,7 @@ export {
 } from './kube-runtime-factory';
 export type { KubeLeaderElectionConfig, KubeLeaderElector } from './kube-leader-election.types';
 export { KubeRuntime } from './kube-runtime';
+export { KubeJobLogAttachmentError } from './kube-job-log-stream';
 export { kubeApplicationIdentityName, kubeNamespaceName, kubeResourceVolumeName } from './kube-naming';
 export { observeCustomDomainProjection, projectCustomDomainManifests } from './kube-custom-domain-projection';
 export type {
@@ -36,6 +37,7 @@ export type {
   KubeDeploymentManifest,
   KubeJobEmptyDirVolume,
   KubeJobResult,
+  KubeRunJobOptions,
   KubePersistedJobResult,
   KubeJobSpec,
   KubeJobSidecar,

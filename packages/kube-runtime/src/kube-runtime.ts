@@ -1,4 +1,7 @@
 import { CoreV1Api, KubernetesObjectApi, Metrics, type KubeConfig } from '@kubernetes/client-node';
+import { completeJobWithLogStream, followJobLogs } from './kube-job-log-stream';
+import { CapturedKubeJobResult } from './kube-captured-job-result';
+import { observeJob } from './kube-job-log-observation';
 import { createKubeObservation } from './kube-observation';
 import { readKubePodMetrics } from './kube-pod-metrics';
 import type { KubePodMetricCollection, ObservePodMetrics } from './kube-pod-metrics.types';
@@ -12,6 +15,7 @@ import {
 } from './kube-job-projection';
 import { kubeJobName } from './kube-naming';
 import type { TerminalJobResult } from './kube-runtime-job-result.types';
+import type { JobLogStream } from './kube-job-log-stream.types';
 import { createOrValidate } from './kube-provisioning-validation';
 import {
   applyObject,
@@ -20,7 +24,6 @@ import {
   findJobPodNames,
   requireCleanupObjectApi,
   isJobTimeoutError,
-  jobObservationInput,
   readObjectIgnoringNotFound,
   startJobDeadline,
   type JobDeadline,
@@ -29,6 +32,7 @@ import type {
   ApplyBundle,
   KubeJobResult,
   KubePersistedJobResult,
+  KubeRunJobOptions,
   KubeJobSpec,
   KubeLogReference,
   KubeManifest,
@@ -36,33 +40,6 @@ import type {
   KubeObservedManifest,
   ObserveLabels,
 } from './kube-runtime.types';
-
-type FinalizeJob = () => Promise<void>;
-
-class CapturedKubeJobResult implements KubeJobResult {
-  public readonly completedAt: Date;
-  public readonly exitCode: number | null;
-  public readonly jobName: string;
-  public readonly logs: string;
-  public readonly podName: string | null;
-  public readonly status: 'succeeded' | 'failed' | 'timed-out';
-
-  public constructor(
-    result: TerminalJobResult,
-    private readonly finalizeJob: FinalizeJob,
-  ) {
-    this.completedAt = result.completedAt;
-    this.exitCode = result.exitCode;
-    this.jobName = result.jobName;
-    this.logs = result.logs;
-    this.podName = result.podName;
-    this.status = result.status;
-  }
-
-  public async finalize(): Promise<void> {
-    await this.finalizeJob();
-  }
-}
 
 export class KubeRuntime {
   private readonly cleanupObjectApi: KubernetesObjectApi | null;
@@ -132,27 +109,21 @@ export class KubeRuntime {
     });
   }
 
-  public async runJob(spec: KubeJobSpec, persistedResult?: KubePersistedJobResult): Promise<KubeJobResult> {
+  public async runJob(
+    spec: KubeJobSpec,
+    persistedResult?: KubePersistedJobResult,
+    options?: KubeRunJobOptions,
+  ): Promise<KubeJobResult> {
     const jobName: string = kubeJobName(spec.id);
     const labels: Record<string, string> = { ...spec.labels, 'compartment.dev/job-id': jobName };
     const observedJob: KubeObservedManifest | null = await this.read(kubeJobIdentity(spec, jobName));
     if (persistedResult !== undefined) {
-      return this.captureJob(
-        recoveredJobSpec(spec, observedJob),
-        jobName,
-        labels,
-        persistedResult,
-        observedJob !== null,
-      );
+      const recoveredSpec: KubeJobSpec = recoveredJobSpec(spec, observedJob);
+      return this.captureJob(recoveredSpec, jobName, labels, persistedResult, observedJob !== null);
     }
     const joinedJob: KubeObservedManifest | null = await createOrJoinKubeJob(this, spec, jobName, labels, observedJob);
-    return this.captureJob(
-      recoveredJobSpec(spec, joinedJob),
-      jobName,
-      labels,
-      await this.completeJob(spec, jobName),
-      true,
-    );
+    const recoveredSpec: KubeJobSpec = recoveredJobSpec(spec, joinedJob);
+    return this.captureJob(recoveredSpec, jobName, labels, await this.completeJob(spec, jobName, options), true);
   }
 
   private captureJob(
@@ -179,20 +150,19 @@ export class KubeRuntime {
     });
   }
 
-  private async completeJob(spec: KubeJobSpec, jobName: string): Promise<TerminalJobResult> {
+  private async completeJob(
+    spec: KubeJobSpec,
+    jobName: string,
+    options?: KubeRunJobOptions,
+  ): Promise<TerminalJobResult> {
     const deadline: JobDeadline = startJobDeadline(jobName, spec.timeoutMs);
     let observation: KubeObservation | null = null;
     try {
-      observation = await createKubeObservation(
-        this.kubeConfig,
-        this.objectApi,
-        jobObservationInput(spec, jobName),
-        deadline.controller.signal,
-      );
+      observation = await observeJob(this.kubeConfig, this.objectApi, spec, jobName, deadline.controller.signal);
       try {
-        return await this.readJobResult(spec, jobName, observation, deadline.expiresAt);
+        return await this.completeObservedJob(spec, jobName, observation, deadline, options);
       } catch (error) {
-        if (!deadline.controller.signal.aborted && !(error instanceof Error && isJobTimeoutError(error))) {
+        if (!(error instanceof Error && isJobTimeoutError(error))) {
           throw error;
         }
         return await this.captureTimedOutJob(spec, jobName, observation);
@@ -203,6 +173,28 @@ export class KubeRuntime {
         await observation.stop();
       }
     }
+  }
+
+  private async completeObservedJob(
+    spec: KubeJobSpec,
+    jobName: string,
+    observation: KubeObservation,
+    deadline: JobDeadline,
+    options?: KubeRunJobOptions,
+  ): Promise<TerminalJobResult> {
+    const completion: Promise<TerminalJobResult> = this.readJobResult(spec, jobName, observation, deadline.expiresAt);
+    if (options?.onLogChunk === undefined) {
+      return await completion;
+    }
+    const stream: JobLogStream = followJobLogs(
+      this.kubeConfig,
+      observation,
+      spec.namespace,
+      jobName,
+      deadline.controller.signal,
+      options.onLogChunk,
+    );
+    return await completeJobWithLogStream(completion, stream, deadline.controller, options.onLogError);
   }
 
   private async readJobResult(

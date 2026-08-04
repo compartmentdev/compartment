@@ -12,6 +12,14 @@ const imageSecurityWorkflowPath = new URL(
   import.meta.url,
 );
 
+function readKubernetesMinor(version) {
+  const match = /v1\.(?<minor>\d+)\./u.exec(version);
+
+  expect(match?.groups?.minor).toBeDefined();
+
+  return Number(match.groups.minor);
+}
+
 describe('platform k3d e2e workflow', () => {
   it('runs every isolated shard in a non-fail-fast matrix with shard diagnostics', async () => {
     const workflow = parse(await readFile(workflowPath, 'utf8'));
@@ -48,7 +56,13 @@ describe('platform k3d e2e workflow', () => {
     const toolInstallStep = job.steps.find(
       (step) => step.name === 'Install pinned k3d, kubectl, Helm, and helm-unittest',
     );
+    const k3sMinor = readKubernetesMinor(job.env.COMPARTMENT_E2E_K3S_IMAGE);
+    const kubectlMinor = readKubernetesMinor(toolInstallStep.env.KUBECTL_VERSION);
+
+    expect(Math.abs(k3sMinor - kubectlMinor)).toBeLessThanOrEqual(1);
+    expect(toolInstallStep.env.KUBECTL_SHA256).toMatch(/^[a-f0-9]{64}$/u);
     expect(toolInstallStep.run).toContain('helm plugin install');
+    expect(toolInstallStep.run).toContain('https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl');
     expect(toolInstallStep.run).toContain('k3d version');
     expect(toolInstallStep.run).toContain('kubectl version --client');
     expect(toolInstallStep.run).toContain('helm version');
