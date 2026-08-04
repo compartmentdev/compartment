@@ -62,6 +62,7 @@ function isOwnedFileDigestRecord(
   return (
     value !== null &&
     value !== undefined &&
+    typeof value === 'object' &&
     !Array.isArray(value) &&
     Object.values(value).every((digest: string | number | null): boolean => typeof digest === 'string')
   );

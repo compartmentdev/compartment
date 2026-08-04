@@ -94,6 +94,13 @@ describe('managed VM recorded file ownership', (): void => {
 
     await expect(readManagedVmState()).rejects.toThrow('state at /var/lib/compartment/installer/state.json is invalid');
   });
+
+  it('rejects primitive persisted file digests', async (): Promise<void> => {
+    files.readFile.mockResolvedValueOnce(JSON.stringify({ ...validState(), ownedFileDigests: 42 }));
+    const { readManagedVmState } = await import('../src/services/managed-vm-state.service');
+
+    await expect(readManagedVmState()).rejects.toThrow('state at /var/lib/compartment/installer/state.json is invalid');
+  });
 });
 
 function validState(): ManagedVmProvisionerState {
