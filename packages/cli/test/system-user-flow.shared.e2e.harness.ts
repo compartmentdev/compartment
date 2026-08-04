@@ -1,13 +1,19 @@
 import { expect } from 'vitest';
 import {
+  deleteSsoOidcProviderResponseSchema,
   type DeploymentReadSummary,
   type DeploymentStatusResponse,
   type OrganizationAuthSettingsResponse,
   organizationAuthSettingsResponseSchema,
   projectShowResponseSchema,
   resourceResponseSchema,
+  ssoOidcProviderListResponseSchema,
+  ssoOidcProviderResponseSchema,
   type ProjectShowResponse,
   type ResourceResponse,
+  type DeleteSsoOidcProviderResponse,
+  type SsoOidcProviderListResponse,
+  type SsoOidcProviderSummary,
   type VariableDetail,
   type VariableGroupBindingResponse,
   type VariableGroupListResponse,
@@ -28,8 +34,10 @@ import {
   type SelfHostedUserSetupAppFixture,
 } from './self-hosted-user-setup-app-fixture';
 import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
+import type { SelfHostedUserSetupCommandResult } from './self-hosted-user-setup-command.harness';
 import {
   buildSelfHostedAdvertisedCompartmentUrl,
+  configureSelfHostedTrustedOutboundHosts,
   type SelfHostedUserSetupHarness,
   type SelfHostedUserSetupRuntime,
 } from './self-hosted-user-setup.e2e.harness';
@@ -52,7 +60,15 @@ import {
   type SelfHostedDeployCommandResponse,
 } from './self-hosted-user-setup-cli-response.harness';
 import { waitForRunningResource } from './self-hosted-user-setup-deployment-flow.harness';
-import { appBuildMessage, appMessage, directFlagValue, SystemUserFlowContext } from './system-user-flow.e2e.harness';
+import {
+  appBuildMessage,
+  appMessage,
+  directFlagValue,
+  oidcIssuerHost,
+  oidcIssuerUrl,
+  SystemUserFlowContext,
+} from './system-user-flow.e2e.harness';
+import { requireSsoProvider } from './system-user-flow-response.harness';
 import type { SystemUserFlowAppDeployment, SystemUserFlowVariableSetup } from './system-user-flow.shared.e2e.types';
 
 export async function createSystemUserFlowContext(setup: SelfHostedUserSetupHarness): Promise<SystemUserFlowContext> {
@@ -99,6 +115,91 @@ export async function configureSystemUserFlowAuthSettings(admin: SelfHostedUserS
     organizationAuthSettingsResponseSchema,
   );
   expect(persistedAuthSettings.settings.localPasswordEnabled).toBe(true);
+}
+
+export async function configureSystemUserFlowSsoOidcProvider(admin: SelfHostedUserSetupCli): Promise<void> {
+  const initialSsoProviders: SsoOidcProviderListResponse = await admin.runJson(
+    'sso oidc list',
+    ssoOidcProviderListResponseSchema,
+  );
+  expect(
+    initialSsoProviders.providers.some(
+      (provider: SsoOidcProviderSummary): boolean => provider.key === 'self-hosted-e2e-oidc',
+    ),
+  ).toBe(false);
+
+  const untrustedOidcProvider: SelfHostedUserSetupCommandResult = await admin.runFailure(
+    `sso oidc add --key self-hosted-e2e-untrusted-oidc --client-id self-hosted-e2e-client --client-secret self-hosted-e2e-secret --issuer-url ${oidcIssuerUrl} --display-name "Untrusted E2E OIDC" --output json`,
+  );
+  expect(untrustedOidcProvider.stderr).toContain(
+    `OIDC issuer host ${oidcIssuerHost} must be listed in COMPARTMENT_TRUSTED_OUTBOUND_HOSTS.`,
+  );
+
+  await configureSelfHostedTrustedOutboundHosts([oidcIssuerHost]);
+
+  const createdSsoProvider: SsoOidcProviderSummary = requireSsoProvider(
+    await admin.runJson(
+      `sso oidc add --key self-hosted-e2e-oidc --client-id self-hosted-e2e-client --client-secret self-hosted-e2e-secret --issuer-url ${oidcIssuerUrl} --display-name "SelfHosted E2E OIDC" --button-text "Sign in with E2E" --email-claims id-token:email --email-verified-claims id-token:email_verified=true --auto-join disabled`,
+      ssoOidcProviderResponseSchema,
+    ),
+  );
+  expect(createdSsoProvider).toEqual(
+    expect.objectContaining({
+      buttonText: 'Sign in with E2E',
+      clientId: 'self-hosted-e2e-client',
+      displayName: 'SelfHosted E2E OIDC',
+      issuerUrl: oidcIssuerUrl,
+      key: 'self-hosted-e2e-oidc',
+      preset: 'generic',
+    } satisfies Partial<SsoOidcProviderSummary>),
+  );
+
+  const ssoProvidersAfterCreate: SsoOidcProviderListResponse = await admin.runJson(
+    'sso oidc list',
+    ssoOidcProviderListResponseSchema,
+  );
+  expect(
+    ssoProvidersAfterCreate.providers.some(
+      (provider: SsoOidcProviderSummary): boolean => provider.id === createdSsoProvider.id,
+    ),
+  ).toBe(true);
+
+  const updatedSsoProvider: SsoOidcProviderSummary = requireSsoProvider(
+    await admin.runJson(
+      `sso oidc update ${createdSsoProvider.id} --button-text "Use E2E OIDC" --scope "openid email" --verified-email-claims userinfo:email --auto-join enabled --auto-join-domains example.com,self-hosted-e2e.example.com --auto-join-role readonly`,
+      ssoOidcProviderResponseSchema,
+    ),
+  );
+  expect(updatedSsoProvider.id).toBe(createdSsoProvider.id);
+  expect(updatedSsoProvider.buttonText).toBe('Use E2E OIDC');
+  expect(updatedSsoProvider.scope).toBe('openid email');
+  expect(updatedSsoProvider.identityVerification.verifiedEmailClaims).toEqual([
+    {
+      claim: 'email',
+      source: 'userinfo',
+    },
+  ]);
+  expect(updatedSsoProvider.provisioning).toEqual({
+    allowedEmailDomains: ['example.com', 'self-hosted-e2e.example.com'],
+    autoJoinEnabled: true,
+    defaultRole: 'readonly',
+  });
+
+  const removedSsoProvider: DeleteSsoOidcProviderResponse = await admin.runJson(
+    `sso oidc remove ${createdSsoProvider.id}`,
+    deleteSsoOidcProviderResponseSchema,
+  );
+  expect(removedSsoProvider.success).toBe(true);
+
+  const ssoProvidersAfterRemove: SsoOidcProviderListResponse = await admin.runJson(
+    'sso oidc list',
+    ssoOidcProviderListResponseSchema,
+  );
+  expect(
+    ssoProvidersAfterRemove.providers.some(
+      (provider: SsoOidcProviderSummary): boolean => provider.id === createdSsoProvider.id,
+    ),
+  ).toBe(false);
 }
 
 export async function prepareSystemUserFlowVariables(

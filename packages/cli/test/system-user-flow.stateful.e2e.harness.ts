@@ -1,6 +1,7 @@
 import { it } from 'vitest';
 import {
   configureSystemUserFlowAuthSettings,
+  configureSystemUserFlowSsoOidcProvider,
   createSystemUserFlowContext,
   loginSystemUserFlowAdmin,
   prepareSystemUserFlowAppDeployment,
@@ -40,6 +41,7 @@ export function registerSystemUserFlowStatefulShard(shard: SystemUserFlowStatefu
       context.adminAppSessionCookie = deployment.adminAppSessionCookie;
       if (shard === 'access-audit') {
         await configureSystemUserFlowAuthSettings(context.admin);
+        await configureSystemUserFlowSsoOidcProvider(context.admin);
         await prepareSystemUserFlowStagingEnvironment(context.admin, context.app, appBuildMessage);
         context.completedCaseCount = 6;
       } else {
