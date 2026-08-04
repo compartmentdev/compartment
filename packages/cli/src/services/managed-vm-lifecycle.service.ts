@@ -41,7 +41,7 @@ export async function getManagedVmSystemStatus(): Promise<ManagedVmSystemStatus>
   return {
     installationId: state.installationId,
     k3sActive: active.exitCode === 0,
-    k3sVersion: version.stdout.split('\n')[0] ?? 'unavailable',
+    k3sVersion: version.exitCode === 0 && version.stdout.trim() !== '' ? version.stdout.split('\n')[0]! : 'unavailable',
     provisionerStage: state.completedStage,
   };
 }

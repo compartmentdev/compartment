@@ -7,6 +7,7 @@ import type {
   ManagedVmStateClassification,
 } from './managed-vm-provisioning.types';
 import { managedVmReleaseMetadata } from './managed-vm-release-metadata.service';
+import { areIpv4CidrsOverlapping, isGloballyRoutableIpv4 } from './managed-vm-network-address.service';
 
 const minimumCpuCount: number = 2;
 const minimumMemoryBytes: number = 4 * 1024 * 1024 * 1024;
@@ -65,7 +66,7 @@ function createNetworkChecks(
       inventory.reachableEndpoints.length === 6,
       `${String(inventory.reachableEndpoints.length)}/6 endpoints reachable`,
     ),
-    check('public-ipv4', isPublicIpv4(publicAddress), publicAddress),
+    check('public-ipv4', isGloballyRoutableIpv4(publicAddress), publicAddress),
     check(
       'public-address-match',
       inventory.localIpv4Addresses.includes(publicAddress),
@@ -139,25 +140,9 @@ function formatPortConflicts(inventory: ManagedVmHostInventory): string {
 }
 
 function hasManagedCidrConflict(inventory: ManagedVmHostInventory): boolean {
-  return (
-    inventory.routeCidrs.includes(managedVmReleaseMetadata.podCidr) ||
-    inventory.routeCidrs.includes(managedVmReleaseMetadata.serviceCidr)
+  return inventory.routeCidrs.some(
+    (route: string): boolean =>
+      areIpv4CidrsOverlapping(route, managedVmReleaseMetadata.podCidr) ||
+      areIpv4CidrsOverlapping(route, managedVmReleaseMetadata.serviceCidr),
   );
-}
-
-function isPublicIpv4(value: string): boolean {
-  const parts: number[] = value.split('.').map(Number);
-  const invalidPart: boolean = parts.some((part: number): boolean => !Number.isInteger(part) || part < 0 || part > 255);
-  if (parts.length !== 4 || invalidPart) {
-    return false;
-  }
-  const first: number = parts[0] ?? -1;
-  const second: number = parts[1] ?? -1;
-  if (first === 10 || first === 127 || first === 0) {
-    return false;
-  }
-  if (first === 192 && second === 168) {
-    return false;
-  }
-  return !(first === 172 && second >= 16 && second <= 31);
 }

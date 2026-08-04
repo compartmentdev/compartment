@@ -60,6 +60,7 @@ describe('self-hosted publish workflows', () => {
     const probesStep = job.steps.find((step) => step.name === 'Probe public and isolated ports externally');
     const statusStep = job.steps.find((step) => step.name === 'Verify resumable install and readiness JSON');
     const deployStep = job.steps.find((step) => step.name === 'Deploy the first application and verify registry pull');
+    const passwordCleanupStep = job.steps.find((step) => step.name === 'Remove disposable VM password file');
     const resetStep = job.steps.find((step) => step.name === 'Destructively reset the disposable VM');
 
     expect(workflow.on.workflow_dispatch.inputs).toHaveProperty('host');
@@ -78,12 +79,16 @@ describe('self-hosted publish workflows', () => {
     const installStep = job.steps.find((step) => step.name === 'Install from the public bootstrap');
     const packagedCliStep = job.steps.find((step) => step.name === 'Verify exact packaged CLI build');
     expect(installStep.run).toContain('--version "sha-${RELEASE_SHA}"');
+    expect(installStep.run).toContain('--admin-password-file /tmp/compartment-owner-password');
     expect(packagedCliStep.run).toContain('-kubernetes+');
     expect(deployStep.run).toContain('sudo compartment deploy');
+    expect(deployStep.run).toContain('all(.status == "succeeded")');
     expect(deployStep.run).toContain('sudo compartment whoami --output json');
     expect(job.steps.some((step) => step.name === 'Verify managed update')).toBe(true);
     expect(job.steps.some((step) => step.name === 'Verify reboot recovery')).toBe(true);
     expect(resetStep.if).toBe('always()');
+    expect(passwordCleanupStep.if).toBe('always()');
+    expect(passwordCleanupStep.run).toContain('rm -f /tmp/compartment-owner-password');
     expect(resetStep.run).toContain('test ! -e /var/lib/compartment/installer/state.json');
 
     const serialized = JSON.stringify(workflow);

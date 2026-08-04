@@ -67,6 +67,61 @@ describe('managed VM preflight', (): void => {
     expect(result.checks.every((check: ManagedVmPreflightCheck): boolean => check.passed)).toBe(true);
   });
 
+  it('rejects ownerless listeners while resuming retained state', (): void => {
+    const result: ManagedVmPreflightResult = evaluateManagedVmPreflight(
+      { ...supportedInventory(), portsInUse: [{ owner: 'unknown process', port: 443 }] },
+      { foreignPaths: [], ownedConfigMatches: true, provisionerStateExists: true },
+      publicAddress(),
+    );
+
+    expect(result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'ports')?.passed).toBe(false);
+  });
+
+  it.each([cidr([10, 42, 0, 0], 15), cidr([10, 42, 0, 0], 24), cidr([10, 42, 2, 10], 32), cidr([10, 43, 0, 0], 15)])(
+    'rejects overlapping route %s',
+    (routeCidr: string): void => {
+      const result: ManagedVmPreflightResult = evaluateManagedVmPreflight(
+        { ...supportedInventory(), routeCidrs: [routeCidr] },
+        freshState(),
+        publicAddress(),
+      );
+
+      expect(
+        result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'network-cidrs')?.passed,
+      ).toBe(false);
+    },
+  );
+
+  it('accepts a non-overlapping route', (): void => {
+    const result: ManagedVmPreflightResult = evaluateManagedVmPreflight(
+      { ...supportedInventory(), routeCidrs: [cidr([10, 44, 0, 0], 16)] },
+      freshState(),
+      publicAddress(),
+    );
+
+    expect(result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'network-cidrs')?.passed).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    ipv4([100, 64, 0, 1]),
+    ipv4([169, 254, 1, 1]),
+    ipv4([192, 0, 2, 1]),
+    ipv4([198, 51, 100, 1]),
+    ipv4([203, 0, 113, 1]),
+    ipv4([224, 0, 0, 1]),
+  ])('rejects non-global address %s', (address: string): void => {
+    const result: ManagedVmPreflightResult = evaluateManagedVmPreflight(
+      { ...supportedInventory(), localIpv4Addresses: [address] },
+      freshState(),
+      address,
+    );
+    expect(result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'public-ipv4')?.passed).toBe(
+      false,
+    );
+  });
+
   it('rejects a foreign listener while resuming managed state', (): void => {
     const result: ManagedVmPreflightResult = evaluateManagedVmPreflight(
       { ...supportedInventory(), portsInUse: [{ owner: 'nginx', port: 443 }] },
@@ -107,9 +162,17 @@ function freshState(): ManagedVmObservedState {
 }
 
 function publicAddress(): string {
-  return `203.0.${String(113)}.10`;
+  return `8.8.${String(4)}.4`;
 }
 
 function managedPodCidr(): string {
   return `10.${String(42)}.0.0/16`;
+}
+
+function cidr(parts: readonly number[], prefix: number): string {
+  return `${ipv4(parts)}/${String(prefix)}`;
+}
+
+function ipv4(parts: readonly number[]): string {
+  return parts.join('.');
 }

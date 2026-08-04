@@ -1,28 +1,38 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { ManagedVmOwnedPath, ManagedVmProvisionerState } from '../src/services/managed-vm-provisioning.types';
+import type {
+  ManagedVmOwnedPath,
+  ManagedVmProvisionerState,
+  ManagedVmUpdateState,
+} from '../src/services/managed-vm-provisioning.types';
 import { managedVmReleaseMetadata } from '../src/services/managed-vm-release-metadata.service';
 
 interface LifecycleMocks {
   acquireLock: Mock;
   assertFileOwnership: Mock;
+  completeUpdate: Mock;
   execa: Mock;
   lstat: Mock;
+  persistUpdate: Mock;
   readState: Mock;
   removeFirewall: Mock;
   rm: Mock;
   rmdir: Mock;
+  verifyComponents: Mock;
 }
 
 const mocks: LifecycleMocks = vi.hoisted(
   (): LifecycleMocks => ({
     acquireLock: vi.fn(),
     assertFileOwnership: vi.fn(),
+    completeUpdate: vi.fn(),
     execa: vi.fn(),
     lstat: vi.fn(),
+    persistUpdate: vi.fn(),
     readState: vi.fn(),
     removeFirewall: vi.fn(),
     rm: vi.fn(),
     rmdir: vi.fn(),
+    verifyComponents: vi.fn(),
   }),
 );
 
@@ -56,6 +66,16 @@ vi.mock(
 );
 vi.mock('../src/services/managed-vm-command.service', (): Record<string, Mock> => ({ execa: mocks.execa }));
 vi.mock(
+  '../src/services/managed-vm-cluster.service',
+  (): Record<string, Mock> => ({
+    configureManagedVmRegistryIssuer: vi.fn(),
+    installManagedVmCertManager: vi.fn(),
+    installManagedVmHelm: vi.fn(),
+    installManagedVmK3s: vi.fn(),
+    verifyManagedVmComponentVersions: mocks.verifyComponents,
+  }),
+);
+vi.mock(
   '../src/services/managed-vm-lock.service',
   (): Record<string, Mock> => ({
     acquireManagedVmLock: mocks.acquireLock,
@@ -69,12 +89,11 @@ vi.mock(
   '../src/services/managed-vm-state.service',
   (): Record<string, Mock | string | readonly ManagedVmOwnedPath[]> => ({
     assertManagedVmOwnedFileDigests: mocks.assertFileOwnership,
-    completeManagedVmReleaseUpdate: vi.fn(),
+    completeManagedVmReleaseUpdate: mocks.completeUpdate,
     digest: vi.fn((): string => 'metadata'),
     managedVmOwnedPaths: ownedPaths,
     managedVmStateDirectory: '/var/lib/compartment/installer',
-    managedVmStatePath: '/var/lib/compartment/installer/state.json',
-    persistManagedVmUpdate: vi.fn(),
+    persistManagedVmUpdate: mocks.persistUpdate,
     recordManagedVmOwnedFileDigests: vi.fn(),
     readManagedVmState: mocks.readState,
   }),
@@ -90,6 +109,14 @@ describe('managed VM lifecycle ownership', (): void => {
       return { isDirectory: (): boolean => path === '/etc/compartment' };
     });
     mocks.readState.mockResolvedValue(state);
+    mocks.persistUpdate.mockImplementation(
+      async (current: ManagedVmProvisionerState, update: ManagedVmUpdateState): Promise<ManagedVmProvisionerState> =>
+        await Promise.resolve({ ...current, update }),
+    );
+    mocks.completeUpdate.mockImplementation(
+      async (current: ManagedVmProvisionerState, update: ManagedVmUpdateState): Promise<ManagedVmProvisionerState> =>
+        await Promise.resolve({ ...current, update }),
+    );
     mocks.acquireLock.mockResolvedValue(async (): Promise<void> => {
       await Promise.resolve();
     });
@@ -141,5 +168,56 @@ describe('managed VM lifecycle ownership', (): void => {
       'owned host content has changed',
     );
     expect(mocks.removeFirewall).not.toHaveBeenCalled();
+  });
+
+  it('reports unavailable when k3s version lookup fails', async (): Promise<void> => {
+    mocks.execa
+      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: 'active\n' })
+      .mockResolvedValueOnce({ exitCode: 1, stderr: 'missing', stdout: '' });
+    const { getManagedVmSystemStatus } = await import('../src/services/managed-vm-lifecycle.service');
+
+    await expect(getManagedVmSystemStatus()).resolves.toMatchObject({ k3sVersion: 'unavailable' });
+  });
+
+  it('resumes after the platform update without repeating the platform mutation', async (): Promise<void> => {
+    mocks.readState.mockResolvedValue({
+      ...state,
+      update: {
+        metadataDigest: 'metadata',
+        snapshotName: 'snapshot-1',
+        stage: 'platform-updated',
+        startedAt: state.startedAt,
+        updatedAt: state.updatedAt,
+      },
+    });
+    const updatePlatform: Mock = vi.fn();
+    const readPlatformResult: Mock = vi.fn().mockResolvedValue('existing result');
+    const { updateManagedVmInstallation } = await import('../src/services/managed-vm-lifecycle.service');
+
+    await expect(updateManagedVmInstallation(updatePlatform, readPlatformResult)).resolves.toBe('existing result');
+    expect(updatePlatform).not.toHaveBeenCalled();
+    expect(readPlatformResult).toHaveBeenCalledOnce();
+    expect(mocks.completeUpdate).toHaveBeenCalledOnce();
+  });
+
+  it('resumes after the snapshot without creating another snapshot', async (): Promise<void> => {
+    mocks.readState.mockResolvedValue({
+      ...state,
+      update: {
+        metadataDigest: 'metadata',
+        snapshotName: 'snapshot-1',
+        stage: 'snapshot-created',
+        startedAt: state.startedAt,
+        updatedAt: state.updatedAt,
+      },
+    });
+    const updatePlatform: Mock = vi.fn().mockResolvedValue('updated result');
+    const readPlatformResult: Mock = vi.fn();
+    const { updateManagedVmInstallation } = await import('../src/services/managed-vm-lifecycle.service');
+
+    await expect(updateManagedVmInstallation(updatePlatform, readPlatformResult)).resolves.toBe('updated result');
+    expect(mocks.execa).not.toHaveBeenCalledWith('k3s', expect.arrayContaining(['etcd-snapshot']), expect.anything());
+    expect(updatePlatform).toHaveBeenCalledOnce();
+    expect(readPlatformResult).not.toHaveBeenCalled();
   });
 });

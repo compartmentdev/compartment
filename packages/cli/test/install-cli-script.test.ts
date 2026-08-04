@@ -697,33 +697,24 @@ describe('render-cli-install-script', (): void => {
 
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       allowFailure: true,
-      args: ['--version', 'main', '--init-install'],
+      args: [
+        '--version',
+        'main',
+        '--init-install',
+        '--target',
+        'vm',
+        '--admin-password-file',
+        '/run/secrets/owner password',
+      ],
       installerTerminalPath: missingInstallerTerminalPath,
       pathEntries: [binDirectory],
     });
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain(
-      `Requested \`--init-install\`, but no terminal is available for owner setup. Run \`"${join(binDirectory, 'compartment')}" install\` from an interactive shell.`,
+      `Requested \`--init-install\`, but no terminal is available for owner setup. Run \`"${join(binDirectory, 'compartment')}" install --target vm --admin-password-file '/run/secrets/owner password'\` from an interactive shell.`,
     );
-    expect(result.sudoInvocations).toEqual([]);
     expect(result.compartmentInvocations).toEqual(['--version']);
-  });
-
-  it('hands init install without values to the guided install', async (): Promise<void> => {
-    const temporaryDirectory: string = await createTemporaryDirectory();
-    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
-    const installerTerminalPath: string = join(temporaryDirectory, 'installer-tty');
-    await writeFile(installerTerminalPath, '', 'utf8');
-
-    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
-      args: ['--version', 'main', '--init-install'],
-      installerTerminalPath,
-      pathEntries: [binDirectory],
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.compartmentInvocations).toEqual(['--version', 'install']);
   });
 
   it('runs the Kubernetes install command through init install without sudo or host-runtime setup', async (): Promise<void> => {
@@ -757,6 +748,8 @@ describe('render-cli-install-script', (): void => {
         './compartment-chart',
         '--remote',
         'prod-eu',
+        '--admin-password-file',
+        '/run/secrets/owner-password',
       ],
       installerTerminalPath,
       pathEntries: [binDirectory],
@@ -765,7 +758,7 @@ describe('render-cli-install-script', (): void => {
     expect(result.exitCode).toBe(0);
     expect(result.compartmentInvocations).toEqual([
       '--version',
-      'install --api-url https://console.apps.example.com --base-domain apps.example.com --email admin@example.com --organization Acme Dev --organization-slug acme-dev --kube-context prod-eu --namespace compartment-prod --release-name compartment-prod --chart ./compartment-chart --remote prod-eu',
+      'install --admin-password-file /run/secrets/owner-password --api-url https://console.apps.example.com --base-domain apps.example.com --email admin@example.com --organization Acme Dev --organization-slug acme-dev --kube-context prod-eu --namespace compartment-prod --release-name compartment-prod --chart ./compartment-chart --remote prod-eu',
     ]);
     expect(result.sudoInvocations).toEqual([]);
   });
@@ -812,6 +805,25 @@ describe('render-cli-install-script', (): void => {
     expect(result.stderr).toContain('Expected --values <path> with --init-update.');
     expect(result.urlLog).toEqual([]);
   });
+
+  it.each(['--init-update', '--init-login'])(
+    'rejects install-only options with %s',
+    async (mode: string): Promise<void> => {
+      const temporaryDirectory: string = await createTemporaryDirectory();
+      const modeArgs: string[] =
+        mode === '--init-update'
+          ? [mode, '--values', 'compartment-values.yaml']
+          : [mode, '--api-url', 'https://console.example'];
+      const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+        allowFailure: true,
+        args: ['--version', 'main', ...modeArgs, '--admin-password-file', '/run/secrets/owner-password'],
+      });
+
+      expect(result.stderr).toContain(
+        'Use --target, --check, --yes, and --admin-password-file only with --init-install.',
+      );
+    },
+  );
 
   it('fails init login clearly when no installer terminal is available', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();

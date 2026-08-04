@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { execa } from '../../services/managed-vm-command.service';
 import { promptMutationConfirmation } from '../../prompts/prompt';
 import { managedVmKubeconfigPath, managedVmValuesPath } from '../../services/managed-vm-cluster.service';
@@ -123,9 +123,11 @@ async function runPrivilegedManagedVmInstall(
 }
 
 async function readPrivilegedAdminPassword(options: InstallCommandOptions): Promise<string | undefined> {
-  return options.adminPasswordFile === undefined
-    ? options.adminPassword
-    : (await readFile(options.adminPasswordFile, 'utf8')).trim();
+  if (options.adminPassword !== undefined) {
+    return options.adminPassword;
+  }
+  const path: string | undefined = options.adminPasswordFile;
+  return path === undefined || path === '-' ? undefined : (await readFile(path, 'utf8')).trim();
 }
 
 async function reexecManagedVmInstall(
@@ -244,10 +246,11 @@ ${indent(renderManagedVmFirewallRules(preflight.inventory.publicInterface), '   
 }
 
 function readKubeconfigCandidates(configuredContext: string | undefined): readonly string[] {
-  if (configuredContext !== undefined && process.env.KUBECONFIG !== undefined) {
-    return [process.env.KUBECONFIG];
-  }
-  return [process.env.KUBECONFIG ?? join(homedir(), '.kube', 'config'), managedVmKubeconfigPath];
+  const configured: string | undefined = process.env.KUBECONFIG;
+  const paths: readonly string[] = configured?.split(delimiter).filter((path: string): boolean => path !== '') ?? [
+    join(homedir(), '.kube', 'config'),
+  ];
+  return configuredContext !== undefined && configured !== undefined ? paths : [...paths, managedVmKubeconfigPath];
 }
 
 function parseObservedAddress(body: string): string {

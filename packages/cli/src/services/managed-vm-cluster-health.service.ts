@@ -44,17 +44,12 @@ async function isKubernetesHealthy(): Promise<boolean> {
 }
 
 async function isCertManagerHealthy(): Promise<boolean> {
-  return await runHealthChecks([
-    [
-      'kubectl',
-      '--namespace',
-      'cert-manager',
-      'get',
-      'deployment',
-      'cert-manager',
-      'cert-manager-webhook',
-      'cert-manager-cainjector',
-    ],
+  return await runHealthChecks(createCertManagerHealthCommands());
+}
+
+function createCertManagerHealthCommands(): readonly (readonly string[])[] {
+  return [
+    ...createCertManagerRolloutCommands(),
     [
       'kubectl',
       '--namespace',
@@ -63,14 +58,30 @@ async function isCertManagerHealthy(): Promise<boolean> {
       'secret/compartment-registry-ca',
       'issuer/compartment-registry-ca',
     ],
-  ]);
+  ];
+}
+
+function createCertManagerRolloutCommands(): readonly (readonly string[])[] {
+  return [
+    ['kubectl', '--namespace', 'cert-manager', 'rollout', 'status', 'deployment/cert-manager', '--timeout=15s'],
+    ['kubectl', '--namespace', 'cert-manager', 'rollout', 'status', 'deployment/cert-manager-webhook', '--timeout=15s'],
+    [
+      'kubectl',
+      '--namespace',
+      'cert-manager',
+      'rollout',
+      'status',
+      'deployment/cert-manager-cainjector',
+      '--timeout=15s',
+    ],
+  ];
 }
 
 async function areManagedVmPrerequisitesHealthy(): Promise<boolean> {
   const commands: readonly (readonly string[])[] = [
     ['kubectl', 'get', 'storageclass', 'local-path'],
-    ['kubectl', '--namespace', 'kube-system', 'get', 'deployment', 'coredns'],
-    ['kubectl', '--namespace', 'kube-system', 'get', 'deployment', 'traefik'],
+    ['kubectl', '--namespace', 'kube-system', 'rollout', 'status', 'deployment/coredns', '--timeout=15s'],
+    ['kubectl', '--namespace', 'kube-system', 'rollout', 'status', 'deployment/traefik', '--timeout=15s'],
   ];
   return await runHealthChecks(commands);
 }

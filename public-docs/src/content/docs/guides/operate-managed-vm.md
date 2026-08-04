@@ -43,7 +43,7 @@ machine-loss backup. Copy verified backups and application data off-host accordi
 
 ## Recover an interrupted installation
 
-Rerun the original install command. Durable stages resume under the same installation identity after the installer
+Rerun the original install command with `sudo`. Durable stages resume under the same installation identity after the installer
 revalidates owned state. The installer never removes a retained cluster automatically after a failure.
 
 ## Destroy the provisioned cluster
