@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.2](https://github.com/compartmentdev/compartment/compare/v0.10.1...v0.10.2) (2026-08-04)
+
+
+### Bug Fixes
+
+* **docs:** prioritize Kubernetes install guidance ([#285](https://github.com/compartmentdev/compartment/issues/285)) ([adaf528](https://github.com/compartmentdev/compartment/commit/adaf5281fac577a4d610f04540f8916b52edfd11))
+* **docs:** resolve browser contracts from source ([#282](https://github.com/compartmentdev/compartment/issues/282)) ([1a9270e](https://github.com/compartmentdev/compartment/commit/1a9270e5a987fe4521a268e257712bdd3d03066d))
+* **docs:** restore install and operate guides ([#284](https://github.com/compartmentdev/compartment/issues/284)) ([cb3fa0b](https://github.com/compartmentdev/compartment/commit/cb3fa0b9b4318a4595f1f809720efaec2ed871ba))
+* **worker:** stream sandbox build progress live ([#277](https://github.com/compartmentdev/compartment/issues/277)) ([19884ce](https://github.com/compartmentdev/compartment/commit/19884cece9813d40e8b75f9bbd3750beeb2154e7))
+
 ## [0.10.1](https://github.com/compartmentdev/compartment/compare/v0.10.0...v0.10.1) (2026-08-04)
 
 

@@ -1,6 +1,6 @@
 {
   "name": "@compartment/edge",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "private": true,
   "exports": {},
   "files": [
