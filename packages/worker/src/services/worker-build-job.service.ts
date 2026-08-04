@@ -8,11 +8,9 @@ import {
   type KubeJobSpec,
   type KubeRuntime,
 } from '@compartment/kube-runtime';
-import type { JsonValue } from '@compartment/utils';
 import type { WorkerBuildSandboxConfig } from '../config';
 import type { RunWorkerBuildJobInput, WorkerBuildJobInput, WorkerBuildJobLogRecord } from './worker-build-job.types';
-
-type JsonObject = Record<string, JsonValue>;
+import { readBuildLogRecord, readBuildLogRecords } from './worker-build-log-record';
 
 const buildKitAddress: string = 'tcp://127.0.0.1:1234';
 const buildJobInputEnvironmentName: string = 'COMPARTMENT_BUILD_JOB_INPUT';
@@ -30,6 +28,7 @@ export async function runWorkerBuildJob(
   const capture: KubeJobResult = await runtime.runJob(buildKubeJobSpec(config, input), undefined, options);
   try {
     await progress?.drain();
+    await progress?.publishCapturedFallback(capture.logs);
     if (capture.status !== 'succeeded') {
       throw new Error(
         `Sandboxed build Job ${capture.jobName} ${capture.status}: ${readCapturedBuildFailure(capture.logs)}`,
@@ -140,6 +139,7 @@ function buildKitSidecar(config: WorkerBuildSandboxConfig): KubeJobSidecar {
 
 class BuildProgressStream {
   private error: Error | null = null;
+  private publishedProgressCount: number = 0;
   private unprocessed: string = '';
 
   public constructor(private readonly reporter: (line: DockerProgressLine) => void | Promise<void>) {}
@@ -163,6 +163,17 @@ class BuildProgressStream {
     }
   }
 
+  public async publishCapturedFallback(logs: string): Promise<void> {
+    if (this.publishedProgressCount !== 0) {
+      return;
+    }
+    for (const record of readBuildLogRecords(logs)) {
+      if (record.type === 'progress') {
+        await this.publishProgress(record.progress);
+      }
+    }
+  }
+
   private async publishCompleteLines(): Promise<void> {
     const lines: string[] = this.unprocessed.split('\n');
     this.unprocessed = lines.pop() ?? '';
@@ -174,8 +185,13 @@ class BuildProgressStream {
   private async publishLine(line: string): Promise<void> {
     const record: WorkerBuildJobLogRecord | undefined = readBuildLogRecord(line);
     if (record?.type === 'progress') {
-      await this.reporter(record.progress);
+      await this.publishProgress(record.progress);
     }
+  }
+
+  private async publishProgress(progress: DockerProgressLine): Promise<void> {
+    await this.reporter(progress);
+    this.publishedProgressCount += 1;
   }
 }
 
@@ -203,60 +219,4 @@ function readCapturedBuildFailure(logs: string): string {
     )
     .join('\n');
   return terminalProgress === '' ? message : `${message}\nBuildKit terminal output:\n${terminalProgress}`;
-}
-
-function readBuildLogRecords(logs: string): WorkerBuildJobLogRecord[] {
-  return logs.split('\n').flatMap((line: string): WorkerBuildJobLogRecord[] => {
-    const record: WorkerBuildJobLogRecord | undefined = readBuildLogRecord(line);
-    return record === undefined ? [] : [record];
-  });
-}
-
-function readBuildLogRecord(line: string): WorkerBuildJobLogRecord | undefined {
-  try {
-    const parsed: JsonValue = JSON.parse(line) as JsonValue;
-    return readWorkerBuildJobLogRecord(parsed);
-  } catch {
-    return undefined;
-  }
-}
-
-function readWorkerBuildJobLogRecord(value: JsonValue): WorkerBuildJobLogRecord | undefined {
-  if (!isJsonObject(value) || typeof value.type !== 'string') {
-    return undefined;
-  }
-  if (value.type === 'failure') {
-    return typeof value.message === 'string' ? { message: value.message, type: 'failure' } : undefined;
-  }
-  if (value.type === 'progress') {
-    const progress: DockerProgressLine | undefined = readDockerProgressLine(value.progress);
-    return progress === undefined ? undefined : { progress, type: 'progress' };
-  }
-  if (value.type === 'result') {
-    const result: DockerBuildImageResult | undefined = readDockerBuildImageResult(value.result);
-    return result === undefined ? undefined : { result, type: 'result' };
-  }
-  return undefined;
-}
-
-function readDockerProgressLine(value: JsonValue | undefined): DockerProgressLine | undefined {
-  if (
-    !isJsonObject(value) ||
-    typeof value.message !== 'string' ||
-    (value.stream !== 'stderr' && value.stream !== 'stdout')
-  ) {
-    return undefined;
-  }
-  return { message: value.message, stream: value.stream };
-}
-
-function readDockerBuildImageResult(value: JsonValue | undefined): DockerBuildImageResult | undefined {
-  if (!isJsonObject(value) || typeof value.imageRef !== 'string' || typeof value.pushed !== 'boolean') {
-    return undefined;
-  }
-  return { imageRef: value.imageRef, pushed: value.pushed };
-}
-
-function isJsonObject(value: JsonValue | undefined): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

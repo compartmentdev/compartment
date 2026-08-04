@@ -165,10 +165,13 @@ describe('runWorkerBuildJob', (): void => {
       options.onLogError?.(new KubeJobLogAttachmentError(new Error('container logs unavailable')));
       return await Promise.resolve(successfulResult(finalize, '#6 done'));
     });
+    const reporter: Mock = vi.fn();
 
-    await expect(runWorkerBuildJob({ runJob }, buildConfig(), buildInput(vi.fn()))).resolves.toMatchObject({
+    await expect(runWorkerBuildJob({ runJob }, buildConfig(), buildInput(reporter))).resolves.toMatchObject({
       pushed: true,
     });
+    expect(reporter).toHaveBeenCalledOnce();
+    expect(reporter).toHaveBeenCalledWith({ message: '#6 done', stream: 'stdout' });
     expect(finalize).toHaveBeenCalledOnce();
   });
 
