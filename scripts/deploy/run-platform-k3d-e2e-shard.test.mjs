@@ -90,6 +90,7 @@ describe('platform k3d e2e shard runner', () => {
   it('does not expose managed-install fixtures through host ports', () => {
     const environment = buildPlatformK3dShardEnvironment('managed-install', {});
 
+    expect(environment).not.toHaveProperty('COMPARTMENT_E2E_BUILD_MATRIX_PARTITION');
     expect(environment.COMPARTMENT_E2E_MANAGED_ACME_PORT).toBeUndefined();
     expect(environment.COMPARTMENT_E2E_MANAGED_BROKER_PORT).toBeUndefined();
   });
