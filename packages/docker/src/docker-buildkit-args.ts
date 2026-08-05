@@ -25,8 +25,6 @@ export function buildDockerfileBuildctlArgs(input: BuildKitDockerfileBuildctlInp
     ...buildBuildKitBuildArgOpts(input.input.buildEnv),
     ...buildBuildKitLabelOpts(input.input.labels),
     ...buildBuildKitCacheArgs(input.input),
-    '--opt',
-    'attest:sbom=',
     '--output',
     buildImageOutput(input.input.pushImageTag ?? input.input.imageTag, input.input.pushImageInsecureRegistry),
     '--metadata-file',
@@ -42,8 +40,6 @@ export function buildRailpackImageBuildctlArgs(input: BuildKitRailpackImageBuild
     ...buildRailpackSecretsHashOpt(input.railpackSecrets.railpackConfigEnv),
     ...buildRailpackSecretArgs(input.railpackSecrets.secretFiles),
     ...buildBuildKitCacheArgs(input.input),
-    '--opt',
-    'attest:sbom=',
     '--output',
     buildImageOutput(input.input.pushImageTag ?? input.input.imageTag, input.input.pushImageInsecureRegistry),
     '--metadata-file',
@@ -89,7 +85,7 @@ function buildRailpackSecretsHashOpt(buildEnv: Record<string, string>): string[]
 }
 
 function buildImageOutput(imageTag: string, insecureRegistry: boolean | undefined): string {
-  return `type=image,name=${imageTag},push=true,oci-mediatypes=true,oci-artifact=true${
+  return `type=image,name=${imageTag},push=true,oci-mediatypes=true${
     insecureRegistry === true ? ',registry.insecure=true' : ''
   }`;
 }

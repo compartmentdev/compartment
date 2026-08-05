@@ -5,7 +5,6 @@ import { readDockerImageRepository } from './docker-image-ref';
 import { readBuildKitAddress, runBuildctlCommandWithOptionalProgressReporter } from './buildkit-command';
 import { buildDockerfileBuildctlArgs, buildRailpackImageBuildctlArgs } from './docker-buildkit-args';
 import { readPushedBuildKitImageMetadata } from './docker-buildkit-metadata';
-import { verifyPushedBuildKitSbom } from './docker-buildkit-sbom';
 import { buildRailpackPlanPaths } from './docker-build-plan';
 import type { RailpackBuildSecrets, RailpackPlanPaths } from './docker-build.types';
 import type { BuildKitPushedImageMetadata } from './docker-buildkit.types';
@@ -34,25 +33,11 @@ export async function buildDockerImageWithRemoteBuildKit(
       await runBuildKitRailpackBuild(input, buildKitAddress, metadataFile);
     }
 
-    return await readVerifiedBuildResult(input, metadataFile);
+    const metadata: BuildKitPushedImageMetadata = await readPushedBuildKitImageMetadata(metadataFile);
+    return { imageRef: `${readDockerImageRepository(input.imageTag)}@${metadata.digest}`, pushed: true };
   } finally {
     await rm(metadataDirectory, { force: true, recursive: true });
   }
-}
-
-async function readVerifiedBuildResult(
-  input: DockerBuildImageInput,
-  metadataFile: string,
-): Promise<DockerBuildImageResult> {
-  const pushImageTag: string = input.pushImageTag ?? input.imageTag;
-  const metadata: BuildKitPushedImageMetadata = await readPushedBuildKitImageMetadata(metadataFile);
-  await verifyPushedBuildKitSbom(
-    pushImageTag,
-    metadata.digest,
-    input.pushImageInsecureRegistry === true,
-    input.pushRegistryCredentials,
-  );
-  return { imageRef: `${readDockerImageRepository(input.imageTag)}@${metadata.digest}`, pushed: true };
 }
 
 async function runBuildKitDockerfileBuild(

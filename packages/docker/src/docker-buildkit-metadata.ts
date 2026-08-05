@@ -26,7 +26,7 @@ function parseBuildKitImageMetadata(metadataText: string): BuildKitImageMetadata
 
 function readBuildKitImageDigest(metadata: BuildKitImageMetadata): string {
   if (typeof metadata['containerimage.digest'] === 'string' && metadata['containerimage.digest'] !== '') {
-    return metadata['containerimage.digest'];
+    return requireSha256Digest(metadata['containerimage.digest']);
   }
 
   const descriptor: BuildKitImageMetadataDescriptor | null | undefined = metadata['containerimage.descriptor'];
@@ -36,8 +36,16 @@ function readBuildKitImageDigest(metadata: BuildKitImageMetadata): string {
     typeof descriptor.digest === 'string' &&
     descriptor.digest !== ''
   ) {
-    return descriptor.digest;
+    return requireSha256Digest(descriptor.digest);
   }
 
   throw new Error('Expected BuildKit metadata to include the pushed image digest.');
+}
+
+function requireSha256Digest(digest: string): string {
+  if (!/^sha256:[a-f0-9]{64}$/.test(digest)) {
+    throw new Error('Expected BuildKit metadata to include a valid SHA-256 image digest.');
+  }
+
+  return digest;
 }
