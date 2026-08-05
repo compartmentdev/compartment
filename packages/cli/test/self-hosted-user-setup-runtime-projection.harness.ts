@@ -135,7 +135,7 @@ async function waitForInspectImageRef(
   expectedImageRef: string,
   deadline: number,
 ): Promise<void> {
-  let lastObservation: RuntimeImageObservation = { imageRef: null, state: 'deployment absent' };
+  let lastObservation: RuntimeImageObservation;
   do {
     const inspect: DeploymentInspectResponse = await cli.runJson(
       `inspect --project ${projectName}`,
