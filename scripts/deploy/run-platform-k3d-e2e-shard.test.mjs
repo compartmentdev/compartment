@@ -129,6 +129,9 @@ describe('platform k3d e2e shard runner', () => {
 
   it('assigns every existing e2e suite and gate to one explicit shard', () => {
     expect(readPlatformK3dShardSuites('install-ha-network-policy')).toEqual(['install', 'ha', 'network-policy']);
+    expect(buildPlatformK3dShardEnvironment('install-ha-network-policy', {})).toMatchObject({
+      COMPARTMENT_E2E_HIGH_AVAILABILITY: '1',
+    });
     for (const shard of [
       'build-matrix-a-1',
       'build-matrix-a-2',

@@ -468,6 +468,16 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).not.toContain('startupStage:');
   });
 
+  it('enables two replicas only for the high-availability fixture', () => {
+    const standardValues = renderPlatformK3dValues(createTestImageDigests(), false, false);
+    const highAvailabilityValues = renderPlatformK3dValues(createTestImageDigests(), false, true);
+
+    expect(standardValues).not.toContain('api:\n  replicas: 2');
+    for (const component of ['api', 'worker', 'projectProvisioner', 'edge', 'caddy']) {
+      expect(highAvailabilityValues).toContain(`${component}:\n  replicas: 2`);
+    }
+  });
+
   it('keeps registry TLS independent in previous-version upgrade values', () => {
     const values = renderPreviousPlatformK3dValues();
 

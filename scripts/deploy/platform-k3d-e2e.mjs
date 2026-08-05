@@ -103,6 +103,7 @@ export function readPlatformK3dEnvironment(env) {
     keepOnFailure: readBooleanEnv(env, 'COMPARTMENT_E2E_KEEP_ON_FAILURE'),
     gvisorAvailable: readBooleanEnv(env, 'COMPARTMENT_E2E_GVISOR_AVAILABLE'),
     gvisorEnabled: readBooleanEnv(env, 'COMPARTMENT_E2E_GVISOR_ENABLED'),
+    highAvailability: readBooleanEnv(env, 'COMPARTMENT_E2E_HIGH_AVAILABILITY'),
     managedNamespace: readNameEnv(env, 'COMPARTMENT_E2E_MANAGED_NAMESPACE', 'compartment-managed-e2e'),
     managedPlatformValuesPath: readStatePathEnv(
       env,
@@ -263,8 +264,9 @@ export function isConsoleReadyStatus(status) {
 export function renderPlatformK3dValues(
   imageDigestsByServiceName,
   gvisorAvailable = platformEnvironment.gvisorAvailable,
+  highAvailability = platformEnvironment.highAvailability,
 ) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorAvailable)}ingress:\n  className: ${ingressClassName}\n${renderRegistryTlsValues()}platform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\nbuildkit:\n  namespace: ${platformNamespace}-build\n`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorAvailable)}${renderHighAvailabilityValues(highAvailability)}ingress:\n  className: ${ingressClassName}\n${renderRegistryTlsValues()}platform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\nbuildkit:\n  namespace: ${platformNamespace}-build\n`;
 }
 
 export function renderPreviousPlatformK3dValues() {
@@ -292,6 +294,13 @@ function renderRegistryTlsValues() {
 function renderSandboxRuntimeValues(gvisorAvailable) {
   const runtimeClassName = gvisorAvailable ? 'gvisor' : 'compartment-e2e-runc';
   return `sandboxRuntime:\n  runtimeClassName: ${runtimeClassName}\n`;
+}
+
+function renderHighAvailabilityValues(highAvailability) {
+  if (!highAvailability) {
+    return '';
+  }
+  return 'api:\n  replicas: 2\nworker:\n  replicas: 2\nprojectProvisioner:\n  replicas: 2\nedge:\n  replicas: 2\ncaddy:\n  replicas: 2\n';
 }
 function renderPlatformImageValues(imageDigestsByServiceName) {
   const imageValues = platformK3dServiceNames
