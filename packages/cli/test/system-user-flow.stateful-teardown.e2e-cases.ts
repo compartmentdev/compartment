@@ -48,7 +48,6 @@ import {
   type DeploymentLogLine,
   type DeploymentLogsResponse,
   type DeploymentInspectResponse,
-  type DeploymentInspectTarget,
   type DeploymentReadSummary,
   type DeploymentStatusResponse,
   type InviteUserResponse,
@@ -75,6 +74,7 @@ import {
 } from '@compartment/contracts';
 
 import type { SelfHostedUserSetupCommandResult } from './self-hosted-user-setup-command.harness';
+import { expectDeploymentRuntimeImageProjection } from './self-hosted-user-setup-runtime-projection.harness';
 import {
   expectSelfHostedUserSetupStepCompleted,
   selfHostedUserSetupTimeoutMs,
@@ -97,7 +97,6 @@ import {
   expectAuditEvents,
   readAuditExportEventTypes,
   requireActivationToken,
-  requireDeploymentRuntimeImageRef,
   requireRouteUrl,
   requireSingleActiveDeployment,
   requireSingleInspectedActiveDeployment,
@@ -198,16 +197,6 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
         app.serviceName,
       );
       context.activeDeployment = activeDeployment;
-      const rollbackTargetInspectPayload: DeploymentInspectResponse = await admin.runJson(
-        `inspect --project ${app.projectName}`,
-        deploymentInspectResponseSchema,
-      );
-      const rollbackTargetDeployment: DeploymentInspectTarget = requireSingleInspectedActiveDeployment(
-        rollbackTargetInspectPayload,
-        app.serviceName,
-      );
-      const rollbackTargetRuntimeImageRef: string = requireDeploymentRuntimeImageRef(rollbackTargetDeployment);
-      context.rollbackTargetRuntimeImageRef = rollbackTargetRuntimeImageRef;
 
       const backupShowPayload: ResourceBackupShowResponse = await admin.runJson(
         `resource backup show --project ${app.projectName} --backup ${backupId}`,
@@ -257,15 +246,7 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
   it(
     'case 6/8: redeploys, rolls back, and promotes staging to production',
     async (): Promise<void> => {
-      const {
-        app,
-        admin,
-        routeUrl,
-        activeDeployment,
-        rollbackTargetRuntimeImageRef,
-        adminAppSessionCookie,
-        completedCaseCount,
-      } = context;
+      const { app, admin, routeUrl, activeDeployment, adminAppSessionCookie, completedCaseCount } = context;
       expectSelfHostedUserSetupStepCompleted(completedCaseCount, 5);
       await admin.runJson(
         `variable group put ${app.variableGroupName} E2E_MESSAGE ${rollbackMessage}`,
@@ -308,15 +289,7 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
       await expectAppEnvMessage(routeUrl, adminAppSessionCookie, rollbackMessage);
       await expectAppBuildMessage(routeUrl, adminAppSessionCookie, appBuildMessage);
 
-      const rollbackInspectPayload: DeploymentInspectResponse = await admin.runJson(
-        `inspect --project ${app.projectName}`,
-        deploymentInspectResponseSchema,
-      );
-      expect(
-        requireDeploymentRuntimeImageRef(
-          requireSingleInspectedActiveDeployment(rollbackInspectPayload, app.serviceName),
-        ),
-      ).toBe(rollbackTargetRuntimeImageRef);
+      await expectDeploymentRuntimeImageProjection(admin, app.projectName, app.serviceName, rolledBackDeployment.id);
 
       const stagingDeployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
         'deploy --env staging',

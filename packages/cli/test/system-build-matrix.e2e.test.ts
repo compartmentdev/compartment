@@ -11,7 +11,6 @@ import {
   projectResponseSchema,
   variableResponseSchema,
   type DeploymentInspectResponse,
-  type DeploymentInspectRuntimeSummary,
   type DeploymentInspectTarget,
   type DeploymentLogLine,
   type DeploymentLogsResponse,
@@ -34,6 +33,7 @@ import {
   type SelfHostedDeployCommandResponse,
 } from './self-hosted-user-setup-cli-response.harness';
 import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
+import { expectDeploymentRuntimeImageProjection } from './self-hosted-user-setup-runtime-projection.harness';
 import {
   buildSelfHostedAdvertisedCompartmentUrl,
   buildSelfHostedAppHostname,
@@ -598,10 +598,6 @@ async function expectMultiServiceRollback(
     `status --project ${fixture.name}`,
     deploymentStatusCommandResponseParser,
   );
-  const firstInspect: DeploymentInspectResponse = await admin.runJson(
-    `inspect --project ${fixture.name}`,
-    deploymentInspectResponseSchema,
-  );
   const redeployedServices: DeploymentReadSummary[] = [];
 
   for (const service of fixture.services) {
@@ -617,11 +613,6 @@ async function expectMultiServiceRollback(
     `rollback --project ${fixture.name}`,
     deploymentStatusResponseSchema,
   );
-  const rollbackInspect: DeploymentInspectResponse = await admin.runJson(
-    `inspect --project ${fixture.name}`,
-    deploymentInspectResponseSchema,
-  );
-
   expect(rollbackPayload.deployments).toHaveLength(fixture.services.length);
   for (const service of fixture.services) {
     const redeployedService: DeploymentReadSummary | undefined = redeployedServices.find(
@@ -636,20 +627,9 @@ async function expectMultiServiceRollback(
     expect(rollbackDeployment.id).not.toBe(firstDeployment.id);
     expect(rollbackDeployment.operation.type).toBe('deployment.rollback');
     expect(rollbackDeployment.status).toBe('succeeded');
-    expect(requireInspectRuntimeImageRef(rollbackInspect, service.name)).toBe(
-      requireInspectRuntimeImageRef(firstInspect, service.name),
-    );
+    await expectDeploymentRuntimeImageProjection(admin, fixture.name, service.name, rollbackDeployment.id);
   }
   await expectProxyRoute(fixture, requireServiceRouteUrl(rollbackPayload, 'web'), runtime);
-}
-
-function requireInspectRuntimeImageRef(response: DeploymentInspectResponse, serviceName: string): string {
-  const runtime: DeploymentInspectRuntimeSummary | null = requireServiceInspectTarget(response, serviceName).runtime;
-  if (runtime === null) {
-    throw new Error(`Expected inspect runtime for ${serviceName}.`);
-  }
-
-  return runtime.imageRef;
 }
 
 async function expectEphemeralGVisorBuildPod(deployment: Promise<SelfHostedDeployCommandResponse>): Promise<void> {

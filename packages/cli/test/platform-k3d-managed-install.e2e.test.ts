@@ -27,7 +27,7 @@ import {
   readManagedInstallBrokerState,
   readManagedInstallPublicDnsAddresses,
   renewManagedInstallWildcardCertificate,
-  waitForManagedDomainBrokerObservation,
+  waitForManagedDomainBrokerChallengeCleanup,
   type ManagedDomainAuditObservation,
   type ManagedDomainBrokerObservation,
   type ManagedInstallBrokerState,
@@ -107,7 +107,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       expect(freshIdentity.principal.email).toBe(ownerEmail);
       expect(freshIdentity.currentOrganization?.slug).toBe(organizationSlug);
 
-      const broker: ManagedDomainBrokerObservation = await waitForManagedDomainBrokerObservation();
+      const broker: ManagedDomainBrokerObservation = await waitForManagedDomainBrokerChallengeCleanup(1);
       expect(broker.managedDomains[0]).toMatchObject({
         requestedLabelSource: organizationSlug,
         targets: [{ type: 'A', value: managedIngressIpv4 }],
@@ -133,6 +133,9 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       expect(
         broker.audit.some((event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_cleaned'),
       ).toBe(true);
+      const cleanedChallengeCount: number = broker.audit.filter(
+        (event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_cleaned',
+      ).length;
       expect(
         broker.audit
           .filter((event: ManagedDomainAuditObservation): boolean => event.event.startsWith('challenge_'))
@@ -142,7 +145,9 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
           ),
       ).toBe(true);
       await renewManagedInstallWildcardCertificate();
-      const renewedBroker: ManagedDomainBrokerObservation = await waitForManagedDomainBrokerObservation();
+      const renewedBroker: ManagedDomainBrokerObservation = await waitForManagedDomainBrokerChallengeCleanup(
+        cleanedChallengeCount + 1,
+      );
       const presentedChallenges: ManagedDomainAuditObservation[] = renewedBroker.audit.filter(
         (event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_presented',
       );

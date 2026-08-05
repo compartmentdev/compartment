@@ -646,7 +646,7 @@ export function isTransientKubernetesApiFailure(result, allowNotReady = false, a
     /the connection to the server .* was refused/u.test(output) ||
     /get "?https?:\/\/[^"]+"?: dial tcp [^\s]+: connect: connection refused/u.test(output) ||
     output.includes('the server is currently unable to handle the request') ||
-    (allowNotReady && output.includes('not ready')) ||
+    (allowNotReady && (output.includes('not ready') || output.includes('readyz check failed'))) ||
     (allowResourceNotFound && output.includes('error from server (notfound)'))
   );
 }

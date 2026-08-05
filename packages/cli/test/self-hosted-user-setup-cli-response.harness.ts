@@ -102,14 +102,6 @@ export function requireSingleInspectedActiveDeployment(
   return deployments[0];
 }
 
-export function requireDeploymentRuntimeImageRef(deployment: DeploymentInspectTarget): string {
-  if (deployment.runtime === null) {
-    throw new Error(`Expected inspected deployment ${deployment.id} to include runtime image ref.`);
-  }
-
-  return deployment.runtime.imageRef;
-}
-
 export function expectAuditEvents(response: AuditEventListResponse, eventTypes: readonly string[]): void {
   const actualEventTypes: Set<string> = new Set<string>(
     response.events.map((event: AuditEventSummary): string => event.eventType),
