@@ -1,6 +1,6 @@
 {
   "name": "@compartment/eslint-plugin",
-  "version": "0.10.5",
+  "version": "0.10.6",
   "private": true,
   "type": "module",
   "exports": {
