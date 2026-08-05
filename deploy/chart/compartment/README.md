@@ -77,7 +77,7 @@ NetworkPolicy admits that port from cluster ingress sources.
 
 ## High availability
 
-The chart runs `api`, `edge`, `caddy`, `worker`, and `project-provisioner` with two replicas by default. Each Deployment uses a rolling update with
+The chart runs `api`, `edge`, `caddy`, `worker`, and `project-provisioner` with one replica by default. Each Deployment uses a rolling update with
 `maxUnavailable: 0`, a `minAvailable: 1` PodDisruptionBudget when more than one replica is configured, and a soft
 `kubernetes.io/hostname` topology spread constraint. The soft constraint preserves support for single-node clusters;
 multiple schedulable nodes are required for node-failure tolerance.

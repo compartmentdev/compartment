@@ -93,13 +93,13 @@ storage:
   api: 1Gi
 
 api:
-  replicas: 2
+  replicas: 1
 
 worker:
-  replicas: 2
+  replicas: 1
 
 projectProvisioner:
-  replicas: 2
+  replicas: 1
 
 leaderElection:
   leaseDurationMs: 15000
@@ -192,13 +192,13 @@ buildkit:
   serviceCidr: 10.43.0.0/16
 
 edge:
-  replicas: 2
+  replicas: 1
   snapshots:
     enabled: false
     mountPath: /var/lib/compartment/snapshots
 
 caddy:
-  replicas: 2
+  replicas: 1
 
 registry:
   clusterIP: ''

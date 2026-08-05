@@ -9,7 +9,7 @@ release:
   name: compartment
   namespace: default
 tests:
-  - it: renders two replicas rolling availability and soft node spread by default
+  - it: renders one replica and no disruption budgets by default
     set:
       platform: &fullPlatform
         startupStage: full
@@ -19,7 +19,7 @@ tests:
     asserts:
       - equal:
           path: spec.replicas
-          value: 2
+          value: 1
         template: api.yaml
         documentIndex: 1
       - equal:
@@ -34,7 +34,7 @@ tests:
         documentIndex: 1
       - equal:
           path: spec.replicas
-          value: 2
+          value: 1
         template: edge.yaml
         documentIndex: 1
       - equal:
@@ -49,7 +49,7 @@ tests:
         documentIndex: 1
       - equal:
           path: spec.replicas
-          value: 2
+          value: 1
         template: caddy.yaml
         documentIndex: 1
       - equal:
@@ -64,7 +64,7 @@ tests:
         documentIndex: 1
       - equal:
           path: spec.replicas
-          value: 2
+          value: 1
         template: worker.yaml
       - equal:
           path: spec.strategy.rollingUpdate.maxUnavailable
@@ -76,7 +76,7 @@ tests:
         template: worker.yaml
       - equal:
           path: spec.replicas
-          value: 2
+          value: 1
         template: project-provisioner.yaml
       - equal:
           path: spec.strategy.rollingUpdate.maxUnavailable
@@ -104,6 +104,25 @@ tests:
         template: caddy.yaml
         documentIndex: 1
       - hasDocuments:
+          count: 0
+        template: pdb.yaml
+
+  - it: renders disruption budgets when high availability is enabled
+    set:
+      platform:
+        <<: *fullPlatform
+      api:
+        replicas: 2
+      edge:
+        replicas: 2
+      caddy:
+        replicas: 2
+      worker:
+        replicas: 2
+      projectProvisioner:
+        replicas: 2
+    asserts:
+      - hasDocuments:
           count: 5
         template: pdb.yaml
       - equal:
@@ -111,25 +130,6 @@ tests:
           value: 1
         template: pdb.yaml
         documentIndex: 0
-
-  - it: omits disruption budgets for single replicas
-    set:
-      platform:
-        <<: *fullPlatform
-      api:
-        replicas: 1
-      edge:
-        replicas: 1
-      caddy:
-        replicas: 1
-      worker:
-        replicas: 1
-      projectProvisioner:
-        replicas: 1
-    asserts:
-      - hasDocuments:
-          count: 0
-        template: pdb.yaml
 
   - it: grants only namespaced Lease coordination to worker controllers
     set:
@@ -213,5 +213,5 @@ tests:
         template: api-migrate.yaml
         documentIndex: 0
       - hasDocuments:
-          count: 1
+          count: 2
         template: pvc.yaml
