@@ -101,7 +101,7 @@ describe('browser access action visibility', (): void => {
     expect(html).not.toContain('Manage shared access groups and their members.');
   });
 
-  it('renders a users empty state action with the primary button', (): void => {
+  it('renders the current principal as the only user with the primary invite action', (): void => {
     vi.stubGlobal('React', React);
 
     const html: string = renderToStaticMarkup(
@@ -115,13 +115,40 @@ describe('browser access action visibility', (): void => {
       }),
     );
 
-    expect(html).toContain('You do not have any invited users.');
+    expect(html).toContain('admin@example.com');
+    expect(html).toContain('Search users');
+    expect(html).toContain('<table');
     expect(html).toContain('Invite user');
     expect(html).toContain('bg-primary text-primary-foreground');
     expect(html).not.toContain('button-accent-surface');
+    expect(html).toContain('lucide-user-plus');
+    expect(html).not.toContain('You do not have any invited users.');
+    expect(html).not.toContain('empty-states/users.svg');
+  });
+
+  it('renders an explicit invitation-only state without the users table', (): void => {
+    vi.stubGlobal('React', React);
+
+    const html: string = renderToStaticMarkup(
+      React.createElement(UsersView, {
+        data: createUsersPageResult(['organization.user.invite'], {
+          mode: 'create',
+          totalUsers: 0,
+          users: [],
+        }),
+        onNavigate: vi.fn<BrowserSoftNavigateHandler>(),
+        onUserAction: vi.fn<UserActionHandler>(),
+        setData: vi.fn(),
+      }),
+    );
+
+    expect(html).toContain('You can invite users, but cannot view the member list.');
+    expect(html).toContain('Invite user');
     expect(html).toContain('empty-states/users.svg');
     expect(html).toContain('lucide-mail-plus');
+    expect(html).toContain('placeholder="name@example.com"');
     expect(html).not.toContain('Search users');
+    expect(html).not.toContain('<table');
   });
 
   it('renders a groups empty state action with the primary button', (): void => {

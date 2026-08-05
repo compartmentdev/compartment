@@ -20,7 +20,6 @@ import { accessDetailDrawer } from '../support/access-drawer';
 import { isSuccessfulApiMutationResponse, isSuccessfulApiResponse } from '../support/browser-api';
 import { isConsolePathname } from '../support/console-paths';
 import { readVisibleEffectivePermissionKeys } from '../support/effective-permissions';
-import { type PageReadyState, waitForPageReadyState } from '../support/page-readiness';
 
 interface PasswordResetApiRequestInput {
   csrfCookieName: string;
@@ -57,14 +56,12 @@ interface PasswordResetErrorDetails {
 }
 
 export class UsersPage {
-  private readonly emptyStateMessage: Locator;
   private readonly inviteUserButton: Locator;
   private readonly organizationSlug: string;
   private readonly page: Page;
   private readonly searchInput: Locator;
 
   constructor(page: Page, organizationSlug: string) {
-    this.emptyStateMessage = page.getByText('You do not have any invited users.', { exact: true });
     this.inviteUserButton = page.getByRole('button', { name: 'Invite user' });
     this.organizationSlug = organizationSlug;
     this.page = page;
@@ -116,14 +113,8 @@ export class UsersPage {
       this.page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Users/ }),
     ).toHaveAttribute('aria-current', 'page');
     await expect(this.page.getByRole('heading', { name: 'Users' })).toBeVisible();
-    const readyState: PageReadyState = await waitForPageReadyState(this.searchInput, this.emptyStateMessage);
-
-    if (readyState === 'content') {
-      await expect(this.page.getByRole('table')).toBeVisible();
-      return;
-    }
-
-    await expect(this.inviteUserButton).toBeVisible();
+    await expect(this.searchInput).toBeVisible();
+    await expect(this.page.getByRole('table')).toBeVisible();
   }
 
   async expectUserVisible(email: string): Promise<void> {
