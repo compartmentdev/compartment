@@ -3,16 +3,19 @@ import type {
   ManagedVmObservedState,
   ManagedVmPortConflict,
   ManagedVmPreflightCheck,
+  ManagedVmPreflightCheckStatus,
   ManagedVmPreflightResult,
   ManagedVmStateClassification,
 } from './managed-vm-provisioning.types';
-import { managedVmRequiredEndpointCount } from './managed-vm-network.service';
 import { managedVmReleaseMetadata } from './managed-vm-release-metadata.service';
 import { areIpv4CidrsOverlapping, isGloballyRoutableIpv4 } from './managed-vm-network-address.service';
 
-const minimumCpuCount: number = 2;
-const minimumMemoryBytes: number = 4 * 1024 * 1024 * 1024;
-const minimumFreeBytes: number = 50 * 1024 * 1024 * 1024;
+const gibibyte: number = 1024 * 1024 * 1024;
+const recommendedCpuCount: number = 2;
+const recommendedMemoryBytes: number = 4 * gibibyte;
+const minimumFreeBytes: number = 20 * gibibyte;
+const recommendedFreeBytes: number = 50 * gibibyte;
+const recommendedFreeInodes: number = 100_000;
 const managedListenerOwners: ReadonlySet<string> = new Set(['k3s', 'traefik']);
 
 export function evaluateManagedVmPreflight(
@@ -36,19 +39,36 @@ function createPreflightChecks(
   publicAddress: string,
 ): ManagedVmPreflightCheck[] {
   return [
-    check('operating-system', inventory.osId === 'ubuntu' && inventory.osVersion === '24.04', 'Ubuntu 24.04 LTS'),
+    createOperatingSystemCheck(inventory),
     check('architecture', inventory.architecture === 'x86_64', 'x86_64'),
     check('systemd', inventory.systemd, 'systemd is running'),
     check('sudo', inventory.sudoAvailable, 'root or sudo escalation is available'),
-    check('archive-extractor', inventory.archiveExtractorAvailable, 'bzip2 is available'),
     check('cgroup-v2', inventory.cgroupV2, 'cgroup v2'),
-    check('kernel-modules', inventory.requiredKernelModules, 'overlay, br_netfilter, and nf_tables'),
-    check('clock', inventory.clockSynchronized, 'system clock is synchronized'),
-    check('cpu', inventory.cpuCount >= minimumCpuCount, `${String(inventory.cpuCount)} CPUs`),
-    check('memory', inventory.memoryBytes >= minimumMemoryBytes, `${String(inventory.memoryBytes)} bytes`),
-    check('storage', inventory.freeBytes >= minimumFreeBytes, `${String(inventory.freeBytes)} bytes free`),
-    check('inodes', inventory.freeInodes > 100_000, `${String(inventory.freeInodes)} inodes free`),
+    ...createResourceChecks(inventory),
     ...createNetworkChecks(inventory, classification, publicAddress),
+  ];
+}
+
+function createOperatingSystemCheck(inventory: ManagedVmHostInventory): ManagedVmPreflightCheck {
+  return warningCheck(
+    'operating-system',
+    inventory.osId === 'ubuntu' && inventory.osVersion === '24.04',
+    'Ubuntu 24.04 LTS',
+    `${inventory.osId} ${inventory.osVersion}; tested on Ubuntu 24.04 LTS`,
+  );
+}
+
+function createResourceChecks(inventory: ManagedVmHostInventory): ManagedVmPreflightCheck[] {
+  return [
+    check('clock', inventory.clockSynchronized, 'system clock is synchronized'),
+    warningCheck('cpu', inventory.cpuCount >= recommendedCpuCount, `${String(inventory.cpuCount)} CPUs`),
+    warningCheck('memory', inventory.memoryBytes >= recommendedMemoryBytes, `${String(inventory.memoryBytes)} bytes`),
+    createStorageCheck(inventory.freeBytes),
+    warningCheck(
+      'inodes',
+      inventory.freeInodes >= recommendedFreeInodes,
+      `${String(inventory.freeInodes)} inodes free`,
+    ),
   ];
 }
 
@@ -63,24 +83,13 @@ function createNetworkChecks(
     check('hostname', inventory.hostname.trim() !== '', inventory.hostname),
     check('public-interface', inventory.publicInterface !== '', inventory.publicInterface),
     check('firewall', inventory.firewall !== 'firewalld', `${inventory.firewall} firewall classified`),
-    check(
-      'downloads',
-      inventory.reachableEndpoints.length === managedVmRequiredEndpointCount,
-      `${String(inventory.reachableEndpoints.length)}/${String(managedVmRequiredEndpointCount)} endpoints reachable`,
-    ),
-    ...createPublicAddressChecks(inventory, publicAddress),
+    ...createPublicAddressChecks(publicAddress),
     check('host-state', classification === 'fresh' || classification === 'resume', classification),
   ];
 }
 
-function createPublicAddressChecks(
-  inventory: ManagedVmHostInventory,
-  publicAddress: string,
-): ManagedVmPreflightCheck[] {
+function createPublicAddressChecks(publicAddress: string): ManagedVmPreflightCheck[] {
   const isPublicIpv4: boolean = isGloballyRoutableIpv4(publicAddress);
-  const matchesHost: boolean = inventory.localIpv4Addresses.includes(publicAddress);
-  const localAddresses: string =
-    inventory.localIpv4Addresses.length === 0 ? 'none' : inventory.localIpv4Addresses.join(', ');
   return [
     check(
       'public-ipv4',
@@ -88,13 +97,6 @@ function createPublicAddressChecks(
       isPublicIpv4
         ? `public IPv4 ${publicAddress}`
         : `observed address ${publicAddress} is not a globally routable IPv4 address`,
-    ),
-    check(
-      'public-address-match',
-      matchesHost,
-      matchesHost
-        ? `local and observed IPv4 agree (${publicAddress})`
-        : `observed public IPv4 ${publicAddress} is not assigned to this host; local IPv4 addresses: ${localAddresses}`,
     ),
   ];
 }
@@ -124,7 +126,7 @@ function hasNoForeignPortConflicts(inventory: ManagedVmHostInventory, retainedMa
 
 export function assertManagedVmPreflight(result: ManagedVmPreflightResult): void {
   const failures: readonly ManagedVmPreflightCheck[] = result.checks.filter(
-    (item: ManagedVmPreflightCheck): boolean => !item.passed,
+    (item: ManagedVmPreflightCheck): boolean => item.status === 'failed',
   );
   if (failures.length === 0) {
     return;
@@ -149,8 +151,25 @@ function formatFailure(item: ManagedVmPreflightCheck): string {
   return `- ${item.name}: ${item.detail}`;
 }
 
+function createStorageCheck(freeBytes: number): ManagedVmPreflightCheck {
+  const detail: string = `${String(freeBytes)} bytes free`;
+  return freeBytes < minimumFreeBytes
+    ? check('storage', false, detail)
+    : warningCheck('storage', freeBytes >= recommendedFreeBytes, detail);
+}
+
 function check(name: string, passed: boolean, detail: string): ManagedVmPreflightCheck {
-  return { detail, name, passed };
+  return passed ? { detail, name, passed: true, status: 'passed' } : { detail, name, passed: false, status: 'failed' };
+}
+
+function warningCheck(
+  name: string,
+  recommended: boolean,
+  detail: string,
+  warningDetail: string = detail,
+): ManagedVmPreflightCheck {
+  const status: ManagedVmPreflightCheckStatus = recommended ? 'passed' : 'warning';
+  return { detail: recommended ? detail : warningDetail, name, passed: true, status };
 }
 
 function formatPortConflicts(inventory: ManagedVmHostInventory): string {

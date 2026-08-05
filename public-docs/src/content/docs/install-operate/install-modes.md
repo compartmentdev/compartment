@@ -5,7 +5,7 @@ description: Choose between a managed VM installation and an existing Kubernetes
 
 Compartment always runs on Kubernetes. `compartment install` supports two installation targets:
 
-- **Managed VM** provisions and owns k3s on a clean Ubuntu VM, then installs Compartment into that cluster.
+- **Managed VM** provisions and owns k3s on a clean VM, then installs Compartment into that cluster.
 - **Existing Kubernetes** installs Compartment into a cluster whose lifecycle, nodes, ingress, storage, and backups you
   operate.
 
@@ -22,8 +22,8 @@ configured. The installer shows the selected target and a mutation review before
 
 ## Managed VM
 
-Use a fresh Ubuntu 24.04 LTS x86_64 VM when you want Compartment to manage the Kubernetes installation as well as the
-platform:
+Use a fresh x86_64 VM when you want Compartment to manage the Kubernetes installation as well as the platform. Ubuntu
+24.04 LTS is tested:
 
 ```bash
 compartment install --target vm

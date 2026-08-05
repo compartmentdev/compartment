@@ -27,6 +27,7 @@ import {
 } from './managed-vm-state.service';
 import { acquireManagedVmLock } from './managed-vm-lock.service';
 import { isManagedVmInstallStageComplete } from './managed-vm-stage.service';
+import { loadManagedVmKernelModules } from './managed-vm-kernel-modules.service';
 import { isSeaRuntime } from '../sea';
 import { access } from 'node:fs/promises';
 import { constants } from 'node:fs';
@@ -37,6 +38,7 @@ export async function provisionManagedVmCluster(input: ManagedVmProvisionInput):
   const releaseLock: () => Promise<void> = await acquireManagedVmLock();
   let artifacts: ManagedVmDownloadedArtifacts | undefined;
   try {
+    await loadManagedVmKernelModules();
     artifacts = await downloadManagedVmArtifacts(managedVmReleaseMetadata.artifacts);
     return await runProvisioningStages(input, artifacts);
   } finally {
