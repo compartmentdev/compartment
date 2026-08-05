@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.5](https://github.com/compartmentdev/compartment/compare/v0.10.4...v0.10.5) (2026-08-05)
+
+
+### Bug Fixes
+
+* **worker:** harden ephemeral gvisor builds ([#293](https://github.com/compartmentdev/compartment/issues/293)) ([9fd95d1](https://github.com/compartmentdev/compartment/commit/9fd95d1d8f62d788780401b4814f3a5d9668a6a3))
+
 ## [0.10.4](https://github.com/compartmentdev/compartment/compare/v0.10.3...v0.10.4) (2026-08-05)
 
 
