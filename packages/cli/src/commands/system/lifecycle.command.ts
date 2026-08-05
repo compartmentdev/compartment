@@ -26,14 +26,9 @@ import type {
   KubernetesSystemUpdateCommandOptions,
   ManagedVmCompositeSystemStatus,
   ManagedVmDiagnoseCommandOptions,
-  ManagedVmResetCommandOptions,
 } from './system.command.types';
 import { createKubernetesSystemUpdateMessage } from './system.command.output';
-import {
-  getManagedVmSystemStatus,
-  resetManagedVmInstallation,
-  updateManagedVmInstallation,
-} from '../../services/managed-vm-lifecycle.service';
+import { getManagedVmSystemStatus, updateManagedVmInstallation } from '../../services/managed-vm-lifecycle.service';
 import { hasManagedVmInstallation } from '../../services/managed-vm-installation.service';
 import { createManagedVmDiagnosis } from '../../services/managed-vm-diagnosis.service';
 import { managedVmKubeconfigPath, managedVmValuesPath } from '../../services/managed-vm-cluster.service';
@@ -47,7 +42,6 @@ export function registerKubernetesSystemLifecycleCommands(
   registerRestartCommand(program, dependencies);
   registerUpdateCommand(program, dependencies);
   registerDiagnoseCommand(program, dependencies);
-  registerResetCommand(program, dependencies);
 }
 
 function registerStatusCommand(program: Command, dependencies: CliCommandDependencies): void {
@@ -198,27 +192,6 @@ function registerDiagnoseCommand(program: Command, dependencies: CliCommandDepen
     .action(async (options: ManagedVmDiagnoseCommandOptions): Promise<void> => {
       const result: ManagedVmDiagnoseResult = await createManagedVmDiagnosis(options.path);
       renderOutput(dependencies.io, options.output, result, `Diagnostic bundle: ${result.bundlePath}`);
-    });
-}
-
-function registerResetCommand(program: Command, dependencies: CliCommandDependencies): void {
-  program
-    .command('reset')
-    .description('Destroy a Compartment-provisioned cluster and its owned host state')
-    .option('--destroy-provisioned-cluster', 'Acknowledge that platform and application data will be lost')
-    .option('--confirm-installation <id>', 'Exact managed installation ID')
-    .option('--output <format>', 'text or json', 'text')
-    .action(async (options: ManagedVmResetCommandOptions): Promise<void> => {
-      if (options.destroyProvisionedCluster !== true || options.confirmInstallation === undefined) {
-        throw new Error('Reset requires --destroy-provisioned-cluster and --confirm-installation <installation-id>.');
-      }
-      await resetManagedVmInstallation({ confirmation: options.confirmInstallation });
-      renderOutput(
-        dependencies.io,
-        options.output,
-        { reset: true },
-        'Provisioned cluster and owned host state removed.',
-      );
     });
 }
 

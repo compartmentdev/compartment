@@ -1,6 +1,15 @@
+export interface KubeCapabilities {
+  add?: string[] | undefined;
+  drop: ['ALL'];
+}
+
+export interface KubeSeccompProfile {
+  type: 'RuntimeDefault';
+}
+
 export interface KubeContainerSecurityContext {
   allowPrivilegeEscalation?: boolean | undefined;
-  capabilities?: { add?: string[] | undefined; drop: ['ALL'] } | undefined;
+  capabilities?: KubeCapabilities | undefined;
   privileged?: false | undefined;
   readOnlyRootFilesystem?: true | undefined;
   runAsGroup?: number | undefined;
@@ -14,5 +23,5 @@ export interface KubePodSecurityContext {
   runAsGroup?: number | undefined;
   runAsNonRoot?: true | undefined;
   runAsUser?: number | undefined;
-  seccompProfile?: { type: 'RuntimeDefault' } | undefined;
+  seccompProfile?: KubeSeccompProfile | undefined;
 }

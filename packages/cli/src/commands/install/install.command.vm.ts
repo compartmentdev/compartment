@@ -116,7 +116,7 @@ async function runPrivilegedManagedVmInstall(
   });
   const adminPassword: string | undefined = await readPrivilegedAdminPassword(options);
   await executeManagedVmPlatformInstall(dependencies, options, preflight, adminPassword);
-  await persistManagedVmStage(state, 'complete');
+  await persistManagedVmStage(state, 'complete', {});
 }
 
 async function executeManagedVmPlatformInstall(

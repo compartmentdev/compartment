@@ -83,6 +83,7 @@ describe('buildDockerImage', (): void => {
     const digest: string = testIndexDigest;
 
     process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
+    stubSpdxRegistryAttestation(testImageManifestDigest, 'registry:5000');
     mockBuildKitImageOutput(digest);
 
     await expect(
@@ -123,6 +124,24 @@ describe('buildDockerImage', (): void => {
     expect(args).toContain(
       'type=registry,ref=registry:5000/compartment-web:build-cache,mode=min,image-manifest=true,oci-mediatypes=true,registry.insecure=true',
     );
+  });
+
+  it('refuses to send push credentials to a different registry host during SBOM verification', async (): Promise<void> => {
+    process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
+    mockBuildKitImageOutput(testIndexDigest);
+
+    await expect(
+      buildDockerImage({
+        contextDirectory: '/tmp/source',
+        imageTag: 'registry.example/compartment-web:art_123',
+        packer: 'dockerfile',
+        pushRegistryCredentials: {
+          password: 'registry-password',
+          serverAddress: 'other-registry.example',
+          username: 'registry-user',
+        },
+      }),
+    ).rejects.toThrow('registry credentials do not match the target registry');
   });
 
   it('resolves the default Dockerfile path against the remote BuildKit context', async (): Promise<void> => {
@@ -431,6 +450,47 @@ describe('buildDockerImage', (): void => {
     ).rejects.toThrow('include an SPDX SBOM attestation');
   });
 
+  it('rejects a registry response that exceeds the verification size limit', async (): Promise<void> => {
+    const oversizedIndex: string = JSON.stringify({ padding: 'x'.repeat(4 * 1024 * 1024) });
+    process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
+    mockBuildKitImageOutput(registryDigest(oversizedIndex));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((): Response => new Response(oversizedIndex, { status: 200 })),
+    );
+
+    await expect(
+      buildDockerImage({
+        contextDirectory: '/tmp/source',
+        imageTag: 'registry.example/compartment-web:art_123',
+        packer: 'dockerfile',
+      }),
+    ).rejects.toThrow('registry response exceeds the size limit');
+  });
+
+  it('reads SBOM manifests and blobs through literal digest paths', async (): Promise<void> => {
+    const requestedUrls: string[] = [];
+    const digest: string = stubSpdxRegistryAttestation(testImageManifestDigest, undefined, requestedUrls);
+    process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
+    mockBuildKitImageOutput(digest);
+
+    await expect(
+      buildDockerImage({
+        contextDirectory: '/tmp/source',
+        imageTag: 'registry.example/compartment-web:art_123',
+        packer: 'dockerfile',
+      }),
+    ).resolves.toMatchObject({ pushed: true });
+
+    const digestReadPaths: string[] = requestedUrls
+      .map((url: string): string => new URL(url).pathname)
+      .filter((path: string): boolean => path.includes('/manifests/') || path.includes('/blobs/'));
+    expect(digestReadPaths.length).toBeGreaterThan(0);
+    expect(digestReadPaths.every((path: string): boolean => path.includes('/sha256:') && !path.includes('%'))).toBe(
+      true,
+    );
+  });
+
   it('rejects an SPDX attestation whose payload does not bind to the pushed image', async (): Promise<void> => {
     const digest: string = stubSpdxRegistryAttestation(`sha256:${'0'.repeat(64)}`);
     process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
@@ -446,12 +506,20 @@ describe('buildDockerImage', (): void => {
   });
 });
 
-function stubSpdxRegistryAttestation(statementSubjectDigest: string = testImageManifestDigest): string {
+function stubSpdxRegistryAttestation(
+  statementSubjectDigest: string = testImageManifestDigest,
+  requiredRegistryHost?: string,
+  requestedUrls?: string[],
+): string {
   const fixture: RegistryAttestationFixture = buildRegistryAttestation(statementSubjectDigest);
   vi.stubGlobal(
     'fetch',
     vi.fn((input: string | URL | Request, init?: RequestInit): Response => {
       const url: string = input instanceof Request ? input.url : String(input);
+      requestedUrls?.push(url);
+      if (requiredRegistryHost !== undefined && new URL(url).host !== requiredRegistryHost) {
+        return new Response(undefined, { status: 404 });
+      }
       const accept: string | null = new Headers(init?.headers).get('Accept');
       if (accept === 'application/vnd.oci.image.index.v1+json') {
         return new Response(fixture.index, { status: 200 });

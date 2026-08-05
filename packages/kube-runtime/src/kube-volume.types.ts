@@ -1,3 +1,7 @@
+export interface KubeEmptyDirVolume {
+  sizeLimit?: string | undefined;
+}
+
 export interface KubeVolumeMount {
   mountPath: string;
   name: string;
@@ -6,7 +10,7 @@ export interface KubeVolumeMount {
 }
 
 export interface KubePodVolume {
-  emptyDir?: { sizeLimit?: string | undefined } | undefined;
+  emptyDir?: KubeEmptyDirVolume | undefined;
   name: string;
   persistentVolumeClaim?: { claimName: string; readOnly?: boolean | undefined } | undefined;
   projected?:

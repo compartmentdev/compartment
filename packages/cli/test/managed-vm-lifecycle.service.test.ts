@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ManagedVmProvisionerState, ManagedVmUpdateState } from '../src/services/managed-vm-provisioning.types';
 import { managedVmReleaseMetadata } from '../src/services/managed-vm-release-metadata.service';
 import type * as ManagedVmStateService from '../src/services/managed-vm-state.service';
-import { managedVmOwnedPaths, managedVmPreviousOwnedPaths } from '../src/services/managed-vm-state.service';
+import { managedVmOwnedPaths } from '../src/services/managed-vm-state.service';
 
 type ImportOriginalManagedVmStateService = () => Promise<typeof ManagedVmStateService>;
 
@@ -12,13 +12,8 @@ interface LifecycleMocks {
   completeUpdate: Mock;
   digest: Mock;
   execa: Mock;
-  lstat: Mock;
   persistUpdate: Mock;
   readState: Mock;
-  readdir: Mock;
-  removeFirewall: Mock;
-  rm: Mock;
-  rmdir: Mock;
   verifyComponents: Mock;
   verifySandbox: Mock;
 }
@@ -30,13 +25,8 @@ const mocks: LifecycleMocks = vi.hoisted(
     completeUpdate: vi.fn(),
     digest: vi.fn(),
     execa: vi.fn(),
-    lstat: vi.fn(),
     persistUpdate: vi.fn(),
     readState: vi.fn(),
-    readdir: vi.fn(),
-    removeFirewall: vi.fn(),
-    rm: vi.fn(),
-    rmdir: vi.fn(),
     verifyComponents: vi.fn(),
     verifySandbox: vi.fn(),
   }),
@@ -54,18 +44,6 @@ const state: ManagedVmProvisionerState = {
   startedAt: '2026-08-03T00:00:00.000Z',
   updatedAt: '2026-08-03T00:00:00.000Z',
 };
-vi.mock(
-  'node:fs/promises',
-  (): Record<string, Mock> => ({
-    access: vi.fn(),
-    lstat: mocks.lstat,
-    mkdtemp: vi.fn(),
-    readdir: mocks.readdir,
-    rm: mocks.rm,
-    rmdir: mocks.rmdir,
-    writeFile: vi.fn(),
-  }),
-);
 vi.mock('../src/services/managed-vm-command.service', (): Record<string, Mock> => ({ execa: mocks.execa }));
 vi.mock(
   '../src/services/managed-vm-cluster.service',
@@ -81,13 +59,7 @@ vi.mock(
 );
 vi.mock(
   '../src/services/managed-vm-sandbox-runtime.service',
-  (): Record<string, Mock> => ({
-    verifyManagedVmSandboxRuntime: mocks.verifySandbox,
-  }),
-);
-vi.mock(
-  '../src/services/managed-vm-firewall.service',
-  (): Record<string, Mock> => ({ removeManagedVmFirewall: mocks.removeFirewall }),
+  (): Record<string, Mock> => ({ verifyManagedVmSandboxRuntime: mocks.verifySandbox }),
 );
 vi.mock(
   '../src/services/managed-vm-state.service',
@@ -108,16 +80,7 @@ describe('managed VM lifecycle ownership', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks();
     mocks.execa.mockResolvedValue({ exitCode: 0, stderr: '', stdout: '' });
-    mocks.rmdir.mockResolvedValue(undefined);
-    mocks.lstat.mockImplementation(async (path: string): Promise<{ isDirectory: () => boolean }> => {
-      await Promise.resolve();
-      return { isDirectory: (): boolean => path === '/etc/compartment' };
-    });
     mocks.readState.mockResolvedValue(state);
-    mocks.readdir.mockResolvedValue([
-      { isFile: (): boolean => true, name: 'checkpointgofer' },
-      { isFile: (): boolean => true, name: 'runsc-metric-server' },
-    ]);
     mocks.digest.mockImplementation((value: string): string =>
       value.includes('"metadataVersion":2') ? 'previous-metadata' : 'metadata',
     );
@@ -134,51 +97,10 @@ describe('managed VM lifecycle ownership', (): void => {
     });
   });
 
-  it('uses the upstream uninstall and removes only manifest-owned paths', async (): Promise<void> => {
-    const { resetManagedVmInstallation } = await import('../src/services/managed-vm-lifecycle.service');
-    await resetManagedVmInstallation({ confirmation: state.installationId });
-
-    expect(mocks.execa).toHaveBeenCalledWith('/usr/local/bin/k3s-uninstall.sh', []);
-    expect(mocks.rmdir).toHaveBeenCalledWith('/etc/compartment');
-    expect(mocks.rm).not.toHaveBeenCalledWith('/etc/compartment', expect.anything());
-    expect(mocks.acquireLock).toHaveBeenCalledOnce();
-  });
-
-  it('refuses to recursively remove a managed directory containing unexpected content', async (): Promise<void> => {
-    mocks.rmdir.mockRejectedValue(Object.assign(new Error('not empty'), { code: 'ENOTEMPTY' }));
-    const { resetManagedVmInstallation } = await import('../src/services/managed-vm-lifecycle.service');
-    await expect(resetManagedVmInstallation({ confirmation: state.installationId })).rejects.toThrow('not empty');
-    expect(mocks.rm).not.toHaveBeenCalledWith('/etc/compartment', expect.objectContaining({ recursive: true }));
-  });
-
-  it('refuses reset when the exact installation ID is not provided', async (): Promise<void> => {
-    const { resetManagedVmInstallation } = await import('../src/services/managed-vm-lifecycle.service');
-    await expect(resetManagedVmInstallation({ confirmation: 'wrong' })).rejects.toThrow('exact installation ID');
-    expect(mocks.execa).not.toHaveBeenCalled();
-  });
-
   it('fails closed when managed state exists but is malformed', async (): Promise<void> => {
     mocks.readState.mockRejectedValue(new Error('Managed-VM state is invalid.'));
     const { hasManagedVmInstallation } = await import('../src/services/managed-vm-installation.service');
     await expect(hasManagedVmInstallation()).rejects.toThrow('state is invalid');
-  });
-
-  it('refuses reset when release artifact ownership differs', async (): Promise<void> => {
-    mocks.readState.mockResolvedValue({ ...state, resolvedArtifacts: [] });
-    const { resetManagedVmInstallation } = await import('../src/services/managed-vm-lifecycle.service');
-    await expect(resetManagedVmInstallation({ confirmation: state.installationId })).rejects.toThrow(
-      'release ownership metadata',
-    );
-    expect(mocks.removeFirewall).not.toHaveBeenCalled();
-  });
-
-  it('refuses reset when recorded owned file content no longer matches', async (): Promise<void> => {
-    mocks.assertFileOwnership.mockRejectedValue(new Error('owned host content has changed'));
-    const { resetManagedVmInstallation } = await import('../src/services/managed-vm-lifecycle.service');
-    await expect(resetManagedVmInstallation({ confirmation: state.installationId })).rejects.toThrow(
-      'owned host content has changed',
-    );
-    expect(mocks.removeFirewall).not.toHaveBeenCalled();
   });
 
   it('reports unavailable when k3s version lookup fails', async (): Promise<void> => {
@@ -232,55 +154,41 @@ describe('managed VM lifecycle ownership', (): void => {
     expect(readPlatformResult).not.toHaveBeenCalled();
   });
 
-  it('rejects an older runtime update and permits its explicit reset', async (): Promise<void> => {
+  it('rejects update for an older untrusted runtime state', async (): Promise<void> => {
     const previousState: ManagedVmProvisionerState = {
       ...state,
       metadataDigest: 'previous-metadata',
-      ownedPaths: managedVmPreviousOwnedPaths,
+      ownedPaths: managedVmOwnedPaths,
       releaseMetadata: { ...managedVmReleaseMetadata, metadataVersion: 2 },
     };
     mocks.readState.mockResolvedValue(previousState);
     const updatePlatform: Mock = vi.fn();
-    const { resetManagedVmInstallation, updateManagedVmInstallation } =
-      await import('../src/services/managed-vm-lifecycle.service');
+    const { updateManagedVmInstallation } = await import('../src/services/managed-vm-lifecycle.service');
 
-    await expect(updateManagedVmInstallation(updatePlatform, vi.fn())).rejects.toThrow('Reset and reinstall');
+    await expect(updateManagedVmInstallation(updatePlatform, vi.fn())).rejects.toThrow('Reprovision the VM');
     expect(updatePlatform).not.toHaveBeenCalled();
-    await expect(resetManagedVmInstallation({ confirmation: previousState.installationId })).resolves.toBeUndefined();
   });
 
-  it('refuses a historical reset before mutation when the legacy helper directory has unexpected content', async (): Promise<void> => {
-    const previousState: ManagedVmProvisionerState = {
-      ...state,
-      metadataDigest: 'previous-metadata',
-      ownedPaths: managedVmPreviousOwnedPaths,
-      releaseMetadata: { ...managedVmReleaseMetadata, metadataVersion: 2 },
+  it('rejects a retry when an unrelated owned path changes during a failed platform update', async (): Promise<void> => {
+    let ownedPathChanged: boolean = false;
+    mocks.assertFileOwnership.mockImplementation(async (): Promise<void> => {
+      await Promise.resolve();
+      if (ownedPathChanged) {
+        throw new Error('Managed-VM owned host content has changed; refusing to overwrite or remove it.');
+      }
+    });
+    const failedPlatformUpdate: () => Promise<string> = async (): Promise<string> => {
+      await Promise.resolve();
+      ownedPathChanged = true;
+      throw new Error('Helm update failed');
     };
-    mocks.readState.mockResolvedValue(previousState);
-    mocks.readdir.mockResolvedValue([
-      { isFile: (): boolean => true, name: 'checkpointgofer' },
-      { isFile: (): boolean => true, name: 'operator-file' },
-      { isFile: (): boolean => true, name: 'runsc-metric-server' },
-    ]);
-    const { resetManagedVmInstallation } = await import('../src/services/managed-vm-lifecycle.service');
+    const unexpectedPlatformUpdate: () => Promise<string> = async (): Promise<string> =>
+      await Promise.resolve('unexpected');
+    const { updateManagedVmInstallation } = await import('../src/services/managed-vm-lifecycle.service');
 
-    await expect(resetManagedVmInstallation({ confirmation: previousState.installationId })).rejects.toThrow(
-      'unexpected content in the gVisor helper directory',
+    await expect(updateManagedVmInstallation(failedPlatformUpdate, vi.fn())).rejects.toThrow('Helm update failed');
+    await expect(updateManagedVmInstallation(unexpectedPlatformUpdate, vi.fn())).rejects.toThrow(
+      'owned host content has changed; refusing to overwrite or remove it',
     );
-    expect(mocks.execa).not.toHaveBeenCalled();
-  });
-
-  it('refuses a current reset before mutation when the helper directory has unexpected content', async (): Promise<void> => {
-    mocks.readdir.mockResolvedValue([
-      { isFile: (): boolean => true, name: 'checkpointgofer' },
-      { isFile: (): boolean => true, name: 'operator-file' },
-      { isFile: (): boolean => true, name: 'runsc-metric-server' },
-    ]);
-    const { resetManagedVmInstallation } = await import('../src/services/managed-vm-lifecycle.service');
-
-    await expect(resetManagedVmInstallation({ confirmation: state.installationId })).rejects.toThrow(
-      'unexpected content in the gVisor helper directory',
-    );
-    expect(mocks.execa).not.toHaveBeenCalled();
   });
 });

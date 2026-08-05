@@ -30,10 +30,7 @@ builds are reproducible installation inputs, not an upper compatibility limit fo
 
 Provide Kubernetes 1.30 or newer, a working kube context, an installed and ready Ingress
 Controller with an IngressClass, cert-manager v1.21.0 with its CRDs and controller components ready, a usable
-StorageClass, a CNI that enforces the NetworkPolicy features used by Compartment, and gVisor installed on every
-eligible build and tenant node. Register one gVisor RuntimeClass and set `sandboxRuntime.runtimeClassName` to its name.
-Compartment runs a real canary on every Ready schedulable node and fails closed unless each canary exposes the gVisor
-userspace kernel; a RuntimeClass backed by `runc` does not satisfy this check.
+StorageClass, and a CNI that enforces the NetworkPolicy features used by Compartment.
 
 The machine running the installer also requires Helm 4.0.0 or newer and kubectl 1.30.0 or newer. kubectl must be
 within one minor version of the target Kubernetes API server.
@@ -70,11 +67,6 @@ sudo k3s kubectl apply \
 sudo k3s kubectl --namespace cert-manager wait deployment --all \
   --for=condition=Available --timeout=5m
 ```
-
-This sequence prepares Kubernetes and cert-manager only. Before running `compartment install`, install an official
-gVisor release, configure the k3s containerd `runsc` handler on every node, and create the configured gVisor
-RuntimeClass. Existing-cluster mode deliberately does not mutate operator-owned node runtimes. Use the managed-VM
-install path instead when Compartment must own k3s, gVisor, containerd integration, and RuntimeClass creation.
 
 For this test VM only, create a private registry CA and a ClusterIssuer backed by it:
 

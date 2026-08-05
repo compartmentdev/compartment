@@ -1,25 +1,13 @@
-import {
-  chmod,
-  link,
-  lstat,
-  mkdir,
-  open,
-  readFile,
-  readdir,
-  unlink,
-  writeFile,
-  type FileHandle,
-} from 'node:fs/promises';
-import { constants, type Dirent, type Stats } from 'node:fs';
+import { lstat, open, readFile, type FileHandle } from 'node:fs/promises';
+import { constants, type Stats } from 'node:fs';
 import { execa, type ManagedVmCommandResult } from './managed-vm-command.service';
 import type { ManagedVmDownloadedArtifacts } from './managed-vm-artifacts.service.types';
 import { waitForManagedVmKubernetes } from './managed-vm-cluster.service';
 import { managedVmReleaseMetadata } from './managed-vm-release-metadata.service';
 import { verifyKubernetesSandboxRuntime } from './kubernetes-sandbox-runtime-preflight.service';
-import {
-  managedVmSandboxRuntimeHelperNames,
-  managedVmSandboxRuntimePaths,
-} from './managed-vm-sandbox-runtime.constants';
+import { managedVmSandboxRuntimePaths } from './managed-vm-sandbox-runtime.constants';
+import { assertManagedVmGvisorHelperDirectory } from './managed-vm-gvisor-helper-directory.service';
+import { ensureManagedVmDirectory, installNewManagedVmFile } from './managed-vm-owned-file.service';
 import { managedVmFileIdentity } from './managed-vm-state.service';
 
 const gvisorRuntimeClassName: string = 'gvisor';
@@ -34,23 +22,22 @@ interface ExpectedSandboxRuntimeFile {
 export async function installManagedVmSandboxRuntime(
   artifacts: ManagedVmDownloadedArtifacts,
 ): Promise<Readonly<Record<string, string>>> {
-  await prepareSandboxRuntimeDirectories();
-  await assertGvisorHelperDirectory(false);
+  const directoryIdentities: Readonly<Record<string, string>> = await prepareSandboxRuntimeDirectories();
+  await assertManagedVmGvisorHelperDirectory(false);
   const expectedFiles: readonly ExpectedSandboxRuntimeFile[] = await readExpectedSandboxRuntimeFiles(artifacts);
   await Promise.all(
-    expectedFiles.map(
-      async (file: ExpectedSandboxRuntimeFile): Promise<void> =>
-        await installExpectedContent(file.content, file.destination, file.mode),
-    ),
+    expectedFiles.map(async (file: ExpectedSandboxRuntimeFile): Promise<void> => {
+      await installNewManagedVmFile(file.destination, file.content, file.mode);
+    }),
   );
-  await assertGvisorHelperDirectory(true);
+  await assertManagedVmGvisorHelperDirectory(true);
   await assertExpectedSandboxRuntimeFiles(expectedFiles);
   await execa('systemctl', ['restart', 'k3s']);
   await waitForManagedVmKubernetes();
   await applyManagedVmRuntimeClass();
   await verifyManagedVmSandboxRuntime();
   await assertExpectedSandboxRuntimeFiles(expectedFiles);
-  return expectedSandboxRuntimeOwnedDigests(expectedFiles);
+  return { ...expectedSandboxRuntimeOwnedDigests(expectedFiles), ...directoryIdentities };
 }
 
 export async function isManagedVmSandboxRuntimeHealthy(): Promise<boolean> {
@@ -72,7 +59,7 @@ export async function verifyManagedVmSandboxRuntime(): Promise<void> {
 }
 
 async function verifyManagedVmSandboxRuntimeFiles(): Promise<void> {
-  await assertGvisorHelperDirectory(true);
+  await assertManagedVmGvisorHelperDirectory(true);
   const [version, template, runscConfig]: [ManagedVmCommandResult, string, string] = await Promise.all([
     execa(managedVmSandboxRuntimePaths.runsc, ['--version']),
     readFile(managedVmSandboxRuntimePaths.containerdTemplate, 'utf8'),
@@ -84,7 +71,7 @@ async function verifyManagedVmSandboxRuntimeFiles(): Promise<void> {
   if (template !== renderContainerdTemplate() || !runscConfig.includes('[runsc_config]')) {
     throw new Error('Managed-VM runsc containerd configuration verification failed.');
   }
-  const containerdConfig: string = await readFile('/var/lib/rancher/k3s/agent/etc/containerd/config.toml', 'utf8');
+  const containerdConfig: string = await readFile(managedVmSandboxRuntimePaths.containerdConfig, 'utf8');
   if (
     !containerdConfig.includes(expectedRuntimeType) ||
     !containerdConfig.includes(managedVmSandboxRuntimePaths.runscConfig) ||
@@ -94,12 +81,14 @@ async function verifyManagedVmSandboxRuntimeFiles(): Promise<void> {
   }
 }
 
-async function prepareSandboxRuntimeDirectories(): Promise<void> {
-  await Promise.all([
-    mkdir(managedVmSandboxRuntimePaths.containerdDirectory, { mode: 0o755, recursive: true }),
-    mkdir(managedVmSandboxRuntimePaths.gvisorBinDirectory, { mode: 0o755, recursive: true }),
-    mkdir(managedVmSandboxRuntimePaths.containerdTemplateDirectory, { mode: 0o700, recursive: true }),
-  ]);
+async function prepareSandboxRuntimeDirectories(): Promise<Readonly<Record<string, string>>> {
+  await ensureManagedVmDirectory(managedVmSandboxRuntimePaths.containerdDirectory, 0o755);
+  const gvisorBinIdentity: string = await ensureManagedVmDirectory(
+    managedVmSandboxRuntimePaths.gvisorBinDirectory,
+    0o755,
+  );
+  await ensureManagedVmDirectory(managedVmSandboxRuntimePaths.containerdTemplateDirectory, 0o700);
+  return { [managedVmSandboxRuntimePaths.gvisorBinDirectory]: gvisorBinIdentity };
 }
 
 async function applyManagedVmRuntimeClass(): Promise<void> {
@@ -140,56 +129,6 @@ async function expectedFile(source: string, destination: string, mode: number): 
   return { content: await readFile(source), destination, mode };
 }
 
-async function installExpectedContent(content: Buffer, destination: string, mode: number): Promise<void> {
-  const temporaryPath: string = `${destination}.compartment-installing`;
-  if (await assertExpectedFileOrMissing(destination, content, mode)) {
-    await removeExpectedTemporaryFile(temporaryPath, content, mode);
-    return;
-  }
-  await prepareExpectedTemporaryFile(temporaryPath, content, mode);
-  try {
-    await link(temporaryPath, destination);
-  } catch (error) {
-    if (!(error instanceof Error && isAlreadyExists(error))) {
-      throw error;
-    }
-    await assertExpectedFile(destination, content, mode);
-  } finally {
-    await removeExpectedTemporaryFile(temporaryPath, content, mode);
-  }
-}
-
-async function prepareExpectedTemporaryFile(temporaryPath: string, content: Buffer, mode: number): Promise<void> {
-  if (await assertExpectedFileOrMissing(temporaryPath, content, mode)) {
-    return;
-  }
-  await writeFile(temporaryPath, content, { flag: 'wx', mode });
-  await chmod(temporaryPath, mode);
-}
-
-async function assertExpectedFileOrMissing(destination: string, content: Buffer, mode: number): Promise<boolean> {
-  try {
-    await assertExpectedFile(destination, content, mode);
-    return true;
-  } catch (error) {
-    if (error instanceof Error && isMissing(error)) {
-      return false;
-    }
-    throw error;
-  }
-}
-
-async function removeExpectedTemporaryFile(temporaryPath: string, content: Buffer, mode: number): Promise<void> {
-  try {
-    await assertExpectedFile(temporaryPath, content, mode);
-    await unlink(temporaryPath);
-  } catch (error) {
-    if (!(error instanceof Error && isMissing(error))) {
-      throw error;
-    }
-  }
-}
-
 async function assertExpectedSandboxRuntimeFiles(files: readonly ExpectedSandboxRuntimeFile[]): Promise<void> {
   await Promise.all(
     files.map(
@@ -228,33 +167,7 @@ function expectedSandboxRuntimeOwnedDigests(
       file.destination,
       managedVmFileIdentity(file.content, file.mode),
     ]),
-    [managedVmSandboxRuntimePaths.gvisorBinDirectory, 'directory'],
   ]);
-}
-
-async function assertGvisorHelperDirectory(requireComplete: boolean): Promise<void> {
-  const entries: Dirent[] = await readdir(managedVmSandboxRuntimePaths.gvisorBinDirectory, { withFileTypes: true });
-  const allowedNames: readonly string[] = [
-    ...managedVmSandboxRuntimeHelperNames,
-    ...managedVmSandboxRuntimeHelperNames.map((name: string): string => `${name}.compartment-installing`),
-  ];
-  const observedNames: string[] = entries
-    .map((entry: Dirent): string => entry.name)
-    .sort((left: string, right: string): number => left.localeCompare(right));
-  if (
-    entries.some((entry: Dirent): boolean => !entry.isFile() || !allowedNames.includes(entry.name)) ||
-    (requireComplete && JSON.stringify(observedNames) !== JSON.stringify(managedVmSandboxRuntimeHelperNames))
-  ) {
-    throw new Error('Managed-VM provisioning found unexpected content in the gVisor helper directory.');
-  }
-}
-
-function isMissing(error: Error): boolean {
-  return 'code' in error && error.code === 'ENOENT';
-}
-
-function isAlreadyExists(error: Error): boolean {
-  return 'code' in error && error.code === 'EEXIST';
 }
 
 function renderRuntimeClass(): string {

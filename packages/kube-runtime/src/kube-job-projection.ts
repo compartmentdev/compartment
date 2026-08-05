@@ -21,6 +21,7 @@ import { kubeSecretName } from './kube-naming';
 import { secretChecksum } from './kube-secret-projection';
 import type { KubeContainerSecurityContext, KubePodSecurityContext } from './kube-security-context.types';
 import {
+  assertGvisorBuildKitSidecars,
   gvisorBuildKitSecurityContext,
   gvisorBuildRunnerSecurityContext,
   projectPodSecurityContext,
@@ -84,6 +85,7 @@ export function recoveredJobSpec(spec: KubeJobSpec, observed: KubeObservedManife
 }
 
 function jobSpec(spec: KubeJobSpec, labels: Record<string, string>): KubeJobManifestSpec {
+  assertGvisorBuildKitSidecars(spec);
   const podSpec: KubeProjectedPodSpec = {
     automountServiceAccountToken: false,
     containers: [jobContainer(spec)],

@@ -1,17 +1,21 @@
-import { mkdir, writeFile } from 'node:fs/promises';
 import { execa, type ManagedVmCommandResult } from './managed-vm-command.service';
+import { installNewManagedVmFile } from './managed-vm-owned-file.service';
 
 const managedVmFirewallRulesPath: string = '/etc/compartment/firewall.nft';
 const managedVmFirewallUnitPath: string = '/etc/systemd/system/compartment-firewall.service';
 
-export async function installManagedVmFirewall(publicInterface: string): Promise<void> {
+export async function installManagedVmFirewall(publicInterface: string): Promise<Readonly<Record<string, string>>> {
   await assertExistingFirewallIsOwned(publicInterface);
-  await mkdir('/etc/compartment', { mode: 0o700, recursive: true });
-  await writeFile(managedVmFirewallRulesPath, renderManagedVmFirewallRules(publicInterface), { mode: 0o600 });
-  await writeFile(managedVmFirewallUnitPath, renderFirewallUnit(), { mode: 0o644 });
+  const rules: string = renderManagedVmFirewallRules(publicInterface);
+  const unit: string = renderFirewallUnit();
+  const identities: Readonly<Record<string, string>> = {
+    [managedVmFirewallRulesPath]: await installNewManagedVmFile(managedVmFirewallRulesPath, rules, 0o600),
+    [managedVmFirewallUnitPath]: await installNewManagedVmFile(managedVmFirewallUnitPath, unit, 0o644),
+  };
   await execa('nft', ['delete', 'table', 'inet', 'compartment'], { reject: false });
   await execa('systemctl', ['daemon-reload']);
   await execa('systemctl', ['enable', '--now', '--force', 'compartment-firewall.service']);
+  return identities;
 }
 
 async function assertExistingFirewallIsOwned(publicInterface: string): Promise<void> {
@@ -42,11 +46,6 @@ function isOwnedFirewallOutput(output: string, publicInterface: string): boolean
     output.includes(publicInterface) &&
     ['2379', '2380', '6443', '10250', '8472'].every((port: string): boolean => output.includes(port))
   );
-}
-
-export async function removeManagedVmFirewall(): Promise<void> {
-  await execa('systemctl', ['disable', '--now', 'compartment-firewall.service'], { reject: false });
-  await execa('nft', ['delete', 'table', 'inet', 'compartment'], { reject: false });
 }
 
 export function renderManagedVmFirewallRules(publicInterface: string): string {

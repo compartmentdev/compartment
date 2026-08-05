@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import { cpus, hostname, totalmem } from 'node:os';
 import { execa, type ManagedVmCommandResult } from './managed-vm-command.service';
 import { digest, managedVmOwnedPaths, managedVmOwnedPathsEqual, readManagedVmState } from './managed-vm-state.service';
+import { managedVmK3sGeneratedConflictPaths } from './managed-vm-install-paths.service';
 import { managedVmReleaseMetadata } from './managed-vm-release-metadata.service';
 import type {
   ManagedVmDiskAvailability,
@@ -117,6 +118,7 @@ async function findForeignPaths(): Promise<readonly string[]> {
   const paths: readonly string[] = [
     ...new Set([
       ...managedVmOwnedPaths.map((ownedPath: ManagedVmOwnedPath): string => ownedPath.path),
+      ...managedVmK3sGeneratedConflictPaths,
       '/etc/kubernetes/admin.conf',
       '/etc/cni/net.d',
       '/etc/containerd/config.toml',

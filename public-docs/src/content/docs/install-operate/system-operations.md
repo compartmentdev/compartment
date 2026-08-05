@@ -40,8 +40,8 @@ sudo compartment system update
 
 That path verifies the Compartment-owned k3s and gVisor runtime, creates a local etcd snapshot, and updates the
 platform through resumable stages. It fails closed when the recorded installer-owned release metadata is older and
-then requires an explicit reset and clean reinstall, which permanently removes managed cluster data. See
-[Operate a Managed VM](/guides/operate-managed-vm/) for diagnostics, recovery, backup limits, and destructive reset.
+then requires reprovisioning a clean VM; it does not automatically delete generated K3s host files. See
+[Operate a Managed VM](/guides/operate-managed-vm/) for diagnostics, recovery, backup limits, and reprovisioning.
 
 ## Manage the install domain
 

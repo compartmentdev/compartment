@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { readDockerImageRepository } from './docker-image-ref';
 import { readBuildKitAddress, runBuildctlCommandWithOptionalProgressReporter } from './buildkit-command';
 import { buildDockerfileBuildctlArgs, buildRailpackImageBuildctlArgs } from './docker-buildkit-args';
 import { readPushedBuildKitImageMetadata } from './docker-buildkit-metadata';
@@ -43,14 +44,15 @@ async function readVerifiedBuildResult(
   input: DockerBuildImageInput,
   metadataFile: string,
 ): Promise<DockerBuildImageResult> {
-  const metadata: BuildKitPushedImageMetadata = await readPushedBuildKitImageMetadata(metadataFile, input.imageTag);
+  const pushImageTag: string = input.pushImageTag ?? input.imageTag;
+  const metadata: BuildKitPushedImageMetadata = await readPushedBuildKitImageMetadata(metadataFile);
   await verifyPushedBuildKitSbom(
-    input.pushImageTag ?? input.imageTag,
+    pushImageTag,
     metadata.digest,
     input.pushImageInsecureRegistry === true,
     input.pushRegistryCredentials,
   );
-  return { imageRef: metadata.imageRef, pushed: true };
+  return { imageRef: `${readDockerImageRepository(input.imageTag)}@${metadata.digest}`, pushed: true };
 }
 
 async function runBuildKitDockerfileBuild(

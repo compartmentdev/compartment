@@ -1,4 +1,5 @@
 import type { KubeContainerSecurityContext, KubePodSecurityContext } from './kube-security-context.types';
+import type { KubeJobSpec } from './kube-job-spec.types';
 
 const postgresAlpineImagePattern: RegExp = /^postgres:(?:alpine|[^@]+-alpine)(?:[0-9]+(?:\.[0-9]+)*)?(?:@|$)/u;
 const projectRuntimeUserId: number = 10_001;
@@ -21,6 +22,16 @@ const gvisorBuildKitCapabilities: string[] = [
   'SYS_ADMIN',
   'SYS_CHROOT',
 ];
+
+export function assertGvisorBuildKitSidecars(spec: KubeJobSpec): void {
+  if (
+    spec.sidecars !== undefined &&
+    spec.sidecars.length > 0 &&
+    (spec.jobClass !== 'build' || spec.scheduling?.runtimeClassName === undefined)
+  ) {
+    throw new Error('Kubernetes gVisor BuildKit sidecars require a build Job with an explicit sandbox RuntimeClass.');
+  }
+}
 
 export function gvisorBuildKitSecurityContext(): KubeContainerSecurityContext {
   return {

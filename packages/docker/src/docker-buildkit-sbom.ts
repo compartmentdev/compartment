@@ -5,8 +5,8 @@ import type { DockerRegistryCredentials } from './docker-models';
 const ociIndexMediaType: string = 'application/vnd.oci.image.index.v1+json';
 const ociManifestMediaType: string = 'application/vnd.oci.image.manifest.v1+json';
 const attestationReferenceType: string = 'attestation-manifest';
-const inTotoMediaType: string = 'application/vnd.in-toto+json';
 const spdxPredicateType: string = 'https://spdx.dev/Document';
+const maximumRegistryResponseBytes: number = 4 * 1024 * 1024;
 
 interface OciDescriptor {
   annotations?: Record<string, string> | undefined;
@@ -128,9 +128,10 @@ async function readRegistryJson<T>(
   accept: string,
   credentials: DockerRegistryCredentials | undefined,
 ): Promise<T> {
+  assertRegistryDigestReference(target.reference);
   return await readRegistryEndpointJson<T>(
     target,
-    `manifests/${encodeURIComponent(target.reference)}`,
+    `manifests/${target.reference}`,
     credentials,
     target.reference,
     accept,
@@ -149,7 +150,7 @@ async function containsSpdxAttestation(
   for (const layer of manifest.layers) {
     if (
       layer.digest === undefined ||
-      layer.mediaType !== inTotoMediaType ||
+      layer.mediaType !== 'application/vnd.in-toto+json' ||
       layer.annotations?.['in-toto.io/predicate-type'] !== spdxPredicateType
     ) {
       continue;
@@ -167,7 +168,8 @@ async function readRegistryBlobJson<T>(
   digest: string,
   credentials: DockerRegistryCredentials | undefined,
 ): Promise<T> {
-  return await readRegistryEndpointJson<T>(target, `blobs/${encodeURIComponent(digest)}`, credentials, digest);
+  assertRegistryDigestReference(digest);
+  return await readRegistryEndpointJson<T>(target, `blobs/${digest}`, credentials, digest);
 }
 
 async function readRegistryEndpointJson<T>(
@@ -179,15 +181,48 @@ async function readRegistryEndpointJson<T>(
 ): Promise<T> {
   const url: URL = new URL(`/v2/${target.repository}/${path}`, target.url);
   const response: Response = await fetch(url, {
-    headers: { ...registryAuthorizationHeaders(credentials), ...(accept === undefined ? {} : { Accept: accept }) },
+    headers: {
+      ...registryAuthorizationHeaders(target.url.host, credentials),
+      ...(accept === undefined ? {} : { Accept: accept }),
+    },
     signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) {
     throw new Error(`Could not verify the pushed image SBOM: registry returned HTTP ${response.status}.`);
   }
-  const bytes: Buffer = Buffer.from(await response.arrayBuffer());
+  const bytes: Buffer = await readBoundedRegistryResponse(response);
   assertRegistryDigest(bytes, expectedDigest);
   return JSON.parse(bytes.toString('utf8')) as T;
+}
+
+async function readBoundedRegistryResponse(response: Response): Promise<Buffer> {
+  assertBoundedContentLength(response.headers);
+  if (response.body === null) {
+    return Buffer.alloc(0);
+  }
+  const body: AsyncIterable<Uint8Array> = response.body;
+  const chunks: Uint8Array[] = [];
+  let totalBytes: number = 0;
+  for await (const chunk of body) {
+    totalBytes += chunk.byteLength;
+    if (totalBytes > maximumRegistryResponseBytes) {
+      throw new Error('Could not verify the pushed image SBOM: registry response exceeds the size limit.');
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks, totalBytes);
+}
+
+function assertBoundedContentLength(headers: Headers): void {
+  if (Number(headers.get('content-length')) > maximumRegistryResponseBytes) {
+    throw new Error('Could not verify the pushed image SBOM: registry response exceeds the size limit.');
+  }
+}
+
+function assertRegistryDigestReference(reference: string): void {
+  if (!/^sha256:[a-f0-9]{64}$/u.test(reference)) {
+    throw new Error('Could not verify the pushed image SBOM: registry digest reference is invalid.');
+  }
 }
 
 function assertRegistryDigest(bytes: Buffer, expectedDigest: string): void {
@@ -197,10 +232,19 @@ function assertRegistryDigest(bytes: Buffer, expectedDigest: string): void {
   }
 }
 
-function registryAuthorizationHeaders(credentials: DockerRegistryCredentials | undefined): Record<string, string> {
-  return credentials === undefined
-    ? {}
-    : { Authorization: `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64')}` };
+function registryAuthorizationHeaders(
+  registryHost: string,
+  credentials: DockerRegistryCredentials | undefined,
+): Record<string, string> {
+  if (credentials === undefined) {
+    return {};
+  }
+  if (credentials.serverAddress !== registryHost) {
+    throw new Error('Could not verify the pushed image SBOM: registry credentials do not match the target registry.');
+  }
+  return {
+    Authorization: `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64')}`,
+  };
 }
 
 function isSpdxStatementForSubject(statement: InTotoStatement, subjectDigest: string): boolean {

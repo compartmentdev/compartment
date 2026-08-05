@@ -12,7 +12,6 @@ export interface BuildKitImageMetadataDescriptor {
 
 export interface BuildKitPushedImageMetadata {
   digest: string;
-  imageRef: string;
 }
 
 export interface BuildKitImageMetadata {

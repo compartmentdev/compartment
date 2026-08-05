@@ -3,14 +3,19 @@ import type { ManagedVmProvisionerState } from '../src/services/managed-vm-provi
 
 interface FileMocks {
   lstat: Mock;
+  open: Mock;
   readFile: Mock;
   rename: Mock;
   writeFile: Mock;
 }
 
 class OwnedPathStats {
-  public readonly mode: number = 0o755;
-  public constructor(private readonly directory: boolean) {}
+  public readonly gid: number = 0;
+  public readonly uid: number = 0;
+  public constructor(
+    private readonly directory: boolean,
+    public readonly mode: number = 0o755,
+  ) {}
   public isDirectory(): boolean {
     return this.directory;
   }
@@ -22,6 +27,7 @@ class OwnedPathStats {
 const files: FileMocks = vi.hoisted(
   (): FileMocks => ({
     lstat: vi.fn(),
+    open: vi.fn(),
     readFile: vi.fn(),
     rename: vi.fn(),
     writeFile: vi.fn(),
@@ -33,7 +39,7 @@ vi.mock(
   (): Record<string, Mock> => ({
     lstat: files.lstat,
     mkdir: vi.fn(),
-    open: vi.fn(),
+    open: files.open,
     readFile: files.readFile,
     rename: files.rename,
     stat: vi.fn(),
@@ -46,28 +52,12 @@ describe('managed VM recorded file ownership', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks();
     files.lstat.mockRejectedValue(Object.assign(new Error('missing'), { code: 'ENOENT' }));
+    files.open.mockResolvedValue({
+      close: async (): Promise<void> => await Promise.resolve(),
+      sync: async (): Promise<void> => await Promise.resolve(),
+      writeFile: async (): Promise<void> => await Promise.resolve(),
+    });
     files.readFile.mockResolvedValue(Buffer.from('verified helm'));
-  });
-
-  it('records regular-file content digests and directory ownership after a stage', async (): Promise<void> => {
-    files.lstat.mockImplementation(async (path: string): Promise<OwnedPathStats> => {
-      await Promise.resolve();
-      if (path === '/etc/compartment') {
-        return new OwnedPathStats(true);
-      }
-      if (path === '/usr/local/bin/helm') {
-        return new OwnedPathStats(false);
-      }
-      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
-    });
-    const { createManagedVmState, managedVmFileIdentity, persistManagedVmStage } =
-      await import('../src/services/managed-vm-state.service');
-    const initial: ManagedVmProvisionerState = await createManagedVmState('host\nens3\n');
-    const next: ManagedVmProvisionerState = await persistManagedVmStage(initial, 'preparing-host');
-    expect(next.ownedFileDigests).toEqual({
-      '/etc/compartment': 'directory',
-      '/usr/local/bin/helm': managedVmFileIdentity('verified helm', 0o755),
-    });
   });
 
   it('explains how to read root-owned managed state', async (): Promise<void> => {
@@ -138,40 +128,6 @@ describe('managed VM recorded file ownership', (): void => {
     await expect(readManagedVmState()).rejects.toThrow('state at /var/lib/compartment/installer/state.json is invalid');
   });
 
-  it('preserves the existing trust set so retry rejects an unrelated owned-path mutation', async (): Promise<void> => {
-    const contents: Map<string, Buffer> = new Map<string, Buffer>([
-      ['/usr/local/bin/helm', Buffer.from('installer helm')],
-    ]);
-    files.lstat.mockImplementation(async (path: string): Promise<OwnedPathStats> => {
-      await Promise.resolve();
-      if (contents.has(path)) {
-        return new OwnedPathStats(false);
-      }
-      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
-    });
-    files.readFile.mockImplementation(async (path: string): Promise<Buffer> => {
-      await Promise.resolve();
-      return contents.get(path)!;
-    });
-    const { assertManagedVmOwnedFileDigests, createManagedVmState, managedVmFileIdentity, persistManagedVmStage } =
-      await import('../src/services/managed-vm-state.service');
-    const initial: ManagedVmProvisionerState = await createManagedVmState('host\nens3\n');
-    const prepared: ManagedVmProvisionerState = await persistManagedVmStage(initial, 'preparing-host');
-
-    contents.set('/usr/local/bin/runsc', Buffer.from('installer runsc'));
-    contents.set('/usr/local/bin/helm', Buffer.from('concurrent helm change'));
-    const resumed: ManagedVmProvisionerState = await persistManagedVmStage(prepared, 'installing-sandbox-runtime');
-
-    expect(resumed.ownedFileDigests).toMatchObject({
-      '/usr/local/bin/helm': managedVmFileIdentity('installer helm', 0o755),
-      '/usr/local/bin/runsc': managedVmFileIdentity('installer runsc', 0o755),
-    });
-
-    await expect(assertManagedVmOwnedFileDigests(resumed)).rejects.toThrow(
-      'owned host content has changed; refusing to overwrite or remove it',
-    );
-  });
-
   it('rejects installer-written bytes that change before stage ownership is persisted', async (): Promise<void> => {
     files.lstat.mockImplementation(async (path: string): Promise<OwnedPathStats> => {
       await Promise.resolve();
@@ -183,13 +139,70 @@ describe('managed VM recorded file ownership', (): void => {
     files.readFile.mockResolvedValue(Buffer.from('changed runsc'));
     const { createManagedVmState, managedVmFileIdentity, persistManagedVmStage } =
       await import('../src/services/managed-vm-state.service');
-    const initial: ManagedVmProvisionerState = await createManagedVmState('host\nens3\n');
+    const created: ManagedVmProvisionerState = await createManagedVmState('host\nens3\n');
+    const initial: ManagedVmProvisionerState = {
+      ...created,
+      ownedPaths: [{ path: '/usr/local/bin/runsc', stage: 'installing-sandbox-runtime' }],
+    };
 
     await expect(
       persistManagedVmStage(initial, 'installing-sandbox-runtime', {
         '/usr/local/bin/runsc': managedVmFileIdentity('verified runsc', 0o755),
       }),
     ).rejects.toThrow('installer-written content changed before ownership could be persisted');
+  });
+
+  it('retains the prior digest and rejects an unrelated owned-path change after a failed stage mutation', async (): Promise<void> => {
+    files.lstat.mockImplementation(async (path: string): Promise<OwnedPathStats> => {
+      await Promise.resolve();
+      if (path === '/usr/local/bin/helm' || path === '/usr/local/bin/k3s') {
+        return new OwnedPathStats(false);
+      }
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    });
+    files.readFile.mockImplementation(async (path: string): Promise<Buffer> => {
+      await Promise.resolve();
+      return Buffer.from(path === '/usr/local/bin/helm' ? 'concurrent helm change' : 'verified k3s');
+    });
+    const { managedVmFileIdentity, persistManagedVmStage } = await import('../src/services/managed-vm-state.service');
+    const state: ManagedVmProvisionerState = {
+      ...validState(),
+      completedStage: 'preparing-host',
+      ownedFileDigests: { '/usr/local/bin/helm': managedVmFileIdentity('verified helm', 0o755) },
+      ownedPaths: [
+        { path: '/usr/local/bin/helm', stage: 'preparing-host' },
+        { path: '/usr/local/bin/k3s', stage: 'installing-k3s' },
+      ],
+      releaseMetadata: { ...validState().releaseMetadata, gvisorVersion: 'release-test', metadataVersion: 3 },
+    };
+
+    await expect(
+      persistManagedVmStage(state, 'installing-k3s', {
+        '/usr/local/bin/k3s': managedVmFileIdentity('verified k3s', 0o755),
+      }),
+    ).rejects.toThrow('owned host content has changed; refusing to overwrite or remove it');
+    expect(state.ownedFileDigests).toEqual({
+      '/usr/local/bin/helm': managedVmFileIdentity('verified helm', 0o755),
+    });
+  });
+
+  it('rejects an ownership or mode change to an installer-owned directory', async (): Promise<void> => {
+    files.lstat.mockResolvedValue(new OwnedPathStats(true, 0o755));
+    const { assertManagedVmOwnedFileDigests, managedVmDirectoryIdentity } =
+      await import('../src/services/managed-vm-state.service');
+    const state: ManagedVmProvisionerState = {
+      ...validState(),
+      completedStage: 'preparing-host',
+      ownedFileDigests: {
+        '/etc/compartment': managedVmDirectoryIdentity({ gid: 0, mode: 0o700, uid: 0 }),
+      },
+      ownedPaths: [{ path: '/etc/compartment', stage: 'preparing-host' }],
+      releaseMetadata: { ...validState().releaseMetadata, gvisorVersion: 'release-test', metadataVersion: 3 },
+    };
+
+    await expect(assertManagedVmOwnedFileDigests(state)).rejects.toThrow(
+      'owned host content has changed; refusing to overwrite or remove it',
+    );
   });
 });
 

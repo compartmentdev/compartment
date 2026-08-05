@@ -6,51 +6,37 @@ interface TestFile {
   mode: number;
 }
 
-interface TestWriteOptions {
-  mode: number;
-}
-
 interface SandboxRuntimeMocks {
-  chmod: Mock;
   execa: Mock;
-  link: Mock;
+  installNewManagedVmFile: Mock;
   lstat: Mock;
   mkdir: Mock;
   open: Mock;
   readFile: Mock;
   readdir: Mock;
-  unlink: Mock;
-  writeFile: Mock;
 }
 
 const files: Map<string, TestFile> = new Map<string, TestFile>();
 const mocks: SandboxRuntimeMocks = vi.hoisted(
   (): SandboxRuntimeMocks => ({
-    chmod: vi.fn(),
     execa: vi.fn(),
-    link: vi.fn(),
+    installNewManagedVmFile: vi.fn(),
     lstat: vi.fn(),
     mkdir: vi.fn(),
     open: vi.fn(),
     readFile: vi.fn(),
     readdir: vi.fn(),
-    unlink: vi.fn(),
-    writeFile: vi.fn(),
   }),
 );
 
 vi.mock(
   'node:fs/promises',
   (): Record<string, Mock> => ({
-    chmod: mocks.chmod,
-    link: mocks.link,
     lstat: mocks.lstat,
     mkdir: mocks.mkdir,
     open: mocks.open,
     readFile: mocks.readFile,
     readdir: mocks.readdir,
-    unlink: mocks.unlink,
-    writeFile: mocks.writeFile,
   }),
 );
 vi.mock('../src/services/managed-vm-command.service', (): { execa: Mock } => ({ execa: mocks.execa }));
@@ -64,6 +50,13 @@ vi.mock(
   '../src/services/kubernetes-sandbox-runtime-preflight.service',
   (): Record<string, Mock> => ({
     verifyKubernetesSandboxRuntime: vi.fn(),
+  }),
+);
+vi.mock(
+  '../src/services/managed-vm-owned-file.service',
+  (): Record<string, Mock> => ({
+    ensureManagedVmDirectory: vi.fn(async (): Promise<'directory'> => await Promise.resolve('directory')),
+    installNewManagedVmFile: mocks.installNewManagedVmFile,
   }),
 );
 
@@ -105,30 +98,20 @@ beforeEach((): void => {
         await Promise.resolve({ dev: 1, ino: inode(path), isFile: (): boolean => true, mode: file.mode }),
     };
   });
-  mocks.writeFile.mockImplementation(
-    async (path: string, content: Buffer, options: TestWriteOptions): Promise<void> => {
+  mocks.installNewManagedVmFile.mockImplementation(
+    async (destination: string, content: Buffer, mode: number): Promise<string> => {
       await Promise.resolve();
-      if (files.has(path)) {
+      const existing: TestFile | undefined = files.get(destination);
+      if (existing !== undefined) {
+        if (existing.mode !== mode || !existing.content.equals(content)) {
+          throw new Error(`Managed-VM provisioning refuses unexpected content at ${destination}.`);
+        }
         throw Object.assign(new Error('exists'), { code: 'EEXIST' });
       }
-      files.set(path, { content, mode: options.mode });
+      files.set(destination, { content, mode });
+      return 'identity';
     },
   );
-  mocks.chmod.mockImplementation(async (path: string, mode: number): Promise<void> => {
-    await Promise.resolve();
-    files.get(path)!.mode = mode;
-  });
-  mocks.link.mockImplementation(async (source: string, destination: string): Promise<void> => {
-    await Promise.resolve();
-    if (files.has(destination)) {
-      throw Object.assign(new Error('exists'), { code: 'EEXIST' });
-    }
-    files.set(destination, files.get(source)!);
-  });
-  mocks.unlink.mockImplementation(async (path: string): Promise<void> => {
-    await Promise.resolve();
-    files.delete(path);
-  });
   mocks.readdir.mockImplementation(async (): Promise<object[]> => {
     await Promise.resolve();
     return ['checkpointgofer', 'runsc-metric-server']
@@ -148,21 +131,6 @@ describe('managed VM sandbox runtime installation', (): void => {
     await expect(installManagedVmSandboxRuntime(artifacts())).rejects.toThrow(
       'provisioning refuses unexpected content at /usr/local/bin/runsc',
     );
-  });
-
-  it('reconciles exact transaction links left by an interrupted install', async (): Promise<void> => {
-    const runsc: TestFile = { content: Buffer.from('verified /tmp/runsc'), mode: 0o755 };
-    const checkpointGofer: TestFile = { content: Buffer.from('verified /tmp/checkpointgofer'), mode: 0o755 };
-    files.set('/usr/local/bin/runsc', runsc);
-    files.set('/usr/local/bin/runsc.compartment-installing', runsc);
-    files.set('/usr/local/bin/gvisor-bin/checkpointgofer', checkpointGofer);
-    files.set('/usr/local/bin/gvisor-bin/checkpointgofer.compartment-installing', checkpointGofer);
-    mocks.execa.mockRejectedValueOnce(new Error('k3s restart failed'));
-    const { installManagedVmSandboxRuntime } = await import('../src/services/managed-vm-sandbox-runtime.service');
-
-    await expect(installManagedVmSandboxRuntime(artifacts())).rejects.toThrow('k3s restart failed');
-    expect(files.has('/usr/local/bin/runsc.compartment-installing')).toBe(false);
-    expect(files.has('/usr/local/bin/gvisor-bin/checkpointgofer.compartment-installing')).toBe(false);
   });
 });
 

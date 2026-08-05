@@ -526,13 +526,18 @@ tests:
         template: buildkit.yaml
         documentIndex: 3
       - matchRegex:
+          path: spec.validations[1].expression
+          pattern: "all\\(key, key == 'compartment.dev/secret-checksum' \\|\\| key in"
+        template: buildkit.yaml
+        documentIndex: 3
+      - matchRegex:
           path: spec.validations[10].expression
-          pattern: "container.image == 'ghcr.io/compartmentdev/compartment-worker:latest'.*container.command == \\['node', 'dist/build-job.js'\\].*!has\\(container.ports\\)"
+          pattern: "container.image == 'ghcr.io/compartmentdev/compartment-worker:latest'.*container.command == \\['node', 'dist/build-job.js'\\].*!has\\(container.ports\\).*!has\\(container.securityContext.procMount\\).*!has\\(container.securityContext.appArmorProfile\\)"
         template: buildkit.yaml
         documentIndex: 3
       - matchRegex:
           path: spec.validations[11].expression
-          pattern: "container.image == 'ghcr.io/compartmentdev/compartment-worker:latest'.*buildkit-runc-gvisor.*!has\\(container.ports\\)"
+          pattern: "container.image == 'ghcr.io/compartmentdev/compartment-worker:latest'.*buildkit-runc-gvisor.*!has\\(container.ports\\).*!has\\(container.securityContext.procMount\\).*!has\\(container.securityContext.appArmorProfile\\)"
         template: buildkit.yaml
         documentIndex: 3
       - isKind:

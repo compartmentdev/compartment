@@ -79,6 +79,14 @@ describe('sandboxed build Job projection', (): void => {
       { emptyDir: { sizeLimit: '1Gi' }, name: 'tmp' },
     ]);
   });
+
+  it('rejects a gVisor BuildKit sidecar outside an explicitly sandboxed build Job', (): void => {
+    const spec: KubeJobSpec = { ...buildJobSpec(), jobClass: 'operation' };
+
+    expect((): KubeJobManifest => kubeJobManifest(spec, 'job-art-123', {})).toThrow(
+      'gVisor BuildKit sidecars require a build Job with an explicit sandbox RuntimeClass',
+    );
+  });
 });
 
 function buildJobSpec(): KubeJobSpec {

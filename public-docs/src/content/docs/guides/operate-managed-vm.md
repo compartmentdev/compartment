@@ -39,8 +39,8 @@ sudo compartment system update
 First install the current verified stable CLI. The update command verifies the installer-owned host content, creates
 an etcd snapshot, invokes the canonical platform update, and verifies the resulting host and cluster versions plus a
 real gVisor canary. It does not adopt or rewrite an older installer-owned release: when the recorded release metadata
-differs, the command fails closed and requires an explicit managed-VM reset and clean reinstall. That reset permanently
-removes the managed cluster, platform, and application data as described below.
+differs, the command fails closed and requires reprovisioning a clean VM. Compartment does not automatically delete
+generated K3s files because it cannot prove their exact ownership.
 Managed Kubernetes components do not update in the background. If an update stops, correct the reported problem and
 rerun the same command.
 
@@ -49,19 +49,13 @@ machine-loss backup. Copy verified backups and application data off-host accordi
 
 ## Recover an interrupted installation
 
-Rerun the original install command with `sudo`. Durable stages resume under the same installation identity after the installer
-revalidates owned state. The installer never removes a retained cluster automatically after a failure.
+Rerun the original install command with `sudo` only when the failure occurred after the installer-owned host stages
+completed. The installer revalidates every recorded file before resuming cluster-only work. If a host mutation stage
+was interrupted, it fails closed instead of adopting partial files; preserve diagnostics and reprovision a clean VM.
 
 ## Destroy the provisioned cluster
 
-First read the installation ID from `sudo compartment system status`. Then run:
-
-```bash
-sudo compartment system reset \
-  --destroy-provisioned-cluster \
-  --confirm-installation <installation-id>
-```
-
-This permanently removes the managed cluster, platform and application data, and only the host files, services,
-gVisor binaries and containerd configuration, firewall rules, and CA trust recorded as Compartment-owned. A normal
-Helm uninstall does not destroy the host cluster.
+There is no supported in-place destructive reset. Back up required data, preserve diagnostics, and delete or
+reprovision the VM through your infrastructure provider. Compartment refuses automatic cleanup because K3s creates
+mutable host files that cannot be matched to exact installer-written content. A normal Helm uninstall does not
+destroy the host cluster.

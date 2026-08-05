@@ -303,7 +303,7 @@ compartment login --api-url https://api.example.com
 
 Use `compartment system status` to inspect the authenticated control plane and current organization.
 For a provisioned VM, continue with [Operate a Managed VM](/guides/operate-managed-vm/) for updates, diagnostics,
-recovery, and destructive reset.
+recovery, and safe reprovisioning.
 
 For either target, use [System Operations](/install-operate/system-operations/) for platform status, restart, update,
 and install-domain commands.

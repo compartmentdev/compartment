@@ -43,6 +43,19 @@ vi.mock(
 );
 
 vi.mock('../src/services/managed-vm-command.service', (): { execa: Mock } => ({ execa: mocks.execa }));
+vi.mock(
+  '../src/services/managed-vm-state.service',
+  (): Record<string, Mock> => ({
+    readManagedVmPathIdentity: vi.fn(async (): Promise<undefined> => await Promise.resolve(undefined)),
+  }),
+);
+vi.mock(
+  '../src/services/managed-vm-owned-file.service',
+  (): Record<string, Mock> => ({
+    ensureManagedVmDirectory: vi.fn(async (): Promise<'directory'> => await Promise.resolve('directory')),
+    installNewManagedVmFile: vi.fn(async (): Promise<string> => await Promise.resolve('file:0755:test')),
+  }),
+);
 
 describe('managed VM cluster installation', (): void => {
   beforeEach((): void => {

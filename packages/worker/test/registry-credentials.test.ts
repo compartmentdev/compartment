@@ -110,6 +110,22 @@ describe('project-scoped registry credentials', (): void => {
     ).not.toBeNull();
   });
 
+  it('allows digest reads but rejects encoded registry path segments', (): void => {
+    const credential: RegistryCredentialPayload = authenticate(
+      issueBuildPushCredential(signingKey, 'prj_123', repository, 'art_123', 100),
+    );
+    const digest: string = `sha256:${'a'.repeat(64)}`;
+
+    expect(authorizeRegistryRequest(credential, 'GET', `/v2/${repository}/manifests/${digest}`, 101)).not.toBeNull();
+    expect(authorizeRegistryRequest(credential, 'GET', `/v2/${repository}/blobs/${digest}`, 101)).not.toBeNull();
+    expect(
+      authorizeRegistryRequest(credential, 'GET', `/v2/${repository}/manifests/sha256%3A${'a'.repeat(64)}`, 101),
+    ).toBeNull();
+    expect(
+      authorizeRegistryRequest(credential, 'GET', `/v2/${repository}/blobs/sha256%3A${'a'.repeat(64)}`, 101),
+    ).toBeNull();
+  });
+
   it('rejects forged credential signatures', (): void => {
     const credential: RegistryCredential = issueProjectPullCredential(signingKey, 'prj_123');
     const authorization: string = `Basic ${Buffer.from(`${credential.username}:${credential.password}x`).toString('base64')}`;

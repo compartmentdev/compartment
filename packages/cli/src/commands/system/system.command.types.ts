@@ -33,12 +33,6 @@ export interface ManagedVmDiagnoseCommandOptions {
   path?: string | undefined;
 }
 
-export interface ManagedVmResetCommandOptions {
-  confirmInstallation?: string | undefined;
-  destroyProvisionedCluster?: boolean | undefined;
-  output: OutputFormat;
-}
-
 export interface ManagedVmCompositeSystemStatus {
   host: ManagedVmSystemStatus;
   platform: KubernetesSystemStatusResponse;
