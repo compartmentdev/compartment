@@ -1,12 +1,5 @@
-export interface ManagedVmDownloadedArtifacts {
-  certManagerManifestPath: string;
+export interface ManagedVmDownloadedArtifacts extends ManagedVmPreparedBaseArtifacts, ManagedVmPreparedGvisorArtifacts {
   directory: string;
-  gvisorBinDirectory: string;
-  gvisorContainerdShimPath: string;
-  gvisorRunscPath: string;
-  helmPath: string;
-  k3sInstallScriptPath: string;
-  k3sPath: string;
 }
 
 export interface ManagedVmPreparedBaseArtifacts {
@@ -17,7 +10,9 @@ export interface ManagedVmPreparedBaseArtifacts {
 }
 
 export interface ManagedVmPreparedGvisorArtifacts {
-  gvisorBinDirectory: string;
+  gvisorCheckpointGoferPath: string;
   gvisorContainerdShimPath: string;
+  gvisorMetricServerPath: string;
+  gvisorRunscConfigPath: string;
   gvisorRunscPath: string;
 }

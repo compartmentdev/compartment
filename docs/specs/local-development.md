@@ -10,8 +10,9 @@ curl -sSL https://railpack.com/install.sh | sh
 ```
 
 - `pnpm dev` expects `caddy`, `docker`, and `railpack` on `PATH`.
-- Source builds require a configured Kubernetes context and build namespace; each build starts its own rootless
-  BuildKit Job under the configured gVisor RuntimeClass.
+- `pnpm dev` uses the local `railpack` CLI to generate Railpack plans. Deploying source through the local worker also
+  requires its configured Kubernetes context and build namespace; each deploy starts its own ephemeral BuildKit Job
+  under the configured gVisor RuntimeClass.
 - The `docker` CLI must reach a Docker-compatible daemon for the loopback artifact registry container.
 - Local development uses env-configured PostgreSQL, not Docker-managed infra for the control plane.
 
@@ -22,7 +23,8 @@ pnpm dev
 ```
 
 - `pnpm dev` starts the local `Caddy` ingress.
-- Source builds call the local `railpack` CLI.
+- Railpack plan generation calls the local `railpack` CLI; image assembly and push run in the deploy's Kubernetes
+  BuildKit Job.
 - The dev path also ensures a local bundled artifact registry container is running on loopback so deploy builds can push durable image refs for rollback and promote flows.
 - The artifact registry container is development infrastructure, not an application runtime target.
 

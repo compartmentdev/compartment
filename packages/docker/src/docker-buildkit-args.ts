@@ -103,7 +103,7 @@ function buildBuildKitCacheArgs(input: DockerBuildImageInput): string[] {
     '--import-cache',
     `type=registry,ref=${input.cacheImageRef}${insecure}`,
     '--export-cache',
-    `type=registry,ref=${input.cacheImageRef},mode=max,image-manifest=true,oci-mediatypes=true${insecure}`,
+    `type=registry,ref=${input.cacheImageRef},mode=min,image-manifest=true,oci-mediatypes=true${insecure}`,
   ];
 }
 

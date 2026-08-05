@@ -6,6 +6,7 @@ interface ManagedVmClusterMocks {
   copyFile: Mock;
   execa: Mock;
   mkdir: Mock;
+  readManagedVmPathIdentity: Mock;
   writeFile: Mock;
 }
 
@@ -25,6 +26,7 @@ const mocks: ManagedVmClusterMocks = vi.hoisted(
     copyFile: vi.fn(),
     execa: vi.fn(),
     mkdir: vi.fn(),
+    readManagedVmPathIdentity: vi.fn(),
     writeFile: vi.fn(),
   }),
 );
@@ -43,32 +45,66 @@ vi.mock(
 );
 
 vi.mock('../src/services/managed-vm-command.service', (): { execa: Mock } => ({ execa: mocks.execa }));
+vi.mock(
+  '../src/services/managed-vm-state.service',
+  (): Record<string, Mock> => ({
+    readManagedVmPathIdentity: mocks.readManagedVmPathIdentity,
+  }),
+);
+vi.mock(
+  '../src/services/managed-vm-owned-file.service',
+  (): Record<string, Mock> => ({
+    ensureManagedVmDirectory: vi.fn(async (): Promise<'directory'> => await Promise.resolve('directory')),
+    installNewManagedVmFile: vi.fn(async (): Promise<string> => await Promise.resolve('file:0755:test')),
+  }),
+);
 
 describe('managed VM cluster installation', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks();
     mocks.execa.mockResolvedValue({ exitCode: 0, stderr: '', stdout: '' });
+    mocks.readManagedVmPathIdentity.mockResolvedValue('file:0755:generated');
   });
 
-  it('allows the K3s installer to provide kubectl', async (): Promise<void> => {
+  it('accepts a complete K3s-owned file inventory', async (): Promise<void> => {
     const { installManagedVmK3s } = await import('../src/services/managed-vm-cluster.service');
     const artifacts: ManagedVmDownloadedArtifacts = {
       certManagerManifestPath: '/tmp/cert-manager.yaml',
       directory: '/tmp/managed-vm',
-      gvisorBinDirectory: '/tmp/gvisor-bin',
+      gvisorCheckpointGoferPath: '/tmp/checkpointgofer',
       gvisorContainerdShimPath: '/tmp/containerd-shim-runsc-v1',
+      gvisorMetricServerPath: '/tmp/metric-server',
+      gvisorRunscConfigPath: '/tmp/runsc.toml',
       gvisorRunscPath: '/tmp/runsc',
       helmPath: '/tmp/helm',
       k3sInstallScriptPath: '/tmp/install-k3s.sh',
       k3sPath: '/tmp/k3s',
     };
 
-    await installManagedVmK3s(artifacts);
+    await expect(installManagedVmK3s(artifacts)).resolves.toBeDefined();
+  });
 
-    expect(mocks.execa).toHaveBeenNthCalledWith(1, '/usr/bin/env', [
-      'INSTALL_K3S_SKIP_DOWNLOAD=true',
-      'INSTALL_K3S_EXEC=server --config /etc/rancher/k3s/config.yaml',
-      '/tmp/install-k3s.sh',
-    ]);
+  it('fails closed when the K3s installer omits a required owned path', async (): Promise<void> => {
+    const { installManagedVmK3s } = await import('../src/services/managed-vm-cluster.service');
+    const artifacts: ManagedVmDownloadedArtifacts = {
+      certManagerManifestPath: '/tmp/cert-manager.yaml',
+      directory: '/tmp/managed-vm',
+      gvisorCheckpointGoferPath: '/tmp/checkpointgofer',
+      gvisorContainerdShimPath: '/tmp/containerd-shim-runsc-v1',
+      gvisorMetricServerPath: '/tmp/metric-server',
+      gvisorRunscConfigPath: '/tmp/runsc.toml',
+      gvisorRunscPath: '/tmp/runsc',
+      helmPath: '/tmp/helm',
+      k3sInstallScriptPath: '/tmp/install-k3s.sh',
+      k3sPath: '/tmp/k3s',
+    };
+    mocks.readManagedVmPathIdentity.mockImplementation(async (path: string): Promise<string | undefined> => {
+      await Promise.resolve();
+      return path === '/etc/systemd/system/k3s.service.env' ? undefined : 'file:0755:generated';
+    });
+
+    await expect(installManagedVmK3s(artifacts)).rejects.toThrow(
+      'K3s installer did not create the required owned path at /etc/systemd/system/k3s.service.env',
+    );
   });
 });

@@ -135,6 +135,7 @@ The operator must provide:
 - permissions required by the Helm release and project bootstrap model;
 - an installed and ready Ingress Controller with an IngressClass;
 - installed and ready cert-manager CRDs and controllers;
+- gVisor installed and registered on every eligible build and tenant node through the configured RuntimeClass;
 - an existing cert-manager CA Issuer or ClusterIssuer whose CA is already in the trust store of every node container
   runtime;
 - a usable StorageClass;
@@ -168,6 +169,7 @@ The installer performs non-persistent preflight checks for:
 - existing retained installation identity;
 - operator issuer trust hazards that can be inferred from the selected Issuer or ClusterIssuer;
 - published Compartment image availability and signature policy.
+- a real gVisor canary on every Ready schedulable node; a handler that exposes the host kernel fails closed.
 
 A self-signed cert-manager issuer is rejected because both the node container runtime and the CLI public HTTPS probe
 use their normal trust stores. A CA issuer is allowed with an explicit trust-distribution warning because its
@@ -273,7 +275,7 @@ The foundation stage creates:
 - PostgreSQL and persistent storage;
 - the bundled registry and registry storage;
 - registry authorization components;
-- rootless BuildKit and build storage;
+- the ephemeral BuildKit build namespace, RBAC, admission policy, and network isolation;
 - internal API, Worker, Edge, and Caddy Services needed for dependency discovery;
 - the cert-manager Issuer or references required by the selected TLS contract;
 - exact or wildcard Compartment Ingress resources required to discover the shared ingress endpoint.
@@ -345,7 +347,7 @@ must be approved.
 
 Installation verifies the completed path by:
 
-1. pushing a signed test image through the BuildKit/registry path;
+1. pushing a unique acceptance image through the worker's registry-verification path;
 2. creating a temporary Pod whose image reference uses the private registry ClusterIP;
 3. waiting for kubelet to pull and start it;
 4. deleting the temporary workload;
@@ -356,7 +358,7 @@ This is a registry viability check, not a NetworkPolicy check.
 ### Stage 6: install the full platform
 
 1. Apply the full chart with immutable platform image digests.
-2. Wait for migrations, API, Worker, Edge, Caddy, BuildKit, registry, and supporting controllers.
+2. Wait for migrations, API, Worker, Edge, Caddy, registry, and supporting controllers.
 3. Verify public HTTPS only through the selected IngressClass and exact console host.
 4. Call the one-time install API.
 5. Create the first owner and organization.
@@ -572,7 +574,7 @@ production or seeded Compartment user, group, or role receives Kubernetes permis
 
 ### Shared trusted components
 
-API, Worker, Edge, Caddy, registry authorization, BuildKit, and the project provisioner are shared installation
+API, Worker, Edge, Caddy, registry authorization, and the project provisioner are shared installation
 components. Their permissions remain minimal and explicit:
 
 - Helm owns installation-time objects.
@@ -581,7 +583,7 @@ components. Their permissions remain minimal and explicit:
 - `@compartment/kube-runtime` is the only runtime package that writes dynamic Kubernetes objects.
 - Edge owns hosted application authorization.
 - Caddy owns transport only.
-- BuildKit can push only through build-scoped registry authorization.
+- Ephemeral BuildKit Jobs can push only through build-scoped registry authorization.
 
 ## Ownership by package and layer
 
@@ -611,9 +613,9 @@ Owns installation-time Kubernetes objects:
 - Services, Deployments, Jobs, Secrets, ConfigMaps, PVCs, and RBAC;
 - Caddy ClusterIP;
 - installation Ingress and Certificate resources;
-- registry, registry authorization, and BuildKit;
-- retained installation state;
-- NetworkPolicies and Pod Security labels.
+- registry and registry authorization;
+- the ephemeral build namespace, RBAC, admission policy, Pod Security labels, and NetworkPolicies;
+- retained installation state.
 
 The chart must not own dynamic project workloads or dynamic custom-domain lifecycle objects.
 
@@ -1152,9 +1154,9 @@ At minimum:
 - system-domain set, verify, activate, and reset-managed;
 - public-route denial for every private surface;
 
-## Future cluster-provisioning mode
+## Managed-VM cluster-provisioning mode
 
-The later mode performs only prerequisite provisioning:
+The shipped managed-VM mode performs prerequisite provisioning:
 
 ```text
 provision Kubernetes

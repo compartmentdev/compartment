@@ -1,12 +1,13 @@
-import { mkdir, open, readFile, stat, unlink, type FileHandle } from 'node:fs/promises';
+import { open, readFile, stat, unlink, type FileHandle } from 'node:fs/promises';
 import type { Stats } from 'node:fs';
 import { managedVmStateDirectory } from './managed-vm-state.service';
+import { ensureManagedVmDirectory } from './managed-vm-owned-file.service';
 
 const managedVmLockPath: string = `${managedVmStateDirectory}/install.lock`;
 const managedVmLockRecoveryPath: string = `${managedVmLockPath}.recovery`;
 
 export async function acquireManagedVmLock(): Promise<() => Promise<void>> {
-  await mkdir(managedVmStateDirectory, { mode: 0o700, recursive: true });
+  await ensureManagedVmDirectory(managedVmStateDirectory, 0o700);
   const handle: FileHandle = await openLockWithStaleRecovery();
   await handle.writeFile(`${String(process.pid)} ${new Date().toISOString()}\n`);
   return async (): Promise<void> => {

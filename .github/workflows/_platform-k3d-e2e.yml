@@ -112,7 +112,7 @@ jobs:
           helm version
 
       - name: Install pinned gVisor
-        if: ${{ matrix.shard == 'gvisor-build' }}
+        if: ${{ contains(fromJSON('["managed-install","install-ha-network-policy","gvisor-build"]'), matrix.shard) }}
         env:
           GVISOR_SHA256: b5e080862deda9158912cbb26df21d2b30b85560fffd166578b79b8f33fa0127
           GVISOR_VERSION: release/20260721.0

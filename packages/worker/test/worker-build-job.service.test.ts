@@ -175,73 +175,6 @@ describe('runWorkerBuildJob', (): void => {
     expect(finalize).toHaveBeenCalledOnce();
   });
 
-  it('runs a deterministic gVisor Job with an ephemeral rootless BuildKit sidecar and deletes it after capture', async (): Promise<void> => {
-    const finalize: Mock<() => Promise<void>> = vi.fn(async (): Promise<void> => await Promise.resolve());
-    const runJob: Mock<
-      (spec: KubeJobSpec, persisted?: undefined, options?: KubeRunJobOptions) => Promise<KubeJobResult>
-    > = vi.fn(
-      async (): Promise<KubeJobResult> =>
-        await Promise.resolve({
-          completedAt: new Date(),
-          exitCode: 0,
-          finalize,
-          jobName: 'job-art-123',
-          logs: `${JSON.stringify({
-            result: { imageRef: `registry.example/web@sha256:${'a'.repeat(64)}`, pushed: true },
-            type: 'result',
-          })}\n`,
-          podName: 'job-art-123-pod',
-          status: 'succeeded',
-        }),
-    );
-
-    await expect(
-      runWorkerBuildJob({ runJob }, buildConfig(), {
-        build: {
-          docker: {
-            imageTag: 'registry.example/web:art_123',
-            labels: {},
-            pushImageInsecureRegistry: false,
-            pushImageTag: 'registry.internal/web:art_123',
-            pushRegistryCredentials: { password: 'secret', serverAddress: 'registry.internal', username: 'build' },
-          },
-          dockerfile: 'FROM scratch\n',
-          kind: 'registry-verification',
-        },
-        id: 'art_123',
-        internalToken: 'runtime-control-token',
-      }),
-    ).resolves.toEqual({
-      imageRef: `registry.example/web@sha256:${'a'.repeat(64)}`,
-      pushed: true,
-    });
-
-    const spec: KubeJobSpec = runJob.mock.calls[0]![0];
-    expect(runJob.mock.calls[0]![2]).toBeUndefined();
-    expect(spec).toMatchObject({
-      cleanupPolicy: 'delete',
-      id: 'art_123',
-      jobClass: 'build',
-      labels: { 'compartment.dev/job-class': 'build' },
-      namespace: 'compartment-build',
-      priorityClassName: 'compartment-platform',
-      scheduling: { runtimeClassName: 'gvisor' },
-      sidecars: [
-        {
-          image: 'moby/buildkit@sha256:builder',
-          name: 'buildkit',
-          securityProfile: 'rootless-buildkit',
-        },
-      ],
-    });
-    expect(spec.sidecars?.[0]?.args).toContain('--oci-worker-snapshotter=native');
-    expect(spec.volumeMounts).toBeUndefined();
-    expect(spec.emptyDirVolumes).toEqual(
-      expect.arrayContaining([{ name: 'buildkit-data' }, { containerMountPath: '/tmp', name: 'tmp' }]),
-    );
-    expect(finalize).toHaveBeenCalledOnce();
-  });
-
   it('reports a structured runner failure and still deletes the Job', async (): Promise<void> => {
     const finalize: Mock<() => Promise<void>> = vi.fn(async (): Promise<void> => await Promise.resolve());
     const runJob: Mock<(spec: KubeJobSpec) => Promise<KubeJobResult>> = vi.fn(
@@ -288,7 +221,6 @@ describe('runWorkerBuildJob', (): void => {
 
 function buildConfig(): WorkerBuildSandboxConfig {
   return {
-    buildKitImage: 'moby/buildkit@sha256:builder',
     buildKitResources: {},
     gcKeepStorageMb: 2000,
     namespace: 'compartment-build',

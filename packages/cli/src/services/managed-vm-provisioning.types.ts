@@ -18,6 +18,7 @@ export type ManagedVmArtifactName = 'cert-manager' | 'gvisor' | 'helm' | 'k3s' |
 export interface ManagedVmArtifact {
   name: ManagedVmArtifactName;
   sha256: string;
+  sha512?: string | undefined;
   url: string;
   version: string;
 }
@@ -37,14 +38,23 @@ export interface ManagedVmLegacyReleaseMetadata extends ManagedVmReleaseMetadata
   metadataVersion: 1;
 }
 
-export interface ManagedVmCurrentReleaseMetadata extends ManagedVmReleaseMetadataBase {
+export interface ManagedVmPreviousReleaseMetadata extends ManagedVmReleaseMetadataBase {
   gvisorVersion: string;
   metadataVersion: 2;
 }
 
-export type ManagedVmReleaseMetadata = ManagedVmCurrentReleaseMetadata | ManagedVmLegacyReleaseMetadata;
+export interface ManagedVmCurrentReleaseMetadata extends ManagedVmReleaseMetadataBase {
+  gvisorVersion: string;
+  metadataVersion: 3;
+}
+
+export type ManagedVmReleaseMetadata =
+  | ManagedVmCurrentReleaseMetadata
+  | ManagedVmLegacyReleaseMetadata
+  | ManagedVmPreviousReleaseMetadata;
 
 export interface ManagedVmHostInventory {
+  archiveExtractorAvailable: boolean;
   architecture: string;
   cgroupV2: boolean;
   clockSynchronized: boolean;
@@ -71,6 +81,7 @@ export interface ManagedVmDiskAvailability {
 }
 
 export interface ManagedVmHostObservation {
+  archiveExtractorAvailable: boolean;
   clockSynchronized: boolean;
   disk: ManagedVmDiskAvailability;
   firewall: ManagedVmFirewallKind;

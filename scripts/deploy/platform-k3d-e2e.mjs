@@ -72,9 +72,6 @@ const prerequisiteSetupBudgetMs = 120_000;
 const transientKubernetesApiMaxAttempts = 6;
 const transientKubernetesApiInitialDelayMs = 1_000;
 const transientKubernetesApiMaxDelayMs = 16_000;
-const transientRegistryCreateMaxAttempts = 5;
-const transientRegistryCreateInitialDelayMs = 1_000;
-const transientRegistryCreateMaxDelayMs = 8_000;
 const certManagerManifestUrl =
   'https://github.com/cert-manager/cert-manager/releases/download/v1.21.0/cert-manager.yaml';
 const ingressNginxManifestUrl =
@@ -581,14 +578,11 @@ async function installRegistryTestIssuer() {
   rmSync(issuerPath, { force: true });
 }
 
-export async function runKubectlWithTransientApiRetry(args, options = {}) {
-  const commandRunner =
-    options.commandRunner ?? ((commandArgs) => captureCommandResult('kubectl', commandArgs, repositoryRoot));
-  const wait = options.wait ?? delay;
+async function runKubectlWithTransientApiRetry(args, options = {}) {
   let lastResult;
 
   for (let attempt = 1; attempt <= transientKubernetesApiMaxAttempts; attempt += 1) {
-    lastResult = commandRunner(args);
+    lastResult = captureCommandResult('kubectl', args, repositoryRoot);
     if (lastResult.status === 0) {
       return;
     }
@@ -616,7 +610,7 @@ export async function runKubectlWithTransientApiRetry(args, options = {}) {
     process.stderr.write(
       `Kubernetes API is not ready (attempt ${String(attempt)}/${String(transientKubernetesApiMaxAttempts)}); retrying in ${String(Math.ceil(boundedRetryDelayMs))}ms.\n`,
     );
-    await wait(boundedRetryDelayMs);
+    await delay(boundedRetryDelayMs);
   }
 
   throw lastResult?.error ?? new Error(`Command failed after Kubernetes API retry: kubectl ${args.join(' ')}`);
@@ -1138,70 +1132,7 @@ function registryExists() {
 
 async function recreateRegistry() {
   deleteRegistry();
-  await runK3dRegistryCreateWithRetry(['registry', 'create', registryName, '--port', `127.0.0.1:${registryHostPort}`]);
-}
-
-export async function runK3dRegistryCreateWithRetry(args, options = {}) {
-  const commandRunner =
-    options.commandRunner ?? ((commandArgs) => captureCommandResult('k3d', commandArgs, repositoryRoot));
-  const cleanup = options.cleanup ?? deleteRegistry;
-  const wait = options.wait ?? delay;
-  let lastResult;
-
-  for (let attempt = 1; attempt <= transientRegistryCreateMaxAttempts; attempt += 1) {
-    lastResult = commandRunner(args);
-    writeCommandResultOutput(lastResult);
-    if (lastResult.status === 0) {
-      return;
-    }
-    if (!isTransientRegistryCreateFailure(lastResult) || attempt === transientRegistryCreateMaxAttempts) {
-      throw lastResult.error ?? new Error(`Command failed: k3d ${args.join(' ')}`);
-    }
-
-    try {
-      await cleanup();
-    } catch (cleanupError) {
-      process.stderr.write(`Failed to clean the partial k3d registry before retrying: ${String(cleanupError)}\n`);
-    }
-    const retryDelayMs = Math.min(
-      transientRegistryCreateInitialDelayMs * 2 ** (attempt - 1),
-      transientRegistryCreateMaxDelayMs,
-    );
-    process.stderr.write(
-      `k3d registry creation hit a transient registry error (attempt ${String(attempt)}/${String(transientRegistryCreateMaxAttempts)}); retrying in ${String(retryDelayMs)}ms.\n`,
-    );
-    await wait(retryDelayMs);
-  }
-
-  throw lastResult?.error ?? new Error(`Command failed after registry retry: k3d ${args.join(' ')}`);
-}
-
-export function isTransientRegistryCreateFailure(result) {
-  const output = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.toLowerCase();
-  const isRegistryPullFailure =
-    output.includes('failed to pull image') ||
-    output.includes('docker failed to pull') ||
-    output.includes('registry-1.docker.io') ||
-    output.includes('docker.io/library/registry');
-  return (
-    isRegistryPullFailure &&
-    (/unexpected http status: (?:429|500|502|503|504)\b/u.test(output) ||
-      /received unexpected http status: (?:429|500|502|503|504)\b/u.test(output) ||
-      output.includes('client.timeout exceeded while awaiting headers') ||
-      output.includes('timeout awaiting response headers') ||
-      output.includes('tls handshake timeout') ||
-      output.includes('connection reset by peer') ||
-      output.includes('i/o timeout'))
-  );
-}
-
-function writeCommandResultOutput(result) {
-  if ((result.stdout ?? '') !== '') {
-    process.stdout.write(result.stdout);
-  }
-  if ((result.stderr ?? '') !== '') {
-    process.stderr.write(result.stderr);
-  }
+  runCommand('k3d', ['registry', 'create', registryName, '--port', `127.0.0.1:${registryHostPort}`], repositoryRoot);
 }
 
 function deleteRegistry() {

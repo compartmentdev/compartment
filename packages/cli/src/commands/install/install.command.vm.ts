@@ -115,32 +115,26 @@ async function runPrivilegedManagedVmInstall(
     reportStage: (stage: ManagedVmInstallStage): void => dependencies.io.stderr(`  ${stage}\n`),
   });
   const adminPassword: string | undefined = await readPrivilegedAdminPassword(options);
-  await executeManagedVmPlatformInstall(dependencies, options, preflight, state, adminPassword);
-  await persistManagedVmStage(state, 'complete');
+  await executeManagedVmPlatformInstall(dependencies, options, preflight, adminPassword);
+  await persistManagedVmStage(state, 'complete', {});
 }
 
 async function executeManagedVmPlatformInstall(
   dependencies: CliCommandDependencies,
   options: InstallCommandOptions,
   preflight: ManagedVmPreflightResult,
-  state: ManagedVmProvisionerState,
   adminPassword: string | undefined,
 ): Promise<void> {
-  try {
-    await executeCanonicalKubernetesInstallCommand(dependencies, {
-      ...options,
-      adminPassword,
-      check: false,
-      ingressClass: 'traefik',
-      ingressEndpoint: preflight.publicAddress,
-      kubeContext: 'default',
-      storageClass: 'local-path',
-      values: managedVmValuesPath,
-    });
-  } catch (error) {
-    await persistManagedVmStage(state, state.completedStage);
-    throw error;
-  }
+  await executeCanonicalKubernetesInstallCommand(dependencies, {
+    ...options,
+    adminPassword,
+    check: false,
+    ingressClass: 'traefik',
+    ingressEndpoint: preflight.publicAddress,
+    kubeContext: 'default',
+    storageClass: 'local-path',
+    values: managedVmValuesPath,
+  });
 }
 
 async function readPrivilegedAdminPassword(options: InstallCommandOptions): Promise<string | undefined> {

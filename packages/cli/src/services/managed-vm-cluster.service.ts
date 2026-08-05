@@ -1,8 +1,12 @@
-import { access, chmod, copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { constants, type Stats } from 'node:fs';
+import { chmod, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { execa, type ManagedVmCommandResult } from './managed-vm-command.service';
 import type { ManagedVmDownloadedArtifacts } from './managed-vm-artifacts.service';
 import { managedVmReleaseMetadata } from './managed-vm-release-metadata.service';
+import { ensureManagedVmDirectory, installNewManagedVmFile } from './managed-vm-owned-file.service';
+import { readManagedVmPathIdentity } from './managed-vm-state.service';
+import { managedVmK3sGeneratedOwnedPaths } from './managed-vm-install-paths.service';
 
 export { isManagedVmStageHealthy } from './managed-vm-cluster-health.service';
 
@@ -16,51 +20,38 @@ const k3sUnitDropInDirectory: string = '/etc/systemd/system/k3s.service.d';
 export async function prepareManagedVmHost(
   artifacts: ManagedVmDownloadedArtifacts,
   publicAddress: string,
-): Promise<void> {
-  await Promise.all([
-    mkdir('/etc/rancher/k3s', { mode: 0o700, recursive: true }),
-    mkdir('/etc/compartment', { mode: 0o700, recursive: true }),
-  ]);
-  if (!(await requiredPathsExist([registryCaPath, registryCaKeyPath]))) {
-    await createRegistryCa();
-  }
-  await writeFile(k3sConfigPath, renderK3sConfig(publicAddress), { mode: 0o600 });
-  await writeFile(managedVmValuesPath, renderManagedVmValues(publicAddress), { mode: 0o600 });
-  await installManagedVmHelm(artifacts);
-  await installManagedVmPackagedCli();
-  await chmod('/usr/local/bin/compartment', 0o755);
+): Promise<Readonly<Record<string, string>>> {
+  const identities: Record<string, string> = {
+    '/etc/rancher/k3s': await ensureManagedVmDirectory('/etc/rancher/k3s', 0o700),
+    '/etc/compartment': await ensureManagedVmDirectory('/etc/compartment', 0o700),
+  };
+  Object.assign(identities, await createRegistryCa());
+  const k3sConfig: string = renderK3sConfig(publicAddress);
+  identities[k3sConfigPath] = await installNewManagedVmFile(k3sConfigPath, k3sConfig, 0o600);
+  const values: string = renderManagedVmValues(publicAddress);
+  identities[managedVmValuesPath] = await installNewManagedVmFile(managedVmValuesPath, values, 0o600);
+  identities['/usr/local/bin/helm'] = await installNewManagedVmFile(
+    '/usr/local/bin/helm',
+    await readFile(artifacts.helmPath),
+    0o755,
+  );
+  identities['/usr/local/bin/compartment'] = await installNewManagedVmFile(
+    '/usr/local/bin/compartment',
+    await readFile(process.execPath),
+    0o755,
+  );
+  return identities;
 }
 
-async function installManagedVmPackagedCli(): Promise<void> {
-  const destination: string = '/usr/local/bin/compartment';
-  if (await pathsIdentifySameFile(process.execPath, destination)) {
-    return;
-  }
-  await copyFile(process.execPath, destination);
-}
-
-async function pathsIdentifySameFile(source: string, destination: string): Promise<boolean> {
-  try {
-    const [sourceStats, destinationStats]: [Stats, Stats] = await Promise.all([stat(source), stat(destination)]);
-    return sourceStats.dev === destinationStats.dev && sourceStats.ino === destinationStats.ino;
-  } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-      return false;
-    }
-    throw error;
-  }
-}
-
-export async function installManagedVmHelm(artifacts: ManagedVmDownloadedArtifacts): Promise<void> {
-  await copyFile(artifacts.helmPath, '/usr/local/bin/helm');
-  await chmod('/usr/local/bin/helm', 0o755);
-}
-
-export async function installManagedVmK3s(artifacts: ManagedVmDownloadedArtifacts): Promise<void> {
-  await copyFile(artifacts.k3sPath, '/usr/local/bin/k3s');
-  await chmod('/usr/local/bin/k3s', 0o755);
-  await mkdir(k3sUnitDropInDirectory, { mode: 0o755, recursive: true });
-  await writeFile(`${k3sUnitDropInDirectory}/compartment.conf`, renderK3sUnitDropIn(), { mode: 0o644 });
+export async function installManagedVmK3s(
+  artifacts: ManagedVmDownloadedArtifacts,
+): Promise<Readonly<Record<string, string>>> {
+  const dropInPath: string = `${k3sUnitDropInDirectory}/compartment.conf`;
+  const identities: Readonly<Record<string, string>> = {
+    '/usr/local/bin/k3s': await installNewManagedVmFile('/usr/local/bin/k3s', await readFile(artifacts.k3sPath), 0o755),
+    [k3sUnitDropInDirectory]: await ensureManagedVmDirectory(k3sUnitDropInDirectory, 0o755),
+    [dropInPath]: await installNewManagedVmFile(dropInPath, renderK3sUnitDropIn(), 0o644),
+  };
   await chmod(artifacts.k3sInstallScriptPath, 0o700);
   await execa('/usr/bin/env', [
     'INSTALL_K3S_SKIP_DOWNLOAD=true',
@@ -68,6 +59,23 @@ export async function installManagedVmK3s(artifacts: ManagedVmDownloadedArtifact
     artifacts.k3sInstallScriptPath,
   ]);
   await execa('systemctl', ['daemon-reload']);
+  const generatedIdentities: Readonly<Record<string, string>> = await readK3sGeneratedIdentities();
+  return { ...identities, ...generatedIdentities };
+}
+
+async function readK3sGeneratedIdentities(): Promise<Readonly<Record<string, string>>> {
+  const entries: [string, string][] = [];
+  for (const path of managedVmK3sGeneratedOwnedPaths) {
+    const identity: string | undefined = await readManagedVmPathIdentity(
+      path,
+      managedVmReleaseMetadata.metadataVersion,
+    );
+    if (identity === undefined) {
+      throw new Error(`The K3s installer did not create the required owned path at ${path}.`);
+    }
+    entries.push([path, identity]);
+  }
+  return Object.fromEntries(entries);
 }
 
 export async function waitForManagedVmKubernetes(): Promise<void> {
@@ -183,7 +191,24 @@ spec:
 `;
 }
 
-async function createRegistryCa(): Promise<void> {
+async function createRegistryCa(): Promise<Readonly<Record<string, string>>> {
+  const directory: string = await mkdtemp(join(tmpdir(), 'compartment-registry-ca-'));
+  const temporaryKeyPath: string = join(directory, 'registry-ca.key');
+  const temporaryCertificatePath: string = join(directory, 'registry-ca.crt');
+  try {
+    await generateRegistryCa(temporaryCertificatePath, temporaryKeyPath);
+    const identities: Readonly<Record<string, string>> = await installGeneratedRegistryCa(
+      temporaryCertificatePath,
+      temporaryKeyPath,
+    );
+    await execa('update-ca-certificates', []);
+    return identities;
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
+}
+
+async function generateRegistryCa(certificatePath: string, keyPath: string): Promise<void> {
   await execa('openssl', [
     'req',
     '-x509',
@@ -195,12 +220,22 @@ async function createRegistryCa(): Promise<void> {
     '-subj',
     '/CN=Compartment Registry CA',
     '-keyout',
-    registryCaKeyPath,
+    keyPath,
     '-out',
-    registryCaPath,
+    certificatePath,
   ]);
-  await chmod('/etc/compartment/registry-ca.key', 0o600);
-  await execa('update-ca-certificates', []);
+}
+
+async function installGeneratedRegistryCa(
+  certificatePath: string,
+  keyPath: string,
+): Promise<Readonly<Record<string, string>>> {
+  const certificate: Buffer = await readFile(certificatePath);
+  const key: Buffer = await readFile(keyPath);
+  return {
+    [registryCaPath]: await installNewManagedVmFile(registryCaPath, certificate, 0o644),
+    [registryCaKeyPath]: await installNewManagedVmFile(registryCaKeyPath, key, 0o600),
+  };
 }
 
 export async function verifyManagedVmComponentVersions(): Promise<void> {
@@ -226,18 +261,4 @@ function renderK3sUnitDropIn(): string {
 Requires=compartment-firewall.service
 After=network-online.target compartment-firewall.service
 `;
-}
-
-async function requiredPathsExist(paths: readonly string[]): Promise<boolean> {
-  const results: boolean[] = await Promise.all(
-    paths.map(async (path: string): Promise<boolean> => {
-      try {
-        await access(path, constants.R_OK);
-        return true;
-      } catch {
-        return false;
-      }
-    }),
-  );
-  return results.every(Boolean);
 }

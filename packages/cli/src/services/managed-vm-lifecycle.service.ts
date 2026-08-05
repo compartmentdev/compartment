@@ -1,39 +1,20 @@
-import { rm } from 'node:fs/promises';
 import { execa, type ManagedVmCommandResult } from './managed-vm-command.service';
-import {
-  configureManagedVmRegistryIssuer,
-  installManagedVmCertManager,
-  installManagedVmK3s,
-  installManagedVmHelm,
-  verifyManagedVmComponentVersions,
-} from './managed-vm-cluster.service';
-import { removeManagedVmFirewall } from './managed-vm-firewall.service';
-import type { ManagedVmResetInput, ManagedVmSystemStatus } from './managed-vm-lifecycle.service.types';
-import type {
-  ManagedVmOwnedPath,
-  ManagedVmProvisionerState,
-  ManagedVmUpdateState,
-} from './managed-vm-provisioning.types';
+import { verifyManagedVmComponentVersions } from './managed-vm-cluster.service';
+import type { ManagedVmSystemStatus } from './managed-vm-lifecycle.service.types';
+import type { ManagedVmProvisionerState, ManagedVmUpdateState } from './managed-vm-provisioning.types';
 import {
   assertManagedVmOwnedFileDigests,
   completeManagedVmReleaseUpdate,
   digest,
-  managedVmStateDirectory,
   managedVmOwnedPaths,
+  managedVmOwnedPathsEqual,
   persistManagedVmUpdate,
-  recordManagedVmOwnedFileDigests,
   readManagedVmState,
 } from './managed-vm-state.service';
 import { acquireManagedVmLock } from './managed-vm-lock.service';
 import { managedVmReleaseMetadata } from './managed-vm-release-metadata.service';
-import {
-  cleanManagedVmArtifacts,
-  downloadManagedVmArtifacts,
-  type ManagedVmDownloadedArtifacts,
-} from './managed-vm-artifacts.service';
-import { removeManagedVmOwnedPaths } from './managed-vm-owned-paths.service';
-import { isManagedVmInstallStageComplete, isManagedVmUpdateStageComplete } from './managed-vm-stage.service';
-import { installManagedVmSandboxRuntime, verifyManagedVmSandboxRuntime } from './managed-vm-sandbox-runtime.service';
+import { isManagedVmUpdateStageComplete } from './managed-vm-stage.service';
+import { verifyManagedVmSandboxRuntime } from './managed-vm-sandbox-runtime.service';
 
 export async function getManagedVmSystemStatus(): Promise<ManagedVmSystemStatus> {
   const state: ManagedVmProvisionerState = await requireManagedVmState();
@@ -69,22 +50,9 @@ export async function updateManagedVmInstallation<TResult>(
   }
 }
 
-export async function resetManagedVmInstallation(input: ManagedVmResetInput): Promise<void> {
-  const releaseLock: () => Promise<void> = await acquireManagedVmLock();
-  try {
-    const state: ManagedVmProvisionerState = await requireManagedVmState();
-    assertResetConfirmation(input, state);
-    assertOwnedManifest(state);
-    assertOwnedRelease(state);
-    await assertManagedVmOwnedFileDigests(state);
-    await executeManagedVmReset(state);
-  } finally {
-    await releaseLock();
-  }
-}
-
 async function prepareManagedVmUpdate(): Promise<ManagedVmProvisionerState> {
   let state: ManagedVmProvisionerState = await requireManagedVmState();
+  assertCurrentManagedVmRelease(state);
   assertOwnedManifest(state);
   assertOwnedRelease(state);
   await assertManagedVmOwnedFileDigests(state);
@@ -117,26 +85,6 @@ async function verifyAndCompleteManagedVmUpdate(state: ManagedVmProvisionerState
   await completeManagedVmReleaseUpdate(state, update);
 }
 
-async function executeManagedVmReset(state: ManagedVmProvisionerState): Promise<void> {
-  if (!isManagedVmInstallStageComplete(state.completedStage, 'preparing-host')) {
-    throw new Error('Managed-VM reset refuses state that has no completed owned mutation stage.');
-  }
-  if (isManagedVmInstallStageComplete(state.completedStage, 'installing-k3s')) {
-    await execa('/usr/local/bin/k3s-uninstall.sh', []);
-  }
-  await removeManagedVmFirewall();
-  await removeOwnedManagedVmPaths(state);
-  await rm(managedVmStateDirectory, { force: true, recursive: true });
-  await execa('update-ca-certificates', []);
-  await execa('systemctl', ['daemon-reload']);
-}
-
-function assertResetConfirmation(input: ManagedVmResetInput, state: ManagedVmProvisionerState): void {
-  if (input.confirmation !== state.installationId) {
-    throw new Error(`Destructive reset requires the exact installation ID: ${state.installationId}`);
-  }
-}
-
 async function beginManagedVmUpdate(state: ManagedVmProvisionerState): Promise<ManagedVmProvisionerState> {
   const now: string = new Date().toISOString();
   let update: ManagedVmUpdateState =
@@ -158,38 +106,12 @@ async function installManagedVmUpdateComponents(state: ManagedVmProvisionerState
   if (isManagedVmUpdateStageComplete(update.stage, 'components-installed')) {
     return state;
   }
-  if (state.metadataDigest === currentMetadataDigest()) {
-    await verifyManagedVmComponentVersions();
-    return await persistManagedVmUpdate(state, {
-      ...update,
-      stage: 'components-installed',
-      updatedAt: new Date().toISOString(),
-    });
-  }
-  return await reinstallManagedVmComponents(state, update);
-}
-
-async function reinstallManagedVmComponents(
-  state: ManagedVmProvisionerState,
-  update: ManagedVmUpdateState,
-): Promise<ManagedVmProvisionerState> {
-  const artifacts: ManagedVmDownloadedArtifacts = await downloadManagedVmArtifacts(managedVmReleaseMetadata.artifacts);
-  try {
-    await installManagedVmK3s(artifacts);
-    await installManagedVmSandboxRuntime(artifacts);
-    await installManagedVmHelm(artifacts);
-    await installManagedVmCertManager(artifacts.certManagerManifestPath);
-    await configureManagedVmRegistryIssuer();
-    await verifyManagedVmComponentVersions();
-    state = await recordManagedVmOwnedFileDigests(state);
-    return await persistManagedVmUpdate(state, {
-      ...update,
-      stage: 'components-installed',
-      updatedAt: new Date().toISOString(),
-    });
-  } finally {
-    await cleanManagedVmArtifacts(artifacts);
-  }
+  await verifyManagedVmComponentVersions();
+  return await persistManagedVmUpdate(state, {
+    ...update,
+    stage: 'components-installed',
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 function requireManagedVmUpdate(state: ManagedVmProvisionerState): ManagedVmUpdateState {
@@ -199,25 +121,17 @@ function requireManagedVmUpdate(state: ManagedVmProvisionerState): ManagedVmUpda
   return state.update;
 }
 
-async function removeOwnedManagedVmPaths(state: ManagedVmProvisionerState): Promise<void> {
-  const completedPaths: readonly string[] = state.ownedPaths
-    .filter((ownedPath: ManagedVmOwnedPath): boolean =>
-      isManagedVmInstallStageComplete(state.completedStage, ownedPath.stage),
-    )
-    .map((ownedPath: ManagedVmOwnedPath): string => ownedPath.path);
-  await removeManagedVmOwnedPaths(completedPaths);
+function assertOwnedManifest(state: ManagedVmProvisionerState): void {
+  if (!managedVmOwnedPathsEqual(state.ownedPaths, managedVmOwnedPaths)) {
+    throw new Error('Managed-VM ownership manifest is invalid; refusing lifecycle mutation.');
+  }
 }
 
-function assertOwnedManifest(state: ManagedVmProvisionerState): void {
-  const expected: string = JSON.stringify(managedVmOwnedPaths);
-  const legacyExpected: string = JSON.stringify(
-    managedVmOwnedPaths.filter(
-      (ownedPath: ManagedVmOwnedPath): boolean => ownedPath.stage !== 'installing-sandbox-runtime',
-    ),
-  );
-  const observed: string = JSON.stringify(state.ownedPaths);
-  if (observed !== expected && !(state.releaseMetadata.metadataVersion === 1 && observed === legacyExpected)) {
-    throw new Error('Managed-VM ownership manifest is invalid; refusing lifecycle mutation.');
+function assertCurrentManagedVmRelease(state: ManagedVmProvisionerState): void {
+  if (state.metadataDigest !== currentMetadataDigest()) {
+    throw new Error(
+      'This managed VM uses an older installer-owned runtime. Reprovision the VM before updating Compartment.',
+    );
   }
 }
 

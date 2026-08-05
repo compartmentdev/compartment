@@ -23,14 +23,17 @@ export interface WorkerBuildConfig extends WorkerProcessConfig {
 }
 
 export interface WorkerBuildSandboxConfig {
-  buildKitImage: string;
   gcKeepStorageMb: number;
   buildKitResources: object;
   namespace: string;
   runnerImage: string;
   runnerResources: object;
-  scheduling: KubeWorkloadScheduling;
+  scheduling: WorkerBuildScheduling;
   timeoutMs: number;
+}
+
+export interface WorkerBuildScheduling extends KubeWorkloadScheduling {
+  runtimeClassName: string;
 }
 
 export interface WorkerConfig extends WorkerBuildConfig {

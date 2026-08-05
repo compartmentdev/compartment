@@ -106,10 +106,10 @@ function buildJobEnvironment(input: RunWorkerBuildJobInput): Record<string, stri
 
 function buildJobVolumes(): KubeJobEmptyDirVolume[] {
   return [
-    { name: 'buildkit-data' },
-    { name: 'buildkit-rootless-tmp' },
-    { name: 'buildkit-run' },
-    { containerMountPath: '/tmp', name: 'tmp' },
+    { gvisorTmpfs: true, name: 'buildkit-data', sizeLimit: '3Gi' },
+    { gvisorTmpfs: true, name: 'buildkit-run', sizeLimit: '128Mi' },
+    { gvisorTmpfs: true, name: 'buildkit-tmp', sizeLimit: '1Gi' },
+    { containerMountPath: '/tmp', gvisorTmpfs: true, name: 'tmp', sizeLimit: '1Gi' },
   ];
 }
 
@@ -118,21 +118,20 @@ function buildKitSidecar(config: WorkerBuildSandboxConfig): KubeJobSidecar {
     args: [
       '--addr',
       buildKitAddress,
-      '--oci-worker-no-process-sandbox',
-      '--oci-worker-snapshotter=native',
+      '--oci-worker=true',
+      '--oci-worker-binary=/usr/local/bin/buildkit-runc-gvisor',
       '--oci-worker-gc-keepstorage',
       String(config.gcKeepStorageMb),
     ],
-    env: { HOME: '/home/user', XDG_RUNTIME_DIR: '/run/user/1000' },
-    image: config.buildKitImage,
+    command: ['/usr/local/bin/buildkitd'],
+    env: { HOME: '/tmp', TMPDIR: '/buildkit-tmp' },
+    image: config.runnerImage,
     name: 'buildkit',
     resources: config.buildKitResources,
-    securityProfile: 'rootless-buildkit',
     volumeMounts: [
-      { mountPath: '/home/user/.local/share/buildkit', name: 'buildkit-data' },
-      { mountPath: '/home/user/.local/tmp', name: 'buildkit-rootless-tmp' },
-      { mountPath: '/run/user/1000', name: 'buildkit-run' },
-      { mountPath: '/tmp', name: 'tmp' },
+      { mountPath: '/var/lib/buildkit', name: 'buildkit-data' },
+      { mountPath: '/run', name: 'buildkit-run' },
+      { mountPath: '/buildkit-tmp', name: 'buildkit-tmp' },
     ],
   };
 }

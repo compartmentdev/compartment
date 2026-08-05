@@ -39,12 +39,6 @@ images:
     # Pinned from registry:2 on 2026-07-23; refresh the digest intentionally with the readable tag.
     digest: sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
     pullPolicy: IfNotPresent
-  buildkit:
-    repository: moby/buildkit
-    tag: v0.30.0-rootless
-    # Pinned from moby/buildkit:v0.30.0-rootless on 2026-07-23; refresh the digest intentionally with the readable tag.
-    digest: sha256:d76eb1caecac5733ef7553c1e90a1b21f1bb218cd1142d3553de0747b4a14ba9
-    pullPolicy: IfNotPresent
   kubectl:
     repository: registry.k8s.io/kubectl
     tag: v1.36.2
@@ -268,7 +262,7 @@ resources:
     limits: { cpu: 500m, memory: 256Mi }
   buildkit:
     requests: { cpu: 250m, memory: 512Mi }
-    limits: { cpu: '2', memory: 2Gi }
+    limits: { cpu: '2', memory: 3Gi }
   buildRunner:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { cpu: '1', memory: 1Gi }

@@ -43,6 +43,7 @@ function createPreflightChecks(
     check('architecture', inventory.architecture === 'x86_64', 'x86_64'),
     check('systemd', inventory.systemd, 'systemd is running'),
     check('sudo', inventory.sudoAvailable, 'root or sudo escalation is available'),
+    check('archive-extractor', inventory.archiveExtractorAvailable, 'dpkg-deb is available'),
     check('cgroup-v2', inventory.cgroupV2, 'cgroup v2'),
     ...createResourceChecks(inventory),
     ...createNetworkChecks(inventory, classification, publicAddress),

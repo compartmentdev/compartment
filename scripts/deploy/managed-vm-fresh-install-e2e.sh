@@ -2,7 +2,7 @@
 set -euo pipefail
 
 readonly cli_path="${1:?Usage: managed-vm-fresh-install-e2e.sh <compartment-cli>}"
-readonly expected_gvisor_version="release-20260721.0"
+readonly expected_gvisor_version="release-20260727.0"
 readonly password_file="$(mktemp)"
 readonly install_log="$(mktemp)"
 readonly canary_manifest="$(mktemp)"

@@ -34,8 +34,6 @@ Commands:
   update [options]                Verify images, update the Kubernetes platform,
                                   and run database migrations
   diagnose [options]              Create a redacted managed-VM support bundle
-  reset [options]                 Destroy a Compartment-provisioned cluster and
-                                  its owned host state
   help [command]                  display help for command
 ```
 
@@ -47,4 +45,3 @@ Commands:
 - [compartment system restart](/reference/generated/cli/system/restart/)
 - [compartment system update](/reference/generated/cli/system/update/)
 - [compartment system diagnose](/reference/generated/cli/system/diagnose/)
-- [compartment system reset](/reference/generated/cli/system/reset/)

@@ -1,5 +1,6 @@
 import type { KubeToleration, KubeWorkloadScheduling } from '@compartment/kube-runtime';
 import { z } from 'zod';
+import type { WorkerBuildScheduling } from './config.types';
 
 const tolerationSchema: z.ZodType<KubeToleration> = z.object({
   effect: z.enum(['NoExecute', 'NoSchedule', 'PreferNoSchedule']).optional(),
@@ -22,6 +23,10 @@ export function readTenantWorkloadScheduling(value: string | undefined): KubeWor
   return tenantWorkloadSchedulingSchema.parse(JSON.parse(value));
 }
 
-export function readRequiredWorkloadScheduling(value: string): KubeWorkloadScheduling {
-  return tenantWorkloadSchedulingSchema.parse(JSON.parse(value));
+export function readBuildWorkloadScheduling(value: string): WorkerBuildScheduling {
+  const scheduling: KubeWorkloadScheduling = tenantWorkloadSchedulingSchema.parse(JSON.parse(value));
+  if (scheduling.runtimeClassName === undefined) {
+    throw new Error('Build scheduling must configure a gVisor RuntimeClass.');
+  }
+  return { ...scheduling, runtimeClassName: scheduling.runtimeClassName };
 }

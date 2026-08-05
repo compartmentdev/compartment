@@ -23,10 +23,13 @@ describe('managed VM release metadata', (): void => {
     });
     expect(managedVmReleaseMetadata.artifacts).toContainEqual({
       name: 'gvisor',
-      sha256: 'b5e080862deda9158912cbb26df21d2b30b85560fffd166578b79b8f33fa0127',
-      url: 'https://storage.googleapis.com/gvisor/releases/release/20260721.0/x86_64/gvisor.tar.bz2',
-      version: 'release-20260721.0',
+      sha256: '386bdc2196fc600b68ff8dafdd8ecdc6a8e033ecf9cfa9dfab61ec1b389da307',
+      sha512:
+        '2a440a27a1297ee2124b5c4915b44f9cbcd82ed7871a7ddd99f6602e6d550f8d080f26cb1fa8259d1bd6cde1f4e5942d3eff11116c450b28b2ddfdd92654e87a',
+      url: 'https://storage.googleapis.com/gvisor/releases/pool/20260727.0/binary-amd64/runsc.deb',
+      version: 'release-20260727.0',
     });
+    expect(managedVmReleaseMetadata.metadataVersion).toBe(3);
     expect(managedVmReleaseMetadata.helmVersion).toBe('v4.1.4');
     expect(managedVmReleaseMetadata.k3sChannel).not.toContain(managedVmReleaseMetadata.k3sVersion);
   });

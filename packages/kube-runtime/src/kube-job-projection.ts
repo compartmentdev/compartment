@@ -1,4 +1,5 @@
 import type {
+  KubeJobEmptyDirVolume,
   KubeJobManifest,
   KubeJobManifestSpec,
   KubeJobSpec,
@@ -15,10 +16,14 @@ import type {
   KubeVolumeMount,
 } from './kube-runtime.types';
 import { compareKubeKey } from './kube-key-order';
+import { gvisorTmpfsAnnotations } from './kube-gvisor-mount-annotations';
 import { kubeSecretName } from './kube-naming';
 import { secretChecksum } from './kube-secret-projection';
 import type { KubeContainerSecurityContext, KubePodSecurityContext } from './kube-security-context.types';
 import {
+  assertGvisorBuildKitSidecars,
+  gvisorBuildKitSecurityContext,
+  gvisorBuildRunnerSecurityContext,
   projectPodSecurityContext,
   projectVolumeSecurityContext,
   resourcePodSecurityContext,
@@ -80,6 +85,7 @@ export function recoveredJobSpec(spec: KubeJobSpec, observed: KubeObservedManife
 }
 
 function jobSpec(spec: KubeJobSpec, labels: Record<string, string>): KubeJobManifestSpec {
+  assertGvisorBuildKitSidecars(spec);
   const podSpec: KubeProjectedPodSpec = {
     automountServiceAccountToken: false,
     containers: [jobContainer(spec)],
@@ -97,19 +103,19 @@ function jobSpec(spec: KubeJobSpec, labels: Record<string, string>): KubeJobMani
     activeDeadlineSeconds: Math.max(1, Math.ceil(spec.timeoutMs / 1_000)),
     backoffLimit: spec.jobClass === 'release' ? 0 : 1,
     template: {
-      metadata: { annotations: { 'compartment.dev/secret-checksum': secretChecksum(spec.env) }, labels },
+      metadata: { annotations: jobPodAnnotations(spec), labels },
       spec: podSpec,
     },
   };
 }
 
+function jobPodAnnotations(spec: KubeJobSpec): Record<string, string> {
+  return { 'compartment.dev/secret-checksum': secretChecksum(spec.env), ...gvisorTmpfsAnnotations(spec) };
+}
+
 function jobPodSecurityContext(spec: KubeJobSpec): KubePodSecurityContext | undefined {
   if (spec.sidecars !== undefined && spec.sidecars.length > 0) {
-    return {
-      fsGroup: 1000,
-      fsGroupChangePolicy: 'OnRootMismatch',
-      seccompProfile: { type: 'Unconfined' },
-    };
+    return { seccompProfile: { type: 'RuntimeDefault' } };
   }
   const volumeGroupContext: KubePodSecurityContext =
     spec.volumeMounts === undefined || spec.volumeMounts.length === 0 ? {} : projectVolumeSecurityContext();
@@ -136,24 +142,14 @@ function projectSidecar(sidecar: KubeJobSidecar): KubeProjectedSidecarContainer 
     );
   return {
     args: sidecar.args,
+    command: sidecar.command,
     env,
     image: sidecar.image,
     name: sidecar.name,
     resources: sidecar.resources,
     restartPolicy: 'Always',
-    securityContext: rootlessBuildKitSecurityContext(),
+    securityContext: gvisorBuildKitSecurityContext(),
     volumeMounts: sidecar.volumeMounts,
-  };
-}
-
-function rootlessBuildKitSecurityContext(): KubeContainerSecurityContext {
-  return {
-    allowPrivilegeEscalation: true,
-    appArmorProfile: { type: 'Unconfined' },
-    readOnlyRootFilesystem: true,
-    runAsGroup: 1000,
-    runAsNonRoot: true,
-    runAsUser: 1000,
   };
 }
 
@@ -173,14 +169,23 @@ function jobContainer(spec: KubeJobSpec): KubeProjectedContainer {
     image: spec.image,
     name: 'job',
     resources: spec.resources,
-    securityContext:
-      spec.securityProfile === 'restricted' ||
-      spec.securityProfile === 'project-restricted' ||
-      spec.securityProfile === 'resource-restricted'
-        ? restrictedContainerSecurityContext()
-        : undefined,
+    securityContext: jobContainerSecurityContext(spec),
     volumeMounts: kubeJobVolumeMounts(spec),
   };
+}
+
+function jobContainerSecurityContext(spec: KubeJobSpec): KubeContainerSecurityContext | undefined {
+  if (spec.sidecars !== undefined && spec.sidecars.length > 0) {
+    return gvisorBuildRunnerSecurityContext();
+  }
+  if (
+    spec.securityProfile === 'restricted' ||
+    spec.securityProfile === 'project-restricted' ||
+    spec.securityProfile === 'resource-restricted'
+  ) {
+    return restrictedContainerSecurityContext();
+  }
+  return undefined;
 }
 
 function kubeJobVolumes(spec: KubeJobSpec): KubePodVolume[] {
@@ -196,7 +201,12 @@ function kubeJobVolumes(spec: KubeJobSpec): KubePodVolume[] {
     ) ?? [];
   const kubeApiAccess: KubePodVolume | null = kubeApiAccessVolume(spec);
   const emptyDirectories: KubePodVolume[] =
-    spec.emptyDirVolumes?.map(({ name }: { name: string }): KubePodVolume => ({ emptyDir: {}, name })) ?? [];
+    spec.emptyDirVolumes?.map(
+      ({ name, sizeLimit }: KubeJobEmptyDirVolume): KubePodVolume => ({
+        emptyDir: sizeLimit === undefined ? {} : { sizeLimit },
+        name,
+      }),
+    ) ?? [];
   return [...persistentVolumes, ...emptyDirectories, ...(kubeApiAccess === null ? [] : [kubeApiAccess])];
 }
 

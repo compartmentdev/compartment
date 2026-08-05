@@ -14,7 +14,11 @@ import {
 } from './managed-vm-cluster.service';
 import { installManagedVmSandboxRuntime } from './managed-vm-sandbox-runtime.service';
 import { installManagedVmFirewall } from './managed-vm-firewall.service';
-import type { ManagedVmInstallStage, ManagedVmProvisionerState } from './managed-vm-provisioning.types';
+import type {
+  ManagedVmInstallStage,
+  ManagedVmOwnedPath,
+  ManagedVmProvisionerState,
+} from './managed-vm-provisioning.types';
 import type { ManagedVmProvisionInput } from './managed-vm-provisioner.service.types';
 import { managedVmReleaseMetadata } from './managed-vm-release-metadata.service';
 import {
@@ -25,12 +29,11 @@ import {
   persistManagedVmStage,
   readManagedVmState,
 } from './managed-vm-state.service';
+import { findExistingManagedVmPaths, managedVmK3sGeneratedConflictPaths } from './managed-vm-install-paths.service';
 import { acquireManagedVmLock } from './managed-vm-lock.service';
 import { isManagedVmInstallStageComplete } from './managed-vm-stage.service';
 import { loadManagedVmKernelModules } from './managed-vm-kernel-modules.service';
 import { isSeaRuntime } from '../sea';
-import { access } from 'node:fs/promises';
-import { constants } from 'node:fs';
 
 export async function provisionManagedVmCluster(input: ManagedVmProvisionInput): Promise<ManagedVmProvisionerState> {
   assertPrivileged();
@@ -38,7 +41,6 @@ export async function provisionManagedVmCluster(input: ManagedVmProvisionInput):
   const releaseLock: () => Promise<void> = await acquireManagedVmLock();
   let artifacts: ManagedVmDownloadedArtifacts | undefined;
   try {
-    await loadManagedVmKernelModules();
     artifacts = await downloadManagedVmArtifacts(managedVmReleaseMetadata.artifacts);
     return await runProvisioningStages(input, artifacts);
   } finally {
@@ -74,15 +76,24 @@ async function runClusterStages(
   input: ManagedVmProvisionInput,
   artifacts: ManagedVmDownloadedArtifacts,
 ): Promise<ManagedVmProvisionerState> {
-  let state: ManagedVmProvisionerState = initialState;
-  state = await runStage(
-    state,
+  let state: ManagedVmProvisionerState = await runStage(
+    initialState,
     'preparing-host',
     input,
-    async (): Promise<void> => await prepareHostStage(input, artifacts),
+    async (): Promise<Readonly<Record<string, string>>> => await prepareHostStage(input, artifacts),
   );
-  state = await runK3sStage(state, input, artifacts);
-  state = await runStage(state, 'waiting-for-kubernetes', input, waitForManagedVmKubernetes);
+  state = await runStage(
+    state,
+    'installing-k3s',
+    input,
+    async (): Promise<Readonly<Record<string, string>>> => await installManagedVmK3s(artifacts),
+  );
+  state = await runStage(
+    state,
+    'waiting-for-kubernetes',
+    input,
+    async (): Promise<Readonly<Record<string, string>>> => await runNoHostStage(waitForManagedVmKubernetes),
+  );
   return await runPostKubernetesStages(state, input, artifacts);
 }
 
@@ -96,36 +107,40 @@ async function runPostKubernetesStages(
     state,
     'installing-sandbox-runtime',
     input,
-    async (): Promise<void> => await installManagedVmSandboxRuntime(artifacts),
+    async (): Promise<Readonly<Record<string, string>>> => await installManagedVmSandboxRuntime(artifacts),
   );
+  return await runPostSandboxStages(state, input, artifacts);
+}
+
+async function runPostSandboxStages(
+  initialState: ManagedVmProvisionerState,
+  input: ManagedVmProvisionInput,
+  artifacts: ManagedVmDownloadedArtifacts,
+): Promise<ManagedVmProvisionerState> {
+  let state: ManagedVmProvisionerState = initialState;
   state = await runStage(
     state,
     'installing-cert-manager',
     input,
-    async (): Promise<void> => await installCertManagerStage(artifacts),
+    async (): Promise<Readonly<Record<string, string>>> =>
+      await runNoHostStage(async (): Promise<void> => await installCertManagerStage(artifacts)),
   );
-  return await runStage(state, 'verifying-prerequisites', input, verifyManagedVmPrerequisites);
-}
-
-async function runK3sStage(
-  state: ManagedVmProvisionerState,
-  input: ManagedVmProvisionInput,
-  artifacts: ManagedVmDownloadedArtifacts,
-): Promise<ManagedVmProvisionerState> {
   return await runStage(
     state,
-    'installing-k3s',
+    'verifying-prerequisites',
     input,
-    async (): Promise<void> => await installManagedVmK3s(artifacts),
+    async (): Promise<Readonly<Record<string, string>>> => await runNoHostStage(verifyManagedVmPrerequisites),
   );
 }
 
 async function prepareHostStage(
   input: ManagedVmProvisionInput,
   artifacts: ManagedVmDownloadedArtifacts,
-): Promise<void> {
-  await installManagedVmFirewall(input.publicInterface);
-  await prepareManagedVmHost(artifacts, input.publicAddress);
+): Promise<Readonly<Record<string, string>>> {
+  await loadManagedVmKernelModules();
+  const hostIdentities: Readonly<Record<string, string>> = await prepareManagedVmHost(artifacts, input.publicAddress);
+  const firewallIdentities: Readonly<Record<string, string>> = await installManagedVmFirewall(input.publicInterface);
+  return { ...hostIdentities, ...firewallIdentities };
 }
 
 async function installCertManagerStage(artifacts: ManagedVmDownloadedArtifacts): Promise<void> {
@@ -133,18 +148,17 @@ async function installCertManagerStage(artifacts: ManagedVmDownloadedArtifacts):
   await configureManagedVmRegistryIssuer();
 }
 
+async function runNoHostStage(action: () => Promise<void>): Promise<Readonly<Record<string, string>>> {
+  await action();
+  return {};
+}
+
 async function assertNoPreexistingOwnedPaths(): Promise<void> {
-  const conflicts: string[] = [];
-  for (const ownedPath of managedVmOwnedPaths) {
-    try {
-      await access(ownedPath.path, constants.F_OK);
-      conflicts.push(ownedPath.path);
-    } catch (error) {
-      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
-        throw error;
-      }
-    }
-  }
+  const conflictPaths: readonly string[] = [
+    ...managedVmOwnedPaths.map((ownedPath: ManagedVmOwnedPath): string => ownedPath.path),
+    ...managedVmK3sGeneratedConflictPaths,
+  ];
+  const conflicts: string[] = await findExistingManagedVmPaths(conflictPaths);
   if (conflicts.length > 0) {
     throw new Error(`Managed-VM provisioning refuses to overwrite existing host paths: ${conflicts.join(', ')}`);
   }
@@ -154,20 +168,70 @@ async function runStage(
   state: ManagedVmProvisionerState,
   stage: ManagedVmInstallStage,
   input: ManagedVmProvisionInput,
-  action: () => Promise<void>,
+  action: () => Promise<Readonly<Record<string, string>>>,
 ): Promise<ManagedVmProvisionerState> {
+  await assertManagedVmOwnedFileDigests(state);
   if (isManagedVmInstallStageComplete(state.completedStage, stage)) {
-    await assertManagedVmOwnedFileDigests(state);
-    if (await isManagedVmStageHealthy(stage)) {
-      return state;
-    }
+    return await repairCompletedStage(state, stage, input, action);
+  }
+  await assertStageMutationPathsAreAbsent(state, stage);
+  input.reportStage(stage);
+  const expectedOwnedFileDigests: Readonly<Record<string, string>> = await action();
+  return await persistManagedVmStage(state, stage, expectedOwnedFileDigests);
+}
+
+async function repairCompletedStage(
+  state: ManagedVmProvisionerState,
+  stage: ManagedVmInstallStage,
+  input: ManagedVmProvisionInput,
+  action: () => Promise<Readonly<Record<string, string>>>,
+): Promise<ManagedVmProvisionerState> {
+  if (await isManagedVmStageHealthy(stage)) {
+    return state;
+  }
+  if (isManagedVmHostMutationStage(stage)) {
+    throw new Error(
+      `Managed-VM stage ${stage} is recorded but unhealthy; refusing automatic repair. Diagnose or reprovision the VM.`,
+    );
   }
   input.reportStage(stage);
-  await action();
-  return await persistManagedVmStage(state, stage);
+  const repairedOwnedFileDigests: Readonly<Record<string, string>> = await action();
+  if (Object.keys(repairedOwnedFileDigests).length > 0) {
+    throw new Error(`Managed-VM stage ${stage} returned owned host content during cluster-only repair.`);
+  }
+  return state;
+}
+
+async function assertStageMutationPathsAreAbsent(
+  state: ManagedVmProvisionerState,
+  stage: ManagedVmInstallStage,
+): Promise<void> {
+  if (!isManagedVmHostMutationStage(stage)) {
+    return;
+  }
+  const ownedPaths: string[] = state.ownedPaths
+    .filter((ownedPath: ManagedVmOwnedPath): boolean => ownedPath.stage === stage)
+    .map((ownedPath: ManagedVmOwnedPath): string => ownedPath.path);
+  const paths: readonly string[] =
+    stage === 'installing-k3s' ? [...ownedPaths, ...managedVmK3sGeneratedConflictPaths] : ownedPaths;
+  const conflicts: string[] = await findExistingManagedVmPaths(paths);
+  if (conflicts.length > 0) {
+    throw new Error(
+      `Managed-VM stage ${stage} has partial or foreign host paths and cannot resume safely: ${conflicts.join(', ')}. Reprovision the VM.`,
+    );
+  }
+}
+
+function isManagedVmHostMutationStage(stage: ManagedVmInstallStage): boolean {
+  return stage === 'preparing-host' || stage === 'installing-k3s' || stage === 'installing-sandbox-runtime';
 }
 
 function assertResumeIdentity(state: ManagedVmProvisionerState, config: string): void {
+  if (state.releaseMetadata.metadataVersion !== managedVmReleaseMetadata.metadataVersion) {
+    throw new Error(
+      `Managed-VM state metadata version ${String(state.releaseMetadata.metadataVersion)} cannot resume with installer metadata version ${String(managedVmReleaseMetadata.metadataVersion)}. Reprovision the VM.`,
+    );
+  }
   const metadataDigest: string = digest(JSON.stringify(managedVmReleaseMetadata));
   if (state.configDigest !== digest(config) || state.metadataDigest !== metadataDigest) {
     throw new Error(

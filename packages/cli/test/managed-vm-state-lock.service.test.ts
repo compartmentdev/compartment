@@ -7,6 +7,7 @@ interface LockHandle {
 }
 
 interface LockMocks {
+  lstat: Mock;
   open: Mock;
   readFile: Mock;
   stat: Mock;
@@ -23,6 +24,7 @@ function createHandle(inode: number): LockHandle {
 
 const mocks: LockMocks = vi.hoisted(
   (): LockMocks => ({
+    lstat: vi.fn(),
     open: vi.fn(),
     readFile: vi.fn(),
     stat: vi.fn(),
@@ -33,7 +35,7 @@ const mocks: LockMocks = vi.hoisted(
 vi.mock(
   'node:fs/promises',
   (): Record<string, Mock> => ({
-    lstat: vi.fn(),
+    lstat: mocks.lstat,
     mkdir: vi.fn(),
     open: mocks.open,
     readFile: mocks.readFile,
@@ -47,6 +49,12 @@ vi.mock(
 describe('managed VM lifecycle lock', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks();
+    mocks.lstat.mockResolvedValue({
+      isDirectory: (): boolean => true,
+      isSymbolicLink: (): boolean => false,
+      mode: 0o700,
+      uid: 0,
+    });
     mocks.unlink.mockResolvedValue(undefined);
   });
 

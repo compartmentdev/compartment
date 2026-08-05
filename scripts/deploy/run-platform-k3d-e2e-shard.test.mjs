@@ -139,20 +139,20 @@ describe('platform k3d e2e shard runner', () => {
       'build-matrix-b-2',
       'build-matrix-b-3',
     ]) {
-      expect(readPlatformK3dShardSuites(shard)).toEqual(['install', 'build-matrix']);
+      expect(readPlatformK3dShardSuites(shard)).toEqual(['bootstrap', 'build-matrix']);
       expect(buildPlatformK3dShardEnvironment(shard, {}).COMPARTMENT_E2E_BUILD_MATRIX_PARTITION).toBe(
         shard.replace('build-matrix-', ''),
       );
     }
     expect(readPlatformK3dShardSuites('gvisor-build')).toEqual(['install', 'build-matrix']);
-    expect(readPlatformK3dShardSuites('user-flow')).toEqual(['install', 'system-user']);
-    expect(readPlatformK3dShardSuites('console')).toEqual(['install', 'console', 'g1', 'product-log']);
+    expect(readPlatformK3dShardSuites('user-flow')).toEqual(['bootstrap', 'system-user']);
+    expect(readPlatformK3dShardSuites('console')).toEqual(['bootstrap', 'console', 'g1', 'product-log']);
     expect(readPlatformK3dShardSuites('managed-install')).toEqual([
       'public-operator-install',
       'managed-install',
       'retained-state',
     ]);
-    expect(readPlatformK3dShardSuites('system-update')).toEqual(['install', 'system-update']);
+    expect(readPlatformK3dShardSuites('system-update')).toEqual(['bootstrap', 'system-update']);
   });
 
   it('cleans successful and failed runs by default while preserving the original failure', async () => {

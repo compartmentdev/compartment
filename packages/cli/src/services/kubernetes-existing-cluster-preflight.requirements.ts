@@ -75,6 +75,22 @@ export function readClusterOwnedTargets(fullname: string): KubernetesOwnedResour
       `${fullname}-project-bootstrap-boundary`,
       'validatingadmissionpolicybindings.admissionregistration.k8s.io',
     ),
+    ...readBuildSandboxTargets(fullname),
+  ];
+}
+
+function readBuildSandboxTargets(fullname: string): KubernetesOwnedResourceTarget[] {
+  return [
+    target(
+      'ValidatingAdmissionPolicy',
+      `${fullname}-build-sandbox`,
+      'validatingadmissionpolicies.admissionregistration.k8s.io',
+    ),
+    target(
+      'ValidatingAdmissionPolicyBinding',
+      `${fullname}-build-sandbox`,
+      'validatingadmissionpolicybindings.admissionregistration.k8s.io',
+    ),
   ];
 }
 

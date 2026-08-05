@@ -1,9 +1,58 @@
 import type { KubeContainerSecurityContext, KubePodSecurityContext } from './kube-security-context.types';
+import type { KubeJobSpec } from './kube-job-spec.types';
 
 const postgresAlpineImagePattern: RegExp = /^postgres:(?:alpine|[^@]+-alpine)(?:[0-9]+(?:\.[0-9]+)*)?(?:@|$)/u;
 const projectRuntimeUserId: number = 10_001;
 const postgresAlpineRuntimeUserId: number = 70;
 const postgresDebianRuntimeUserId: number = 999;
+const gvisorBuildKitCapabilities: string[] = [
+  'AUDIT_WRITE',
+  'CHOWN',
+  'DAC_OVERRIDE',
+  'FOWNER',
+  'FSETID',
+  'KILL',
+  'MKNOD',
+  'NET_BIND_SERVICE',
+  'NET_RAW',
+  'SETFCAP',
+  'SETGID',
+  'SETPCAP',
+  'SETUID',
+  'SYS_ADMIN',
+  'SYS_CHROOT',
+];
+
+export function assertGvisorBuildKitSidecars(spec: KubeJobSpec): void {
+  if (
+    spec.sidecars !== undefined &&
+    spec.sidecars.length > 0 &&
+    (spec.jobClass !== 'build' || spec.scheduling?.runtimeClassName === undefined)
+  ) {
+    throw new Error('Kubernetes gVisor BuildKit sidecars require a build Job with an explicit sandbox RuntimeClass.');
+  }
+}
+
+export function gvisorBuildKitSecurityContext(): KubeContainerSecurityContext {
+  return {
+    allowPrivilegeEscalation: false,
+    capabilities: { add: gvisorBuildKitCapabilities, drop: ['ALL'] },
+    privileged: false,
+    readOnlyRootFilesystem: true,
+    runAsGroup: 0,
+    runAsUser: 0,
+  };
+}
+
+export function gvisorBuildRunnerSecurityContext(): KubeContainerSecurityContext {
+  return {
+    ...restrictedContainerSecurityContext(),
+    readOnlyRootFilesystem: true,
+    runAsGroup: projectRuntimeUserId,
+    runAsNonRoot: true,
+    runAsUser: projectRuntimeUserId,
+  };
+}
 
 export function restrictedContainerSecurityContext(): KubeContainerSecurityContext {
   return {

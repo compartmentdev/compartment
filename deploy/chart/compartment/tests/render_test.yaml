@@ -265,10 +265,6 @@ tests:
         template: registry.yaml
         documentIndex: 1
       - matchRegex:
-          path: data.COMPARTMENT_BUILDKIT_IMAGE
-          pattern: '^moby/buildkit@sha256:[a-f0-9]{64}$'
-        template: configmap.yaml
-      - matchRegex:
           path: spec.template.spec.initContainers[0].image
           pattern: '^registry.k8s.io/kubectl@sha256:[a-f0-9]{64}$'
         template: api.yaml
@@ -485,7 +481,7 @@ tests:
         template: product-log-agent.yaml
         documentIndex: 4
       - hasDocuments:
-          count: 3
+          count: 5
         template: buildkit.yaml
       - isKind:
           of: Namespace
@@ -510,6 +506,49 @@ tests:
           value: compartment-build
         template: buildkit.yaml
         documentIndex: 2
+      - isKind:
+          of: ValidatingAdmissionPolicy
+        template: buildkit.yaml
+        documentIndex: 3
+      - equal:
+          path: spec.failurePolicy
+          value: Fail
+        template: buildkit.yaml
+        documentIndex: 3
+      - matchRegex:
+          path: spec.validations[0].expression
+          pattern: "runtimeClassName == 'gvisor'"
+        template: buildkit.yaml
+        documentIndex: 3
+      - matchRegex:
+          path: spec.validations[1].expression
+          pattern: "'compartment.dev/secret-checksum' in"
+        template: buildkit.yaml
+        documentIndex: 3
+      - matchRegex:
+          path: spec.validations[1].expression
+          pattern: "all\\(key, key == 'compartment.dev/secret-checksum' \\|\\| key in"
+        template: buildkit.yaml
+        documentIndex: 3
+      - matchRegex:
+          path: spec.validations[10].expression
+          pattern: "container.image == 'ghcr.io/compartmentdev/compartment-worker:latest'.*container.command == \\['node', 'dist/build-job.js'\\].*!has\\(container.ports\\).*!has\\(container.securityContext.procMount\\).*!has\\(container.securityContext.appArmorProfile\\)"
+        template: buildkit.yaml
+        documentIndex: 3
+      - matchRegex:
+          path: spec.validations[11].expression
+          pattern: "container.image == 'ghcr.io/compartmentdev/compartment-worker:latest'.*buildkit-runc-gvisor.*!has\\(container.ports\\).*!has\\(container.securityContext.procMount\\).*!has\\(container.securityContext.appArmorProfile\\)"
+        template: buildkit.yaml
+        documentIndex: 3
+      - isKind:
+          of: ValidatingAdmissionPolicyBinding
+        template: buildkit.yaml
+        documentIndex: 4
+      - equal:
+          path: spec.validationActions[0]
+          value: Deny
+        template: buildkit.yaml
+        documentIndex: 4
       - hasDocuments:
           count: 2
         template: buildkit-network-policy.yaml

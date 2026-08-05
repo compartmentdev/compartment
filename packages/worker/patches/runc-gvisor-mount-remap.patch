@@ -1,0 +1,29 @@
+diff --git a/libcontainer/process_linux.go b/libcontainer/process_linux.go
+index 5842dbb..bedb4cf 100644
+--- a/libcontainer/process_linux.go
++++ b/libcontainer/process_linux.go
+@@ -682,21 +682,10 @@ func (p *initProcess) start() (retErr error) {
+ 		return fmt.Errorf("error waiting for our first child to exit: %w", err)
+ 	}
+ 
+-	// Spin up a goroutine to handle remapping mount requests by runc init.
+-	// There is no point doing this for rootless containers because they cannot
+-	// configure MOUNT_ATTR_IDMAP, nor do OPEN_TREE_CLONE. We could just
+-	// service plain-open requests for plain bind-mounts but there's no need
+-	// (rootless containers will never have permission issues on a source mount
+-	// that the parent process can help with -- they are the same user).
++	// gVisor does not implement the setns operation used by the optional parent
++	// mount-remapping helper. BuildKit's ordinary bind mounts do not request
++	// idmapped remapping, so leave the helper disabled in this dedicated binary.
+ 	var mountRequest mountSourceRequestFn
+-	if !p.container.config.RootlessEUID {
+-		request, cancel, err := p.goCreateMountSources(context.Background())
+-		if err != nil {
+-			return fmt.Errorf("error spawning mount remapping thread: %w", err)
+-		}
+-		defer cancel()
+-		mountRequest = request
+-	}
+ 
+ 	if err := p.createNetworkInterfaces(); err != nil {
+ 		return fmt.Errorf("error creating network interfaces: %w", err)

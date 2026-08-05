@@ -6,6 +6,7 @@ import { captureCommand, runCommandAsync } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 import { readPlatformK3dEnvironment } from './platform-k3d-e2e.mjs';
+import { runPlatformK3dHarnessBootstrap } from './platform-k3d-e2e-bootstrap.mjs';
 import {
   buildPlatformK3dShardEnvironment,
   readPlatformK3dShard,
@@ -106,6 +107,10 @@ async function runShardSuites(suites, env, ownerEnvironmentPath, signal) {
       await runInterruptibleCommand(process.execPath, [retainedStateGateScript], env, signal);
     } else if (suite === 'install') {
       await runCliE2eSuite(env, 'test/platform-k3d-install.e2e.test.ts', signal);
+      Object.assign(env, readOwnerEnvironment(ownerEnvironmentPath));
+      await runInterruptibleCommand(process.execPath, [lifecycleScript, 'configure'], env, signal);
+    } else if (suite === 'bootstrap') {
+      await runPlatformK3dHarnessBootstrap(env, signal);
       Object.assign(env, readOwnerEnvironment(ownerEnvironmentPath));
       await runInterruptibleCommand(process.execPath, [lifecycleScript, 'configure'], env, signal);
     } else if (suite === 'system-user') {

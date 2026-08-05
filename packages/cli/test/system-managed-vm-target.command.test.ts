@@ -24,7 +24,6 @@ vi.mock('../src/services/managed-vm-installation.service', (): object => ({
 }));
 vi.mock('../src/services/managed-vm-lifecycle.service', (): object => ({
   getManagedVmSystemStatus: mocks.getManagedStatus,
-  resetManagedVmInstallation: vi.fn(),
   updateManagedVmInstallation: vi.fn(),
 }));
 vi.mock('../src/services/kubernetes-system-lifecycle.service', (): object => ({

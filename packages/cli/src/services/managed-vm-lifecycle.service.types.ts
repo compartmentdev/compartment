@@ -8,7 +8,3 @@ export interface ManagedVmSystemStatus {
 export interface ManagedVmDiagnoseResult {
   bundlePath: string;
 }
-
-export interface ManagedVmResetInput {
-  confirmation: string;
-}

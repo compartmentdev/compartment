@@ -1,2 +1,2 @@
 export const railpackFrontendImage: string =
-  'ghcr.io/railwayapp/railpack-frontend@sha256:ba4c430961d9ee3215c64807727a4b11e2198daac31250e9db9eaf9cee4624d6';
+  'ghcr.io/railwayapp/railpack-frontend@sha256:6a957cddcc3ccf0f4fe8980d94fa99879e00522aabb63c4e88b33f284acaea09';
