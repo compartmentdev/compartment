@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.6](https://github.com/compartmentdev/compartment/compare/v0.10.5...v0.10.6) (2026-08-05)
+
+
+### Bug Fixes
+
+* **cli:** accept canonical k3s containerd directory ([#296](https://github.com/compartmentdev/compartment/issues/296)) ([80847a3](https://github.com/compartmentdev/compartment/commit/80847a363b2a7f4911b7d4e5f8441bb0e8bfec51))
+
 ## [0.10.5](https://github.com/compartmentdev/compartment/compare/v0.10.4...v0.10.5) (2026-08-05)
 
 
