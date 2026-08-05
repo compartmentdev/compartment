@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.4](https://github.com/compartmentdev/compartment/compare/v0.10.3...v0.10.4) (2026-08-05)
+
+
+### Bug Fixes
+
+* **cli:** relax managed VM preflight blockers ([#290](https://github.com/compartmentdev/compartment/issues/290)) ([6e812f0](https://github.com/compartmentdev/compartment/commit/6e812f06f5ada4ff9ab6cad59e48fa6165784ab0))
+* **root-config:** default platform services to one replica ([#291](https://github.com/compartmentdev/compartment/issues/291)) ([b4556da](https://github.com/compartmentdev/compartment/commit/b4556da811fce66de3a4f664c2cc3b1d0858561b))
+
 ## [0.10.3](https://github.com/compartmentdev/compartment/compare/v0.10.2...v0.10.3) (2026-08-05)
 
 
