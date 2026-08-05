@@ -515,31 +515,20 @@ async function installIngressNginx(prerequisiteSetupStartedAt, prerequisiteSetup
 }
 
 async function waitForIngressNginxAdmission(prerequisiteSetupStartedAt, prerequisiteSetupDeadline) {
-  const commonArgs = ['--context', contextName, '--namespace', 'ingress-nginx', 'wait'];
-  const timeoutArg = `--timeout=${String(readPrerequisiteWaitTimeoutSeconds(prerequisiteSetupStartedAt))}s`;
-  const waitCommands = [
+  const waitTimeoutSeconds = readPrerequisiteWaitTimeoutSeconds(prerequisiteSetupStartedAt);
+  await runKubectlWithTransientApiRetry(
     [
-      ...commonArgs,
-      'job/ingress-nginx-admission-create',
-      'job/ingress-nginx-admission-patch',
-      '--for=condition=Complete',
-      timeoutArg,
-    ],
-    [
-      ...commonArgs,
+      '--context',
+      contextName,
+      '--namespace',
+      'ingress-nginx',
+      'wait',
       'endpoints/ingress-nginx-controller-admission',
       '--for=jsonpath={.subsets[0].addresses[0].ip}',
-      timeoutArg,
+      `--timeout=${String(waitTimeoutSeconds)}s`,
     ],
-  ];
-  for (const commandArgs of waitCommands) {
-    const timeoutIndex = commandArgs.findIndex((arg) => arg.startsWith('--timeout='));
-    commandArgs[timeoutIndex] = `--timeout=${String(readPrerequisiteWaitTimeoutSeconds(prerequisiteSetupStartedAt))}s`;
-    await runKubectlWithTransientApiRetry(commandArgs, {
-      allowResourceNotFound: true,
-      deadline: prerequisiteSetupDeadline,
-    });
-  }
+    { allowResourceNotFound: true, deadline: prerequisiteSetupDeadline },
+  );
 }
 
 async function waitForIngressController(
