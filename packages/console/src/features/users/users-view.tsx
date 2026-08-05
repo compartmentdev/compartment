@@ -21,7 +21,7 @@ import { BrowserConsoleOrganizationContextPanel } from '../console/console-organ
 import { readBrowserConsoleOrganizationControl } from '../console/console-organization-control';
 import { UserAccessPanel } from './user-access-panel';
 import type { UserActionHandler } from './user-actions';
-import { shouldRenderUsersEmptyState, UsersEmptyState } from './users-empty-state';
+import { shouldRenderUsersInviteOnlyState, UsersInviteOnlyState } from './users-invite-only-state';
 import { UsersTable } from './users-table';
 import { buildUsersHref } from './users-query';
 
@@ -81,7 +81,7 @@ function UsersPageBody({
 }: Readonly<Pick<UsersViewProps, 'data' | 'onNavigate' | 'onUserAction'>>): JSX.Element {
   return (
     <div className={browserConsolePageClassName}>
-      <UsersPageHeader data={data} onNavigate={onNavigate} showInviteAction={!shouldRenderUsersEmptyState(data)} />
+      <UsersPageHeader data={data} onNavigate={onNavigate} showInviteAction={!shouldRenderUsersInviteOnlyState(data)} />
       <div className={browserConsoleListPageBodyClassName}>
         <DismissibleAlert message={data.noticeMessage} variant="notice" />
         <DismissibleAlert message={data.errorMessage} variant="error" />
@@ -100,14 +100,14 @@ function renderUsersContent(
     return <UsersOrganizationContextPanel context={data.organizationContext} data={data} onNavigate={onNavigate} />;
   }
 
-  if (shouldRenderUsersEmptyState(data)) {
-    return <UsersEmptyState data={data} onNavigate={onNavigate} />;
+  if (shouldRenderUsersInviteOnlyState(data)) {
+    return <UsersInviteOnlyState data={data} onNavigate={onNavigate} />;
   }
 
   return (
     <>
       <UsersToolbar data={data} onNavigate={onNavigate} />
-      <UsersTableSection data={data} onNavigate={onNavigate} onUserAction={onUserAction} />
+      <UsersTableFrameSection data={data} onNavigate={onNavigate} onUserAction={onUserAction} />
     </>
   );
 }
@@ -194,14 +194,6 @@ function InviteUserButton({ data, onNavigate, showInviteAction }: Readonly<Users
       Invite user
     </ToolbarPrimaryActionButton>
   );
-}
-
-function UsersTableSection({ data, onNavigate, onUserAction }: Readonly<UsersTableSectionProps>): JSX.Element {
-  if (shouldRenderUsersEmptyState(data)) {
-    return <UsersEmptyState data={data} onNavigate={onNavigate} />;
-  }
-
-  return <UsersTableFrameSection data={data} onNavigate={onNavigate} onUserAction={onUserAction} />;
 }
 
 function UsersTableFrameSection({ data, onNavigate, onUserAction }: Readonly<UsersTableSectionProps>): JSX.Element {
