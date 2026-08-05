@@ -11,6 +11,7 @@ import {
 } from '../../services/managed-vm-host-runtime.service';
 import { assertManagedVmPreflight, evaluateManagedVmPreflight } from '../../services/managed-vm-preflight.service';
 import type {
+  ManagedVmPreflightCheckStatus,
   ManagedVmPreflightResult,
   ManagedVmInstallStage,
   ManagedVmProvisionerState,
@@ -26,6 +27,11 @@ import type { KubernetesInstallDomainInput } from '../../services/kubernetes-ins
 import { buildManagedVmReview, parseManagedVmObservedAddress } from './install.command.vm.helpers';
 
 const observationUrl: string = 'https://1.1.1.1/cdn-cgi/trace';
+const preflightStatusIcons: Readonly<Record<ManagedVmPreflightCheckStatus, string>> = {
+  failed: '✗',
+  passed: '✓',
+  warning: '⚠',
+};
 
 export async function executeManagedVmInstallCommand(
   dependencies: CliCommandDependencies,
@@ -247,7 +253,7 @@ function renderManagedVmPreflight(
   }
   dependencies.io.stderr('Checking this VM\n');
   for (const check of result.checks) {
-    dependencies.io.stderr(`  ${check.passed ? '✓' : '✗'} ${check.detail}\n`);
+    dependencies.io.stderr(`  ${preflightStatusIcons[check.status]} ${check.detail}\n`);
   }
 }
 

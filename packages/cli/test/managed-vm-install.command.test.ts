@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import type { ManagedVmHostInventory, ManagedVmObservedState } from '../src/services/managed-vm-provisioning.types';
+import type {
+  ManagedVmHostInventory,
+  ManagedVmObservedState,
+  ManagedVmPreflightCheck,
+  ManagedVmPreflightResult,
+} from '../src/services/managed-vm-provisioning.types';
 import { createCliCapture, readCliStderr, readCliStdout, type CliCommandCapture } from './cli-test.harness';
 
 type GetUid = () => number;
@@ -69,10 +74,14 @@ describe('managed VM install command boundary', (): void => {
 
     expect(await runCli(['install', '--target', 'vm', '--check', '--output', 'json'], capture.io)).toBe(0);
 
-    expect(JSON.parse(readCliStdout(capture))).toMatchObject({
+    const result: ManagedVmPreflightResult = JSON.parse(readCliStdout(capture)) as ManagedVmPreflightResult;
+    expect(result).toMatchObject({
       classification: 'fresh',
       publicAddress: publicAddress(),
     });
+    expect(result.checks.every((check: ManagedVmPreflightCheck): boolean => check.status === 'passed')).toBe(true);
+    expect(result.checks.every((check: ManagedVmPreflightCheck): boolean => check.passed)).toBe(true);
+    expect(result.checks.some((check: ManagedVmPreflightCheck): boolean => check.name === 'downloads')).toBe(false);
     expect(readCliStderr(capture)).not.toContain('Installation review');
     expect(mocks.observePublicIpv4).toHaveBeenCalledWith('https://1.1.1.1/cdn-cgi/trace');
     expect(mocks.execa).not.toHaveBeenCalled();
@@ -80,18 +89,25 @@ describe('managed VM install command boundary', (): void => {
     expect(mocks.canonicalInstall).not.toHaveBeenCalled();
   });
 
-  it('explains the observed and local addresses before mutation when public IPv4 does not match', async (): Promise<void> => {
-    const localAddress: string = `46.225.${String(172)}.160`;
+  it('renders non-blocking host recommendations and accepts a NAT public address', async (): Promise<void> => {
     const observedAddress: string = `8.8.${String(8)}.8`;
-    mocks.inspectHost.mockResolvedValue({ ...supportedInventory(), localIpv4Addresses: [localAddress] });
+    mocks.inspectHost.mockResolvedValue({
+      ...supportedInventory(),
+      cpuCount: 1,
+      memoryBytes: 2 * 1024 * 1024 * 1024,
+      osId: 'debian',
+      osVersion: '13',
+    });
     mocks.observePublicIpv4.mockResolvedValue(`ip=${observedAddress}\n`);
     const capture: CliCommandCapture = createCliCapture();
     const { runCli } = await import('../src/app');
 
-    expect(await runCli(['install', '--target', 'vm', '--check'], capture.io)).toBe(1);
+    expect(await runCli(['install', '--target', 'vm', '--check'], capture.io)).toBe(0);
 
-    expect(readCliStderr(capture)).toContain(`observed public IPv4 ${observedAddress}`);
-    expect(readCliStderr(capture)).toContain(`local IPv4 addresses: ${localAddress}`);
+    expect(readCliStderr(capture)).toContain('⚠ debian 13; tested on Ubuntu 24.04 LTS');
+    expect(readCliStderr(capture)).toContain('⚠ 1 CPUs');
+    expect(readCliStderr(capture)).toContain(`⚠ ${String(2 * 1024 * 1024 * 1024)} bytes`);
+    expect(readCliStderr(capture)).toContain(`✓ public IPv4 ${observedAddress}`);
     expect(mocks.provision).not.toHaveBeenCalled();
     expect(mocks.canonicalInstall).not.toHaveBeenCalled();
   });
@@ -426,7 +442,6 @@ function ownerInstallArgsWithoutDomain(): string[] {
 
 function supportedInventory(): ManagedVmHostInventory {
   return {
-    archiveExtractorAvailable: true,
     architecture: 'x86_64',
     cgroupV2: true,
     clockSynchronized: true,
@@ -435,14 +450,11 @@ function supportedInventory(): ManagedVmHostInventory {
     freeInodes: 1_000_000,
     firewall: 'nftables',
     hostname: 'compartment-vm',
-    localIpv4Addresses: [publicAddress()],
     memoryBytes: 8 * 1024 * 1024 * 1024,
     osId: 'ubuntu',
     osVersion: '24.04',
     portsInUse: [],
     publicInterface: 'ens3',
-    reachableEndpoints: ['1', '2', '3', '4', '5', '6', '7', '8'],
-    requiredKernelModules: true,
     routeCidrs: ['default'],
     sudoAvailable: true,
     systemd: true,

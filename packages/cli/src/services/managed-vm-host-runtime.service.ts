@@ -4,7 +4,6 @@ import { cpus, hostname, totalmem } from 'node:os';
 import { execa, type ManagedVmCommandResult } from './managed-vm-command.service';
 import { digest, managedVmOwnedPaths, readManagedVmState } from './managed-vm-state.service';
 import { managedVmReleaseMetadata } from './managed-vm-release-metadata.service';
-import { readReachableManagedVmEndpoints } from './managed-vm-network.service';
 import type {
   ManagedVmDiskAvailability,
   ManagedVmFirewallKind,
@@ -28,22 +27,15 @@ async function readHostObservation(): Promise<ManagedVmHostObservation> {
   const portsInUse: Promise<readonly ManagedVmPortConflict[]> = readPortConflicts();
   const disk: Promise<ManagedVmDiskAvailability> = readDiskAvailability();
   const clockSynchronized: Promise<boolean> = readClockSynchronization();
-  const modules: Promise<boolean> = readKernelModules();
   const firewall: Promise<ManagedVmFirewallKind> = classifyFirewall();
-  const reachableEndpoints: Promise<readonly string[]> = readReachableManagedVmEndpoints();
-  const localIpv4Addresses: Promise<readonly string[]> = readLocalIpv4Addresses();
   const publicInterface: Promise<string> = readPublicInterface();
   return {
-    archiveExtractorAvailable: await pathExists('/usr/bin/bzip2'),
     clockSynchronized: await clockSynchronized,
     disk: await disk,
     firewall: await firewall,
-    localIpv4Addresses: await localIpv4Addresses,
-    modules: await modules,
     osRelease: await osRelease,
     portsInUse: await portsInUse,
     publicInterface: await publicInterface,
-    reachableEndpoints: await reachableEndpoints,
     routeCidrs: await routeCidrs,
   };
 }
@@ -51,7 +43,6 @@ async function readHostObservation(): Promise<ManagedVmHostObservation> {
 async function createHostInventory(observation: ManagedVmHostObservation): Promise<ManagedVmHostInventory> {
   const os: ReadonlyMap<string, string> = parseOsRelease(observation.osRelease);
   return {
-    archiveExtractorAvailable: observation.archiveExtractorAvailable,
     architecture: process.arch === 'x64' ? 'x86_64' : process.arch,
     cgroupV2: await pathExists('/sys/fs/cgroup/cgroup.controllers'),
     clockSynchronized: observation.clockSynchronized,
@@ -60,15 +51,12 @@ async function createHostInventory(observation: ManagedVmHostObservation): Promi
     freeInodes: observation.disk.freeInodes,
     firewall: observation.firewall,
     hostname: hostname(),
-    localIpv4Addresses: observation.localIpv4Addresses,
     memoryBytes: totalmem(),
     osId: os.get('ID') ?? '',
     osVersion: os.get('VERSION_ID') ?? '',
     portsInUse: observation.portsInUse,
     publicInterface: observation.publicInterface,
     routeCidrs: observation.routeCidrs,
-    requiredKernelModules: observation.modules,
-    reachableEndpoints: observation.reachableEndpoints,
     systemd: await pathExists('/run/systemd/system'),
     sudoAvailable: await isSudoAvailable(),
   };
@@ -131,7 +119,6 @@ async function findForeignPaths(): Promise<readonly string[]> {
       '/etc/cni/net.d',
       '/etc/containerd/config.toml',
       '/var/lib/containerd',
-      '/var/lib/docker',
     ]),
   ];
   const found: (string | undefined)[] = await Promise.all(
@@ -208,11 +195,6 @@ async function readClockSynchronization(): Promise<boolean> {
   return result.exitCode === 0 && result.stdout.trim() === 'yes';
 }
 
-async function readKernelModules(): Promise<boolean> {
-  const result: ManagedVmCommandResult = await execa('lsmod', [], { reject: false });
-  return ['overlay', 'br_netfilter', 'nf_tables'].every((module: string): boolean => result.stdout.includes(module));
-}
-
 async function classifyFirewall(): Promise<ManagedVmFirewallKind> {
   if ((await execa('systemctl', ['is-active', 'firewalld'], { reject: false })).exitCode === 0) {
     return 'firewalld';
@@ -221,14 +203,6 @@ async function classifyFirewall(): Promise<ManagedVmFirewallKind> {
     return 'ufw';
   }
   return (await pathExists('/usr/sbin/nft')) ? 'nftables' : 'none';
-}
-
-async function readLocalIpv4Addresses(): Promise<readonly string[]> {
-  const result: ManagedVmCommandResult = await execa('ip', ['-4', '-o', 'address', 'show', 'scope', 'global']);
-  return result.stdout.split('\n').flatMap((line: string): string[] => {
-    const match: RegExpMatchArray | null = /\binet\s+(\d+(?:\.\d+){3})\//u.exec(line);
-    return match?.[1] === undefined ? [] : [match[1]];
-  });
 }
 
 async function readPublicInterface(): Promise<string> {

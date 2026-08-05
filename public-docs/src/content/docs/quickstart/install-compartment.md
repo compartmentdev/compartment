@@ -1,6 +1,6 @@
 ---
 title: Install Compartment
-description: Install Compartment on a clean Ubuntu VM or into an existing Kubernetes cluster.
+description: Install Compartment on a clean VM or into an existing Kubernetes cluster.
 ---
 
 Compartment always runs on Kubernetes. Choose between a Compartment-managed VM and an existing cluster in
@@ -14,7 +14,7 @@ curl -fsSL https://compartment.dev/install.sh | sh
 compartment install
 ```
 
-This is the supported clean-VM path for an Ubuntu 24.04 LTS x86_64 host. The bootstrap downloads and verifies the CLI
+This is the supported clean-VM path for an x86_64 host, tested on Ubuntu 24.04 LTS. The bootstrap downloads and verifies the CLI
 without root. The CLI checks the host, shows one mutation review, and requests sudo only after you confirm it. On a
 clean host without a usable Kubernetes context, it offers to install managed Kubernetes before installing Helm,
 cert-manager, registry trust, and Compartment. It also installs and verifies the required gVisor sandbox; installation
@@ -24,12 +24,13 @@ Add `--verbose` to show Cosign, ORAS, and checksum diagnostics during installati
 
 ## Prepare a clean VM
 
-Use a fresh Ubuntu 24.04 LTS x86_64 VM with systemd, cgroup v2, sudo access, a public IPv4 address, at least 2 vCPU,
-4 GiB memory, and 50 GiB free storage. For normal application builds, use 4 vCPU, 8 GiB memory, and 80 GiB storage.
+Use a fresh x86_64 VM with systemd, cgroup v2, sudo access, a public IPv4 address, and at least 20 GiB free storage.
+Ubuntu 24.04 LTS is tested; 2 vCPU, 4 GiB memory, and 50 GiB free storage are recommended. For normal application builds,
+use 4 vCPU, 8 GiB memory, and 80 GiB storage.
 Ports 80 and 443 must be available and reachable. Compartment never changes port 22 or cloud security-group rules.
 
 The installer blocks Kubernetes API, etcd, kubelet, and overlay ports on the public interface with persistent,
-Compartment-owned firewall rules before k3s starts. It refuses to adopt a foreign Kubernetes, k3s, container-runtime,
+Compartment-owned firewall rules before k3s starts. It refuses to adopt a foreign Kubernetes, k3s, containerd,
 or CNI installation. Use a clean host or select the existing-Kubernetes target explicitly.
 
 You can run every read-only check without changing the host:

@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execa } from './managed-vm-command.service';
@@ -9,6 +9,7 @@ import type {
 } from './managed-vm-artifacts.service.types';
 import type { ManagedVmArtifact, ManagedVmArtifactName } from './managed-vm-provisioning.types';
 import { digest } from './managed-vm-state.service';
+import seekBzip from 'seek-bzip';
 
 export type { ManagedVmDownloadedArtifacts } from './managed-vm-artifacts.service.types';
 
@@ -60,9 +61,11 @@ async function prepareGvisorArtifacts(
   artifacts: readonly ManagedVmArtifact[],
 ): Promise<ManagedVmPreparedGvisorArtifacts> {
   const archivePath: string = await downloadArtifact(directory, findArtifact(artifacts, 'gvisor'), 'gvisor.tar.bz2');
+  const tarPath: string = join(directory, 'gvisor.tar');
   const gvisorDirectory: string = join(directory, 'gvisor');
   await mkdir(gvisorDirectory, { mode: 0o700 });
-  await execa('tar', ['-xjf', archivePath, '-C', gvisorDirectory]);
+  await writeFile(tarPath, seekBzip.decode(await readFile(archivePath)), { mode: 0o600 });
+  await execa('tar', ['-xf', tarPath, '-C', gvisorDirectory]);
   const gvisorRunscPath: string = join(gvisorDirectory, 'runsc');
   const gvisorContainerdShimPath: string = join(gvisorDirectory, 'containerd-shim-runsc-v1');
   const gvisorBinDirectory: string = join(gvisorDirectory, 'gvisor-bin');
