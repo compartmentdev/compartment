@@ -38,6 +38,7 @@ export function buildPlatformK3dShardEnvironment(shardName, baseEnv = process.en
     COMPARTMENT_E2E_DIAGNOSTICS_PATH: `.compartment/platform-k3d-diagnostics-${shardName}`,
     COMPARTMENT_E2E_GVISOR_AVAILABLE: definition.gvisorEnabled ? '1' : '0',
     COMPARTMENT_E2E_GVISOR_ENABLED: definition.gvisorEnabled ? '1' : '0',
+    COMPARTMENT_E2E_HIGH_AVAILABILITY: definition.highAvailability ? '1' : '0',
     COMPARTMENT_E2E_HTTP_PORT: httpPort,
     COMPARTMENT_E2E_HTTPS_PORT: baseEnv.COMPARTMENT_E2E_HTTPS_PORT ?? (18_443 + portOffset).toString(),
     COMPARTMENT_E2E_INGRESS_CLASS: definition.ingressClass,
