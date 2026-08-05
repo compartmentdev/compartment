@@ -75,6 +75,7 @@ import {
 } from '@compartment/contracts';
 
 import type { SelfHostedUserSetupCommandResult } from './self-hosted-user-setup-command.harness';
+import { waitForDeploymentRuntimeImageRef } from './self-hosted-user-setup-deployment-flow.harness';
 import {
   expectSelfHostedUserSetupStepCompleted,
   selfHostedUserSetupTimeoutMs,
@@ -308,15 +309,9 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
       await expectAppEnvMessage(routeUrl, adminAppSessionCookie, rollbackMessage);
       await expectAppBuildMessage(routeUrl, adminAppSessionCookie, appBuildMessage);
 
-      const rollbackInspectPayload: DeploymentInspectResponse = await admin.runJson(
-        `inspect --project ${app.projectName}`,
-        deploymentInspectResponseSchema,
-      );
-      expect(
-        requireDeploymentRuntimeImageRef(
-          requireSingleInspectedActiveDeployment(rollbackInspectPayload, app.serviceName),
-        ),
-      ).toBe(rollbackTargetRuntimeImageRef);
+      await expect(
+        waitForDeploymentRuntimeImageRef(admin, app.projectName, app.serviceName, rollbackTargetRuntimeImageRef),
+      ).resolves.toBe(rollbackTargetRuntimeImageRef);
 
       const stagingDeployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
         'deploy --env staging',

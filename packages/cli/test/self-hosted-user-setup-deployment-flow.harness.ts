@@ -1,5 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import {
+  deploymentInspectResponseSchema,
   workerClaimProjectProvisioningV2Pathname,
   workerCompleteProjectProvisioningV2Pathname,
   workerAppendDeploymentEventPathname,
@@ -11,6 +12,7 @@ import {
   resourceListResponseSchema,
   type DeploymentLogLine,
   type DeploymentLogsResponse,
+  type DeploymentInspectResponse,
   type DeploymentReadSummary,
   type DeploymentRunLogsResponse,
   type DeploymentRunStepSummary,
@@ -25,7 +27,11 @@ import { expect } from 'vitest';
 import { sendCliHttpTextRequest, type CliHttpTextResponse } from './cli-http-test.harness';
 import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import type { SelfHostedUserSetupCommandResult } from './self-hosted-user-setup-command.harness';
-import { deploymentStatusCommandResponseParser } from './self-hosted-user-setup-cli-response.harness';
+import {
+  deploymentStatusCommandResponseParser,
+  requireDeploymentRuntimeImageRef,
+  requireSingleInspectedActiveDeployment,
+} from './self-hosted-user-setup-cli-response.harness';
 import { expectK3dProjectNamespaceDeleted, seedK3dProjectTeardownFixture } from './self-hosted-user-setup-k3d.harness';
 
 const deploymentRunPollDelayMs: number = 2_000;
@@ -232,6 +238,65 @@ export async function waitForRunningResource(
     await sleep(deploymentRunPollDelayMs);
   } while (Date.now() < deadline);
   throw new Error(`Timed out waiting for Kubernetes resource ${expectedResourceName} to become running.`);
+}
+
+export async function waitForDeploymentRuntimeImageRef(
+  cli: SelfHostedUserSetupCli,
+  projectName: string,
+  serviceName: string,
+  expectedImageRef: string,
+): Promise<string> {
+  requireCanonicalRuntimeImageRef(expectedImageRef);
+
+  const deadline: number = Date.now() + kubernetesResourceStartupTimeoutMs;
+  let lastImageRef: string | null = null;
+  for (;;) {
+    const remainingTimeoutMs: number = deadline - Date.now();
+    if (remainingTimeoutMs <= 0) {
+      break;
+    }
+    let inspect: DeploymentInspectResponse;
+    try {
+      inspect = await cli.runJson(`inspect --project ${projectName}`, deploymentInspectResponseSchema, {
+        timeoutMs: remainingTimeoutMs,
+      });
+    } catch (error) {
+      if (Date.now() < deadline) {
+        throw error;
+      }
+      const cause: Error = error instanceof Error ? error : new Error(String(error));
+      throw buildRuntimeImageRefTimeoutError(projectName, serviceName, expectedImageRef, lastImageRef, cause);
+    }
+    lastImageRef = requireDeploymentRuntimeImageRef(requireSingleInspectedActiveDeployment(inspect, serviceName));
+    if (lastImageRef === expectedImageRef) {
+      return lastImageRef;
+    }
+    const remainingDelayMs: number = deadline - Date.now();
+    if (remainingDelayMs > 0) {
+      await sleep(Math.min(deploymentRunPollDelayMs, remainingDelayMs));
+    }
+  }
+
+  throw buildRuntimeImageRefTimeoutError(projectName, serviceName, expectedImageRef, lastImageRef);
+}
+
+function requireCanonicalRuntimeImageRef(imageRef: string): void {
+  if (!/^[^@]+@sha256:[a-f0-9]{64}$/u.test(imageRef)) {
+    throw new Error(`Expected a canonical digest-pinned rollback image ref, received ${imageRef}.`);
+  }
+}
+
+function buildRuntimeImageRefTimeoutError(
+  projectName: string,
+  serviceName: string,
+  expectedImageRef: string,
+  lastImageRef: string | null,
+  cause?: Error,
+): Error {
+  return new Error(
+    `Timed out waiting for ${projectName}/${serviceName} to expose rollback image ${expectedImageRef}. Last observed image: ${lastImageRef ?? 'none'}.`,
+    { cause },
+  );
 }
 
 async function waitForSingleActiveDeployment(

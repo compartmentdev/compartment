@@ -439,7 +439,9 @@ async function writeManagedInstallCertificateAuthority(): Promise<void> {
   await writeFile(managedInstallCertificateAuthorityPath, rootCertificate, { mode: 0o600 });
 }
 
-export async function waitForManagedDomainBrokerObservation(): Promise<ManagedDomainBrokerObservation> {
+export async function waitForManagedDomainBrokerChallengeCleanup(
+  minimumCleanedChallengeCount: number,
+): Promise<ManagedDomainBrokerObservation> {
   const deadline: number = Date.now() + brokerStateTimeoutMs;
   let lastFailure: string = '';
   for (;;) {
@@ -450,7 +452,7 @@ export async function waitForManagedDomainBrokerObservation(): Promise<ManagedDo
     ]);
     if (result.exitCode === 0) {
       const observation: ManagedDomainBrokerObservation = readManagedDomainBrokerObservation(result.stdout);
-      if (observation.managedDomains.length === 1) {
+      if (hasManagedDomainChallengeCleanup(observation, minimumCleanedChallengeCount)) {
         return observation;
       }
     } else {
@@ -459,10 +461,20 @@ export async function waitForManagedDomainBrokerObservation(): Promise<ManagedDo
     }
     if (Date.now() >= deadline) {
       const diagnostic: string = lastFailure !== '' ? ` Last Kubernetes API error: ${lastFailure}` : '';
-      throw new Error(`Timed out waiting for managed domain.${diagnostic}`);
+      throw new Error(`Timed out waiting for managed-domain challenge cleanup.${diagnostic}`);
     }
     await delay(500);
   }
+}
+
+function hasManagedDomainChallengeCleanup(
+  observation: ManagedDomainBrokerObservation,
+  minimumCleanedChallengeCount: number,
+): boolean {
+  const cleanedChallengeCount: number = observation.audit.filter(
+    (event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_cleaned',
+  ).length;
+  return observation.managedDomains.length === 1 && cleanedChallengeCount >= minimumCleanedChallengeCount;
 }
 
 function readManagedDomainBrokerObservation(output: string): ManagedDomainBrokerObservation {
