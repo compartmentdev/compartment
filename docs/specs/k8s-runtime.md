@@ -186,10 +186,8 @@ registry values are deferred to F2. Application namespaces use
 the P5 Secret path for deterministic Docker pull credentials. Kubelet registry
 reachability is node-side and remains an explicit M-check.
 
-Builds return only digest-pinned image references. BuildKit emits an SBOM OCI attestation into the selected registry.
-After the push, the worker requires a matching in-toto statement with an SPDX document bound to an image descriptor
-in the pushed OCI index; a missing, malformed, or mismatched attestation fails the build. Keyed signing before rollout
-is deferred to F2; P9 does not depend on public keyless Sigstore.
+BuildKit pushes OCI images to the selected registry, and builds return only digest-pinned image references. Registry
+cache import and export use the project/service-scoped cache repository for both Dockerfile and Railpack source builds.
 
 ## Evidence
 
