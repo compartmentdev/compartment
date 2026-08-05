@@ -8,7 +8,11 @@ import { verifyKubernetesSandboxRuntime } from './kubernetes-sandbox-runtime-pre
 import { managedVmSandboxRuntimePaths } from './managed-vm-sandbox-runtime.constants';
 import { assertManagedVmGvisorHelperDirectory } from './managed-vm-gvisor-helper-directory.service';
 import { ensureManagedVmDirectory, installNewManagedVmFile } from './managed-vm-owned-file.service';
-import { managedVmFileIdentity } from './managed-vm-state.service';
+import {
+  managedVmDirectoryIdentity,
+  managedVmFileIdentity,
+  readManagedVmPathIdentity,
+} from './managed-vm-state.service';
 
 const gvisorRuntimeClassName: string = 'gvisor';
 const expectedRuntimeType: string = 'io.containerd.runsc.v1';
@@ -82,13 +86,26 @@ async function verifyManagedVmSandboxRuntimeFiles(): Promise<void> {
 }
 
 async function prepareSandboxRuntimeDirectories(): Promise<Readonly<Record<string, string>>> {
+  await assertCanonicalK3sContainerdDirectory();
   await ensureManagedVmDirectory(managedVmSandboxRuntimePaths.containerdDirectory, 0o755);
   const gvisorBinIdentity: string = await ensureManagedVmDirectory(
     managedVmSandboxRuntimePaths.gvisorBinDirectory,
     0o755,
   );
-  await ensureManagedVmDirectory(managedVmSandboxRuntimePaths.containerdTemplateDirectory, 0o700);
   return { [managedVmSandboxRuntimePaths.gvisorBinDirectory]: gvisorBinIdentity };
+}
+
+async function assertCanonicalK3sContainerdDirectory(): Promise<void> {
+  const observedIdentity: string | undefined = await readManagedVmPathIdentity(
+    managedVmSandboxRuntimePaths.containerdTemplateDirectory,
+    managedVmReleaseMetadata.metadataVersion,
+  );
+  const expectedIdentity: string = managedVmDirectoryIdentity({ gid: 0, mode: 0o755, uid: 0 });
+  if (observedIdentity !== expectedIdentity) {
+    throw new Error(
+      `Managed-VM provisioning refuses an unexpected K3s containerd directory at ${managedVmSandboxRuntimePaths.containerdTemplateDirectory}.`,
+    );
+  }
 }
 
 async function applyManagedVmRuntimeClass(): Promise<void> {
