@@ -167,9 +167,8 @@ permissions required by `runJob`; no tenant or seeded product principal receives
 
 ### Sandbox E2E coverage
 
-Ordinary k3d shards may use a harness-only runc RuntimeClass for behavior outside sandbox preflight, but they do not
-count as sandbox-boundary evidence and must not fake the canary kernel response. The dedicated `gvisor-build` shard
-installs the pinned gVisor package, configures runsc, and uses the real `gvisor` RuntimeClass.
+Every k3d shard installs the pinned gVisor package, configures runsc, and uses the real `gvisor` RuntimeClass. The
+dedicated `gvisor-build` shard remains the focused build-workload partition.
 The fresh managed-VM workflow starts with no K3s or gVisor files and verifies runtime download, containerd
 registration, RuntimeClass creation, and a real gVisor canary.
 The fresh-VM workflow is dispatched only onto a disposable `compartment-fresh-vm` runner. The runner must have no
