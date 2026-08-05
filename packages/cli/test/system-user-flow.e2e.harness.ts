@@ -14,7 +14,6 @@ export class SystemUserFlowContext {
   viewer!: SelfHostedUserSetupCli;
   routeUrl!: string;
   activeDeployment!: DeploymentReadSummary;
-  rollbackTargetRuntimeImageRef!: string;
   adminAppSessionCookie!: string;
   promotedDeploymentId!: string;
   completedCaseCount: number = 0;
