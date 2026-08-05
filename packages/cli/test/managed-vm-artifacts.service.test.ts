@@ -33,6 +33,7 @@ describe('managed VM artifacts', (): void => {
     const executableDirectory: string = await mkdtemp(join(tmpdir(), 'compartment-artifact-path-'));
     const originalPath: string | undefined = process.env.PATH;
     await symlink('/usr/bin/tar', join(executableDirectory, 'tar'));
+    await symlink('/usr/bin/gzip', join(executableDirectory, 'gzip'));
     process.env.PATH = executableDirectory;
     const artifacts: readonly ManagedVmArtifact[] = createArtifacts();
     stubArtifactDownloads(artifacts);
