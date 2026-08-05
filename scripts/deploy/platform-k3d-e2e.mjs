@@ -511,6 +511,24 @@ async function installIngressNginx(prerequisiteSetupStartedAt, prerequisiteSetup
     prerequisiteSetupStartedAt,
     prerequisiteSetupDeadline,
   );
+  await waitForIngressNginxAdmission(prerequisiteSetupStartedAt, prerequisiteSetupDeadline);
+}
+
+async function waitForIngressNginxAdmission(prerequisiteSetupStartedAt, prerequisiteSetupDeadline) {
+  const waitTimeoutSeconds = readPrerequisiteWaitTimeoutSeconds(prerequisiteSetupStartedAt);
+  await runKubectlWithTransientApiRetry(
+    [
+      '--context',
+      contextName,
+      '--namespace',
+      'ingress-nginx',
+      'wait',
+      'endpoints/ingress-nginx-controller-admission',
+      '--for=jsonpath={.subsets[0].addresses[0].ip}',
+      `--timeout=${String(waitTimeoutSeconds)}s`,
+    ],
+    { allowResourceNotFound: true, deadline: prerequisiteSetupDeadline },
+  );
 }
 
 async function waitForIngressController(

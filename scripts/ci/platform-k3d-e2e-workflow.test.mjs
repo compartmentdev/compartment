@@ -36,6 +36,7 @@ describe('platform k3d e2e workflow', () => {
       gvisorEnabled: true,
       suites: ['install', 'build-matrix'],
     });
+    expect(Object.values(platformK3dShardDefinitions).every((definition) => definition.gvisorEnabled)).toBe(true);
     const buildMatrixShards = Object.values(platformK3dShardDefinitions).filter(
       (definition) => definition.suites.includes('build-matrix') && definition.buildMatrixPartition !== 'gvisor',
     );
@@ -69,9 +70,7 @@ describe('platform k3d e2e workflow', () => {
     expect(toolInstallStep.run).toContain('kubectl version --client');
     expect(toolInstallStep.run).toContain('helm version');
     const gvisorInstallStep = job.steps.find((step) => step.name === 'Install pinned gVisor');
-    expect(gvisorInstallStep.if).toBe(
-      '${{ contains(fromJSON(\'["managed-install","install-ha-network-policy","gvisor-build"]\'), matrix.shard) }}',
-    );
+    expect(gvisorInstallStep.if).toBeUndefined();
     expect(gvisorInstallStep.env.GVISOR_VERSION).toMatch(/^release\/\d{8}\.\d+$/);
     expect(gvisorInstallStep.run).toContain('gvisor.tar.bz2');
     expect(gvisorInstallStep.run).toContain('sha256sum --check');
