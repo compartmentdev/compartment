@@ -9,6 +9,7 @@ interface FileMocks {
 }
 
 class OwnedPathStats {
+  public readonly mode: number = 0o755;
   public constructor(private readonly directory: boolean) {}
   public isDirectory(): boolean {
     return this.directory;
@@ -59,13 +60,13 @@ describe('managed VM recorded file ownership', (): void => {
       }
       throw Object.assign(new Error('missing'), { code: 'ENOENT' });
     });
-    const { createManagedVmState, digest, persistManagedVmStage } =
+    const { createManagedVmState, managedVmFileIdentity, persistManagedVmStage } =
       await import('../src/services/managed-vm-state.service');
     const initial: ManagedVmProvisionerState = await createManagedVmState('host\nens3\n');
     const next: ManagedVmProvisionerState = await persistManagedVmStage(initial, 'preparing-host');
     expect(next.ownedFileDigests).toEqual({
       '/etc/compartment': 'directory',
-      '/usr/local/bin/helm': digest('verified helm'),
+      '/usr/local/bin/helm': managedVmFileIdentity('verified helm', 0o755),
     });
   });
 
@@ -112,6 +113,83 @@ describe('managed VM recorded file ownership', (): void => {
     const { readManagedVmState } = await import('../src/services/managed-vm-state.service');
 
     await expect(readManagedVmState()).rejects.toThrow('state at /var/lib/compartment/installer/state.json is invalid');
+  });
+
+  it('rejects v3 release metadata without a SHA-512 verified gVisor artifact', async (): Promise<void> => {
+    files.readFile.mockResolvedValueOnce(
+      JSON.stringify({
+        ...validState(),
+        releaseMetadata: {
+          ...validState().releaseMetadata,
+          artifacts: [
+            {
+              name: 'gvisor',
+              sha256: 'a'.repeat(64),
+              url: 'https://storage.googleapis.com/gvisor/releases/pool/test/runsc.deb',
+              version: 'release-test',
+            },
+          ],
+          metadataVersion: 3,
+        },
+      }),
+    );
+    const { readManagedVmState } = await import('../src/services/managed-vm-state.service');
+
+    await expect(readManagedVmState()).rejects.toThrow('state at /var/lib/compartment/installer/state.json is invalid');
+  });
+
+  it('preserves the existing trust set so retry rejects an unrelated owned-path mutation', async (): Promise<void> => {
+    const contents: Map<string, Buffer> = new Map<string, Buffer>([
+      ['/usr/local/bin/helm', Buffer.from('installer helm')],
+    ]);
+    files.lstat.mockImplementation(async (path: string): Promise<OwnedPathStats> => {
+      await Promise.resolve();
+      if (contents.has(path)) {
+        return new OwnedPathStats(false);
+      }
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    });
+    files.readFile.mockImplementation(async (path: string): Promise<Buffer> => {
+      await Promise.resolve();
+      return contents.get(path)!;
+    });
+    const { assertManagedVmOwnedFileDigests, createManagedVmState, managedVmFileIdentity, persistManagedVmStage } =
+      await import('../src/services/managed-vm-state.service');
+    const initial: ManagedVmProvisionerState = await createManagedVmState('host\nens3\n');
+    const prepared: ManagedVmProvisionerState = await persistManagedVmStage(initial, 'preparing-host');
+
+    contents.set('/usr/local/bin/runsc', Buffer.from('installer runsc'));
+    contents.set('/usr/local/bin/helm', Buffer.from('concurrent helm change'));
+    const resumed: ManagedVmProvisionerState = await persistManagedVmStage(prepared, 'installing-sandbox-runtime');
+
+    expect(resumed.ownedFileDigests).toMatchObject({
+      '/usr/local/bin/helm': managedVmFileIdentity('installer helm', 0o755),
+      '/usr/local/bin/runsc': managedVmFileIdentity('installer runsc', 0o755),
+    });
+
+    await expect(assertManagedVmOwnedFileDigests(resumed)).rejects.toThrow(
+      'owned host content has changed; refusing to overwrite or remove it',
+    );
+  });
+
+  it('rejects installer-written bytes that change before stage ownership is persisted', async (): Promise<void> => {
+    files.lstat.mockImplementation(async (path: string): Promise<OwnedPathStats> => {
+      await Promise.resolve();
+      if (path === '/usr/local/bin/runsc') {
+        return new OwnedPathStats(false);
+      }
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    });
+    files.readFile.mockResolvedValue(Buffer.from('changed runsc'));
+    const { createManagedVmState, managedVmFileIdentity, persistManagedVmStage } =
+      await import('../src/services/managed-vm-state.service');
+    const initial: ManagedVmProvisionerState = await createManagedVmState('host\nens3\n');
+
+    await expect(
+      persistManagedVmStage(initial, 'installing-sandbox-runtime', {
+        '/usr/local/bin/runsc': managedVmFileIdentity('verified runsc', 0o755),
+      }),
+    ).rejects.toThrow('installer-written content changed before ownership could be persisted');
   });
 });
 

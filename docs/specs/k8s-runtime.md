@@ -151,15 +151,15 @@ checksum and size. Restore verification finishes before the user restore command
 ## Build pipeline
 
 Each cluster source build runs as one deterministic worker-owned Kubernetes Job. The Job contains the build runner
-and a rootless BuildKit native sidecar, joins an existing Job after worker recovery,
-and is deleted after its result and logs are captured. The chart owns the BuildKit image, resources, scheduling,
-namespace RBAC, and network isolation; no long-lived BuildKit Deployment or Service exists. The build
-sidecar uses BuildKit's native snapshotter under the installation-selected gVisor RuntimeClass.
-The default build timeout is 30 minutes to accommodate cold native-snapshotter builds.
-namespace uses Pod Security `enforce=privileged` with
-`audit=baseline` and `warn=baseline` because the tested AppArmor Unconfined
-profile is not admitted by baseline enforcement. Per-build ephemerality gives every build a fresh Pod and `emptyDir`
-workspace, then deletes that Pod after result capture; it does not create a separate kernel boundary.
+and a BuildKit sidecar, joins an existing Job after worker recovery, and is deleted after its result and logs are
+captured. The worker image owns the compatible BuildKit, Railpack, and runc binaries. The chart owns resources,
+scheduling, namespace RBAC, admission, and network isolation; no long-lived BuildKit Deployment or Service exists.
+BuildKit runs as root with the exact required capabilities inside the installation-selected gVisor Sentry and uses
+overlayfs over bounded, per-Job gVisor tmpfs mounts. The default build timeout is 30 minutes. The build namespace uses
+Pod Security `enforce=privileged` with
+`audit=baseline` and `warn=baseline` because the BuildKit sidecar's Sentry-confined capabilities are outside baseline
+Pod Security. Per-build ephemerality gives every build a fresh Pod and bounded `emptyDir` workspace, then deletes that
+Pod after result capture; it does not create a separate kernel boundary.
 `sandboxRuntime.runtimeClassName` selects the verified gVisor RuntimeClass shared by builds and tenant workloads.
 Installation fails before Helm when a real canary does not prove the gVisor userspace kernel boundary.
 Fresh installs bind only the existing platform worker ServiceAccount to the namespaced Job, Secret, Pod, and Pod-log
@@ -167,12 +167,11 @@ permissions required by `runJob`; no tenant or seeded product principal receives
 
 ### Sandbox E2E coverage
 
-Do not run the complete k3d matrix under gVisor. Ordinary shards install against a harness-only runc RuntimeClass and
-stub only the install canary's kernel-log response; those shards cover product behavior but are not gVisor evidence.
-The dedicated `gvisor-build` shard uses the real runtime for installation, builds, and tenant workloads. The fresh
-managed-VM workflow starts with no K3s or gVisor files and verifies runtime download, containerd registration,
-RuntimeClass creation, and a real gVisor canary. Only those two paths count as sandbox-boundary evidence. This split
-keeps the security boundary covered without multiplying the slower sandbox workload matrix across every shard.
+Ordinary k3d shards may use a harness-only runc RuntimeClass for behavior outside sandbox preflight, but they do not
+count as sandbox-boundary evidence and must not fake the canary kernel response. The dedicated `gvisor-build` shard
+installs the pinned gVisor package, configures runsc, and uses the real `gvisor` RuntimeClass.
+The fresh managed-VM workflow starts with no K3s or gVisor files and verifies runtime download, containerd
+registration, RuntimeClass creation, and a real gVisor canary.
 The fresh-VM workflow is dispatched only onto a disposable `compartment-fresh-vm` runner. The runner must have no
 K3s or gVisor state before the job and must be destroyed after it; a persistent self-hosted runner is not valid for
 this coverage path.
@@ -187,9 +186,10 @@ registry values are deferred to F2. Application namespaces use
 the P5 Secret path for deterministic Docker pull credentials. Kubelet registry
 reachability is node-side and remains an explicit M-check.
 
-Builds return only digest-pinned image references. BuildKit emits an SBOM OCI
-attestation into the selected registry. Keyed signing and verification before
-rollout are deferred to F2; P9 does not depend on public keyless Sigstore.
+Builds return only digest-pinned image references. BuildKit emits an SBOM OCI attestation into the selected registry.
+After the push, the worker requires a matching in-toto statement with an SPDX document bound to an image descriptor
+in the pushed OCI index; a missing, malformed, or mismatched attestation fails the build. Keyed signing before rollout
+is deferred to F2; P9 does not depend on public keyless Sigstore.
 
 ## Evidence
 
@@ -199,7 +199,6 @@ rollout are deferred to F2; P9 does not depend on public keyless Sigstore.
 - [T5 secrets and RBAC report](https://github.com/compartmentdev/compartment/blob/50986e66c3b2cc116644c245fd458ac80916a005/spike/t5/T5-REPORT.md)
 - [T5 bootstrap RBAC](https://github.com/compartmentdev/compartment/blob/50986e66c3b2cc116644c245fd458ac80916a005/spike/t5/bootstrap-rbac.yaml)
 - [T5 controller RBAC](https://github.com/compartmentdev/compartment/blob/50986e66c3b2cc116644c245fd458ac80916a005/spike/t5/controller-rbac.yaml)
-- [T4 rootless BuildKit report](https://github.com/compartmentdev/compartment/blob/spike/t4/spike/t4/T4-REPORT.md)
 
 ## RBAC rollout
 

@@ -1,0 +1,22 @@
+diff --git a/util/overlay/overlay_linux.go b/util/overlay/overlay_linux.go
+index cbba482..8402806 100644
+--- a/util/overlay/overlay_linux.go
++++ b/util/overlay/overlay_linux.go
+@@ -273,7 +273,7 @@ func checkOpaque(upperdir string, path string, base string, f os.FileInfo) (isO
+ 	if f.IsDir() {
+ 		for _, oKey := range []string{"trusted.overlay.opaque", "user.overlay.opaque"} {
+ 			opaque, err := sysx.LGetxattr(filepath.Join(upperdir, path), oKey)
+-			if err != nil && !errors.Is(err, unix.ENODATA) {
++			if err != nil && !errors.Is(err, unix.ENODATA) && !errors.Is(err, unix.ENOTSUP) {
+ 				return false, errors.Wrapf(err, "failed to retrieve %s attr", oKey)
+ 			} else if len(opaque) == 1 && opaque[0] == 'y' {
+ 				// This is an opaque whiteout directory.
+@@ -296,7 +296,7 @@ func checkRedirect(upperdir string, path string, f os.FileInfo) (bool, error) {
+ 	if f.IsDir() {
+ 		rKey := "trusted.overlay.redirect"
+ 		redirect, err := sysx.LGetxattr(filepath.Join(upperdir, path), rKey)
+-		if err != nil && !errors.Is(err, unix.ENODATA) {
++		if err != nil && !errors.Is(err, unix.ENODATA) && !errors.Is(err, unix.ENOTSUP) {
+ 			return false, errors.Wrapf(err, "failed to retrieve %s attr", rKey)
+ 		}
+ 		return len(redirect) > 0, nil

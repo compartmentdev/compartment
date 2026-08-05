@@ -1,19 +1,21 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type {
-  ManagedVmOwnedPath,
-  ManagedVmProvisionerState,
-  ManagedVmUpdateState,
-} from '../src/services/managed-vm-provisioning.types';
+import type { ManagedVmProvisionerState, ManagedVmUpdateState } from '../src/services/managed-vm-provisioning.types';
 import { managedVmReleaseMetadata } from '../src/services/managed-vm-release-metadata.service';
+import type * as ManagedVmStateService from '../src/services/managed-vm-state.service';
+import { managedVmOwnedPaths, managedVmPreviousOwnedPaths } from '../src/services/managed-vm-state.service';
+
+type ImportOriginalManagedVmStateService = () => Promise<typeof ManagedVmStateService>;
 
 interface LifecycleMocks {
   acquireLock: Mock;
   assertFileOwnership: Mock;
   completeUpdate: Mock;
+  digest: Mock;
   execa: Mock;
   lstat: Mock;
   persistUpdate: Mock;
   readState: Mock;
+  readdir: Mock;
   removeFirewall: Mock;
   rm: Mock;
   rmdir: Mock;
@@ -26,10 +28,12 @@ const mocks: LifecycleMocks = vi.hoisted(
     acquireLock: vi.fn(),
     assertFileOwnership: vi.fn(),
     completeUpdate: vi.fn(),
+    digest: vi.fn(),
     execa: vi.fn(),
     lstat: vi.fn(),
     persistUpdate: vi.fn(),
     readState: vi.fn(),
+    readdir: vi.fn(),
     removeFirewall: vi.fn(),
     rm: vi.fn(),
     rmdir: vi.fn(),
@@ -38,29 +42,25 @@ const mocks: LifecycleMocks = vi.hoisted(
   }),
 );
 
-const ownedPaths: readonly ManagedVmOwnedPath[] = [
-  { path: '/etc/compartment', stage: 'preparing-host' },
-  { path: '/usr/local/bin/k3s-uninstall.sh', stage: 'installing-k3s' },
-];
 const state: ManagedVmProvisionerState = {
   completedStage: 'complete',
   configDigest: 'config',
   installationId: 'install-123',
   metadataDigest: 'metadata',
   ownedFileDigests: {},
-  ownedPaths,
+  ownedPaths: managedVmOwnedPaths,
   releaseMetadata: managedVmReleaseMetadata,
   resolvedArtifacts: managedVmReleaseMetadata.artifacts,
   startedAt: '2026-08-03T00:00:00.000Z',
   updatedAt: '2026-08-03T00:00:00.000Z',
 };
-
 vi.mock(
   'node:fs/promises',
   (): Record<string, Mock> => ({
     access: vi.fn(),
     lstat: mocks.lstat,
     mkdtemp: vi.fn(),
+    readdir: mocks.readdir,
     rm: mocks.rm,
     rmdir: mocks.rmdir,
     writeFile: vi.fn(),
@@ -70,10 +70,6 @@ vi.mock('../src/services/managed-vm-command.service', (): Record<string, Mock> =
 vi.mock(
   '../src/services/managed-vm-cluster.service',
   (): Record<string, Mock> => ({
-    configureManagedVmRegistryIssuer: vi.fn(),
-    installManagedVmCertManager: vi.fn(),
-    installManagedVmHelm: vi.fn(),
-    installManagedVmK3s: vi.fn(),
     verifyManagedVmComponentVersions: mocks.verifyComponents,
   }),
 );
@@ -86,7 +82,6 @@ vi.mock(
 vi.mock(
   '../src/services/managed-vm-sandbox-runtime.service',
   (): Record<string, Mock> => ({
-    installManagedVmSandboxRuntime: vi.fn(),
     verifyManagedVmSandboxRuntime: mocks.verifySandbox,
   }),
 );
@@ -96,16 +91,17 @@ vi.mock(
 );
 vi.mock(
   '../src/services/managed-vm-state.service',
-  (): Record<string, Mock | string | readonly ManagedVmOwnedPath[]> => ({
-    assertManagedVmOwnedFileDigests: mocks.assertFileOwnership,
-    completeManagedVmReleaseUpdate: mocks.completeUpdate,
-    digest: vi.fn((): string => 'metadata'),
-    managedVmOwnedPaths: ownedPaths,
-    managedVmStateDirectory: '/var/lib/compartment/installer',
-    persistManagedVmUpdate: mocks.persistUpdate,
-    recordManagedVmOwnedFileDigests: vi.fn(),
-    readManagedVmState: mocks.readState,
-  }),
+  async (importOriginal: ImportOriginalManagedVmStateService): Promise<typeof ManagedVmStateService> => {
+    const actual: typeof ManagedVmStateService = await importOriginal();
+    return {
+      ...actual,
+      assertManagedVmOwnedFileDigests: mocks.assertFileOwnership,
+      completeManagedVmReleaseUpdate: mocks.completeUpdate,
+      digest: mocks.digest,
+      persistManagedVmUpdate: mocks.persistUpdate,
+      readManagedVmState: mocks.readState,
+    };
+  },
 );
 
 describe('managed VM lifecycle ownership', (): void => {
@@ -118,6 +114,13 @@ describe('managed VM lifecycle ownership', (): void => {
       return { isDirectory: (): boolean => path === '/etc/compartment' };
     });
     mocks.readState.mockResolvedValue(state);
+    mocks.readdir.mockResolvedValue([
+      { isFile: (): boolean => true, name: 'checkpointgofer' },
+      { isFile: (): boolean => true, name: 'runsc-metric-server' },
+    ]);
+    mocks.digest.mockImplementation((value: string): string =>
+      value.includes('"metadataVersion":2') ? 'previous-metadata' : 'metadata',
+    );
     mocks.persistUpdate.mockImplementation(
       async (current: ManagedVmProvisionerState, update: ManagedVmUpdateState): Promise<ManagedVmProvisionerState> =>
         await Promise.resolve({ ...current, update }),
@@ -138,7 +141,6 @@ describe('managed VM lifecycle ownership', (): void => {
     expect(mocks.execa).toHaveBeenCalledWith('/usr/local/bin/k3s-uninstall.sh', []);
     expect(mocks.rmdir).toHaveBeenCalledWith('/etc/compartment');
     expect(mocks.rm).not.toHaveBeenCalledWith('/etc/compartment', expect.anything());
-    expect(mocks.rm).not.toHaveBeenCalledWith('/usr/local/bin/helm', expect.anything());
     expect(mocks.acquireLock).toHaveBeenCalledOnce();
   });
 
@@ -228,5 +230,57 @@ describe('managed VM lifecycle ownership', (): void => {
     expect(mocks.execa).not.toHaveBeenCalledWith('k3s', expect.arrayContaining(['etcd-snapshot']), expect.anything());
     expect(updatePlatform).toHaveBeenCalledOnce();
     expect(readPlatformResult).not.toHaveBeenCalled();
+  });
+
+  it('rejects an older runtime update and permits its explicit reset', async (): Promise<void> => {
+    const previousState: ManagedVmProvisionerState = {
+      ...state,
+      metadataDigest: 'previous-metadata',
+      ownedPaths: managedVmPreviousOwnedPaths,
+      releaseMetadata: { ...managedVmReleaseMetadata, metadataVersion: 2 },
+    };
+    mocks.readState.mockResolvedValue(previousState);
+    const updatePlatform: Mock = vi.fn();
+    const { resetManagedVmInstallation, updateManagedVmInstallation } =
+      await import('../src/services/managed-vm-lifecycle.service');
+
+    await expect(updateManagedVmInstallation(updatePlatform, vi.fn())).rejects.toThrow('Reset and reinstall');
+    expect(updatePlatform).not.toHaveBeenCalled();
+    await expect(resetManagedVmInstallation({ confirmation: previousState.installationId })).resolves.toBeUndefined();
+  });
+
+  it('refuses a historical reset before mutation when the legacy helper directory has unexpected content', async (): Promise<void> => {
+    const previousState: ManagedVmProvisionerState = {
+      ...state,
+      metadataDigest: 'previous-metadata',
+      ownedPaths: managedVmPreviousOwnedPaths,
+      releaseMetadata: { ...managedVmReleaseMetadata, metadataVersion: 2 },
+    };
+    mocks.readState.mockResolvedValue(previousState);
+    mocks.readdir.mockResolvedValue([
+      { isFile: (): boolean => true, name: 'checkpointgofer' },
+      { isFile: (): boolean => true, name: 'operator-file' },
+      { isFile: (): boolean => true, name: 'runsc-metric-server' },
+    ]);
+    const { resetManagedVmInstallation } = await import('../src/services/managed-vm-lifecycle.service');
+
+    await expect(resetManagedVmInstallation({ confirmation: previousState.installationId })).rejects.toThrow(
+      'unexpected content in the gVisor helper directory',
+    );
+    expect(mocks.execa).not.toHaveBeenCalled();
+  });
+
+  it('refuses a current reset before mutation when the helper directory has unexpected content', async (): Promise<void> => {
+    mocks.readdir.mockResolvedValue([
+      { isFile: (): boolean => true, name: 'checkpointgofer' },
+      { isFile: (): boolean => true, name: 'operator-file' },
+      { isFile: (): boolean => true, name: 'runsc-metric-server' },
+    ]);
+    const { resetManagedVmInstallation } = await import('../src/services/managed-vm-lifecycle.service');
+
+    await expect(resetManagedVmInstallation({ confirmation: state.installationId })).rejects.toThrow(
+      'unexpected content in the gVisor helper directory',
+    );
+    expect(mocks.execa).not.toHaveBeenCalled();
   });
 });

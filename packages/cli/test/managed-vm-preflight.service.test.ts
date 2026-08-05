@@ -40,6 +40,7 @@ describe('managed VM preflight', (): void => {
   it('reports blocking resource, port, route, address, and foreign-state failures together', (): void => {
     const inventory: ManagedVmHostInventory = {
       ...supportedInventory(),
+      archiveExtractorAvailable: false,
       freeBytes: 20 * gibibyte - 1,
       portsInUse: [{ owner: 'nginx', port: 443 }],
       routeCidrs: [`10.${String(42)}.0.0/16`],
@@ -50,7 +51,7 @@ describe('managed VM preflight', (): void => {
       `192.${String(168)}.1.5`,
     );
     expect((): void => assertManagedVmPreflight(result)).toThrow(
-      /storage.*ports.*network-cidrs.*public-ipv4.*host-state/su,
+      /archive-extractor.*storage.*ports.*network-cidrs.*public-ipv4.*host-state/su,
     );
   });
 
@@ -202,6 +203,7 @@ describe('managed VM preflight', (): void => {
 
 function supportedInventory(): ManagedVmHostInventory {
   return {
+    archiveExtractorAvailable: true,
     architecture: 'x86_64',
     cgroupV2: true,
     clockSynchronized: true,

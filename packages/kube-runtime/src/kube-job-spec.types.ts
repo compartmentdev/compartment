@@ -33,16 +33,18 @@ export interface KubeJobSpec {
 
 export interface KubeJobEmptyDirVolume {
   containerMountPath?: string | undefined;
+  gvisorTmpfs?: boolean | undefined;
   name: string;
+  sizeLimit?: string | undefined;
 }
 
 export interface KubeJobSidecar {
   args?: string[] | undefined;
+  command?: string[] | undefined;
   env: Readonly<Record<string, string>>;
   image: string;
   name: string;
   resources?: object | undefined;
-  securityProfile: 'rootless-buildkit';
   volumeMounts: KubeVolumeMount[];
 }
 

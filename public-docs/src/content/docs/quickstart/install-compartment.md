@@ -257,8 +257,10 @@ The registry certificate carries that ClusterIP in its IP SAN, and its CA must b
 runtime. The installer pushes a unique acceptance image and asks every Ready node to pull it through the direct
 Service address. Address mismatch, reachability, authentication, TLS, image-push, and node-pull failures are blocking.
 
-Dockerfile and Railpack builds use an ephemeral rootless BuildKit sidecar under gVisor and produce OCI images. Build
-cache is stored in the project/service registry repository; no persistent cache volume is shared between tenants.
+Dockerfile and Railpack builds use an ephemeral BuildKit sidecar inside gVisor and produce OCI images. After each
+push, Compartment requires a matching SPDX SBOM attestation and fails the build if verification does not succeed.
+Build cache is stored in the project/service registry repository; no persistent cache volume is shared between
+tenants, and every Dockerfile or Railpack source deployment starts a fresh build Job.
 Project NetworkPolicies preserve tenant isolation and the configured RFC1918 egress policy.
 
 Kubernetes cluster administrators and anyone able to escape a container remain outside the tenant-isolation boundary.

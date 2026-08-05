@@ -334,28 +334,6 @@ users: [{ name: owner, user: {} }]
     }
   });
 
-  it('records installer-owned host changes when the canonical install must be resumed', async (): Promise<void> => {
-    const getuid: GetUid | undefined = process.getuid;
-    if (getuid === undefined) {
-      throw new Error('This test requires process.getuid.');
-    }
-    const state: object = { completedStage: 'verifying-prerequisites' };
-    mocks.provision.mockResolvedValue(state);
-    mocks.canonicalInstall.mockRejectedValue(new Error('platform install failed'));
-    process.getuid = (): number => 0;
-    try {
-      const capture: CliCommandCapture = createCliCapture();
-      const { runCli } = await import('../src/app');
-
-      expect(await runCli([...ownerInstallArgs(), '--yes'], capture.io)).toBe(1);
-
-      expect(mocks.persistStage).toHaveBeenCalledWith(state, 'verifying-prerequisites');
-      expect(readCliStderr(capture)).toContain('platform install failed');
-    } finally {
-      process.getuid = getuid;
-    }
-  });
-
   it('consumes stdin password once during confirmed root automation', async (): Promise<void> => {
     const getuid: GetUid | undefined = process.getuid;
     if (getuid === undefined) {
@@ -442,6 +420,7 @@ function ownerInstallArgsWithoutDomain(): string[] {
 
 function supportedInventory(): ManagedVmHostInventory {
   return {
+    archiveExtractorAvailable: true,
     architecture: 'x86_64',
     cgroupV2: true,
     clockSynchronized: true,

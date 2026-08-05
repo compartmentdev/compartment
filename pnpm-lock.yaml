@@ -180,9 +180,6 @@ importers:
       execa:
         specifier: 10.0.0
         version: 10.0.0
-      seek-bzip:
-        specifier: 2.0.0
-        version: 2.0.0
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -3998,11 +3995,6 @@ packages:
       { integrity: sha512-P0CysNDQ7rtVw4QIQtm+MRxV66vKFSvlsQvGYXZWR3qFU0jlMKHZZZgw8e+8DSah4UDKMqnknRDQz+xuQXQ/Zg== }
     engines: { node: '>= 6' }
 
-  commander@6.2.1:
-    resolution:
-      { integrity: sha512-U7VdrJFnJgo4xjrHpTzu0yrHPGImdsmD95ZlgYSEajAn2JKzDhDTPG9kBTefmObL2w/ngeZnilk+OV9CG3d7UA== }
-    engines: { node: '>= 6' }
-
   commander@9.5.0:
     resolution:
       { integrity: sha512-KRs7WVDKg86PWiuAqhDrAQnTXZKraVcCc6vFdL14qrZ/DcWwuRo7VoiYXalXO7S5GKpqYiVEwCbgFDfxNHKJBQ== }
@@ -7542,11 +7534,6 @@ packages:
   secure-json-parse@4.1.0:
     resolution:
       { integrity: sha512-l4KnYfEyqYJxDwlNVyRfO2E4NTHfMKAWdUuA8J0yve2Dz/E/PdBepY03RvyJpssIpRFwJoCD55wA+mEDs6ByWA== }
-
-  seek-bzip@2.0.0:
-    resolution:
-      { integrity: sha512-SMguiTnYrhpLdk3PwfzHeotrcwi8bNV4iemL9tx9poR/yeaMYwB9VzR1w7b57DuWpuqR8n6oZboi0hj3AxZxQg== }
-    hasBin: true
 
   semver@6.3.1:
     resolution:
@@ -11869,8 +11856,6 @@ snapshots:
 
   commander@5.1.0: {}
 
-  commander@6.2.1: {}
-
   commander@9.5.0: {}
 
   common-ancestor-path@2.0.0: {}
@@ -15393,10 +15378,6 @@ snapshots:
       regexp-ast-analysis: 0.7.1
 
   secure-json-parse@4.1.0: {}
-
-  seek-bzip@2.0.0:
-    dependencies:
-      commander: 6.2.1
 
   semver@6.3.1: {}
 

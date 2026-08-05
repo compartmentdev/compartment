@@ -38,7 +38,6 @@ export async function provisionManagedVmCluster(input: ManagedVmProvisionInput):
   const releaseLock: () => Promise<void> = await acquireManagedVmLock();
   let artifacts: ManagedVmDownloadedArtifacts | undefined;
   try {
-    await loadManagedVmKernelModules();
     artifacts = await downloadManagedVmArtifacts(managedVmReleaseMetadata.artifacts);
     return await runProvisioningStages(input, artifacts);
   } finally {
@@ -96,7 +95,7 @@ async function runPostKubernetesStages(
     state,
     'installing-sandbox-runtime',
     input,
-    async (): Promise<void> => await installManagedVmSandboxRuntime(artifacts),
+    async (): Promise<Readonly<Record<string, string>>> => await installManagedVmSandboxRuntime(artifacts),
   );
   state = await runStage(
     state,
@@ -124,6 +123,7 @@ async function prepareHostStage(
   input: ManagedVmProvisionInput,
   artifacts: ManagedVmDownloadedArtifacts,
 ): Promise<void> {
+  await loadManagedVmKernelModules();
   await installManagedVmFirewall(input.publicInterface);
   await prepareManagedVmHost(artifacts, input.publicAddress);
 }
@@ -154,17 +154,20 @@ async function runStage(
   state: ManagedVmProvisionerState,
   stage: ManagedVmInstallStage,
   input: ManagedVmProvisionInput,
-  action: () => Promise<void>,
+  action: () => Promise<void | Readonly<Record<string, string>>>,
 ): Promise<ManagedVmProvisionerState> {
+  await assertManagedVmOwnedFileDigests(state);
   if (isManagedVmInstallStageComplete(state.completedStage, stage)) {
-    await assertManagedVmOwnedFileDigests(state);
     if (await isManagedVmStageHealthy(stage)) {
       return state;
     }
   }
   input.reportStage(stage);
-  await action();
-  return await persistManagedVmStage(state, stage);
+  const expectedOwnedFileDigests: void | Readonly<Record<string, string>> = await action();
+  if (expectedOwnedFileDigests === undefined) {
+    return await persistManagedVmStage(state, stage);
+  }
+  return await persistManagedVmStage(state, stage, expectedOwnedFileDigests);
 }
 
 function assertResumeIdentity(state: ManagedVmProvisionerState, config: string): void {

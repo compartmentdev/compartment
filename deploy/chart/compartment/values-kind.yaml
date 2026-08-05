@@ -2,6 +2,6 @@
 platform:
   installationId: kind-validation
 
-# rootlesskit requires an unconfined seccomp profile. PSA restricted rejects it.
+# Kind validation does not provide the required gVisor RuntimeClass.
 buildkit:
   enabled: false

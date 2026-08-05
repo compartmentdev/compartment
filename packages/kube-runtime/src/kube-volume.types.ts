@@ -6,7 +6,7 @@ export interface KubeVolumeMount {
 }
 
 export interface KubePodVolume {
-  emptyDir?: Record<string, never> | undefined;
+  emptyDir?: { sizeLimit?: string | undefined } | undefined;
   name: string;
   persistentVolumeClaim?: { claimName: string; readOnly?: boolean | undefined } | undefined;
   projected?:

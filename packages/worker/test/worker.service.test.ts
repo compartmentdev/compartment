@@ -343,7 +343,6 @@ function createWorkerConfig(
     apiUrl,
     artifactRegistry: registry,
     buildSandbox: {
-      buildKitImage: 'moby/buildkit@sha256:builder',
       buildKitResources: {},
       gcKeepStorageMb: 2000,
       namespace: 'compartment-build',

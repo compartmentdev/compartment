@@ -1,9 +1,5 @@
-import { fileURLToPath } from 'node:url';
-
 import { readPlatformK3dEnvironment } from './platform-k3d-e2e.mjs';
 import { platformK3dShardDefinitions, platformK3dShardNames } from './platform-k3d-e2e-shards.mjs';
-
-const e2eFixtureBinPath = fileURLToPath(new URL('./fixtures/kubectl-e2e-bin/', import.meta.url));
 
 export function readPlatformK3dShard(args) {
   const [shardName, ...extraArgs] = args;
@@ -59,7 +55,6 @@ export function buildPlatformK3dShardEnvironment(shardName, baseEnv = process.en
     COMPARTMENT_E2E_SHARD: shardName,
     COMPARTMENT_CLI_BUNDLED_COSIGN_PATH: 'scripts/deploy/fixtures/cosign-k3d-e2e.mjs',
     COMPARTMENT_SELF_HOSTED_USER_SETUP_E2E: '1',
-    PATH: `${e2eFixtureBinPath}:${baseEnv.PATH ?? ''}`,
   };
   delete environment.COMPARTMENT_E2E_BUILD_MATRIX_PARTITION;
   if (definition.buildMatrixPartition !== undefined) {

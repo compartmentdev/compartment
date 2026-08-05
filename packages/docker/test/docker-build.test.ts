@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type * as BuildkitCommandModule from '../src/buildkit-command';
 import { buildDockerImage } from '../src/docker-build';
+import { buildDockerfileBuildctlArgs } from '../src/docker-buildkit-args';
 import type { DockerBuildImageInput, DockerProgressReporter, DockerRegistryCredentials } from '../src/docker-models';
 import type { PrepareRailpackPlanInput } from '../src/railpack-command.types';
 
@@ -11,6 +13,18 @@ type RunBuildctlCommandWithOptionalProgressReporter = (
   registryCredentials?: DockerRegistryCredentials,
 ) => Promise<void>;
 type PrepareRailpackPlan = (input: PrepareRailpackPlanInput) => Promise<void>;
+
+const testImageManifestDigest: string = `sha256:${'e'.repeat(64)}`;
+
+interface RegistryAttestationFixture {
+  attestationManifest: string;
+  index: string;
+  indexDigest: string;
+  statement: string;
+}
+
+const defaultRegistryAttestation: RegistryAttestationFixture = buildRegistryAttestation(testImageManifestDigest);
+const testIndexDigest: string = defaultRegistryAttestation.indexDigest;
 
 interface DockerBuildTestMocks {
   prepareRailpackPlan: Mock<PrepareRailpackPlan>;
@@ -44,10 +58,12 @@ beforeEach((): void => {
   delete process.env.BUILDKIT_ADDR;
   mocks.prepareRailpackPlan.mockReset();
   mocks.runBuildctlCommandWithOptionalProgressReporter.mockReset();
+  stubSpdxRegistryAttestation();
 });
 
 afterEach((): void => {
   delete process.env.BUILDKIT_ADDR;
+  vi.unstubAllGlobals();
 });
 
 describe('buildDockerImage', (): void => {
@@ -64,7 +80,7 @@ describe('buildDockerImage', (): void => {
   });
 
   it('builds and pushes a dockerfile image through remote BuildKit', async (): Promise<void> => {
-    const digest: string = `sha256:${'a'.repeat(64)}`;
+    const digest: string = testIndexDigest;
 
     process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
     mockBuildKitImageOutput(digest);
@@ -89,43 +105,28 @@ describe('buildDockerImage', (): void => {
       imageRef: `registry.example/compartment-web@${digest}`,
       pushed: true,
     });
+  });
 
-    expect(mocks.runBuildctlCommandWithOptionalProgressReporter).toHaveBeenNthCalledWith(
-      1,
-      [
-        '--addr',
-        'tcp://builder:1234',
-        'build',
-        '--frontend',
-        'dockerfile.v0',
-        '--local',
-        'context=/tmp/source',
-        '--local',
-        'dockerfile=/tmp/source/apps/web',
-        '--opt',
-        'filename=Dockerfile',
-        '--opt',
-        'build-arg:NEXT_PUBLIC_API_URL=https://api.example.com',
-        '--opt',
-        'label:compartment.namespace=compartment-e2e',
-        '--import-cache',
-        'type=registry,ref=registry:5000/compartment-web:build-cache,registry.insecure=true',
-        '--export-cache',
-        'type=registry,ref=registry:5000/compartment-web:build-cache,mode=max,image-manifest=true,oci-mediatypes=true,registry.insecure=true',
-        '--opt',
-        'attest:sbom=',
-        '--output',
-        'type=image,name=registry:5000/compartment-web:art_123,push=true,oci-mediatypes=true,oci-artifact=true,registry.insecure=true',
-        '--metadata-file',
-        expect.stringMatching(/buildkit-metadata\.json$/),
-      ],
-      undefined,
-      undefined,
+  it('exports the registry cache in bounded mode', (): void => {
+    const args: string[] = buildDockerfileBuildctlArgs({
+      buildKitAddress: 'tcp://builder:1234',
+      input: {
+        cacheImageRef: 'registry:5000/compartment-web:build-cache',
+        contextDirectory: '/tmp/source',
+        imageTag: 'registry:5000/compartment-web:art_123',
+        packer: 'dockerfile',
+        pushImageInsecureRegistry: true,
+      },
+      metadataFile: '/tmp/buildkit-metadata.json',
+    });
+
+    expect(args).toContain(
+      'type=registry,ref=registry:5000/compartment-web:build-cache,mode=min,image-manifest=true,oci-mediatypes=true,registry.insecure=true',
     );
   });
 
   it('resolves the default Dockerfile path against the remote BuildKit context', async (): Promise<void> => {
-    const digest: string = `sha256:${'c'.repeat(64)}`;
+    const digest: string = testIndexDigest;
 
     process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
     mockBuildKitImageOutput(digest);
@@ -159,7 +160,7 @@ describe('buildDockerImage', (): void => {
   });
 
   it('uses plain BuildKit progress output when a dockerfile build is tracked', async (): Promise<void> => {
-    const digest: string = `sha256:${'d'.repeat(64)}`;
+    const digest: string = testIndexDigest;
     const onProgressLine: DockerProgressReporter = vi.fn<DockerProgressReporter>();
 
     process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
@@ -186,7 +187,7 @@ describe('buildDockerImage', (): void => {
   });
 
   it('builds and pushes a Railpack-backed image through remote BuildKit', async (): Promise<void> => {
-    const digest: string = `sha256:${'b'.repeat(64)}`;
+    const digest: string = testIndexDigest;
 
     process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
     mocks.prepareRailpackPlan.mockResolvedValueOnce();
@@ -246,7 +247,7 @@ describe('buildDockerImage', (): void => {
   });
 
   it('passes Railpack apt package env values as BuildKit secrets for the generated plan', async (): Promise<void> => {
-    const digest: string = `sha256:${'e'.repeat(64)}`;
+    const digest: string = testIndexDigest;
 
     process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
     mocks.prepareRailpackPlan.mockResolvedValueOnce();
@@ -280,7 +281,7 @@ describe('buildDockerImage', (): void => {
   });
 
   it('builds a static image with a narrowed deploy plan', async (): Promise<void> => {
-    const digest: string = `sha256:${'f'.repeat(64)}`;
+    const digest: string = testIndexDigest;
     let normalizedPlanText: string = '';
 
     process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
@@ -372,7 +373,7 @@ describe('buildDockerImage', (): void => {
   });
 
   it('recovers cleanly after a failed build writes invalid metadata', async (): Promise<void> => {
-    const recoveredDigest: string = `sha256:${'9'.repeat(64)}`;
+    const recoveredDigest: string = testIndexDigest;
 
     process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
     mocks.runBuildctlCommandWithOptionalProgressReporter.mockImplementationOnce(
@@ -397,7 +398,113 @@ describe('buildDockerImage', (): void => {
       pushed: true,
     });
   });
+
+  it('rejects registry bytes that do not match the pushed image digest', async (): Promise<void> => {
+    process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
+    mockBuildKitImageOutput(`sha256:${'7'.repeat(64)}`);
+
+    await expect(
+      buildDockerImage({
+        contextDirectory: '/tmp/source',
+        imageTag: 'registry.example/compartment-web:art_123',
+        packer: 'dockerfile',
+      }),
+    ).rejects.toThrow('registry content digest mismatch');
+  });
+
+  it('fails a pushed build when the registry image has no SPDX attestation', async (): Promise<void> => {
+    const index: string = JSON.stringify({ manifests: [], mediaType: 'application/vnd.oci.image.index.v1+json' });
+    const digest: string = registryDigest(index);
+    process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
+    mockBuildKitImageOutput(digest);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((): Response => new Response(index, { status: 200 })),
+    );
+
+    await expect(
+      buildDockerImage({
+        contextDirectory: '/tmp/source',
+        imageTag: 'registry.example/compartment-web:art_123',
+        packer: 'dockerfile',
+      }),
+    ).rejects.toThrow('include an SPDX SBOM attestation');
+  });
+
+  it('rejects an SPDX attestation whose payload does not bind to the pushed image', async (): Promise<void> => {
+    const digest: string = stubSpdxRegistryAttestation(`sha256:${'0'.repeat(64)}`);
+    process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
+    mockBuildKitImageOutput(digest);
+
+    await expect(
+      buildDockerImage({
+        contextDirectory: '/tmp/source',
+        imageTag: 'registry.example/compartment-web:art_123',
+        packer: 'dockerfile',
+      }),
+    ).rejects.toThrow('include an SPDX SBOM attestation');
+  });
 });
+
+function stubSpdxRegistryAttestation(statementSubjectDigest: string = testImageManifestDigest): string {
+  const fixture: RegistryAttestationFixture = buildRegistryAttestation(statementSubjectDigest);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: string | URL | Request, init?: RequestInit): Response => {
+      const url: string = input instanceof Request ? input.url : String(input);
+      const accept: string | null = new Headers(init?.headers).get('Accept');
+      if (accept === 'application/vnd.oci.image.index.v1+json') {
+        return new Response(fixture.index, { status: 200 });
+      }
+      if (url.includes('/blobs/')) {
+        return new Response(fixture.statement, { status: 200 });
+      }
+      return new Response(fixture.attestationManifest, { status: 200 });
+    }),
+  );
+  return fixture.indexDigest;
+}
+
+function buildRegistryAttestation(statementSubjectDigest: string): RegistryAttestationFixture {
+  const separator: number = statementSubjectDigest.indexOf(':');
+  const statement: string = JSON.stringify({
+    _type: 'https://in-toto.io/Statement/v0.1',
+    predicate: { SPDXID: 'SPDXRef-DOCUMENT', spdxVersion: 'SPDX-2.3' },
+    predicateType: 'https://spdx.dev/Document',
+    subject: [
+      { digest: { [statementSubjectDigest.slice(0, separator)]: statementSubjectDigest.slice(separator + 1) } },
+    ],
+  });
+  const attestationManifest: string = JSON.stringify({
+    layers: [
+      {
+        annotations: { 'in-toto.io/predicate-type': 'https://spdx.dev/Document' },
+        digest: registryDigest(statement),
+        mediaType: 'application/vnd.in-toto+json',
+      },
+    ],
+    mediaType: 'application/vnd.oci.image.manifest.v1+json',
+  });
+  const index: string = JSON.stringify({
+    manifests: [
+      { digest: testImageManifestDigest, mediaType: 'application/vnd.oci.image.manifest.v1+json' },
+      {
+        annotations: {
+          'vnd.docker.reference.digest': testImageManifestDigest,
+          'vnd.docker.reference.type': 'attestation-manifest',
+        },
+        digest: registryDigest(attestationManifest),
+        mediaType: 'application/vnd.oci.image.manifest.v1+json',
+      },
+    ],
+    mediaType: 'application/vnd.oci.image.index.v1+json',
+  });
+  return { attestationManifest, index, indexDigest: registryDigest(index), statement };
+}
+
+function registryDigest(content: string): string {
+  return `sha256:${createHash('sha256').update(content).digest('hex')}`;
+}
 
 function mockBuildKitImageOutput(digest: string): void {
   mocks.runBuildctlCommandWithOptionalProgressReporter.mockImplementationOnce(async (args: string[]): Promise<void> => {

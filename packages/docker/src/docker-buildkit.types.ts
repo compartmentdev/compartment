@@ -10,6 +10,11 @@ export interface BuildKitImageMetadataDescriptor {
   digest?: string | undefined;
 }
 
+export interface BuildKitPushedImageMetadata {
+  digest: string;
+  imageRef: string;
+}
+
 export interface BuildKitImageMetadata {
   'containerimage.descriptor'?: BuildKitImageMetadataDescriptor | null | undefined;
   'containerimage.digest'?: string | undefined;

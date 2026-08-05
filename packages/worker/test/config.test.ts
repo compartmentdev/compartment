@@ -13,7 +13,6 @@ describe('readWorkerConfig', (): void => {
       internalUrl: 'https://registry.apps.example.com',
     });
     expect(config.buildSandbox).toEqual({
-      buildKitImage: 'moby/buildkit@sha256:builder',
       buildKitResources: { limits: { cpu: '2' } },
       gcKeepStorageMb: 2000,
       namespace: 'compartment-build',
@@ -68,16 +67,14 @@ describe('readWorkerConfig', (): void => {
     ).toThrow();
   });
 
-  it('accepts build scheduling without an optional RuntimeClass', (): void => {
-    const config: WorkerBuildConfig = readWorkerBuildConfig({
-      ...validEnvironment(),
-      COMPARTMENT_KUBE_BUILD_SCHEDULING: '{"nodeSelector":{"compartment.dev/node-pool":"build"},"tolerations":[]}',
-    });
-
-    expect(config.buildSandbox.scheduling).toEqual({
-      nodeSelector: { 'compartment.dev/node-pool': 'build' },
-      tolerations: [],
-    });
+  it('fails closed when build scheduling omits the sandbox RuntimeClass', (): void => {
+    expect(
+      (): WorkerBuildConfig =>
+        readWorkerBuildConfig({
+          ...validEnvironment(),
+          COMPARTMENT_KUBE_BUILD_SCHEDULING: '{"nodeSelector":{"compartment.dev/node-pool":"build"},"tolerations":[]}',
+        }),
+    ).toThrow('Build scheduling must configure a gVisor RuntimeClass.');
   });
 
   it('rejects unsafe worker trusted outbound host entries', (): void => {
@@ -135,7 +132,6 @@ const tenantSchedulingJson: string = JSON.stringify({
 function validEnvironment(): NodeJS.ProcessEnv {
   return {
     COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: '2000',
-    COMPARTMENT_BUILDKIT_IMAGE: 'moby/buildkit@sha256:builder',
     COMPARTMENT_BUILDKIT_RESOURCES: '{"limits":{"cpu":"2"}}',
     COMPARTMENT_BUILD_NAMESPACE: 'compartment-build',
     COMPARTMENT_BUILD_RUNNER_IMAGE: 'compartment-worker@sha256:runner',

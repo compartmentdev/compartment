@@ -10,10 +10,12 @@ import type {
 import { managedVmReleaseMetadata } from './managed-vm-release-metadata.service';
 import { isManagedVmInstallStageComplete } from './managed-vm-stage.service';
 import { parseManagedVmState } from './managed-vm-state-validation.service';
+import { managedVmSandboxRuntimePaths } from './managed-vm-sandbox-runtime.constants';
 
 export const managedVmStateDirectory: string = '/var/lib/compartment/installer';
 const managedVmStatePath: string = `${managedVmStateDirectory}/state.json`;
-export const managedVmOwnedPaths: readonly ManagedVmOwnedPath[] = [
+type ManagedVmOwnedPathFilter = (ownedPath: ManagedVmOwnedPath) => boolean;
+export const managedVmLegacyOwnedPaths: readonly ManagedVmOwnedPath[] = [
   { path: '/etc/compartment', stage: 'preparing-host' },
   { path: '/etc/compartment/firewall.nft', stage: 'preparing-host' },
   { path: '/etc/compartment/registry-ca.key', stage: 'preparing-host' },
@@ -35,15 +37,32 @@ export const managedVmOwnedPaths: readonly ManagedVmOwnedPath[] = [
   { path: '/run/k3s', stage: 'installing-k3s' },
   { path: '/var/lib/kubelet', stage: 'installing-k3s' },
   { path: '/var/lib/rancher/k3s', stage: 'installing-k3s' },
-  { path: '/usr/local/bin/runsc', stage: 'installing-sandbox-runtime' },
-  { path: '/usr/local/bin/containerd-shim-runsc-v1', stage: 'installing-sandbox-runtime' },
-  { path: '/usr/local/bin/gvisor-bin', stage: 'installing-sandbox-runtime' },
-  { path: '/etc/containerd/runsc.toml', stage: 'installing-sandbox-runtime' },
+];
+
+export const managedVmPreviousOwnedPaths: readonly ManagedVmOwnedPath[] = [
+  ...managedVmLegacyOwnedPaths,
+  { path: managedVmSandboxRuntimePaths.runsc, stage: 'installing-sandbox-runtime' },
+  { path: managedVmSandboxRuntimePaths.containerdShim, stage: 'installing-sandbox-runtime' },
+  { path: managedVmSandboxRuntimePaths.gvisorBinDirectory, stage: 'installing-sandbox-runtime' },
+  { path: managedVmSandboxRuntimePaths.runscConfig, stage: 'installing-sandbox-runtime' },
   {
-    path: '/var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.tmpl',
+    path: managedVmSandboxRuntimePaths.containerdTemplate,
     stage: 'installing-sandbox-runtime',
   },
 ];
+
+export const managedVmOwnedPaths: readonly ManagedVmOwnedPath[] = [
+  ...managedVmPreviousOwnedPaths,
+  { path: managedVmSandboxRuntimePaths.checkpointGofer, stage: 'installing-sandbox-runtime' },
+  { path: managedVmSandboxRuntimePaths.metricServer, stage: 'installing-sandbox-runtime' },
+];
+
+export function managedVmOwnedPathsEqual(
+  left: readonly ManagedVmOwnedPath[],
+  right: readonly ManagedVmOwnedPath[],
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
 
 export async function readManagedVmState(): Promise<ManagedVmProvisionerState | undefined> {
   try {
@@ -107,28 +126,39 @@ export async function completeManagedVmReleaseUpdate(
 export async function persistManagedVmStage(
   state: ManagedVmProvisionerState,
   completedStage: ManagedVmInstallStage,
+  expectedOwnedFileDigests?: Readonly<Record<string, string>>,
 ): Promise<ManagedVmProvisionerState> {
+  const stageOwnedFileDigests: Readonly<Record<string, string>> = await collectManagedVmStageOwnedFileDigests(
+    state,
+    completedStage,
+  );
+  if (
+    expectedOwnedFileDigests !== undefined &&
+    !ownedFileDigestsEqual(stageOwnedFileDigests, expectedOwnedFileDigests)
+  ) {
+    throw new Error('Managed-VM installer-written content changed before ownership could be persisted.');
+  }
   const next: ManagedVmProvisionerState = {
     ...state,
     completedStage,
-    ownedFileDigests: await collectManagedVmOwnedFileDigests(state, completedStage),
+    ownedFileDigests: { ...state.ownedFileDigests, ...stageOwnedFileDigests },
     updatedAt: new Date().toISOString(),
   };
   await writeStateAtomically(next);
   return next;
 }
 
-export async function recordManagedVmOwnedFileDigests(
-  state: ManagedVmProvisionerState,
-): Promise<ManagedVmProvisionerState> {
-  const adoptedState: ManagedVmProvisionerState = { ...state, ownedPaths: managedVmOwnedPaths };
-  const next: ManagedVmProvisionerState = {
-    ...adoptedState,
-    ownedFileDigests: await collectManagedVmOwnedFileDigests(adoptedState, state.completedStage),
-    updatedAt: new Date().toISOString(),
-  };
-  await writeStateAtomically(next);
-  return next;
+function ownedFileDigestsEqual(
+  left: Readonly<Record<string, string>>,
+  right: Readonly<Record<string, string>>,
+): boolean {
+  const ordered: (value: Readonly<Record<string, string>>) => readonly [string, string][] = (
+    value: Readonly<Record<string, string>>,
+  ): readonly [string, string][] =>
+    Object.entries(value).sort(([leftPath]: [string, string], [rightPath]: [string, string]): number =>
+      leftPath.localeCompare(rightPath),
+    );
+  return JSON.stringify(ordered(left)) === JSON.stringify(ordered(right));
 }
 
 export async function assertManagedVmOwnedFileDigests(state: ManagedVmProvisionerState): Promise<void> {
@@ -147,16 +177,38 @@ async function writeStateAtomically(state: ManagedVmProvisionerState): Promise<v
   await rename(temporaryPath, managedVmStatePath);
 }
 
+async function collectManagedVmStageOwnedFileDigests(
+  state: ManagedVmProvisionerState,
+  completedStage: ManagedVmInstallStage,
+): Promise<Readonly<Record<string, string>>> {
+  return await collectManagedVmOwnedFileDigestsWhere(
+    state,
+    (ownedPath: ManagedVmOwnedPath): boolean => ownedPath.stage === completedStage,
+  );
+}
+
 async function collectManagedVmOwnedFileDigests(
   state: ManagedVmProvisionerState,
   completedStage: ManagedVmInstallStage,
 ): Promise<Readonly<Record<string, string>>> {
+  return await collectManagedVmOwnedFileDigestsWhere(state, (ownedPath: ManagedVmOwnedPath): boolean =>
+    isManagedVmInstallStageComplete(completedStage, ownedPath.stage),
+  );
+}
+
+async function collectManagedVmOwnedFileDigestsWhere(
+  state: ManagedVmProvisionerState,
+  include: ManagedVmOwnedPathFilter,
+): Promise<Readonly<Record<string, string>>> {
   const entries: [string, string][] = [];
   for (const ownedPath of state.ownedPaths) {
-    if (!isManagedVmInstallStageComplete(completedStage, ownedPath.stage)) {
+    if (!include(ownedPath)) {
       continue;
     }
-    const ownership: string | undefined = await readOwnedPathIdentity(ownedPath.path);
+    const ownership: string | undefined = await readOwnedPathIdentity(
+      ownedPath.path,
+      state.releaseMetadata.metadataVersion,
+    );
     if (ownership !== undefined) {
       entries.push([ownedPath.path, ownership]);
     }
@@ -164,7 +216,7 @@ async function collectManagedVmOwnedFileDigests(
   return Object.fromEntries(entries);
 }
 
-async function readOwnedPathIdentity(path: string): Promise<string | undefined> {
+async function readOwnedPathIdentity(path: string, metadataVersion: number): Promise<string | undefined> {
   try {
     const details: Stats = await lstat(path);
     if (details.isDirectory()) {
@@ -173,13 +225,18 @@ async function readOwnedPathIdentity(path: string): Promise<string | undefined> 
     if (!details.isFile()) {
       throw new Error(`Managed-VM owned path has an unsupported type: ${path}`);
     }
-    return digest(await readFile(path));
+    const content: Buffer = await readFile(path);
+    return metadataVersion >= 3 ? managedVmFileIdentity(content, details.mode) : digest(content);
   } catch (error) {
     if (error instanceof Error && isMissing(error)) {
       return undefined;
     }
     throw error;
   }
+}
+
+export function managedVmFileIdentity(content: string | Buffer, mode: number): string {
+  return `file:${(mode & 0o7777).toString(8).padStart(4, '0')}:${digest(content)}`;
 }
 
 export function digest(content: string | Buffer): string {

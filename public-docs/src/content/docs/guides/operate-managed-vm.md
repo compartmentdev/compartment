@@ -36,10 +36,11 @@ curl -fsSL https://compartment.dev/install.sh | sh
 sudo compartment system update
 ```
 
-First install the current verified stable CLI. Its signed provisioning metadata selects the managed target
-release and artifacts. The update command verifies those artifacts, creates an etcd snapshot, advances k3s, the
-pinned gVisor runtime, and cert-manager through durable stages, invokes the canonical platform update, and verifies
-the resulting host and cluster versions plus a real gVisor canary.
+First install the current verified stable CLI. The update command verifies the installer-owned host content, creates
+an etcd snapshot, invokes the canonical platform update, and verifies the resulting host and cluster versions plus a
+real gVisor canary. It does not adopt or rewrite an older installer-owned release: when the recorded release metadata
+differs, the command fails closed and requires an explicit managed-VM reset and clean reinstall. That reset permanently
+removes the managed cluster, platform, and application data as described below.
 Managed Kubernetes components do not update in the background. If an update stops, correct the reported problem and
 rerun the same command.
 

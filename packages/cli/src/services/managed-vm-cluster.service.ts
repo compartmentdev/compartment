@@ -51,7 +51,7 @@ async function pathsIdentifySameFile(source: string, destination: string): Promi
   }
 }
 
-export async function installManagedVmHelm(artifacts: ManagedVmDownloadedArtifacts): Promise<void> {
+async function installManagedVmHelm(artifacts: ManagedVmDownloadedArtifacts): Promise<void> {
   await copyFile(artifacts.helmPath, '/usr/local/bin/helm');
   await chmod('/usr/local/bin/helm', 0o755);
 }

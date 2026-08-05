@@ -3,6 +3,11 @@
 ARG COMPARTMENT_NODE_BUILD_IMAGE=node:24.15.0-bookworm
 ARG COMPARTMENT_NODE_RUNTIME_IMAGE=node:24.15.0-bookworm-slim
 ARG COMPARTMENT_BUILDKIT_VERSION=v0.30.0
+ARG COMPARTMENT_BUILDKIT_COMMIT=dd2170e156c9633da1b2d1a58a6188e3f7d36fa4
+ARG COMPARTMENT_RUNC_VERSION=v1.3.5
+ARG COMPARTMENT_RUNC_COMMIT=488fc13e1f2d3d73ec36d829fdf2c98e47dc5ae8
+ARG COMPARTMENT_RAILPACK_VERSION=v0.31.0
+ARG COMPARTMENT_RAILPACK_COMMIT=ebb3c1ccbd6ca2386711d21197d74681d33b4df7
 ARG COMPARTMENT_GO_BUILD_IMAGE=golang:1.26.5-bookworm
 
 FROM ${COMPARTMENT_NODE_BUILD_IMAGE} AS build
@@ -18,27 +23,44 @@ RUN HUSKY=0 pnpm install --frozen-lockfile
 RUN pnpm --filter=@compartment/worker... build
 RUN HUSKY=0 NODE_ENV=production pnpm --filter=@compartment/worker deploy --legacy --prod /runtime
 
-FROM --platform=$BUILDPLATFORM ${COMPARTMENT_GO_BUILD_IMAGE} AS buildctl-build
-
-ARG COMPARTMENT_BUILDKIT_VERSION
-ARG TARGETARCH
-ARG TARGETOS
+FROM --platform=$TARGETPLATFORM ${COMPARTMENT_GO_BUILD_IMAGE} AS native-go-build-base
 
 ENV GOTOOLCHAIN=local
 
 WORKDIR /workspace
 
-COPY --chmod=755 packages/worker/scripts/build-buildctl.sh /usr/local/bin/build-buildctl
-
 RUN apt-get update \
-  && apt-get install --yes --no-install-recommends ca-certificates git \
+  && apt-get install --yes --no-install-recommends build-essential ca-certificates git libseccomp-dev pkg-config \
   && rm -rf /var/lib/apt/lists/*
+
+FROM native-go-build-base AS buildctl-build
+
+ARG COMPARTMENT_BUILDKIT_VERSION
+ARG COMPARTMENT_BUILDKIT_COMMIT
+ARG TARGETARCH
+ARG TARGETOS
+
+COPY --chmod=755 packages/worker/scripts/build-buildctl.sh /usr/local/bin/build-buildctl
+COPY packages/worker/patches/buildkit-gvisor-overlay-xattr.patch /patches/buildkit-gvisor-overlay-xattr.patch
 
 RUN build-buildctl
 
+FROM native-go-build-base AS runc-build
+
+ARG COMPARTMENT_RUNC_VERSION
+ARG COMPARTMENT_RUNC_COMMIT
+ARG TARGETARCH
+ARG TARGETOS
+
+COPY --chmod=755 packages/worker/scripts/build-runc-gvisor.sh /usr/local/bin/build-runc-gvisor
+COPY packages/worker/patches/runc-gvisor-mount-remap.patch /patches/runc-gvisor-mount-remap.patch
+
+RUN build-runc-gvisor
+
 FROM --platform=$BUILDPLATFORM ${COMPARTMENT_GO_BUILD_IMAGE} AS railpack-build
 
-ARG COMPARTMENT_RAILPACK_VERSION=v0.23.0
+ARG COMPARTMENT_RAILPACK_VERSION
+ARG COMPARTMENT_RAILPACK_COMMIT
 ARG TARGETARCH
 ARG TARGETOS
 
@@ -64,6 +86,8 @@ ENV NODE_ENV=production
 LABEL org.opencontainers.image.source="https://github.com/compartmentdev/compartment"
 
 COPY --from=buildctl-build /out/buildctl /usr/local/bin/buildctl
+COPY --from=buildctl-build /out/buildkitd /usr/local/bin/buildkitd
+COPY --from=runc-build /out/buildkit-runc-gvisor /usr/local/bin/buildkit-runc-gvisor
 COPY --from=railpack-build /out/railpack /usr/local/bin/railpack
 
 RUN apt-get update \

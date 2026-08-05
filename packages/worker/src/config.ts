@@ -14,7 +14,7 @@ import type {
   WorkerCustomDomainConfig,
   WorkerProcessConfig,
 } from './config.types';
-import { readRequiredWorkloadScheduling, readTenantWorkloadScheduling } from './tenant-workload-scheduling';
+import { readBuildWorkloadScheduling, readTenantWorkloadScheduling } from './tenant-workload-scheduling';
 
 export type {
   WorkerBuildConfig,
@@ -44,7 +44,6 @@ interface WorkerProcessConfigEnvironment {
 }
 
 interface WorkerBuildConfigEnvironment extends WorkerProcessConfigEnvironment {
-  COMPARTMENT_BUILDKIT_IMAGE: string;
   COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: number;
   COMPARTMENT_BUILDKIT_RESOURCES: string;
   COMPARTMENT_BUILD_NAMESPACE: string;
@@ -92,7 +91,6 @@ const workerProcessConfigSchema: z.ZodType<WorkerProcessConfigEnvironment> = z.o
 
 const workerBuildConfigSchema: z.ZodType<WorkerBuildConfigEnvironment> = workerProcessConfigSchema.and(
   z.object({
-    COMPARTMENT_BUILDKIT_IMAGE: z.string().trim().min(1),
     COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: z.coerce.number().int().positive(),
     COMPARTMENT_BUILDKIT_RESOURCES: z.string().trim().min(1),
     COMPARTMENT_BUILD_NAMESPACE: z.string().trim().min(1),
@@ -186,13 +184,12 @@ function buildWorkerBuildConfig(parsed: WorkerBuildConfigEnvironment): WorkerBui
   return {
     ...buildWorkerProcessConfig(parsed),
     buildSandbox: {
-      buildKitImage: parsed.COMPARTMENT_BUILDKIT_IMAGE,
       buildKitResources: readResourceRequirements(parsed.COMPARTMENT_BUILDKIT_RESOURCES),
       gcKeepStorageMb: parsed.COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB,
       namespace: parsed.COMPARTMENT_BUILD_NAMESPACE,
       runnerImage: parsed.COMPARTMENT_BUILD_RUNNER_IMAGE,
       runnerResources: readResourceRequirements(parsed.COMPARTMENT_BUILD_RUNNER_RESOURCES),
-      scheduling: readRequiredWorkloadScheduling(parsed.COMPARTMENT_KUBE_BUILD_SCHEDULING),
+      scheduling: readBuildWorkloadScheduling(parsed.COMPARTMENT_KUBE_BUILD_SCHEDULING),
       timeoutMs: parsed.COMPARTMENT_BUILD_TIMEOUT_MS,
     },
   };

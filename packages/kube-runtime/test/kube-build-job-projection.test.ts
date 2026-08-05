@@ -3,7 +3,7 @@ import { kubeJobManifest } from '../src/kube-job-projection';
 import type { KubeJobManifest, KubeJobSpec } from '../src/kube-runtime.types';
 
 describe('sandboxed build Job projection', (): void => {
-  it('projects rootless BuildKit as a native sidecar inside the gVisor Job pod', (): void => {
+  it('projects bounded tmpfs BuildKit state and fail-closed security inside the gVisor Job pod', (): void => {
     const manifest: KubeJobManifest = kubeJobManifest(buildJobSpec(), 'job-art-123', {
       'compartment.dev/job-class': 'build',
     });
@@ -18,42 +18,75 @@ describe('sandboxed build Job projection', (): void => {
             allowPrivilegeEscalation: false,
             capabilities: { drop: ['ALL'] },
             privileged: false,
+            readOnlyRootFilesystem: true,
+            runAsGroup: 10001,
+            runAsNonRoot: true,
+            runAsUser: 10001,
           },
         },
       ],
       initContainers: [
         {
-          image: 'moby/buildkit@sha256:builder',
+          command: ['/usr/local/bin/buildkitd'],
+          image: 'compartment-worker@sha256:runner',
           name: 'buildkit',
           restartPolicy: 'Always',
           securityContext: {
-            allowPrivilegeEscalation: true,
-            appArmorProfile: { type: 'Unconfined' },
+            allowPrivilegeEscalation: false,
+            capabilities: {
+              add: [
+                'AUDIT_WRITE',
+                'CHOWN',
+                'DAC_OVERRIDE',
+                'FOWNER',
+                'FSETID',
+                'KILL',
+                'MKNOD',
+                'NET_BIND_SERVICE',
+                'NET_RAW',
+                'SETFCAP',
+                'SETGID',
+                'SETPCAP',
+                'SETUID',
+                'SYS_ADMIN',
+                'SYS_CHROOT',
+              ],
+              drop: ['ALL'],
+            },
+            privileged: false,
             readOnlyRootFilesystem: true,
-            runAsGroup: 1000,
-            runAsNonRoot: true,
-            runAsUser: 1000,
+            runAsGroup: 0,
+            runAsUser: 0,
           },
         },
       ],
       priorityClassName: 'compartment-platform',
       runtimeClassName: 'gvisor',
       securityContext: {
-        fsGroup: 1000,
-        fsGroupChangePolicy: 'OnRootMismatch',
-        seccompProfile: { type: 'Unconfined' },
+        seccompProfile: { type: 'RuntimeDefault' },
       },
     });
+    expect(manifest.spec!.template.metadata.annotations).toMatchObject({
+      'dev.gvisor.spec.mount.buildkit-data.options': 'rw,rprivate',
+      'dev.gvisor.spec.mount.buildkit-data.share': 'container',
+      'dev.gvisor.spec.mount.buildkit-data.type': 'tmpfs',
+      'dev.gvisor.spec.mount.tmp.options': 'rw,rprivate',
+      'dev.gvisor.spec.mount.tmp.share': 'container',
+      'dev.gvisor.spec.mount.tmp.type': 'tmpfs',
+    });
     expect(manifest.spec!.template.spec.volumes).toEqual([
-      { emptyDir: {}, name: 'buildkit-data' },
-      { emptyDir: {}, name: 'tmp' },
+      { emptyDir: { sizeLimit: '3Gi' }, name: 'buildkit-data' },
+      { emptyDir: { sizeLimit: '1Gi' }, name: 'tmp' },
     ]);
   });
 });
 
 function buildJobSpec(): KubeJobSpec {
   return {
-    emptyDirVolumes: [{ name: 'buildkit-data' }, { containerMountPath: '/tmp', name: 'tmp' }],
+    emptyDirVolumes: [
+      { gvisorTmpfs: true, name: 'buildkit-data', sizeLimit: '3Gi' },
+      { containerMountPath: '/tmp', gvisorTmpfs: true, name: 'tmp', sizeLimit: '1Gi' },
+    ],
     env: { BUILD_INPUT: 'secret' },
     id: 'art_123',
     image: 'compartment-worker@sha256:runner',
@@ -65,12 +98,12 @@ function buildJobSpec(): KubeJobSpec {
     securityProfile: 'restricted',
     sidecars: [
       {
-        args: ['--addr', 'tcp://127.0.0.1:1234', '--oci-worker-no-process-sandbox'],
-        env: { HOME: '/home/user' },
-        image: 'moby/buildkit@sha256:builder',
+        args: ['--addr', 'tcp://127.0.0.1:1234', '--oci-worker=true'],
+        command: ['/usr/local/bin/buildkitd'],
+        env: { HOME: '/tmp' },
+        image: 'compartment-worker@sha256:runner',
         name: 'buildkit',
-        securityProfile: 'rootless-buildkit',
-        volumeMounts: [{ mountPath: '/home/user/.local/share/buildkit', name: 'buildkit-data' }],
+        volumeMounts: [{ mountPath: '/var/lib/buildkit', name: 'buildkit-data' }],
       },
     ],
     timeoutMs: 900000,

@@ -2,7 +2,7 @@ import { access, readFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { cpus, hostname, totalmem } from 'node:os';
 import { execa, type ManagedVmCommandResult } from './managed-vm-command.service';
-import { digest, managedVmOwnedPaths, readManagedVmState } from './managed-vm-state.service';
+import { digest, managedVmOwnedPaths, managedVmOwnedPathsEqual, readManagedVmState } from './managed-vm-state.service';
 import { managedVmReleaseMetadata } from './managed-vm-release-metadata.service';
 import type {
   ManagedVmDiskAvailability,
@@ -30,6 +30,7 @@ async function readHostObservation(): Promise<ManagedVmHostObservation> {
   const firewall: Promise<ManagedVmFirewallKind> = classifyFirewall();
   const publicInterface: Promise<string> = readPublicInterface();
   return {
+    archiveExtractorAvailable: await pathExists('/usr/bin/dpkg-deb'),
     clockSynchronized: await clockSynchronized,
     disk: await disk,
     firewall: await firewall,
@@ -43,6 +44,7 @@ async function readHostObservation(): Promise<ManagedVmHostObservation> {
 async function createHostInventory(observation: ManagedVmHostObservation): Promise<ManagedVmHostInventory> {
   const os: ReadonlyMap<string, string> = parseOsRelease(observation.osRelease);
   return {
+    archiveExtractorAvailable: observation.archiveExtractorAvailable,
     architecture: process.arch === 'x64' ? 'x86_64' : process.arch,
     cgroupV2: await pathExists('/sys/fs/cgroup/cgroup.controllers'),
     clockSynchronized: observation.clockSynchronized,
@@ -75,7 +77,7 @@ export async function inspectManagedVmState(): Promise<ManagedVmObservedState> {
     if (state !== undefined) {
       ownedConfigMatches =
         state.metadataDigest === digest(JSON.stringify(managedVmReleaseMetadata)) &&
-        JSON.stringify(state.ownedPaths) === JSON.stringify(managedVmOwnedPaths);
+        managedVmOwnedPathsEqual(state.ownedPaths, managedVmOwnedPaths);
     }
   } catch (error) {
     if (error instanceof Error && isManagedVmStatePermissionError(error)) {

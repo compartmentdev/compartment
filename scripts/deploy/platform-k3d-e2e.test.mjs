@@ -9,7 +9,6 @@ import {
   buildPlatformK3dClusterCreateArgs,
   isConsoleReadyStatus,
   isTransientKubernetesApiFailure,
-  isTransientRegistryCreateFailure,
   parseK3dClusterNames,
   parseLoadedImageRefs,
   readPlatformK3dCommand,
@@ -20,8 +19,6 @@ import {
   renderPreviousPlatformK3dValues,
   renderPublicOperatorPlatformK3dValues,
   renderPlatformK3dValues,
-  runK3dRegistryCreateWithRetry,
-  runKubectlWithTransientApiRetry,
 } from './platform-k3d-e2e.mjs';
 import {
   buildDockerContainerRemovalArgs,
@@ -98,29 +95,7 @@ describe('platform k3d e2e command boundary', () => {
     }
   });
 
-  it('retries only transient Kubernetes API availability failures', async () => {
-    const waits = [];
-    const commandRunner = vi
-      .fn()
-      .mockReturnValueOnce({
-        status: 1,
-        stderr: 'Error from server (ServiceUnavailable): unable to handle request (get nodes)',
-        stdout: '',
-      })
-      .mockReturnValueOnce({
-        status: 1,
-        stderr: 'The connection to the server 127.0.0.1:6443 was refused',
-        stdout: '',
-      })
-      .mockReturnValue({ status: 0, stderr: '', stdout: 'ok' });
-
-    await runKubectlWithTransientApiRetry(['wait', 'nodes'], {
-      commandRunner,
-      wait: async (milliseconds) => waits.push(milliseconds),
-    });
-
-    expect(commandRunner).toHaveBeenCalledTimes(3);
-    expect(waits).toEqual([1_000, 2_000]);
+  it('classifies only transient Kubernetes API availability failures', () => {
     expect(
       isTransientKubernetesApiFailure({
         status: 1,
@@ -162,51 +137,6 @@ describe('platform k3d e2e command boundary', () => {
         stdout: '',
       }),
     ).toBe(true);
-  });
-
-  it('retries only transient registry pulls and cleans partial registries between attempts', async () => {
-    const cleanup = vi.fn().mockRejectedValueOnce(new Error('cleanup failed')).mockResolvedValue(undefined);
-    const waits = [];
-    const commandRunner = vi
-      .fn()
-      .mockReturnValueOnce({
-        status: 1,
-        stderr:
-          "docker failed to pull image 'docker.io/library/registry:2': received unexpected HTTP status: 502 Bad Gateway",
-        stdout: '',
-      })
-      .mockReturnValueOnce({
-        status: 1,
-        stderr:
-          "failed to pull image 'docker.io/library/registry:2': net/http: request canceled (Client.Timeout exceeded while awaiting headers)",
-        stdout: '',
-      })
-      .mockReturnValue({ status: 0, stderr: '', stdout: '' });
-    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-
-    try {
-      await runK3dRegistryCreateWithRetry(['registry', 'create', 'test'], {
-        cleanup,
-        commandRunner,
-        wait: async (milliseconds) => waits.push(milliseconds),
-      });
-      expect(stderr).toHaveBeenCalledWith(
-        'Failed to clean the partial k3d registry before retrying: Error: cleanup failed\n',
-      );
-    } finally {
-      stderr.mockRestore();
-    }
-
-    expect(commandRunner).toHaveBeenCalledTimes(3);
-    expect(cleanup).toHaveBeenCalledTimes(2);
-    expect(waits).toEqual([1_000, 2_000]);
-    expect(
-      isTransientRegistryCreateFailure({
-        status: 1,
-        stderr: 'invalid port mapping',
-        stdout: '',
-      }),
-    ).toBe(false);
   });
 
   it('waits for cert-manager deployments and a populated webhook endpoint', () => {

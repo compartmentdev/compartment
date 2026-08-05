@@ -2,10 +2,12 @@
 set -eu
 
 : "${COMPARTMENT_RAILPACK_VERSION:?}"
+: "${COMPARTMENT_RAILPACK_COMMIT:?}"
 : "${TARGETARCH:?}"
 : "${TARGETOS:?}"
 
 git clone --depth 1 --branch "${COMPARTMENT_RAILPACK_VERSION}" https://github.com/railwayapp/railpack.git .
+test "$(git rev-parse HEAD)" = "${COMPARTMENT_RAILPACK_COMMIT}"
 # Keep these overrides until the selected Railpack release embeds fixed vulnerable Go dependencies.
 go get \
   github.com/containerd/containerd/v2@v2.2.5 \
@@ -20,4 +22,5 @@ go get \
   google.golang.org/grpc@v1.82.1
 go mod tidy
 mkdir -p /out
-GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/railpack ./cmd/cli
+GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" CGO_ENABLED=0 go build \
+  -trimpath -ldflags "-s -w -X main.version=${COMPARTMENT_RAILPACK_VERSION}" -o /out/railpack ./cmd/cli

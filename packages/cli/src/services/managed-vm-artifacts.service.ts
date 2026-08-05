@@ -1,4 +1,5 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execa } from './managed-vm-command.service';
@@ -9,7 +10,6 @@ import type {
 } from './managed-vm-artifacts.service.types';
 import type { ManagedVmArtifact, ManagedVmArtifactName } from './managed-vm-provisioning.types';
 import { digest } from './managed-vm-state.service';
-import seekBzip from 'seek-bzip';
 
 export type { ManagedVmDownloadedArtifacts } from './managed-vm-artifacts.service.types';
 
@@ -60,17 +60,30 @@ async function prepareGvisorArtifacts(
   directory: string,
   artifacts: readonly ManagedVmArtifact[],
 ): Promise<ManagedVmPreparedGvisorArtifacts> {
-  const archivePath: string = await downloadArtifact(directory, findArtifact(artifacts, 'gvisor'), 'gvisor.tar.bz2');
-  const tarPath: string = join(directory, 'gvisor.tar');
+  const archivePath: string = await downloadArtifact(directory, findArtifact(artifacts, 'gvisor'), 'runsc.deb');
   const gvisorDirectory: string = join(directory, 'gvisor');
-  await mkdir(gvisorDirectory, { mode: 0o700 });
-  await writeFile(tarPath, seekBzip.decode(await readFile(archivePath)), { mode: 0o600 });
-  await execa('tar', ['-xf', tarPath, '-C', gvisorDirectory]);
-  const gvisorRunscPath: string = join(gvisorDirectory, 'runsc');
-  const gvisorContainerdShimPath: string = join(gvisorDirectory, 'containerd-shim-runsc-v1');
-  const gvisorBinDirectory: string = join(gvisorDirectory, 'gvisor-bin');
-  await Promise.all([chmod(gvisorRunscPath, 0o755), chmod(gvisorContainerdShimPath, 0o755)]);
-  return { gvisorBinDirectory, gvisorContainerdShimPath, gvisorRunscPath };
+  await execa('/usr/bin/dpkg-deb', ['--extract', archivePath, gvisorDirectory]);
+  const prepared: ManagedVmPreparedGvisorArtifacts = readPreparedGvisorArtifacts(gvisorDirectory);
+  await assertRequiredArtifacts(Object.values(prepared));
+  return prepared;
+}
+
+function readPreparedGvisorArtifacts(directory: string): ManagedVmPreparedGvisorArtifacts {
+  return {
+    gvisorCheckpointGoferPath: join(directory, 'usr/bin/gvisor-bin/checkpointgofer'),
+    gvisorContainerdShimPath: join(directory, 'usr/bin/containerd-shim-runsc-v1'),
+    gvisorMetricServerPath: join(directory, 'usr/bin/gvisor-bin/runsc-metric-server'),
+    gvisorRunscConfigPath: join(directory, 'etc/containerd/runsc.toml'),
+    gvisorRunscPath: join(directory, 'usr/bin/runsc'),
+  };
+}
+
+async function assertRequiredArtifacts(paths: readonly string[]): Promise<void> {
+  try {
+    await Promise.all(paths.map(async (path: string): Promise<void> => await access(path)));
+  } catch (error) {
+    throw new Error('Managed-VM gVisor package is missing a required runtime file.', { cause: error });
+  }
 }
 
 export async function cleanManagedVmArtifacts(artifacts: ManagedVmDownloadedArtifacts): Promise<void> {
@@ -86,9 +99,16 @@ async function downloadArtifact(directory: string, artifact: ManagedVmArtifact, 
   if (digest(bytes) !== artifact.sha256) {
     throw new Error(`${artifact.name} digest verification failed.`);
   }
+  if (artifact.name === 'gvisor' && digestSha512(bytes) !== artifact.sha512) {
+    throw new Error(`${artifact.name} SHA-512 verification failed.`);
+  }
   const path: string = join(directory, name);
   await writeFile(path, bytes, { mode: 0o600 });
   return path;
+}
+
+function digestSha512(content: Buffer): string {
+  return createHash('sha512').update(content).digest('hex');
 }
 
 function findArtifact(artifacts: readonly ManagedVmArtifact[], name: ManagedVmArtifactName): ManagedVmArtifact {

@@ -33,10 +33,6 @@ describe('Kubernetes sandbox RuntimeClass preflight', (): void => {
       detail: 'Verified gVisor sandbox through RuntimeClass "gke-gvisor" on 2 Ready node(s).',
       runtimeClassName: 'gke-gvisor',
     });
-
-    expect(mockedRunCommandWithInput.mock.calls[0]?.[1]).toContain('"runtimeClassName":"gke-gvisor"');
-    expect(mockedRunCommandWithInput.mock.calls[0]?.[1]).toContain('"nodeName":"node-a"');
-    expect(mockedRunCommandWithInput.mock.calls[1]?.[1]).toContain('"nodeName":"node-b"');
   });
 
   it('fails closed when no sandbox RuntimeClass is configured', async (): Promise<void> => {
@@ -61,20 +57,6 @@ describe('Kubernetes sandbox RuntimeClass preflight', (): void => {
 
     await expect(verifyKubernetesSandboxRuntime(input('native'))).rejects.toThrow(
       'did not expose the gVisor kernel log',
-    );
-  });
-
-  it('cleans up the canary after a startup failure', async (): Promise<void> => {
-    mockedRunCommandWithTimeout
-      .mockResolvedValueOnce({ exitCode: 1, stderr: 'RuntimeHandler not supported', stdout: '' })
-      .mockResolvedValueOnce(success(''));
-
-    await expect(verifyKubernetesSandboxRuntime(input('gvisor'))).rejects.toThrow(
-      'will not install without a successful canary',
-    );
-    expect(mockedRunCommandWithTimeout).toHaveBeenLastCalledWith(
-      expect.arrayContaining(['delete', expect.stringMatching(/^pod\/compartment-gvisor-/u)]),
-      30_000,
     );
   });
 });

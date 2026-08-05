@@ -1,13 +1,20 @@
 import { readFile } from 'node:fs/promises';
 import { readDockerImageRepository } from './docker-image-ref';
-import type { BuildKitImageMetadata, BuildKitImageMetadataDescriptor } from './docker-buildkit.types';
+import type {
+  BuildKitImageMetadata,
+  BuildKitImageMetadataDescriptor,
+  BuildKitPushedImageMetadata,
+} from './docker-buildkit.types';
 
-export async function readPushedBuildKitImageRef(metadataFile: string, imageTag: string): Promise<string> {
+export async function readPushedBuildKitImageMetadata(
+  metadataFile: string,
+  imageTag: string,
+): Promise<BuildKitPushedImageMetadata> {
   const metadataText: string = await readFile(metadataFile, 'utf8');
   const metadata: BuildKitImageMetadata = parseBuildKitImageMetadata(metadataText);
   const digest: string = readBuildKitImageDigest(metadata);
 
-  return `${readDockerImageRepository(imageTag)}@${digest}`;
+  return { digest, imageRef: `${readDockerImageRepository(imageTag)}@${digest}` };
 }
 
 function parseBuildKitImageMetadata(metadataText: string): BuildKitImageMetadata {

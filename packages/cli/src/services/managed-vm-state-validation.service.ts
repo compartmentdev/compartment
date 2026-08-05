@@ -89,8 +89,22 @@ function isManagedVmReleaseMetadata(
     typeof value.serviceCidr === 'string';
   return (
     commonFieldsAreValid &&
-    (value.metadataVersion === 1 || (value.metadataVersion === 2 && typeof value.gvisorVersion === 'string'))
+    (value.metadataVersion === 1 ||
+      (value.metadataVersion === 2 && typeof value.gvisorVersion === 'string') ||
+      (value.metadataVersion === 3 &&
+        typeof value.gvisorVersion === 'string' &&
+        hasSha512VerifiedGvisor(value.artifacts)))
   );
+}
+
+function hasSha512VerifiedGvisor(artifacts: readonly ManagedVmArtifactBoundary[] | null | undefined): boolean {
+  if (artifacts === null || artifacts === undefined) {
+    return false;
+  }
+  const gvisor: ManagedVmArtifactBoundary | undefined = artifacts.find(
+    (artifact: ManagedVmArtifactBoundary): boolean => artifact.name === 'gvisor',
+  );
+  return typeof gvisor?.sha512 === 'string' && /^[a-f0-9]{128}$/u.test(gvisor.sha512);
 }
 
 function isManagedVmArtifacts(
@@ -105,6 +119,7 @@ function isManagedVmArtifacts(
         typeof item.name === 'string' &&
         artifactNames.includes(item.name) &&
         typeof item.sha256 === 'string' &&
+        (item.sha512 === undefined || typeof item.sha512 === 'string') &&
         typeof item.url === 'string' &&
         typeof item.version === 'string',
     )

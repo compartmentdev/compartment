@@ -55,8 +55,10 @@ describe('managed VM cluster installation', (): void => {
     const artifacts: ManagedVmDownloadedArtifacts = {
       certManagerManifestPath: '/tmp/cert-manager.yaml',
       directory: '/tmp/managed-vm',
-      gvisorBinDirectory: '/tmp/gvisor-bin',
+      gvisorCheckpointGoferPath: '/tmp/checkpointgofer',
       gvisorContainerdShimPath: '/tmp/containerd-shim-runsc-v1',
+      gvisorMetricServerPath: '/tmp/metric-server',
+      gvisorRunscConfigPath: '/tmp/runsc.toml',
       gvisorRunscPath: '/tmp/runsc',
       helmPath: '/tmp/helm',
       k3sInstallScriptPath: '/tmp/install-k3s.sh',

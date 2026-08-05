@@ -1,7 +1,6 @@
 import {
   buildCompartmentArtifactImageRepository,
   buildCompartmentArtifactImageTag,
-  retargetCompartmentArtifactImageDigestRef,
   type WorkerClaimedDeployment,
 } from '@compartment/contracts';
 import type { DockerBuildImageResult, DockerProgressLine, DockerRegistryCredentials } from '@compartment/docker';
@@ -45,11 +44,6 @@ export async function buildReleaseImageFromSource(
   const eventContext: WorkerDeploymentEventContext = buildDeploymentEventContext(request, deployment);
   await appendClaimedDeploymentEvent(eventContext);
 
-  const existingImageRef: string | null = readReusableArtifactImageRef(deployment, config.artifactRegistry);
-  if (existingImageRef !== null) {
-    return existingImageRef;
-  }
-
   return await buildFreshReleaseImage({
     config,
     deployment,
@@ -79,7 +73,7 @@ async function buildPreparedSourceImage(input: ReleaseImageBuildContext, build: 
     run: async (): Promise<DockerBuildImageResult> =>
       await runWorkerBuildJob(input.runtime, input.config.buildSandbox, {
         build: buildSourceJobInput(input, build),
-        id: input.deployment.artifact.id,
+        id: `${input.deployment.deploymentRunId}:${input.deployment.artifact.id}`,
         internalToken: input.config.runtimeControlToken,
         onProgressLine: createBuildProgressReporter(input.eventContext),
       }),
@@ -182,21 +176,6 @@ function buildReleaseImageTag(deployment: WorkerClaimedDeployment, artifactRegis
     artifactRegistryAddress,
     buildReleaseImageRepository(deployment),
     deployment.artifact.id,
-  );
-}
-
-function readReusableArtifactImageRef(
-  deployment: WorkerClaimedDeployment,
-  artifactRegistry: WorkerArtifactRegistryConfig,
-): string | null {
-  const imageRef: string | null = deployment.artifact.imageRef;
-  if (imageRef === null) {
-    return null;
-  }
-  return retargetCompartmentArtifactImageDigestRef(
-    artifactRegistry.address,
-    buildReleaseImageRepository(deployment),
-    imageRef,
   );
 }
 

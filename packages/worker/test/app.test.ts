@@ -121,7 +121,6 @@ function createWorkerConfig(): WorkerConfig {
     apiUrl: 'http://127.0.0.1:9443',
     artifactRegistry: createArtifactRegistryConfig(),
     buildSandbox: {
-      buildKitImage: 'moby/buildkit@sha256:builder',
       buildKitResources: {},
       gcKeepStorageMb: 2000,
       namespace: 'compartment-build',
