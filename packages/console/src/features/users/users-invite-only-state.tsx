@@ -7,11 +7,7 @@ import { MailPlus, type LucideIcon } from '../../components/ui/icons';
 import type { BrowserUsersPageResult } from '../../services/browser-users.service.types';
 import { canInviteBrowserUsers, canReadBrowserUsers } from '../console/console-access';
 import { buildUsersHref } from './users-query';
-
-interface UsersInviteOnlyStateProps {
-  data: BrowserUsersPageResult;
-  onNavigate: BrowserSoftNavigateHandler;
-}
+import type { UsersInviteOnlyStateProps } from './users-invite-only-state.types';
 
 class InviteUserAction implements EmptyStateCardButtonAction {
   readonly icon: LucideIcon = MailPlus;
