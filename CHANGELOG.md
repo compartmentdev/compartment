@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.7](https://github.com/compartmentdev/compartment/compare/v0.10.6...v0.10.7) (2026-08-05)
+
+
+### Bug Fixes
+
+* **console:** show current admin in users list ([#294](https://github.com/compartmentdev/compartment/issues/294)) ([216b5ae](https://github.com/compartmentdev/compartment/commit/216b5ae7c129c137300645198d7e336c31640306))
+
+
+### Performance Improvements
+
+* **docker:** remove source build attestations ([#297](https://github.com/compartmentdev/compartment/issues/297)) ([00c70f4](https://github.com/compartmentdev/compartment/commit/00c70f4e5ef2b2c96f3eb08ec92a635ad759863c))
+
 ## [0.10.6](https://github.com/compartmentdev/compartment/compare/v0.10.5...v0.10.6) (2026-08-05)
 
 
