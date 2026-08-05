@@ -428,6 +428,14 @@ describe('platform k3d e2e command boundary', () => {
     expect(renderPlatformK3dValues(createTestImageDigests())).not.toContain('buildkit:\n  runtimeClassName:');
   });
 
+  it('projects the high-availability shard replicas into install values', () => {
+    const values = renderPlatformK3dValues(createTestImageDigests(), false, true);
+
+    for (const component of ['api', 'worker', 'projectProvisioner', 'edge', 'caddy']) {
+      expect(values).toContain(`${component}:\n  replicas: 2`);
+    }
+  });
+
   it('writes isolated managed-install values with a typed ingress endpoint and verified digests', () => {
     const values = renderManagedPlatformK3dValues(createTestImageDigests());
 
