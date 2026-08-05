@@ -105,6 +105,20 @@ describe('platform k3d e2e command boundary', () => {
     ).toBe(false);
     expect(isTransientKubernetesApiFailure({ status: 1, stderr: 'not ready', stdout: '' })).toBe(false);
     expect(isTransientKubernetesApiFailure({ status: 1, stderr: 'not ready', stdout: '' }, true)).toBe(true);
+    const pendingBootstrapRoles = {
+      status: 1,
+      stderr:
+        'Error from server (InternalError): [-]poststarthook/rbac/bootstrap-roles failed: reason withheld\nreadyz check failed',
+      stdout: '',
+    };
+    expect(isTransientKubernetesApiFailure(pendingBootstrapRoles)).toBe(false);
+    expect(isTransientKubernetesApiFailure(pendingBootstrapRoles, true)).toBe(true);
+    expect(
+      isTransientKubernetesApiFailure(
+        { status: 1, stderr: 'Error from server (InternalError): request failed', stdout: '' },
+        true,
+      ),
+    ).toBe(false);
     expect(
       isTransientKubernetesApiFailure({
         status: 1,
