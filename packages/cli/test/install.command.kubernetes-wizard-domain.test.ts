@@ -41,6 +41,7 @@ vi.mock('../src/commands/install/install.command.kubernetes-wizard-tls', (): obj
 
 const selection: KubernetesInstallWizardClusterSelection = {
   ingressClass: 'nginx',
+  issuers: [],
   kubeContext: 'production',
   storageClass: 'standard',
 };

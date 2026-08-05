@@ -50,11 +50,26 @@ export interface KubernetesInventoryList {
   items?: KubernetesInventoryResource[] | undefined;
 }
 
+export interface KubernetesInstallResourceLists {
+  clusterIssuers: KubernetesInventoryList;
+  ingressClasses: KubernetesInventoryList;
+  issuers: KubernetesInventoryList;
+  storageClasses: KubernetesInventoryList;
+}
+
 export interface KubernetesInstallInventory {
   contexts: readonly KubernetesContextChoice[];
 }
 
 export interface KubernetesInstallResourceInventory {
   ingressClasses: readonly string[];
+  issuers: readonly KubernetesInstallIssuerChoice[];
   storageClasses: readonly KubernetesStorageClassChoice[];
 }
+
+export interface KubernetesInstallIssuerChoice {
+  kind: KubernetesInstallIssuerKind;
+  name: string;
+}
+
+export type KubernetesInstallIssuerKind = 'ClusterIssuer' | 'Issuer';

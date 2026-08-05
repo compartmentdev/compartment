@@ -32,6 +32,10 @@ compartment install --target vm
 This target provisions a single-node k3s cluster. It is the shortest production setup path, but it is not highly
 available: losing the VM interrupts the control plane and workloads on that node.
 
+The managed-VM installer asks whether to use a managed Compartment domain or an operator-owned base domain. Because
+Compartment owns this host, it automatically installs cert-manager, creates the internal registry CA and Issuer,
+adds that CA to node trust, and installs gVisor/runsc. It does not ask you for a pre-created issuer or runtime.
+
 Run its preflight without changing the machine:
 
 ```bash
@@ -50,8 +54,11 @@ compartment install --target kubernetes --kube-context production
 ```
 
 The installer verifies the required Kubernetes APIs, cert-manager, ingress, storage, registry trust, policy
-enforcement, and permissions before installing the Helm release. It does not install an ingress controller, change
-node container-runtime configuration, or take ownership of cluster upgrades and backups.
+enforcement, and permissions before installing the Helm release. It discovers namespaced Issuers and cluster-wide
+ClusterIssuers and lets you select an observed issuer. If cert-manager is absent or no issuer resource is discovered,
+setup stops with the prerequisite and exact next commands before collecting an impossible issuer name. It does not
+install an ingress controller, change node container-runtime or CA-trust configuration, or take ownership of cluster
+upgrades and backups.
 
 For non-interactive installation, `--target vm|kubernetes` is required. Provide the remaining owner, domain, cluster,
 and values inputs explicitly.

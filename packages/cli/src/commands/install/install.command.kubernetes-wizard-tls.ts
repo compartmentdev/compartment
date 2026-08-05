@@ -13,6 +13,7 @@ import type {
 } from './install.command.kubernetes-wizard.types';
 import type { KubernetesOperatorIssuerAssessment } from '../../services/kubernetes-operator-issuer-trust.service.types';
 import { readPromptLine } from '../../prompts/prompt-reader';
+import type { KubernetesInstallIssuerChoice } from '../../services/kubernetes-install-inventory.service.types';
 
 interface ExistingSecretTlsValues {
   registry: InstallWizardRegistryValues;
@@ -25,6 +26,7 @@ export interface OperatorDomainTlsPromptInput {
   kubeContext: string;
   namespace: string;
   inspectIssuer: InspectKubernetesInstallIssuer;
+  issuers: readonly KubernetesInstallIssuerChoice[];
 }
 
 export async function resolveOperatorDomainTls(
@@ -88,7 +90,7 @@ async function resolveExistingSecretTls(
     'Existing TLS Secret',
     (value: string): string | undefined => validateKubernetesResourceName(value, 'Existing TLS Secret'),
   );
-  const issuerRef: InstallWizardIssuerReference = await promptIssuerReference(io, 'Private registry TLS');
+  const issuerRef: InstallWizardIssuerReference = await promptIssuerReference(io, input, 'Private registry TLS');
   await assertRegistryIpIssuer(io, input, issuerRef);
   return {
     registry: { issuerRef },
@@ -101,7 +103,7 @@ export async function resolveRegistryIpTls(
   io: CliIo,
   input: OperatorDomainTlsPromptInput,
 ): Promise<InstallWizardRegistryValues> {
-  const issuerRef: InstallWizardIssuerReference = await promptIssuerReference(io, 'Private registry TLS');
+  const issuerRef: InstallWizardIssuerReference = await promptIssuerReference(io, input, 'Private registry TLS');
   await assertRegistryIpIssuer(io, input, issuerRef);
   return { issuerRef };
 }
@@ -147,15 +149,32 @@ async function confirmIssuerTrust(io: CliIo, message: string): Promise<void> {
   }
 }
 
-async function promptIssuerReference(io: CliIo, label: string): Promise<InstallWizardIssuerReference> {
-  const kindValue: string = await promptVisibleText(io, `${label} issuer kind (Issuer/ClusterIssuer)`, 'ClusterIssuer');
-  if (kindValue !== 'Issuer' && kindValue !== 'ClusterIssuer') {
-    throw new Error(`${label} issuer kind must be Issuer or ClusterIssuer.`);
+async function promptIssuerReference(
+  io: CliIo,
+  input: OperatorDomainTlsPromptInput,
+  label: string,
+): Promise<InstallWizardIssuerReference> {
+  if (input.issuers.length === 0) {
+    throw missingIssuerPrerequisiteError(input.namespace);
   }
-  return {
-    kind: kindValue,
-    name: await promptValidatedVisibleText(io, `${label} issuer name`, (value: string): string | undefined =>
-      validateKubernetesResourceName(value, `${label} issuer name`),
-    ),
-  };
+  io.stderr(`${label} issuer:\n`);
+  input.issuers.forEach((issuer: KubernetesInstallIssuerChoice, index: number): void =>
+    io.stderr(`  ${String(index + 1)}. ${issuer.kind}/${issuer.name}${index === 0 ? ' [default]' : ''}\n`),
+  );
+  const answer: string = await promptVisibleText(io, `${label} issuer`, '1');
+  const index: number = Number(answer) - 1;
+  const selected: KubernetesInstallIssuerChoice | undefined = input.issuers[index];
+  if (!Number.isInteger(index) || selected === undefined) {
+    throw new Error(`${label} issuer selection must be one of the discovered choices.`);
+  }
+  return selected;
+}
+
+function missingIssuerPrerequisiteError(namespace: string): Error {
+  return new Error(`Missing prerequisite: no cert-manager Issuer exists in namespace "${namespace}" and no ClusterIssuer exists.
+Run:
+  kubectl --namespace ${namespace} apply -f <your-ca-issuer-manifest.yaml>
+  kubectl --namespace ${namespace} get issuer
+  kubectl get clusterissuer
+Distribute the issuer CA to every node and this machine, then rerun compartment install.`);
 }

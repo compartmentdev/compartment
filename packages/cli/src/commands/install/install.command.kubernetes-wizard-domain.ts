@@ -15,6 +15,7 @@ import type {
 import type { InstallCommandOptions, InstallWizardRegistryValues } from './install.command.types';
 import { normalizeInstallBaseDomain } from './install.command.validation';
 import type { RetainedKubernetesInstallState } from '../../services/kubernetes-install.service.types';
+import type { KubernetesInstallDomainInput } from '../../services/kubernetes-install-input.service.types';
 
 export async function resolveKubernetesInstallWizardDomainForSelection(
   io: CliIo,
@@ -117,25 +118,27 @@ async function promptDomainChoice(
     const baseDomain: string = await promptRequiredVisibleText(io, 'Operator-owned base domain');
     return await resolveOperatorDomainTls(io, buildTlsPromptInput(baseDomain, options, selection, inspectIssuer));
   }
+  const domain: KubernetesInstallDomainInput = await promptCanonicalInstallDomain(io);
+  if (domain.mode === 'managed') {
+    return await resolveManagedDomain(io, options, selection, inspectIssuer);
+  }
+  return await resolveOperatorDomainTls(io, buildTlsPromptInput(domain.baseDomain, options, selection, inspectIssuer));
+}
+
+export async function promptCanonicalInstallDomain(io: CliIo): Promise<KubernetesInstallDomainInput> {
   io.stderr('Domain:\n  1. Managed Compartment domain [default]\n  2. Operator-owned base domain\n');
   const mode: string = await promptVisibleText(io, 'Domain', '1');
   if (mode === '1') {
-    return await resolveManagedDomain(io, options, selection, inspectIssuer);
+    return { mode: 'managed' };
   }
   if (mode === '2') {
-    return await promptOperatorDomain(io, options, selection, inspectIssuer);
+    return {
+      baseDomain: normalizeInstallBaseDomain(await promptRequiredVisibleText(io, 'Base domain')),
+      mode: 'operator',
+      publicProtocol: 'http',
+    };
   }
   throw new Error('Domain selection must be 1 or 2.');
-}
-
-async function promptOperatorDomain(
-  io: CliIo,
-  options: InstallCommandOptions,
-  selection: KubernetesInstallWizardClusterSelection,
-  inspectIssuer: InspectKubernetesInstallIssuer,
-): Promise<KubernetesInstallWizardDomain> {
-  const baseDomain: string = await promptRequiredVisibleText(io, 'Base domain');
-  return await resolveOperatorDomainTls(io, buildTlsPromptInput(baseDomain, options, selection, inspectIssuer));
 }
 
 function hostnameManagedDomainError(): Error {
@@ -172,5 +175,6 @@ function buildTlsPromptInput(
     kubeContext: selection.kubeContext,
     namespace: options.namespace ?? 'compartment',
     inspectIssuer,
+    issuers: selection.issuers,
   };
 }
