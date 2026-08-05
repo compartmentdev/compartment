@@ -6,7 +6,21 @@ interface TestFile {
   mode: number;
 }
 
+interface TestDirectory {
+  gid: number;
+  kind: 'directory' | 'file' | 'symlink';
+  mode: number;
+  uid: number;
+}
+
+interface RejectedContainerdDirectoryCase {
+  arrange: () => void;
+  expectedError: string;
+  name: string;
+}
+
 interface SandboxRuntimeMocks {
+  ensureManagedVmDirectory: Mock;
   execa: Mock;
   installNewManagedVmFile: Mock;
   lstat: Mock;
@@ -17,8 +31,10 @@ interface SandboxRuntimeMocks {
 }
 
 const files: Map<string, TestFile> = new Map<string, TestFile>();
+const directories: Map<string, TestDirectory> = new Map<string, TestDirectory>();
 const mocks: SandboxRuntimeMocks = vi.hoisted(
   (): SandboxRuntimeMocks => ({
+    ensureManagedVmDirectory: vi.fn(),
     execa: vi.fn(),
     installNewManagedVmFile: vi.fn(),
     lstat: vi.fn(),
@@ -55,22 +71,37 @@ vi.mock(
 vi.mock(
   '../src/services/managed-vm-owned-file.service',
   (): Record<string, Mock> => ({
-    ensureManagedVmDirectory: vi.fn(async (): Promise<'directory'> => await Promise.resolve('directory')),
+    ensureManagedVmDirectory: mocks.ensureManagedVmDirectory,
     installNewManagedVmFile: mocks.installNewManagedVmFile,
   }),
 );
 
 beforeEach((): void => {
   files.clear();
+  directories.clear();
   vi.clearAllMocks();
+  directories.set('/var/lib/rancher/k3s/agent/etc/containerd', {
+    gid: 0,
+    kind: 'directory',
+    mode: 0o755,
+    uid: 0,
+  });
   for (const path of Object.values(artifactPaths())) {
     if (path.startsWith('/tmp/')) {
       files.set(path, { content: Buffer.from(`verified ${path}`), mode: 0o600 });
     }
   }
   mocks.mkdir.mockResolvedValue(undefined);
+  mocks.ensureManagedVmDirectory.mockImplementation(async (path: string, mode: number): Promise<string> => {
+    await Promise.resolve();
+    directories.set(path, { gid: 0, kind: 'directory', mode, uid: 0 });
+    return 'directory';
+  });
   mocks.readFile.mockImplementation(async (path: string): Promise<Buffer> => {
     await Promise.resolve();
+    if (directories.get(path)?.kind === 'file') {
+      return Buffer.from('unexpected K3s path content');
+    }
     const file: TestFile | undefined = files.get(path);
     if (file === undefined) {
       throw missing();
@@ -79,6 +110,19 @@ beforeEach((): void => {
   });
   mocks.lstat.mockImplementation(async (path: string): Promise<object> => {
     await Promise.resolve();
+    const directory: TestDirectory | undefined = directories.get(path);
+    if (directory !== undefined) {
+      return {
+        dev: 1,
+        gid: directory.gid,
+        ino: inode(path),
+        isDirectory: (): boolean => directory.kind === 'directory',
+        isFile: (): boolean => directory.kind === 'file',
+        isSymbolicLink: (): boolean => directory.kind === 'symlink',
+        mode: directory.mode,
+        uid: directory.uid,
+      };
+    }
     const file: TestFile | undefined = files.get(path);
     if (file === undefined) {
       throw missing();
@@ -132,7 +176,67 @@ describe('managed VM sandbox runtime installation', (): void => {
       'provisioning refuses unexpected content at /usr/local/bin/runsc',
     );
   });
+
+  it.each<RejectedContainerdDirectoryCase>([
+    {
+      arrange: (): void => setContainerdDirectory({ mode: 0o700 }),
+      expectedError: 'refuses an unexpected K3s containerd directory',
+      name: 'mode 0700',
+    },
+    {
+      arrange: (): void => setContainerdDirectory({ mode: 0o775 }),
+      expectedError: 'refuses an unexpected K3s containerd directory',
+      name: 'group-writable mode',
+    },
+    {
+      arrange: (): void => setContainerdDirectory({ gid: 1000 }),
+      expectedError: 'refuses an unexpected K3s containerd directory',
+      name: 'non-root group',
+    },
+    {
+      arrange: (): void => setContainerdDirectory({ uid: 1000 }),
+      expectedError: 'refuses an unexpected K3s containerd directory',
+      name: 'non-root owner',
+    },
+    {
+      arrange: (): void => {
+        directories.delete('/var/lib/rancher/k3s/agent/etc/containerd');
+      },
+      expectedError: 'refuses an unexpected K3s containerd directory',
+      name: 'missing path',
+    },
+    {
+      arrange: (): void => setContainerdDirectory({ kind: 'file' }),
+      expectedError: 'refuses an unexpected K3s containerd directory',
+      name: 'regular file',
+    },
+    {
+      arrange: (): void => setContainerdDirectory({ kind: 'symlink' }),
+      expectedError: 'Managed-VM owned path has an unsupported type',
+      name: 'symbolic link',
+    },
+  ])(
+    'rejects a non-canonical K3s containerd directory with $name',
+    async ({ arrange, expectedError }: RejectedContainerdDirectoryCase): Promise<void> => {
+      arrange();
+      const { installManagedVmSandboxRuntime } = await import('../src/services/managed-vm-sandbox-runtime.service');
+
+      await expect(installManagedVmSandboxRuntime(artifacts())).rejects.toThrow(expectedError);
+      expect(directories.has('/etc/containerd')).toBe(false);
+      expect(directories.has('/usr/local/bin/gvisor-bin')).toBe(false);
+    },
+  );
 });
+
+function setContainerdDirectory(overrides: Partial<TestDirectory>): void {
+  directories.set('/var/lib/rancher/k3s/agent/etc/containerd', {
+    gid: 0,
+    kind: 'directory',
+    mode: 0o755,
+    uid: 0,
+    ...overrides,
+  });
+}
 
 function artifacts(): ManagedVmDownloadedArtifacts {
   return { ...artifactPaths(), directory: '/tmp/managed-vm' };
