@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.3](https://github.com/compartmentdev/compartment/compare/v0.10.2...v0.10.3) (2026-08-05)
+
+
+### Bug Fixes
+
+* **cli:** enforce gVisor sandbox runtime ([#281](https://github.com/compartmentdev/compartment/issues/281)) ([4369307](https://github.com/compartmentdev/compartment/commit/4369307fd427a136daa7fadea6b8bffb49b75088))
+* **cli:** guide installer domain and issuer setup ([#288](https://github.com/compartmentdev/compartment/issues/288)) ([3277a35](https://github.com/compartmentdev/compartment/commit/3277a357894e8d505783a84fd4f238ae20f1bc53))
+
 ## [0.10.2](https://github.com/compartmentdev/compartment/compare/v0.10.1...v0.10.2) (2026-08-04)
 
 
