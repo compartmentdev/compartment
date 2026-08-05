@@ -35,7 +35,7 @@
     "journalctl",
     "k3s",
     "kubectl",
-    "lsmod",
+    "modprobe",
     "nft",
     "openssl",
     "ss",

@@ -45,7 +45,6 @@ export interface ManagedVmCurrentReleaseMetadata extends ManagedVmReleaseMetadat
 export type ManagedVmReleaseMetadata = ManagedVmCurrentReleaseMetadata | ManagedVmLegacyReleaseMetadata;
 
 export interface ManagedVmHostInventory {
-  archiveExtractorAvailable: boolean;
   architecture: string;
   cgroupV2: boolean;
   clockSynchronized: boolean;
@@ -54,15 +53,12 @@ export interface ManagedVmHostInventory {
   freeInodes: number;
   firewall: ManagedVmFirewallKind;
   hostname: string;
-  localIpv4Addresses: readonly string[];
   memoryBytes: number;
   osId: string;
   osVersion: string;
   portsInUse: readonly ManagedVmPortConflict[];
   publicInterface: string;
   routeCidrs: readonly string[];
-  requiredKernelModules: boolean;
-  reachableEndpoints: readonly string[];
   systemd: boolean;
   sudoAvailable: boolean;
 }
@@ -75,16 +71,12 @@ export interface ManagedVmDiskAvailability {
 }
 
 export interface ManagedVmHostObservation {
-  archiveExtractorAvailable: boolean;
   clockSynchronized: boolean;
   disk: ManagedVmDiskAvailability;
   firewall: ManagedVmFirewallKind;
-  localIpv4Addresses: readonly string[];
-  modules: boolean;
   osRelease: string;
   portsInUse: readonly ManagedVmPortConflict[];
   publicInterface: string;
-  reachableEndpoints: readonly string[];
   routeCidrs: readonly string[];
 }
 
@@ -100,11 +92,27 @@ export interface ManagedVmObservedState {
   provisionerStateExists: boolean;
 }
 
-export interface ManagedVmPreflightCheck {
+type ManagedVmFailedPreflightCheckStatus = 'failed';
+type ManagedVmSuccessfulPreflightCheckStatus = 'passed' | 'warning';
+
+export interface ManagedVmFailedPreflightCheck {
   detail: string;
   name: string;
-  passed: boolean;
+  passed: false;
+  status: ManagedVmFailedPreflightCheckStatus;
 }
+
+export interface ManagedVmSuccessfulPreflightCheck {
+  detail: string;
+  name: string;
+  passed: true;
+  status: ManagedVmSuccessfulPreflightCheckStatus;
+}
+
+export type ManagedVmPreflightCheck = ManagedVmFailedPreflightCheck | ManagedVmSuccessfulPreflightCheck;
+export type ManagedVmPreflightCheckStatus =
+  | ManagedVmFailedPreflightCheckStatus
+  | ManagedVmSuccessfulPreflightCheckStatus;
 
 export interface ManagedVmPreflightResult {
   checks: readonly ManagedVmPreflightCheck[];

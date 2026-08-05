@@ -4,6 +4,7 @@ import type {
   ManagedVmHostInventory,
   ManagedVmObservedState,
   ManagedVmPreflightCheck,
+  ManagedVmPreflightCheckStatus,
   ManagedVmPreflightResult,
   ManagedVmStateClassification,
 } from '../src/services/managed-vm-provisioning.types';
@@ -31,15 +32,15 @@ describe('managed VM preflight', (): void => {
       freshState(),
       publicAddress(),
     );
-    expect(result.checks.every((check: ManagedVmPreflightCheck): boolean => check.passed)).toBe(true);
+    expect(result.checks.every((check: ManagedVmPreflightCheck): boolean => check.status !== 'failed')).toBe(true);
     expect((): void => assertManagedVmPreflight(result)).not.toThrow();
     expect(result.metadata.k3sChannel).toBe('compartment-stable-1.35');
   });
 
-  it('reports resource, port, route, address, and foreign-state failures together', (): void => {
+  it('reports blocking resource, port, route, address, and foreign-state failures together', (): void => {
     const inventory: ManagedVmHostInventory = {
       ...supportedInventory(),
-      cpuCount: 1,
+      freeBytes: 20 * gibibyte - 1,
       portsInUse: [{ owner: 'nginx', port: 443 }],
       routeCidrs: [`10.${String(42)}.0.0/16`],
     };
@@ -49,8 +50,60 @@ describe('managed VM preflight', (): void => {
       `192.${String(168)}.1.5`,
     );
     expect((): void => assertManagedVmPreflight(result)).toThrow(
-      /cpu.*ports.*network-cidrs.*public-ipv4.*host-state/su,
+      /storage.*ports.*network-cidrs.*public-ipv4.*host-state/su,
     );
+  });
+
+  it.each([
+    [20 * gibibyte - 1, 'failed', true],
+    [20 * gibibyte, 'warning', false],
+    [50 * gibibyte - 1, 'warning', false],
+    [50 * gibibyte, 'passed', false],
+  ] as const)(
+    'classifies %s free bytes as %s',
+    (freeBytes: number, status: ManagedVmPreflightCheckStatus, throws: boolean): void => {
+      const result: ManagedVmPreflightResult = evaluateManagedVmPreflight(
+        { ...supportedInventory(), freeBytes },
+        freshState(),
+        publicAddress(),
+      );
+
+      expect(result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'storage')?.status).toBe(
+        status,
+      );
+      if (throws) {
+        expect((): void => assertManagedVmPreflight(result)).toThrow();
+      } else {
+        expect((): void => assertManagedVmPreflight(result)).not.toThrow();
+      }
+    },
+  );
+
+  it('keeps recommendations visible without blocking installation', (): void => {
+    const result: ManagedVmPreflightResult = evaluateManagedVmPreflight(
+      {
+        ...supportedInventory(),
+        cpuCount: 1,
+        freeInodes: 99_999,
+        memoryBytes: 2 * gibibyte,
+        osId: 'debian',
+        osVersion: '13',
+      },
+      freshState(),
+      publicAddress(),
+    );
+    const warnings: readonly ManagedVmPreflightCheck[] = result.checks.filter(
+      (item: ManagedVmPreflightCheck): boolean => item.status === 'warning',
+    );
+
+    expect(warnings.map((item: ManagedVmPreflightCheck): string => item.name)).toEqual([
+      'operating-system',
+      'cpu',
+      'memory',
+      'inodes',
+    ]);
+    expect(warnings[0]?.detail).toContain('tested on Ubuntu 24.04 LTS');
+    expect((): void => assertManagedVmPreflight(result)).not.toThrow();
   });
 
   it('accepts managed listeners and routes while resuming retained owned state', (): void => {
@@ -64,7 +117,7 @@ describe('managed VM preflight', (): void => {
       publicAddress(),
     );
 
-    expect(result.checks.every((check: ManagedVmPreflightCheck): boolean => check.passed)).toBe(true);
+    expect(result.checks.every((check: ManagedVmPreflightCheck): boolean => check.status !== 'failed')).toBe(true);
   });
 
   it('rejects ownerless listeners while resuming retained state', (): void => {
@@ -74,7 +127,9 @@ describe('managed VM preflight', (): void => {
       publicAddress(),
     );
 
-    expect(result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'ports')?.passed).toBe(false);
+    expect(result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'ports')?.status).toBe(
+      'failed',
+    );
   });
 
   it.each([cidr([10, 42, 0, 0], 15), cidr([10, 42, 0, 0], 24), cidr([10, 42, 2, 10], 32), cidr([10, 43, 0, 0], 15)])(
@@ -87,8 +142,8 @@ describe('managed VM preflight', (): void => {
       );
 
       expect(
-        result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'network-cidrs')?.passed,
-      ).toBe(false);
+        result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'network-cidrs')?.status,
+      ).toBe('failed');
     },
   );
 
@@ -99,8 +154,8 @@ describe('managed VM preflight', (): void => {
       publicAddress(),
     );
 
-    expect(result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'network-cidrs')?.passed).toBe(
-      true,
+    expect(result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'network-cidrs')?.status).toBe(
+      'passed',
     );
   });
 
@@ -112,13 +167,9 @@ describe('managed VM preflight', (): void => {
     ipv4([203, 0, 113, 1]),
     ipv4([224, 0, 0, 1]),
   ])('rejects non-global address %s', (address: string): void => {
-    const result: ManagedVmPreflightResult = evaluateManagedVmPreflight(
-      { ...supportedInventory(), localIpv4Addresses: [address] },
-      freshState(),
-      address,
-    );
-    expect(result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'public-ipv4')?.passed).toBe(
-      false,
+    const result: ManagedVmPreflightResult = evaluateManagedVmPreflight(supportedInventory(), freshState(), address);
+    expect(result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'public-ipv4')?.status).toBe(
+      'failed',
     );
   });
 
@@ -129,31 +180,28 @@ describe('managed VM preflight', (): void => {
       publicAddress(),
     );
 
-    expect(result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'ports')?.passed).toBe(false);
+    expect(result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'ports')?.status).toBe(
+      'failed',
+    );
   });
 
-  it('reports the observed and local addresses when the public IPv4 is not assigned to the host', (): void => {
-    const localAddresses: readonly string[] = [ipv4([46, 225, 172, 160]), ipv4([10, 0, 0, 2])];
+  it('accepts a globally routable address without requiring local interface assignment', (): void => {
     const observedAddress: string = ipv4([8, 8, 8, 8]);
     const result: ManagedVmPreflightResult = evaluateManagedVmPreflight(
-      { ...supportedInventory(), localIpv4Addresses: localAddresses },
+      supportedInventory(),
       freshState(),
       observedAddress,
     );
 
-    expect(
-      result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'public-address-match'),
-    ).toEqual({
-      detail: `observed public IPv4 ${observedAddress} is not assigned to this host; local IPv4 addresses: ${localAddresses.join(', ')}`,
-      name: 'public-address-match',
-      passed: false,
-    });
+    expect(result.checks.some((item: ManagedVmPreflightCheck): boolean => item.name === 'public-address-match')).toBe(
+      false,
+    );
+    expect((): void => assertManagedVmPreflight(result)).not.toThrow();
   });
 });
 
 function supportedInventory(): ManagedVmHostInventory {
   return {
-    archiveExtractorAvailable: true,
     architecture: 'x86_64',
     cgroupV2: true,
     clockSynchronized: true,
@@ -162,19 +210,18 @@ function supportedInventory(): ManagedVmHostInventory {
     freeInodes: 1_000_000,
     firewall: 'nftables',
     hostname: 'compartment-vm',
-    localIpv4Addresses: [publicAddress()],
     memoryBytes: 8 * 1024 * 1024 * 1024,
     osId: 'ubuntu',
     osVersion: '24.04',
     portsInUse: [],
     publicInterface: 'ens3',
     routeCidrs: ['default'],
-    requiredKernelModules: true,
-    reachableEndpoints: ['1', '2', '3', '4', '5', '6', '7', '8'],
     systemd: true,
     sudoAvailable: true,
   };
 }
+
+const gibibyte: number = 1024 * 1024 * 1024;
 
 function freshState(): ManagedVmObservedState {
   return { foreignPaths: [], ownedConfigMatches: false, provisionerStateExists: false };

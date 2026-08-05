@@ -14,13 +14,11 @@ const mocks: HostRuntimeMocks = vi.hoisted(
 );
 
 vi.mock('../src/services/managed-vm-command.service', (): object => ({ execa: mocks.execa }));
-vi.mock('../src/services/managed-vm-network.service', (): object => ({
-  readReachableManagedVmEndpoints: vi.fn().mockResolvedValue([]),
-}));
 vi.mock('node:fs/promises', async (importOriginal: () => Promise<typeof FileSystemPromises>): Promise<object> => {
   const original: typeof FileSystemPromises = await importOriginal();
   return {
     ...original,
+    access: vi.fn(async (path: PathLike): Promise<void> => await fakeAccess(path)),
     readFile: vi.fn(async (path: PathLike | FileSystemPromises.FileHandle): Promise<string> => {
       if (path === '/etc/os-release') {
         return 'ID=ubuntu\nVERSION_ID="24.04"\n';
@@ -60,7 +58,26 @@ describe('managed VM host runtime', (): void => {
 
     await expect(inspectManagedVmHost()).resolves.toMatchObject({ freeBytes: 0, freeInodes: 0 });
   });
+
+  it('does not classify an existing Docker data directory as foreign host content', async (): Promise<void> => {
+    const { inspectManagedVmState } = await import('../src/services/managed-vm-host-runtime.service');
+
+    await expect(inspectManagedVmState()).resolves.toMatchObject({
+      foreignPaths: [],
+      provisionerStateExists: false,
+    });
+  });
 });
+
+async function fakeAccess(path: PathLike): Promise<void> {
+  if (path === '/var/lib/docker') {
+    await Promise.resolve();
+    return;
+  }
+  const error: NodeJS.ErrnoException = new Error('missing');
+  error.code = 'ENOENT';
+  await Promise.reject(error);
+}
 
 function commandOutput(command: string, args: readonly string[]): string {
   if (command === 'df' && args.includes('--output=avail')) {
@@ -71,12 +88,6 @@ function commandOutput(command: string, args: readonly string[]): string {
   }
   if (command === 'timedatectl') {
     return 'yes\n';
-  }
-  if (command === 'lsmod') {
-    return 'overlay\nbr_netfilter\nnf_tables\n';
-  }
-  if (command === 'ip' && args.includes('address')) {
-    return '2: eth0    inet 46.225.172.160/32 scope global eth0\n';
   }
   if (command === 'ip' && args.includes('default')) {
     return 'default via 172.31.1.1 dev eth0\n';
