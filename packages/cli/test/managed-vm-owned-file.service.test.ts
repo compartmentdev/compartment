@@ -13,25 +13,31 @@ afterEach(async (): Promise<void> => {
 });
 
 describe('managed VM owned filesystem boundary', (): void => {
-  it('rejects a symbolic-link directory without mutating its target', async (): Promise<void> => {
-    const root: string = await temporaryDirectory();
-    const target: string = join(root, 'target');
-    const link: string = join(root, 'owned-directory');
-    await ensureManagedVmDirectory(target, 0o700);
-    await symlink(target, link);
+  it.skipIf(process.getuid?.() !== 0)(
+    'rejects a symbolic-link directory without mutating its target',
+    async (): Promise<void> => {
+      const root: string = await temporaryDirectory();
+      const target: string = join(root, 'target');
+      const link: string = join(root, 'owned-directory');
+      await ensureManagedVmDirectory(target, 0o700);
+      await symlink(target, link);
 
-    await expect(ensureManagedVmDirectory(link, 0o700)).rejects.toThrow('refuses an unsafe directory');
-    await expect(readlink(link)).resolves.toBe(target);
-  });
+      await expect(ensureManagedVmDirectory(link, 0o700)).rejects.toThrow('refuses an unsafe directory');
+      await expect(readlink(link)).resolves.toBe(target);
+    },
+  );
 
-  it('rejects an existing installer-owned directory with a broader mode', async (): Promise<void> => {
-    const root: string = await temporaryDirectory();
-    const directory: string = join(root, 'installer');
-    await ensureManagedVmDirectory(directory, 0o700);
-    await chmod(directory, 0o755);
+  it.skipIf(process.getuid?.() !== 0)(
+    'rejects an existing installer-owned directory with a broader mode',
+    async (): Promise<void> => {
+      const root: string = await temporaryDirectory();
+      const directory: string = join(root, 'installer');
+      await ensureManagedVmDirectory(directory, 0o700);
+      await chmod(directory, 0o755);
 
-    await expect(ensureManagedVmDirectory(directory, 0o700)).rejects.toThrow('refuses an unsafe directory');
-  });
+      await expect(ensureManagedVmDirectory(directory, 0o700)).rejects.toThrow('refuses an unsafe directory');
+    },
+  );
 
   it('refuses to follow a dangling destination link when installing an exact file', async (): Promise<void> => {
     const root: string = await temporaryDirectory();

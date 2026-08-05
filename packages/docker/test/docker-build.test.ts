@@ -480,7 +480,10 @@ describe('buildDockerImage', (): void => {
         imageTag: 'registry.example/compartment-web:art_123',
         packer: 'dockerfile',
       }),
-    ).resolves.toMatchObject({ pushed: true });
+    ).resolves.toMatchObject({
+      imageRef: `registry.example/compartment-web@${digest}`,
+      pushed: true,
+    });
 
     const digestReadPaths: string[] = requestedUrls
       .map((url: string): string => new URL(url).pathname)

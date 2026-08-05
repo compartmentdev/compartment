@@ -1,5 +1,5 @@
 import { constants, type Stats } from 'node:fs';
-import { link, lstat, mkdir, open, unlink, type FileHandle } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, open, unlink, type FileHandle } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { managedVmDirectoryIdentity, managedVmFileIdentity } from './managed-vm-state.service';
@@ -97,6 +97,7 @@ async function readPathDetails(path: string): Promise<Stats | undefined> {
 async function createManagedVmDirectory(path: string, mode: number): Promise<void> {
   try {
     await mkdir(path, { mode });
+    await chmod(path, mode);
   } catch (error) {
     if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) {
       throw error;

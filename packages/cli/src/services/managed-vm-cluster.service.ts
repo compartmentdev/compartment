@@ -70,9 +70,10 @@ async function readK3sGeneratedIdentities(): Promise<Readonly<Record<string, str
       path,
       managedVmReleaseMetadata.metadataVersion,
     );
-    if (identity !== undefined) {
-      entries.push([path, identity]);
+    if (identity === undefined) {
+      throw new Error(`The K3s installer did not create the required owned path at ${path}.`);
     }
+    entries.push([path, identity]);
   }
   return Object.fromEntries(entries);
 }

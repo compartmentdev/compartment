@@ -195,7 +195,10 @@ async function repairCompletedStage(
     );
   }
   input.reportStage(stage);
-  await action();
+  const repairedOwnedFileDigests: Readonly<Record<string, string>> = await action();
+  if (Object.keys(repairedOwnedFileDigests).length > 0) {
+    throw new Error(`Managed-VM stage ${stage} returned owned host content during cluster-only repair.`);
+  }
   return state;
 }
 

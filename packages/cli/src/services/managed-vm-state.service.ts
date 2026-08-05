@@ -174,7 +174,7 @@ function ownedFileDigestsEqual(
 }
 
 async function writeStateAtomically(state: ManagedVmProvisionerState): Promise<void> {
-  const temporaryPath: string = `${managedVmStatePath}.${String(process.pid)}.tmp`;
+  const temporaryPath: string = `${managedVmStatePath}.${String(process.pid)}.${randomUUID()}.tmp`;
   const handle: FileHandle = await open(temporaryPath, 'wx', 0o600);
   try {
     await handle.writeFile(`${JSON.stringify(state, undefined, 2)}\n`);

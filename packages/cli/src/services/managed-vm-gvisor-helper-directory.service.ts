@@ -12,12 +12,12 @@ const allowedHelperNames: readonly string[] = [...managedVmSandboxRuntimeHelperN
 
 export async function assertManagedVmGvisorHelperDirectory(requireComplete: boolean): Promise<void> {
   const entries: Dirent[] = await readdir(managedVmSandboxRuntimePaths.gvisorBinDirectory, { withFileTypes: true });
-  const observedNames: string[] = entries
-    .map((entry: Dirent): string => entry.name)
-    .sort((left: string, right: string): number => left.localeCompare(right));
+  const observedNames: string[] = entries.map((entry: Dirent): string => entry.name);
   if (
     entries.some((entry: Dirent): boolean => !entry.isFile() || !allowedHelperNames.includes(entry.name)) ||
-    (requireComplete && JSON.stringify(observedNames) !== JSON.stringify(managedVmSandboxRuntimeHelperNames))
+    (requireComplete &&
+      (observedNames.length !== managedVmSandboxRuntimeHelperNames.length ||
+        managedVmSandboxRuntimeHelperNames.some((name: string): boolean => !observedNames.includes(name))))
   ) {
     throw new Error('Managed-VM provisioning found unexpected content in the gVisor helper directory.');
   }

@@ -75,7 +75,7 @@ describe('managed VM provisioner runtime boundary', (): void => {
         lstat: async (path: string): Promise<object> => {
           await Promise.resolve();
           if (path === '/usr/local/bin/helm') {
-            return { isDirectory: (): boolean => false, isFile: (): boolean => true };
+            return { isDirectory: (): boolean => false, isFile: (): boolean => true, mode: 0o755 };
           }
           throw Object.assign(new Error('missing'), { code: 'ENOENT' });
         },
