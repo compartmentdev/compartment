@@ -99,10 +99,13 @@ const tenantScheduling: KubeWorkloadScheduling = {
 };
 
 function applicationPodSpec(scheduling?: KubeWorkloadScheduling): KubeProjectedPodSpec {
-  const deployment: KubeManifest = projectApplicationManifests({
-    ...applicationRow(),
-    ...(scheduling === undefined ? {} : { scheduling }),
-  }).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
+  const deployment: KubeManifest = projectApplicationManifests(
+    {
+      ...applicationRow(),
+      ...(scheduling === undefined ? {} : { scheduling }),
+    },
+    600_000,
+  ).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
   return (deployment as KubeDeploymentManifest).spec!.template.spec;
 }
 

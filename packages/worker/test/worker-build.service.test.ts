@@ -74,6 +74,7 @@ function createWorkerConfig(): WorkerConfig {
       issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
       namespace: 'compartment',
     },
+    deploymentInfrastructureTimeoutMs: 600_000,
     logLevel: 'silent',
     leaderElection: {
       identity: 'worker-1',

@@ -79,6 +79,7 @@ describe('worker NetworkPolicy desired state', (): void => {
     const projection: DeploymentReconcileProjection = defaultApplicationProjection();
     const applicationManifests: KubeManifest[] = projectApplicationManifests(
       decryptTenantProjection(projection, undefined, testTenantSecretsKek),
+      600_000,
     );
     const deployment: KubeManifest = requiredManifest(applicationManifests, 'Deployment');
     const service: KubeManifest = requiredManifest(applicationManifests, 'Service');

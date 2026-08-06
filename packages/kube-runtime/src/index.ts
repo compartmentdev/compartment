@@ -31,7 +31,11 @@ export {
 } from './kube-project-provisioning-authority';
 export type { ProjectProvisioningAuthorityInput } from './kube-project-provisioning-authority.types';
 export type { ProjectNamespaceProvisioningRow } from './kube-provisioning.types';
-export { calculateKubeRolloutStatus, readKubeRolloutObservation } from './kube-rollout';
+export {
+  calculateKubeRolloutStatus,
+  readKubeApplicationRunningStartedAt,
+  readKubeRolloutObservation,
+} from './kube-rollout';
 export type {
   ApplyBundle,
   KubeDeploymentManifest,

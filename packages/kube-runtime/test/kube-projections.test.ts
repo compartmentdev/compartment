@@ -33,29 +33,34 @@ interface DeploymentVolumeMount {
   name: string;
 }
 
+const infrastructureTimeoutMs: number = 600_000;
+
 describe('Kubernetes manifest projection goldens', (): void => {
   it('projects an application row to the T1 workload bundle', (): void => {
-    const manifests: KubeManifest[] = projectApplicationManifests({
-      containerPorts: [8080],
-      deploymentId: 'dep-01jz',
-      environmentId: 'env-01jz',
-      environmentName: 'Production',
-      env: { LOG_LEVEL: 'info', FEATURE_FLAG: 'enabled' },
-      image: 'registry.example/app@sha256:abc',
-      imagePullSecretId: 'pull-01jz',
-      namespaceId: 'prj-01jz',
-      organizationId: 'org-01jz',
-      organizationName: 'Acme',
-      projectId: 'prj-01jz',
-      projectName: 'Checkout',
-      readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
-      replicas: 2,
-      runCommand: 'npm run start:override',
-      serviceId: 'svc-01jz',
-      serviceName: 'Web',
-      secretId: 'sec-01jz',
-      terminationGracePeriodSeconds: 45,
-    });
+    const manifests: KubeManifest[] = projectApplicationManifests(
+      {
+        containerPorts: [8080],
+        deploymentId: 'dep-01jz',
+        environmentId: 'env-01jz',
+        environmentName: 'Production',
+        env: { LOG_LEVEL: 'info', FEATURE_FLAG: 'enabled' },
+        image: 'registry.example/app@sha256:abc',
+        imagePullSecretId: 'pull-01jz',
+        namespaceId: 'prj-01jz',
+        organizationId: 'org-01jz',
+        organizationName: 'Acme',
+        projectId: 'prj-01jz',
+        projectName: 'Checkout',
+        readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
+        replicas: 2,
+        runCommand: 'npm run start:override',
+        serviceId: 'svc-01jz',
+        serviceName: 'Web',
+        secretId: 'sec-01jz',
+        terminationGracePeriodSeconds: 45,
+      },
+      infrastructureTimeoutMs,
+    );
 
     const deployment: DeploymentSpec = manifests.find(
       (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
@@ -81,7 +86,7 @@ describe('Kubernetes manifest projection goldens', (): void => {
       GENERATED_PLAIN: 'value-17',
       GENERATED_SENSITIVE: 'value-29',
     });
-    const manifests: KubeManifest[] = projectApplicationManifests(row);
+    const manifests: KubeManifest[] = projectApplicationManifests(row, infrastructureTimeoutMs);
     const secret: KubeManifest = manifests.find((manifest: KubeManifest): boolean => manifest.kind === 'Secret')!;
     const deployment: KubeManifest = manifests.find(
       (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
@@ -148,11 +153,14 @@ describe('Kubernetes manifest projection goldens', (): void => {
     const first: KubeManifest = deploymentFor({ ALPHA: 'one', ZETA: 'two' });
     const reordered: KubeManifest = deploymentFor({ ZETA: 'two', ALPHA: 'one' });
     const changed: KubeManifest = deploymentFor({ ALPHA: 'changed', ZETA: 'two' });
-    const metadataChanged: KubeManifest = projectApplicationManifests({
-      ...applicationRow({ ALPHA: 'one', ZETA: 'two' }),
-      image: 'registry.example/other@sha256:generated',
-      replicas: 3,
-    }).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
+    const metadataChanged: KubeManifest = projectApplicationManifests(
+      {
+        ...applicationRow({ ALPHA: 'one', ZETA: 'two' }),
+        image: 'registry.example/other@sha256:generated',
+        replicas: 3,
+      },
+      infrastructureTimeoutMs,
+    ).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
     const checksum: (manifest: KubeManifest) => string | undefined = (manifest: KubeManifest): string | undefined =>
       (manifest.spec as DeploymentSpec).template.metadata.annotations['compartment.dev/secret-checksum'];
     expect(checksum(first)).toBe(checksum(reordered));
@@ -203,11 +211,19 @@ describe('Kubernetes manifest projection goldens', (): void => {
 
   it('rejects a termination grace period below the admitted minimum', (): void => {
     expect((): KubeManifest[] =>
-      projectApplicationManifests({ ...applicationRow({}), terminationGracePeriodSeconds: 44 }),
+      projectApplicationManifests(
+        { ...applicationRow({}), terminationGracePeriodSeconds: 44 },
+        infrastructureTimeoutMs,
+      ),
     ).toThrow('at least 45 seconds');
-    expect(toYaml(projectApplicationManifests({ ...applicationRow({}), terminationGracePeriodSeconds: 60 }))).toContain(
-      'terminationGracePeriodSeconds: 60',
-    );
+    expect(
+      toYaml(
+        projectApplicationManifests(
+          { ...applicationRow({}), terminationGracePeriodSeconds: 60 },
+          infrastructureTimeoutMs,
+        ),
+      ),
+    ).toContain('terminationGracePeriodSeconds: 60');
   });
 
   it('projects descriptor readiness and omits probes when readiness is disabled', (): void => {
@@ -215,7 +231,24 @@ describe('Kubernetes manifest projection goldens', (): void => {
     const disabled: DeploymentSpec = deploymentForRow({ ...applicationRow({}), readiness: null })
       .spec as DeploymentSpec;
 
-    expect(configured.progressDeadlineSeconds).toBe(60);
+    for (const [readinessTimeoutMs, expectedSeconds] of [
+      [null, 600],
+      [2_000, 602],
+      [10_000, 610],
+      [300_000, 900],
+    ] as const) {
+      const spec: DeploymentSpec = deploymentForRow({
+        ...applicationRow({}),
+        readiness:
+          readinessTimeoutMs === null ? null : { path: '/healthz', timeoutMs: readinessTimeoutMs, type: 'http' },
+      }).spec as DeploymentSpec;
+      expect(spec.progressDeadlineSeconds).toBe(expectedSeconds);
+    }
+    const rounded: DeploymentSpec = deploymentForRow(
+      { ...applicationRow({}), readiness: null },
+      infrastructureTimeoutMs + 1,
+    ).spec as DeploymentSpec;
+    expect(rounded.progressDeadlineSeconds).toBe(601);
     expect(configured.template.spec.containers[0]?.readinessProbe?.httpGet).toEqual({
       path: '/healthz',
       port: 'http',
@@ -259,12 +292,19 @@ function deploymentFor(env: Readonly<Record<string, string>>): KubeManifest {
   return deploymentForRow(applicationRow(env));
 }
 
-function deploymentForRow(row: ApplicationProjectionRow): KubeManifest {
-  return projectApplicationManifests(row).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
+function deploymentForRow(
+  row: ApplicationProjectionRow,
+  configuredInfrastructureTimeoutMs: number = infrastructureTimeoutMs,
+): KubeManifest {
+  return projectApplicationManifests(row, configuredInfrastructureTimeoutMs).find(
+    (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
+  )!;
 }
 
 function serviceFor(row: ApplicationProjectionRow): KubeManifest {
-  return projectApplicationManifests(row).find((manifest: KubeManifest): boolean => manifest.kind === 'Service')!;
+  return projectApplicationManifests(row, infrastructureTimeoutMs).find(
+    (manifest: KubeManifest): boolean => manifest.kind === 'Service',
+  )!;
 }
 
 function applicationRow(env: Readonly<Record<string, string>>): ApplicationProjectionRow {

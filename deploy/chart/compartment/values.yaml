@@ -91,6 +91,7 @@ api:
 
 worker:
   replicas: 1
+  deploymentInfrastructureTimeoutMs: 600000
 
 projectProvisioner:
   replicas: 1

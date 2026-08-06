@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { calculateKubeRolloutStatus, type KubeRolloutObservation } from '../src';
+import {
+  calculateKubeRolloutStatus,
+  readKubeApplicationRunningStartedAt,
+  type KubeObservedManifest,
+  type KubeRolloutObservation,
+} from '../src';
+import { kubeApplicationName } from '../src/kube-naming';
 
 const now: Date = new Date('2026-07-11T12:00:00.000Z');
 
@@ -46,4 +52,50 @@ describe('rollout observation decisions', (): void => {
       calculateKubeRolloutStatus({ ...rollout, availableReplicas: 1, observedGeneration: 4, updatedReplicas: 0 }, now),
     ).toBe('progressing');
   });
+
+  it('reads the earliest Running evidence only from the candidate application container', (): void => {
+    const observed: KubeObservedManifest[] = [
+      applicationPod('dep_old', '2026-07-11T12:00:01.000Z'),
+      applicationPod('dep_candidate', '2026-07-11T12:00:13.000Z'),
+      sidecarPod('dep_candidate', '2026-07-11T12:00:02.000Z'),
+    ];
+
+    expect(readKubeApplicationRunningStartedAt(observed, 'dep_candidate')).toEqual(
+      new Date('2026-07-11T12:00:13.000Z'),
+    );
+  });
+
+  it('keeps prior Running evidence when the candidate application container restarts', (): void => {
+    const pod: KubeObservedManifest = applicationPod(
+      'dep_candidate',
+      '2026-07-11T12:00:18.000Z',
+      '2026-07-11T12:00:08.000Z',
+    );
+
+    expect(readKubeApplicationRunningStartedAt([pod], 'dep_candidate')).toEqual(new Date('2026-07-11T12:00:08.000Z'));
+  });
 });
+
+function applicationPod(deploymentId: string, startedAt: string, previousStartedAt?: string): KubeObservedManifest {
+  return {
+    apiVersion: 'v1',
+    kind: 'Pod',
+    metadata: { labels: { 'compartment.dev/deployment-id': deploymentId } },
+    status: {
+      containerStatuses: [
+        {
+          ...(previousStartedAt === undefined ? {} : { lastState: { terminated: { startedAt: previousStartedAt } } }),
+          name: kubeApplicationName(deploymentId),
+          state: { running: { startedAt } },
+        },
+      ],
+    },
+  };
+}
+
+function sidecarPod(deploymentId: string, startedAt: string): KubeObservedManifest {
+  return {
+    ...applicationPod(deploymentId, startedAt),
+    status: { containerStatuses: [{ name: 'sidecar', state: { running: { startedAt } } }] },
+  };
+}

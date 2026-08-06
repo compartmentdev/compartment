@@ -1,11 +1,51 @@
+import { kubeApplicationName } from './kube-naming';
 import type { KubeDeploymentManifest, KubeObservedManifest } from './kube-runtime.types';
 import type {
   KubeDeploymentCondition,
+  KubeObservedContainerStatus,
   KubeObservedDeploymentCondition,
   KubeObservedDeploymentStatus,
+  KubeObservedRolloutPod,
   KubeRolloutObservation,
   KubeRolloutStatus,
 } from './kube-rollout.types';
+
+const deploymentIdLabel: string = 'compartment.dev/deployment-id';
+
+export function readKubeApplicationRunningStartedAt(
+  observed: Iterable<KubeObservedManifest>,
+  deploymentId: string,
+): Date | null {
+  const containerName: string = kubeApplicationName(deploymentId);
+  const startedAt: number[] = [...observed].flatMap((manifest: KubeObservedManifest): number[] =>
+    readPodContainerStartedAt(manifest, deploymentId, containerName),
+  );
+  return startedAt.length === 0 ? null : new Date(Math.min(...startedAt));
+}
+
+function readPodContainerStartedAt(
+  manifest: KubeObservedManifest,
+  deploymentId: string,
+  containerName: string,
+): number[] {
+  if (manifest.kind !== 'Pod' || manifest.metadata?.labels?.[deploymentIdLabel] !== deploymentId) {
+    return [];
+  }
+  const pod: KubeObservedRolloutPod = manifest;
+  const container: KubeObservedContainerStatus | undefined = pod.status?.containerStatuses?.find(
+    (status: KubeObservedContainerStatus): boolean => status.name === containerName,
+  );
+  return container === undefined ? [] : validStartedAt(container);
+}
+
+function validStartedAt(container: KubeObservedContainerStatus): number[] {
+  return [container.state?.running?.startedAt, container.lastState?.terminated?.startedAt].flatMap(
+    (value: string | undefined): number[] => {
+      const timestamp: number = value === undefined ? Number.NaN : Date.parse(value);
+      return Number.isNaN(timestamp) ? [] : [timestamp];
+    },
+  );
+}
 
 export function readKubeRolloutObservation(
   observed: KubeObservedManifest | null,

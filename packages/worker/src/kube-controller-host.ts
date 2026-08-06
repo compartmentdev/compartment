@@ -25,6 +25,7 @@ import type { TenantSecretsKeyring } from './tenant-secret-environment.types';
 import { cleanupWorkerArtifacts } from './services/worker-artifact-cleanup.service';
 import { executeProductJob, finalizeRecoveredProductJob } from './services/worker-product-job.service';
 import { reconcileDeploymentTarget } from './services/worker-deployment-reconcile.service';
+import { DeploymentRolloutStartTracker } from './services/worker-deployment-rollout-start-tracker.service';
 import { executeResourceReconcile } from './services/worker-resource-reconcile.service';
 import { collectAndPublishPodMetrics } from './services/worker-pod-metrics.service';
 import { executeCustomDomainReconcile } from './services/worker-custom-domain-reconcile.service';
@@ -36,11 +37,14 @@ export interface KubeControllerHost {
 }
 
 class DeploymentReconcileArea implements KubeControllerHost {
+  readonly #rolloutStarts: DeploymentRolloutStartTracker = new DeploymentRolloutStartTracker();
+
   public constructor(
     private readonly request: CompartmentRequester,
     private readonly runtime: KubeRuntime,
     private readonly artifactRegistry: WorkerArtifactRegistryConfig,
     private readonly tenantSecretsKek: TenantSecretsKeyring,
+    private readonly deploymentInfrastructureTimeoutMs: number,
     private readonly scheduling: KubeWorkloadScheduling | undefined,
   ) {}
 
@@ -83,6 +87,8 @@ class DeploymentReconcileArea implements KubeControllerHost {
         claimed.target,
         this.artifactRegistry,
         this.tenantSecretsKek,
+        this.deploymentInfrastructureTimeoutMs,
+        this.#rolloutStarts,
         this.scheduling,
       ),
       this.artifactRegistry,
@@ -173,6 +179,7 @@ export function createKubeControllerHosts(
       runtime,
       config.artifactRegistry,
       config.tenantSecretsKek,
+      config.deploymentInfrastructureTimeoutMs,
       config.tenantScheduling,
     ),
     new ResourceReconcileArea(request, runtime, config.tenantSecretsKek, config.tenantScheduling),

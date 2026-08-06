@@ -31,8 +31,10 @@ interface ApplicationProjectionContext {
 }
 
 const minimumTerminationGracePeriodSeconds: number = 45;
-
-export function projectApplicationManifests(row: ApplicationProjectionRow): KubeManifest[] {
+export function projectApplicationManifests(
+  row: ApplicationProjectionRow,
+  infrastructureTimeoutMs: number,
+): KubeManifest[] {
   assertTerminationGracePeriod(row.terminationGracePeriodSeconds ?? minimumTerminationGracePeriodSeconds);
   assertContainerPorts(row.containerPorts);
   const context: ApplicationProjectionContext = applicationProjectionContext(row);
@@ -42,7 +44,7 @@ export function projectApplicationManifests(row: ApplicationProjectionRow): Kube
     namespaceId: row.namespaceId,
     secretId: row.secretId,
   });
-  return [secret, deploymentManifest(row, context), serviceManifest(row, context)];
+  return [secret, deploymentManifest(row, context, infrastructureTimeoutMs), serviceManifest(row, context)];
 }
 
 function applicationProjectionContext(row: ApplicationProjectionRow): ApplicationProjectionContext {
@@ -80,21 +82,23 @@ function displayAnnotations(row: ApplicationProjectionRow): Record<string, strin
 function deploymentManifest(
   row: ApplicationProjectionRow,
   context: ApplicationProjectionContext,
+  infrastructureTimeoutMs: number,
 ): KubeDeploymentManifest {
   return {
     apiVersion: 'apps/v1',
     kind: 'Deployment',
     metadata: manifestMetadata(context),
-    spec: deploymentSpec(row, context),
+    spec: deploymentSpec(row, context, infrastructureTimeoutMs),
   };
 }
 
 function deploymentSpec(
   row: ApplicationProjectionRow,
   context: ApplicationProjectionContext,
+  infrastructureTimeoutMs: number,
 ): KubeDeploymentManifestSpec {
   return {
-    progressDeadlineSeconds: progressDeadlineSeconds(row.readiness),
+    progressDeadlineSeconds: Math.ceil((infrastructureTimeoutMs + (row.readiness?.timeoutMs ?? 0)) / 1_000),
     replicas: row.replicas,
     selector: { matchLabels: context.workloadLabels },
     strategy: { rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }, type: 'RollingUpdate' },
@@ -149,10 +153,6 @@ function readinessProbe(readiness: ApplicationReadinessConfig): KubeReadinessPro
     successThreshold: 1,
     timeoutSeconds: 1,
   };
-}
-
-function progressDeadlineSeconds(readiness: ApplicationReadinessConfig | null): number {
-  return readiness === null ? 45 : Math.ceil(readiness.timeoutMs / 1_000);
 }
 
 function serviceManifest(row: ApplicationProjectionRow, context: ApplicationProjectionContext): KubeManifest {

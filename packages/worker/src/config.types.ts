@@ -39,6 +39,7 @@ export interface WorkerBuildScheduling extends KubeWorkloadScheduling {
 export interface WorkerConfig extends WorkerBuildConfig {
   buildQueue: WorkerBuildQueueConfig;
   customDomains: WorkerCustomDomainConfig;
+  deploymentInfrastructureTimeoutMs: number;
   tenantScheduling?: KubeWorkloadScheduling | undefined;
   tenantSecretsKek: TenantSecretsKeyring;
   usageMeteringIntervalMs: number;
