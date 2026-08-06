@@ -27,6 +27,15 @@ export class DeploymentRolloutStartTracker {
     return this.#starts.get(deploymentId)?.recoveryRestarted !== true;
   }
 
+  hydrateRecoveryRestarted(deploymentId: string, maximumDeadlineAt: Date): void {
+    const retained: RetainedCandidateRunningStart | undefined = this.#starts.get(deploymentId);
+    this.#starts.set(deploymentId, {
+      expiresAt: Math.min(retained?.expiresAt ?? Number.POSITIVE_INFINITY, maximumDeadlineAt.getTime()),
+      recoveryRestarted: true,
+      startedAt: retained?.startedAt ?? null,
+    });
+  }
+
   markRecoveryRestarted(deploymentId: string, maximumDeadlineAt: Date): void {
     const retained: RetainedCandidateRunningStart | undefined = this.#starts.get(deploymentId);
     this.#starts.set(deploymentId, {

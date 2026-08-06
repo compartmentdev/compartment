@@ -119,8 +119,8 @@ rollouts use an operator-configured pre-Running infrastructure deadline, default
 Their Kubernetes progress guard is that deadline plus the service readiness timeout, rounded up to seconds.
 Application readiness time starts when the current candidate container first enters Running and is retained across
 candidate container restarts. An unhealthy active candidate receives one recovery restart with a fresh application
-window; later reconciliations do not reset that window. Failed rollout recovery reapplies the saved active
-manifest by SSA; it does not use `kubectl rollout undo`.
+window; later reconciliations do not reset that window, and the single-recovery guard survives worker replacement.
+Failed rollout recovery reapplies the saved active manifest by SSA; it does not use `kubectl rollout undo`.
 
 Tenant node-pool scheduling is installation-owned and opt-in. When configured, application and resource Deployments
 plus product and provisioning Jobs project the tenant selector, tolerations, and `compartment-tenant` PriorityClass.

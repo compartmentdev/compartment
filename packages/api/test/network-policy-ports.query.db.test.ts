@@ -37,15 +37,19 @@ describe('project NetworkPolicy port desired state', (): void => {
   });
 
   it('expands and shrinks the namespace union with deployment and resource desired state', async (): Promise<void> => {
-    await expect(readProjectNetworkPolicyPorts('prj_kube')).resolves.toEqual({
+    await expect(readProjectNetworkPolicyPorts('prj_kube', null)).resolves.toEqual({
       applicationPorts: [8080],
       resourcePorts: [5432, 6379],
     });
 
     await seedCandidate(db);
     await db.update(deployments).set({ resolvedPortsJson: '[8080,9090]' }).where(eq(deployments.id, 'dep_candidate'));
-    await expect(readProjectNetworkPolicyPorts('prj_kube')).resolves.toEqual({
+    await expect(readProjectNetworkPolicyPorts('prj_kube', null)).resolves.toEqual({
       applicationPorts: [8080, 9090],
+      resourcePorts: [5432, 6379],
+    });
+    await expect(readProjectNetworkPolicyPorts('prj_kube', 'dep_candidate')).resolves.toEqual({
+      applicationPorts: [8080],
       resourcePorts: [5432, 6379],
     });
 
@@ -54,7 +58,7 @@ describe('project NetworkPolicy port desired state', (): void => {
       .set({ state: 'stopped' })
       .where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate'));
     await db.update(projectResources).set({ status: 'deleting' }).where(eq(projectResources.id, 'res_cache'));
-    await expect(readProjectNetworkPolicyPorts('prj_kube')).resolves.toEqual({
+    await expect(readProjectNetworkPolicyPorts('prj_kube', null)).resolves.toEqual({
       applicationPorts: [8080],
       resourcePorts: [],
     });

@@ -5,7 +5,6 @@ import type {
 } from '@compartment/contracts';
 import {
   calculateKubeRolloutStatus,
-  type KubeDeploymentManifest,
   type KubeRolloutObservation,
   type KubeRolloutStatus,
   type KubeRuntime,
@@ -13,11 +12,16 @@ import {
 } from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
 import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
-import { applyApplication, recoverFailedRollout } from './worker-deployment-application.service';
+import {
+  applyPendingApplication,
+  recoverFailedRollout,
+  type AppliedPendingApplication,
+} from './worker-deployment-application.service';
 import { persistDeploymentObservation, rolloutFailureMessage } from './worker-deployment-reconcile.helpers';
 import { restartActiveCandidate } from './worker-deployment-restart.service';
 import {
   infrastructureRolloutDeadlineAt,
+  maximumRolloutDeadlineAt,
   readCandidateRolloutObservation,
 } from './worker-deployment-rollout-observation.service';
 import type { DeploymentRolloutStartTracker } from './worker-deployment-rollout-start-tracker.service';
@@ -75,21 +79,36 @@ async function readAppliedCandidateRollout(
   rolloutStarts: DeploymentRolloutStartTracker,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<KubeRolloutObservation | null> {
-  const candidate: KubeDeploymentManifest = await applyApplication(
+  const applied: AppliedPendingApplication = await applyPendingApplication(
     runtime,
     target,
     tenantSecretsKek,
     infrastructureTimeoutMs,
     scheduling,
   );
+  hydrateRecoveryRestarted(applied, target, infrastructureTimeoutMs, rolloutStarts);
   return await readCandidateRolloutObservation(
     runtime,
-    await runtime.read(candidate),
-    candidate,
+    await runtime.read(applied.deployment),
+    applied.deployment,
     target,
     infrastructureTimeoutMs,
     rolloutStarts,
   );
+}
+
+function hydrateRecoveryRestarted(
+  applied: AppliedPendingApplication,
+  target: DeploymentReconcileTarget,
+  infrastructureTimeoutMs: number,
+  rolloutStarts: DeploymentRolloutStartTracker,
+): void {
+  if (applied.recoveryRestarted) {
+    rolloutStarts.hydrateRecoveryRestarted(
+      target.candidate.deploymentId,
+      maximumRolloutDeadlineAt(target, infrastructureTimeoutMs),
+    );
+  }
 }
 
 async function handleMissingPendingDeployment(

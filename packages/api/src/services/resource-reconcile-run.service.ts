@@ -243,7 +243,7 @@ export async function claimNextResourceReconcile(): Promise<ClaimedResourceRecon
   return {
     ...claimed,
     previousManifestJson: decryptResourceRollbackManifest(claimed.previousManifestJson),
-    networkPolicy: await readProjectNetworkPolicyPorts(claimed.intent.namespaceId),
+    networkPolicy: await readProjectNetworkPolicyPorts(claimed.intent.namespaceId, null),
   };
 }
 
