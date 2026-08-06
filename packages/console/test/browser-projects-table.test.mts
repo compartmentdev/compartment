@@ -15,6 +15,7 @@ import { ProjectsTable } from '../src/features/projects/projects-table';
 
 type FetchImplementation = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type MockDropdownMenuItemPropValue = ReactNode;
+type ProjectReadErrorCode = 'organization_not_found' | 'project_archived' | 'project_not_found';
 
 interface MockDropdownMenuItemProps {
   asChild?: boolean;
@@ -153,11 +154,14 @@ describe('browser projects table', (): void => {
     vi.useFakeTimers();
     const networkError: TypeError = new TypeError('Failed to fetch');
     let projectExists: boolean = true;
-    const fetchMock: Mock<FetchImplementation> = createProjectDeleteFetchMock(networkError, (): boolean => {
-      const currentProjectExists: boolean = projectExists;
-      projectExists = false;
-      return currentProjectExists;
-    });
+    const fetchMock: Mock<FetchImplementation> = createProjectDeleteFetchMock(
+      networkError,
+      (): ProjectReadErrorCode => {
+        const currentProjectExists: boolean = projectExists;
+        projectExists = false;
+        return currentProjectExists ? 'project_archived' : 'project_not_found';
+      },
+    );
 
     vi.stubGlobal('document', { cookie: `${compartmentCsrfCookieName}=csrf-token` });
     vi.stubGlobal('fetch', fetchMock);
@@ -171,7 +175,10 @@ describe('browser projects table', (): void => {
   it('preserves an ambiguous project removal error when polling is exhausted', async (): Promise<void> => {
     vi.useFakeTimers();
     const networkError: TypeError = new TypeError('Failed to fetch');
-    const fetchMock: Mock<FetchImplementation> = createProjectDeleteFetchMock(networkError, (): boolean => true);
+    const fetchMock: Mock<FetchImplementation> = createProjectDeleteFetchMock(
+      networkError,
+      (): ProjectReadErrorCode => 'organization_not_found',
+    );
 
     vi.stubGlobal('document', { cookie: `${compartmentCsrfCookieName}=csrf-token` });
     vi.stubGlobal('fetch', fetchMock);
@@ -456,41 +463,26 @@ function createProjectSummary(overrides?: Partial<BrowserProjectSummary>): Brows
   };
 }
 
-function createProjectActionListResponse(projectExists: boolean): object {
-  return {
-    detail: 'summary',
-    pagination: {
-      page: 1,
-      perPage: 10,
-      totalItems: projectExists ? 1 : 0,
-      totalPages: 1,
-    },
-    projects: projectExists
-      ? [
-          {
-            archivedAt: '2026-04-21T10:00:00.000Z',
-            createdAt: '2026-04-21T08:00:00.000Z',
-            id: 'proj_123',
-            name: 'billing',
-            organizationId: 'org_123',
-            updatedAt: '2026-04-21T10:00:00.000Z',
-          },
-        ]
-      : [],
-  };
-}
-
 function createProjectDeleteFetchMock(
   networkError: TypeError,
-  readProjectExists: () => boolean,
+  readProjectErrorCode: () => ProjectReadErrorCode,
 ): Mock<FetchImplementation> {
   return vi.fn<FetchImplementation>(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     await Promise.resolve();
     if (input === '/v1/projects/billing' && init?.method === 'DELETE') {
       throw networkError;
     }
-    if (input === '/v1/projects?archiveState=all&detail=summary&search=billing' && init?.method === 'GET') {
-      return createJsonResponse(createProjectActionListResponse(readProjectExists()));
+    if (input === '/v1/projects/billing' && init?.method === 'GET') {
+      const code: ProjectReadErrorCode = readProjectErrorCode();
+      return createJsonResponse(
+        {
+          error: {
+            code,
+            message: 'Project read failed.',
+          },
+        },
+        code === 'project_archived' ? 409 : 404,
+      );
     }
 
     throw new Error('Unexpected fetch request.');

@@ -2,6 +2,7 @@ import {
   projectDeleteResponseSchema,
   projectLifecycleResponseSchema,
   projectListResponseSchema,
+  projectReadResponseSchema,
   projectResponseSchema,
   type ProjectListResponse,
 } from '@compartment/contracts/browser';
@@ -13,7 +14,7 @@ import {
   buildProjectUnarchiveApiPath,
   projectsApiPathname,
 } from '../../routes/projects/projects-api-paths';
-import { isBrowserApiNetworkError, requestBrowserApi } from '../../lib/browser-api';
+import { BrowserApiError, isBrowserApiNetworkError, requestBrowserApi } from '../../lib/browser-api';
 
 export type ProjectAction = 'archive' | 'delete' | 'start' | 'stop' | 'unarchive';
 
@@ -124,12 +125,7 @@ async function waitForProjectDeleteCompletion(
   completionError: Error,
 ): Promise<void> {
   for (let attempt: number = 0; attempt < projectDeletePollAttemptCount; attempt += 1) {
-    const response: ProjectListResponse | null = await readProjectMutationRecoveryState(
-      projectName,
-      organizationSlug,
-      'all',
-    );
-    if (response !== null && !responseHasProjectNamed(response, projectName)) {
+    if (await isProjectDeleted(projectName, organizationSlug)) {
       return;
     }
     if (attempt < projectDeletePollAttemptCount - 1) {
@@ -138,6 +134,17 @@ async function waitForProjectDeleteCompletion(
   }
 
   throw completionError;
+}
+
+async function isProjectDeleted(projectName: string, organizationSlug: string): Promise<boolean> {
+  try {
+    await requestBrowserApi(buildProjectApiPath(projectName), projectReadResponseSchema, {
+      currentOrganization: organizationSlug,
+    });
+    return false;
+  } catch (error) {
+    return error instanceof BrowserApiError && error.status === 404 && error.code === 'project_not_found';
+  }
 }
 
 async function waitForRecoveredProjectState(

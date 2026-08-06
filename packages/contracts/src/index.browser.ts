@@ -209,6 +209,7 @@ export {
   projectDeleteResponseSchema,
   projectListResponseSchema,
   projectOverviewResponseSchema,
+  projectReadResponseSchema,
   projectStatusListResponseSchema,
   projectResponseSchema,
 } from './contracts/projects.contract';
