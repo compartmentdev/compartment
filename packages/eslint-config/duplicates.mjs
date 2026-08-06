@@ -19,6 +19,7 @@ export const duplicatesConfig = [
       '**/coverage/**',
       '**/node_modules/**',
       '**/.astro/**',
+      '**/.compartment/**',
       '**/.turbo/**',
       '**/drizzle/**',
       '**/*.d.ts',
