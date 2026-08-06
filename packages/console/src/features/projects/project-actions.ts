@@ -32,6 +32,8 @@ interface ProjectMutationRecoveryNamedListResponse {
 
 const projectMutationRecoveryAttemptCount: number = 20;
 const projectMutationRecoveryDelayMs: number = 250;
+const projectDeletePollAttemptCount: number = 11;
+const projectDeletePollDelayStepMs: number = 2_000;
 
 export async function runProjectAction(
   action: ProjectAction,
@@ -64,8 +66,9 @@ async function deleteProject(path: string, organizationSlug: string): Promise<vo
     if (!isBrowserApiNetworkError(caughtError)) {
       throw caughtError;
     }
-    await waitForProjectDeleteRecovery(projectName, organizationSlug, caughtError);
   }
+
+  await waitForProjectDeleteCompletion(projectName, organizationSlug);
 }
 
 async function updateProjectLifecycle(path: string, organizationSlug: string): Promise<void> {
@@ -111,18 +114,22 @@ async function waitForProjectArchiveRecovery(
   );
 }
 
-async function waitForProjectDeleteRecovery(
-  projectName: string,
-  organizationSlug: string,
-  originalError: Error,
-): Promise<void> {
-  await waitForRecoveredProjectState(
-    projectName,
-    organizationSlug,
-    'all',
-    (response: ProjectListResponse): boolean => !responseHasProjectNamed(response, projectName),
-    originalError,
-  );
+async function waitForProjectDeleteCompletion(projectName: string, organizationSlug: string): Promise<void> {
+  for (let attempt: number = 0; attempt < projectDeletePollAttemptCount; attempt += 1) {
+    const response: ProjectListResponse | null = await readProjectMutationRecoveryState(
+      projectName,
+      organizationSlug,
+      'all',
+    );
+    if (response !== null && !responseHasProjectNamed(response, projectName)) {
+      return;
+    }
+    if (attempt < projectDeletePollAttemptCount - 1) {
+      await waitForProjectMutationRecoveryDelay(readProjectDeletePollDelayMs(attempt));
+    }
+  }
+
+  throw new Error('Project removal is taking longer than expected. Refresh the page to check its status.');
 }
 
 async function waitForRecoveredProjectState(
@@ -141,7 +148,7 @@ async function waitForRecoveredProjectState(
     if (response !== null && isRecovered(response)) {
       return;
     }
-    await waitForProjectMutationRecoveryDelay();
+    await waitForProjectMutationRecoveryDelay(projectMutationRecoveryDelayMs);
   }
 
   throw originalError;
@@ -188,9 +195,13 @@ function buildProjectMutationRecoveryListPath(
   return `${projectsApiPathname}?${searchParams.toString()}`;
 }
 
-async function waitForProjectMutationRecoveryDelay(): Promise<void> {
+function readProjectDeletePollDelayMs(attempt: number): number {
+  return (attempt + 1) * projectDeletePollDelayStepMs;
+}
+
+async function waitForProjectMutationRecoveryDelay(delayMs: number): Promise<void> {
   await new Promise<void>((resolve: () => void): void => {
-    setTimeout((): void => resolve(), projectMutationRecoveryDelayMs);
+    setTimeout((): void => resolve(), delayMs);
   });
 }
 
