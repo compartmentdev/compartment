@@ -109,7 +109,15 @@
       }
     },
     "api": { "$ref": "#/definitions/haComponent" },
-    "worker": { "$ref": "#/definitions/haComponent" },
+    "worker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["replicas", "deploymentInfrastructureTimeoutMs"],
+      "properties": {
+        "replicas": { "type": "integer", "minimum": 1 },
+        "deploymentInfrastructureTimeoutMs": { "type": "integer", "minimum": 1 }
+      }
+    },
     "projectProvisioner": { "$ref": "#/definitions/haComponent" },
     "leaderElection": {
       "type": "object",

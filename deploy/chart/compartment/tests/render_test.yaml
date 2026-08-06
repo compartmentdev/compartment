@@ -57,6 +57,31 @@ tests:
           name: compartment-project-provisioning
           any: true
         template: project-provisioner-rbac.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_DEPLOYMENT_INFRASTRUCTURE_TIMEOUT_MS
+            value: '600000'
+          any: true
+        template: worker.yaml
+
+  - it: configures the service Deployment infrastructure timeout for the worker
+    set:
+      platform:
+        startupStage: full
+        installationId: test-worker-timeout
+        baseDomain: apps.example.com
+      worker:
+        deploymentInfrastructureTimeoutMs: 123456
+      secrets: *normalizedSecrets
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_DEPLOYMENT_INFRASTRUCTURE_TIMEOUT_MS
+            value: '123456'
+          any: true
+        template: worker.yaml
 
   - it: retains coherent control-plane state across uninstall
     set:

@@ -59,6 +59,7 @@ interface WorkerConfigEnvironment extends WorkerBuildConfigEnvironment {
   COMPARTMENT_TLS_ISSUER_KIND: 'Issuer' | 'ClusterIssuer';
   COMPARTMENT_TLS_ISSUER_NAME: string;
   COMPARTMENT_PLATFORM_NAMESPACE: string;
+  COMPARTMENT_DEPLOYMENT_INFRASTRUCTURE_TIMEOUT_MS: number;
   COMPARTMENT_TENANT_SECRETS_KEK: string;
   COMPARTMENT_TENANT_SECRETS_PREVIOUS_KEK?: string | undefined;
   COMPARTMENT_KUBE_TENANT_SCHEDULING?: string | undefined;
@@ -108,6 +109,7 @@ const workerConfigSchema: z.ZodType<WorkerConfigEnvironment> = workerBuildConfig
     COMPARTMENT_TLS_ISSUER_KIND: z.enum(['Issuer', 'ClusterIssuer']),
     COMPARTMENT_TLS_ISSUER_NAME: z.string().min(1),
     COMPARTMENT_PLATFORM_NAMESPACE: z.string().min(1),
+    COMPARTMENT_DEPLOYMENT_INFRASTRUCTURE_TIMEOUT_MS: z.coerce.number().int().positive(),
     COMPARTMENT_TENANT_SECRETS_KEK: z.string().regex(/^[0-9a-fA-F]{64}$/),
     COMPARTMENT_TENANT_SECRETS_PREVIOUS_KEK: z.union([z.literal(''), z.string().regex(/^[0-9a-fA-F]{64}$/)]).optional(),
     COMPARTMENT_KUBE_TENANT_SCHEDULING: z.string().min(1).optional(),
@@ -147,6 +149,7 @@ export function readWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     ...buildWorkerBuildConfig(parsed),
     buildQueue: buildWorkerBuildQueueConfig(parsed),
     customDomains: buildWorkerCustomDomainConfig(parsed),
+    deploymentInfrastructureTimeoutMs: parsed.COMPARTMENT_DEPLOYMENT_INFRASTRUCTURE_TIMEOUT_MS,
     ...(tenantScheduling === undefined ? {} : { tenantScheduling }),
     tenantSecretsKek: readTenantSecretsKeyring(parsed),
     usageMeteringIntervalMs: parsed.COMPARTMENT_USAGE_METERING_INTERVAL_MS,

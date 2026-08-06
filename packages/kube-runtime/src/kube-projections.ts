@@ -31,9 +31,10 @@ interface ApplicationProjectionContext {
 }
 
 const minimumTerminationGracePeriodSeconds: number = 45;
-const applicationProgressDeadlineSeconds: number = 345;
-
-export function projectApplicationManifests(row: ApplicationProjectionRow): KubeManifest[] {
+export function projectApplicationManifests(
+  row: ApplicationProjectionRow,
+  infrastructureTimeoutMs: number,
+): KubeManifest[] {
   assertTerminationGracePeriod(row.terminationGracePeriodSeconds ?? minimumTerminationGracePeriodSeconds);
   assertContainerPorts(row.containerPorts);
   const context: ApplicationProjectionContext = applicationProjectionContext(row);
@@ -43,7 +44,7 @@ export function projectApplicationManifests(row: ApplicationProjectionRow): Kube
     namespaceId: row.namespaceId,
     secretId: row.secretId,
   });
-  return [secret, deploymentManifest(row, context), serviceManifest(row, context)];
+  return [secret, deploymentManifest(row, context, infrastructureTimeoutMs), serviceManifest(row, context)];
 }
 
 function applicationProjectionContext(row: ApplicationProjectionRow): ApplicationProjectionContext {
@@ -81,21 +82,23 @@ function displayAnnotations(row: ApplicationProjectionRow): Record<string, strin
 function deploymentManifest(
   row: ApplicationProjectionRow,
   context: ApplicationProjectionContext,
+  infrastructureTimeoutMs: number,
 ): KubeDeploymentManifest {
   return {
     apiVersion: 'apps/v1',
     kind: 'Deployment',
     metadata: manifestMetadata(context),
-    spec: deploymentSpec(row, context),
+    spec: deploymentSpec(row, context, infrastructureTimeoutMs),
   };
 }
 
 function deploymentSpec(
   row: ApplicationProjectionRow,
   context: ApplicationProjectionContext,
+  infrastructureTimeoutMs: number,
 ): KubeDeploymentManifestSpec {
   return {
-    progressDeadlineSeconds: applicationProgressDeadlineSeconds,
+    progressDeadlineSeconds: Math.ceil((infrastructureTimeoutMs + (row.readiness?.timeoutMs ?? 0)) / 1_000),
     replicas: row.replicas,
     selector: { matchLabels: context.workloadLabels },
     strategy: { rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }, type: 'RollingUpdate' },

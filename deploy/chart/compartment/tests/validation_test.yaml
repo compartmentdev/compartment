@@ -139,6 +139,14 @@ tests:
       - failedTemplate:
           errorPattern: rollbackRetentionLimit.*oneOf
 
+  - it: rejects a non-positive service Deployment infrastructure timeout through the values schema
+    set:
+      worker:
+        deploymentInfrastructureTimeoutMs: 0
+    asserts:
+      - failedTemplate:
+          errorPattern: deploymentInfrastructureTimeoutMs.*minimum
+
   - it: rejects a non-positive auth throttle limit through the values schema
     set:
       platform:

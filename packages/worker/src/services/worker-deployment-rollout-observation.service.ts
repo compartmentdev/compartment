@@ -9,29 +9,41 @@ import {
   readKubeApplicationRunningStartedAt,
   readKubeRolloutObservation,
 } from '@compartment/kube-runtime';
-
-const infrastructureRolloutTimeoutMs: number = 45_000;
+import type { DeploymentRolloutStartTracker } from './worker-deployment-rollout-start-tracker.service';
 
 export async function readCandidateRolloutObservation(
   runtime: KubeRuntime,
   observed: KubeObservedManifest | null,
   deployment: KubeDeploymentManifest,
   target: DeploymentReconcileTarget,
+  infrastructureTimeoutMs: number,
+  rolloutStarts: DeploymentRolloutStartTracker,
 ): Promise<KubeRolloutObservation | null> {
-  if (readRolloutObservation(observed, deployment, target, null) === null) {
+  if (readRolloutObservation(observed, deployment, target, infrastructureTimeoutMs, null) === null) {
     return null;
   }
-  const applicationStartedAt: Date | null = await readCandidateApplicationStartedAt(runtime, deployment, target);
-  return readRolloutObservation(observed, deployment, target, applicationStartedAt);
+  const observedStartedAt: Date | null = await readCandidateApplicationStartedAt(
+    runtime,
+    deployment,
+    target,
+    infrastructureTimeoutMs,
+  );
+  const applicationStartedAt: Date | null = rolloutStarts.retain(
+    target.candidate.deploymentId,
+    observedStartedAt,
+    maximumRolloutDeadlineAt(target, infrastructureTimeoutMs),
+  );
+  return readRolloutObservation(observed, deployment, target, infrastructureTimeoutMs, applicationStartedAt);
 }
 
 export function readRolloutObservation(
   observed: KubeObservedManifest | null,
   deployment: KubeDeploymentManifest,
   target: DeploymentReconcileTarget,
+  infrastructureTimeoutMs: number,
   applicationStartedAt: Date | null,
 ): KubeRolloutObservation | null {
-  const deadlineAt: Date = rolloutDeadlineAt(target, applicationStartedAt);
+  const deadlineAt: Date = rolloutDeadlineAt(target, infrastructureTimeoutMs, applicationStartedAt);
   return readKubeRolloutObservation(observed, deployment, deadlineAt);
 }
 
@@ -39,11 +51,12 @@ async function readCandidateApplicationStartedAt(
   runtime: KubeRuntime,
   deployment: KubeDeploymentManifest,
   target: DeploymentReconcileTarget,
+  infrastructureTimeoutMs: number,
 ): Promise<Date | null> {
   const projection: DeploymentReconcileProjection = target.candidate;
   const controller: AbortController = new AbortController();
   const now: number = Date.now();
-  const remainingMs: number = Math.max(0, observationDeadlineAt(target, now) - now);
+  const remainingMs: number = Math.max(0, observationDeadlineAt(target, infrastructureTimeoutMs, now) - now);
   const timer: NodeJS.Timeout = setTimeout(
     (): void => controller.abort(new Error('Kubernetes rollout observation exceeded its infrastructure deadline.')),
     remainingMs,
@@ -60,9 +73,15 @@ async function readCandidateApplicationStartedAt(
   }
 }
 
-function observationDeadlineAt(target: DeploymentReconcileTarget, now: number): number {
-  const infrastructureDeadline: number = infrastructureRolloutDeadlineAt(target).getTime();
-  return now < infrastructureDeadline ? infrastructureDeadline : maximumRolloutDeadlineAt(target).getTime();
+function observationDeadlineAt(
+  target: DeploymentReconcileTarget,
+  infrastructureTimeoutMs: number,
+  now: number,
+): number {
+  const infrastructureDeadline: number = infrastructureRolloutDeadlineAt(target, infrastructureTimeoutMs).getTime();
+  return now < infrastructureDeadline
+    ? infrastructureDeadline
+    : maximumRolloutDeadlineAt(target, infrastructureTimeoutMs).getTime();
 }
 
 async function observeCandidateApplication(
@@ -96,8 +115,12 @@ function candidatePodLabels(deployment: KubeDeploymentManifest): Readonly<Record
   return labels;
 }
 
-function rolloutDeadlineAt(target: DeploymentReconcileTarget, applicationStartedAt: Date | null): Date {
-  const infrastructureDeadline: Date = infrastructureRolloutDeadlineAt(target);
+function rolloutDeadlineAt(
+  target: DeploymentReconcileTarget,
+  infrastructureTimeoutMs: number,
+  applicationStartedAt: Date | null,
+): Date {
+  const infrastructureDeadline: Date = infrastructureRolloutDeadlineAt(target, infrastructureTimeoutMs);
   const readinessTimeoutMs: number | undefined = target.candidate.readiness?.timeoutMs;
   if (
     applicationStartedAt === null ||
@@ -107,15 +130,21 @@ function rolloutDeadlineAt(target: DeploymentReconcileTarget, applicationStarted
     return infrastructureDeadline;
   }
   return new Date(
-    Math.min(maximumRolloutDeadlineAt(target).getTime(), applicationStartedAt.getTime() + readinessTimeoutMs),
+    Math.min(
+      maximumRolloutDeadlineAt(target, infrastructureTimeoutMs).getTime(),
+      applicationStartedAt.getTime() + readinessTimeoutMs,
+    ),
   );
 }
 
-function maximumRolloutDeadlineAt(target: DeploymentReconcileTarget): Date {
+export function maximumRolloutDeadlineAt(target: DeploymentReconcileTarget, infrastructureTimeoutMs: number): Date {
   const readinessTimeoutMs: number = target.candidate.readiness?.timeoutMs ?? 0;
-  return new Date(infrastructureRolloutDeadlineAt(target).getTime() + readinessTimeoutMs);
+  return new Date(infrastructureRolloutDeadlineAt(target, infrastructureTimeoutMs).getTime() + readinessTimeoutMs);
 }
 
-export function infrastructureRolloutDeadlineAt(target: DeploymentReconcileTarget): Date {
-  return new Date(new Date(target.rolloutStartedAt).getTime() + infrastructureRolloutTimeoutMs);
+export function infrastructureRolloutDeadlineAt(
+  target: DeploymentReconcileTarget,
+  infrastructureTimeoutMs: number,
+): Date {
+  return new Date(new Date(target.rolloutStartedAt).getTime() + infrastructureTimeoutMs);
 }

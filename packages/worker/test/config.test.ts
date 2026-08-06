@@ -31,6 +31,7 @@ describe('readWorkerConfig', (): void => {
       issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
       namespace: 'compartment',
     });
+    expect(config.deploymentInfrastructureTimeoutMs).toBe(600_000);
     expect(config.pollIntervalMs).toBe(1000);
     expect(config.runtimeControlToken).toBe('runtime-control-token');
     expect(config.tenantSecretsKek).toEqual({ current: Buffer.from('11'.repeat(32), 'hex') });
@@ -98,6 +99,24 @@ describe('readWorkerConfig', (): void => {
     expect((): WorkerConfig => readWorkerConfig(environment)).toThrow();
   });
 
+  it('requires a positive integer service Deployment infrastructure timeout', (): void => {
+    expect(
+      readWorkerConfig({
+        ...validEnvironment(),
+        COMPARTMENT_DEPLOYMENT_INFRASTRUCTURE_TIMEOUT_MS: '120000',
+      }).deploymentInfrastructureTimeoutMs,
+    ).toBe(120_000);
+    for (const value of [undefined, '0', '1.5']) {
+      expect(
+        (): WorkerConfig =>
+          readWorkerConfig({
+            ...validEnvironment(),
+            COMPARTMENT_DEPLOYMENT_INFRASTRUCTURE_TIMEOUT_MS: value,
+          }),
+      ).toThrow();
+    }
+  });
+
   it('does not require custom-domain configuration for build-only processes', (): void => {
     const environment: NodeJS.ProcessEnv = validEnvironment();
     delete environment.COMPARTMENT_CADDY_SERVICE_NAME;
@@ -154,6 +173,7 @@ function validEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_LEADER_ELECTION_RENEW_DEADLINE_MS: '10000',
     COMPARTMENT_LEADER_ELECTION_RETRY_PERIOD_MS: '2000',
     COMPARTMENT_CADDY_SERVICE_NAME: 'compartment-caddy',
+    COMPARTMENT_DEPLOYMENT_INFRASTRUCTURE_TIMEOUT_MS: '600000',
     COMPARTMENT_INGRESS_CLASS_NAME: 'traefik',
     COMPARTMENT_TLS_ISSUER_KIND: 'Issuer',
     COMPARTMENT_TLS_ISSUER_NAME: 'compartment-platform',

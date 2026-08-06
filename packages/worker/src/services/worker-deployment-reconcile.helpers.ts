@@ -1,9 +1,9 @@
 import type {
-  DeploymentArtifactCleanupTarget,
   DeploymentReconcileProjection,
   DeploymentReconcileTarget,
   ProductJobIntent,
   WorkerObserveDeploymentReconcileRequest,
+  WorkerObserveDeploymentReconcileResponse,
 } from '@compartment/contracts';
 import {
   kubeNamespaceName,
@@ -51,7 +51,7 @@ export async function persistDeploymentObservation(
   target: DeploymentReconcileTarget,
   observation: 'pending' | 'ready' | 'failed' | 'stopped',
   message?: string,
-): Promise<DeploymentArtifactCleanupTarget[]> {
+): Promise<WorkerObserveDeploymentReconcileResponse> {
   const input: WorkerObserveDeploymentReconcileRequest = {
     deploymentId: target.candidate.deploymentId,
     ...(message === undefined ? {} : { message }),
@@ -59,5 +59,5 @@ export async function persistDeploymentObservation(
     observedAt: new Date().toISOString(),
     revision: target.revision,
   };
-  return (await observeDeploymentReconcile(request, input)).cleanupArtifacts;
+  return await observeDeploymentReconcile(request, input);
 }

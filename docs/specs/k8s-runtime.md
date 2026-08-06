@@ -115,9 +115,11 @@ Project namespace provisioning projects the namespace-owned NetworkPolicy set
 in the same reconciliation as P5 RBAC. Rolling parameters follow the immutable T1 evidence:
 `maxUnavailable: 0` and `maxSurge: 1`. The termination grace period remains 45 seconds,
 with a 3-second `preStop` and the documented readiness probe timings. Service Deployment
-rollouts use a fixed 345-second Kubernetes progress guard and a separate 45-second
-pre-Running infrastructure deadline. Application readiness time starts when the current
-candidate container enters Running. Failed rollout recovery reapplies the saved active
+rollouts use an operator-configured pre-Running infrastructure deadline, defaulting to 10 minutes.
+Their Kubernetes progress guard is that deadline plus the service readiness timeout, rounded up to seconds.
+Application readiness time starts when the current candidate container first enters Running and is retained across
+candidate container restarts. An unhealthy active candidate receives one recovery restart with a fresh application
+window; later reconciliations do not reset that window. Failed rollout recovery reapplies the saved active
 manifest by SSA; it does not use `kubectl rollout undo`.
 
 Tenant node-pool scheduling is installation-owned and opt-in. When configured, application and resource Deployments
