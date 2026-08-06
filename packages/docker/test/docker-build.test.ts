@@ -98,7 +98,7 @@ describe('buildDockerImage', (): void => {
     ).rejects.toThrow('Expected BuildKit metadata to include a valid SHA-256 image digest.');
   });
 
-  it('exports the registry cache in bounded mode', (): void => {
+  it('applies the canonical compression policy to image and registry cache exporters', (): void => {
     const args: string[] = buildDockerfileBuildctlArgs({
       buildKitAddress: 'tcp://builder:1234',
       input: {
@@ -116,7 +116,8 @@ describe('buildDockerImage', (): void => {
         '--import-cache',
         'type=registry,ref=registry:5000/compartment-web:build-cache,registry.insecure=true',
         '--export-cache',
-        'type=registry,ref=registry:5000/compartment-web:build-cache,mode=min,image-manifest=true,oci-mediatypes=true,registry.insecure=true',
+        'type=registry,ref=registry:5000/compartment-web:build-cache,mode=min,image-manifest=true,compression=zstd,compression-level=1,oci-mediatypes=true,registry.insecure=true',
+        'type=image,name=registry:5000/compartment-web:art_123,push=true,compression=zstd,compression-level=1,oci-mediatypes=true,registry.insecure=true',
       ]),
     );
   });
@@ -196,6 +197,7 @@ describe('buildDockerImage', (): void => {
           HOME: '/tmp/project-home',
           PATH: '/project/bin',
         },
+        cacheImageRef: 'registry:5000/compartment-web:build-cache',
         contextDirectory: '/tmp/source',
         imageTag: 'registry.example/compartment-web:art_123',
         labels: {
@@ -234,8 +236,10 @@ describe('buildDockerImage', (): void => {
         expect.stringMatching(/^id=HOME,src=.*build-secret-0\.txt$/),
         '--secret',
         expect.stringMatching(/^id=PATH,src=.*build-secret-1\.txt$/),
+        '--export-cache',
+        'type=registry,ref=registry:5000/compartment-web:build-cache,mode=min,image-manifest=true,compression=zstd,compression-level=1,oci-mediatypes=true,registry.insecure=true',
         '--output',
-        'type=image,name=registry:5000/compartment-web:art_123,push=true,oci-mediatypes=true,registry.insecure=true',
+        'type=image,name=registry:5000/compartment-web:art_123,push=true,compression=zstd,compression-level=1,oci-mediatypes=true,registry.insecure=true',
       ]),
     );
   });

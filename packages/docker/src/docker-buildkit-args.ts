@@ -9,6 +9,8 @@ import type {
 } from './docker-buildkit.types';
 import type { DockerBuildImageInput } from './docker-models';
 
+const buildKitExporterCompressionPolicy: string = 'compression=zstd,compression-level=1,oci-mediatypes=true';
+
 export function buildDockerfileBuildctlArgs(input: BuildKitDockerfileBuildctlInput): string[] {
   const dockerfilePaths: BuildKitDockerfilePaths = readBuildKitDockerfilePaths(input.input);
 
@@ -85,7 +87,7 @@ function buildRailpackSecretsHashOpt(buildEnv: Record<string, string>): string[]
 }
 
 function buildImageOutput(imageTag: string, insecureRegistry: boolean | undefined): string {
-  return `type=image,name=${imageTag},push=true,oci-mediatypes=true${
+  return `type=image,name=${imageTag},push=true,${buildKitExporterCompressionPolicy}${
     insecureRegistry === true ? ',registry.insecure=true' : ''
   }`;
 }
@@ -99,7 +101,7 @@ function buildBuildKitCacheArgs(input: DockerBuildImageInput): string[] {
     '--import-cache',
     `type=registry,ref=${input.cacheImageRef}${insecure}`,
     '--export-cache',
-    `type=registry,ref=${input.cacheImageRef},mode=min,image-manifest=true,oci-mediatypes=true${insecure}`,
+    `type=registry,ref=${input.cacheImageRef},mode=min,image-manifest=true,${buildKitExporterCompressionPolicy}${insecure}`,
   ];
 }
 
