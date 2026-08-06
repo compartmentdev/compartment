@@ -84,8 +84,8 @@ export class KubeRuntime {
     return applied;
   }
 
-  public async observe(input: ObserveLabels): Promise<KubeObservation> {
-    return await createKubeObservation(this.kubeConfig, this.objectApi, input);
+  public async observe(input: ObserveLabels, signal?: AbortSignal): Promise<KubeObservation> {
+    return await createKubeObservation(this.kubeConfig, this.objectApi, input, signal);
   }
 
   public async read(object: KubeManifest): Promise<KubeObservedManifest | null> {

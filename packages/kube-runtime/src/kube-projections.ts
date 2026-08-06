@@ -31,6 +31,7 @@ interface ApplicationProjectionContext {
 }
 
 const minimumTerminationGracePeriodSeconds: number = 45;
+const applicationProgressDeadlineSeconds: number = 345;
 
 export function projectApplicationManifests(row: ApplicationProjectionRow): KubeManifest[] {
   assertTerminationGracePeriod(row.terminationGracePeriodSeconds ?? minimumTerminationGracePeriodSeconds);
@@ -94,7 +95,7 @@ function deploymentSpec(
   context: ApplicationProjectionContext,
 ): KubeDeploymentManifestSpec {
   return {
-    progressDeadlineSeconds: progressDeadlineSeconds(row.readiness),
+    progressDeadlineSeconds: applicationProgressDeadlineSeconds,
     replicas: row.replicas,
     selector: { matchLabels: context.workloadLabels },
     strategy: { rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }, type: 'RollingUpdate' },
@@ -149,10 +150,6 @@ function readinessProbe(readiness: ApplicationReadinessConfig): KubeReadinessPro
     successThreshold: 1,
     timeoutSeconds: 1,
   };
-}
-
-function progressDeadlineSeconds(readiness: ApplicationReadinessConfig | null): number {
-  return readiness === null ? 45 : Math.ceil(readiness.timeoutMs / 1_000);
 }
 
 function serviceManifest(row: ApplicationProjectionRow, context: ApplicationProjectionContext): KubeManifest {

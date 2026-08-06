@@ -24,7 +24,11 @@ import {
   releaseIntent,
   rolloutFailureMessage,
 } from './worker-deployment-reconcile.helpers';
-import { readRolloutObservation, rolloutTimeoutMs } from './worker-deployment-rollout-observation.service';
+import {
+  infrastructureRolloutDeadlineAt,
+  readCandidateRolloutObservation,
+  readRolloutObservation,
+} from './worker-deployment-rollout-observation.service';
 import {
   applyProjectNetworkPolicies,
   includeApplicationNetworkPolicyPorts,
@@ -105,7 +109,12 @@ async function activeDeploymentRemainsNonReady(
   target: DeploymentReconcileTarget,
 ): Promise<boolean> {
   for (let check: number = 0; check < activeReadinessCheckCount; check += 1) {
-    const rollout: KubeRolloutObservation | null = readRolloutObservation(await runtime.read(applied), applied, target);
+    const rollout: KubeRolloutObservation | null = readRolloutObservation(
+      await runtime.read(applied),
+      applied,
+      target,
+      null,
+    );
     if (rollout !== null && calculateKubeRolloutStatus(rollout, new Date()) === 'ready') {
       return false;
     }
@@ -148,7 +157,8 @@ async function reconcilePendingDeployment(
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
   const candidate: KubeDeploymentManifest = await applyApplication(runtime, target, tenantSecretsKek, scheduling);
-  const rollout: KubeRolloutObservation | null = readRolloutObservation(
+  const rollout: KubeRolloutObservation | null = await readCandidateRolloutObservation(
+    runtime,
     await runtime.read(candidate),
     candidate,
     target,
@@ -167,8 +177,7 @@ async function handleMissingPendingDeployment(
   tenantSecretsKek: TenantSecretsKeyring,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
-  const deadline: number = new Date(target.rolloutStartedAt).getTime() + rolloutTimeoutMs(target.candidate);
-  if (Date.now() < deadline) {
+  if (Date.now() < infrastructureRolloutDeadlineAt(target).getTime()) {
     return [];
   }
   if (await restartActiveCandidate(request, runtime, target, tenantSecretsKek, scheduling)) {

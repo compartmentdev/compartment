@@ -1,3 +1,5 @@
+import type { V1ObjectMeta } from '@kubernetes/client-node';
+
 export interface KubeDeploymentCondition {
   reason?: string | undefined;
   status: 'False' | 'True' | 'Unknown';
@@ -27,6 +29,35 @@ export interface KubeObservedDeploymentStatus {
   observedGeneration?: number | undefined;
   replicas?: number | undefined;
   updatedReplicas?: number | undefined;
+}
+
+export interface KubeObservedContainerStateRunning {
+  startedAt?: string | undefined;
+}
+
+export interface KubeObservedContainerStateTerminated {
+  startedAt?: string | undefined;
+}
+
+export interface KubeObservedContainerState {
+  running?: KubeObservedContainerStateRunning | undefined;
+  terminated?: KubeObservedContainerStateTerminated | undefined;
+}
+
+export interface KubeObservedContainerStatus {
+  lastState?: KubeObservedContainerState | undefined;
+  name?: string | undefined;
+  state?: KubeObservedContainerState | undefined;
+}
+
+export interface KubeObservedPodStatus {
+  containerStatuses?: KubeObservedContainerStatus[] | undefined;
+}
+
+export interface KubeObservedRolloutPod {
+  kind: 'Pod';
+  metadata?: V1ObjectMeta | undefined;
+  status?: KubeObservedPodStatus | undefined;
 }
 
 export type KubeRolloutStatus = 'progress-deadline-exceeded' | 'progressing' | 'ready' | 'timed-out';

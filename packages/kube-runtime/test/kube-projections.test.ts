@@ -212,10 +212,16 @@ describe('Kubernetes manifest projection goldens', (): void => {
 
   it('projects descriptor readiness and omits probes when readiness is disabled', (): void => {
     const configured: DeploymentSpec = deploymentForRow(applicationRow({})).spec as DeploymentSpec;
+    const shortTimeout: DeploymentSpec = deploymentForRow({
+      ...applicationRow({}),
+      readiness: { path: '/healthz', timeoutMs: 10_000, type: 'http' },
+    }).spec as DeploymentSpec;
     const disabled: DeploymentSpec = deploymentForRow({ ...applicationRow({}), readiness: null })
       .spec as DeploymentSpec;
 
-    expect(configured.progressDeadlineSeconds).toBe(60);
+    expect(configured.progressDeadlineSeconds).toBe(345);
+    expect(shortTimeout.progressDeadlineSeconds).toBe(configured.progressDeadlineSeconds);
+    expect(disabled.progressDeadlineSeconds).toBe(configured.progressDeadlineSeconds);
     expect(configured.template.spec.containers[0]?.readinessProbe?.httpGet).toEqual({
       path: '/healthz',
       port: 'http',
