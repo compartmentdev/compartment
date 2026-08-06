@@ -105,9 +105,7 @@ describe('self-hosted publish workflows', () => {
     });
     expect(action.runs.using).toBe('composite');
     expect(cosignStep.with['cosign-release']).toBe('v2.6.1');
-    expect(pushStep.run).toContain(
-      '--image-ref "docker.io/compartmentdev/${image_name}@${scanned_digest_by_service[$service]}"',
-    );
+    expect(pushStep.run).toContain('scan_args+=(--image-ref "${scanned_ref_by_service[$service]}")');
     expect(pushStep.run).toContain('--metadata-file "$metadata_file"');
     expect(pushStep.run).toContain('--read-build-metadata-digest "$metadata_file"');
     expect(pushStep.run).toContain('--resolve-scanned-digest');

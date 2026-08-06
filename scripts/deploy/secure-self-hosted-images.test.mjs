@@ -138,15 +138,26 @@ describe('resolveScannedCanonicalDigest', () => {
     ).toBe(testDigest);
   });
 
-  it('accepts a pre-existing immutable tag only when it matches the digest scanned in this run', () => {
+  it('accepts agreeing immutable tags only when they match the digest scanned in this run', () => {
     expect(
       resolveScannedCanonicalDigest({
         dockerhubDigest: testDigest,
-        ghcrDigest: '',
+        ghcrDigest: testDigest,
         imageName: 'compartment-api',
         scannedDigest: testDigest,
       }),
     ).toBe(testDigest);
+  });
+
+  it('rejects conflicting immutable tags', () => {
+    expect(() =>
+      resolveScannedCanonicalDigest({
+        dockerhubDigest: testDigest,
+        ghcrDigest: `sha256:${'b'.repeat(64)}`,
+        imageName: 'compartment-api',
+        scannedDigest: testDigest,
+      }),
+    ).toThrow('Immutable registries disagree');
   });
 });
 
@@ -497,11 +508,35 @@ describe('secureSelfHostedImages', () => {
           workerDigestRef,
         ]),
       ).toBe(true);
+
+      for (const [deniedDigest, failureCount, expectedAttempts, expectedStatus] of [
+        [testDigest, 1, 2, 0],
+        [testDigest, 10, 4, 1],
+        [`sha256:${'b'.repeat(64)}`, 10, 1, 1],
+      ]) {
+        await writeFile(commandArgsLogPath, '', 'utf8');
+        const retryResult = spawnSync(
+          process.execPath,
+          [secureSelfHostedImagesScriptPath, '--output-dir', outputDirectory, '--image-ref', digestRefs[0]],
+          {
+            env: {
+              ...process.env,
+              TRIVY_ATTEMPTS_PATH: join(tempDirectory, `trivy-attempts-${expectedAttempts}.txt`),
+              TRIVY_DENIED_DIGEST: deniedDigest,
+              TRIVY_FAILURE_COUNT: failureCount.toString(),
+            },
+          },
+        );
+        const retryCalls = parseCommandArgsLog(await readFile(commandArgsLogPath, 'utf8'));
+        expect(retryResult.status === 0 ? 0 : 1).toBe(expectedStatus);
+        expect(retryCalls.filter((entry) => entry.file === 'trivy')).toHaveLength(expectedAttempts);
+        expect(retryCalls.some((entry) => entry.file === 'cosign')).toBe(expectedStatus === 0);
+      }
     } finally {
       restoreTestEnvironment(oldEnvironment);
       await rm(tempDirectory, { force: true, recursive: true });
     }
-  });
+  }, 15_000);
 });
 
 function hasCosignCall(cosignCalls, expectedArgs) {
@@ -561,9 +596,20 @@ process.stdout.write('sha256:' + digestByService[service]);
 
 function renderFakeSecureTrivyScript() {
   return `#!/usr/bin/env node
-import { appendFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 
 appendFileSync(process.env.COMMAND_ARGS_LOG, JSON.stringify({ file: 'trivy', args: process.argv.slice(2) }) + '\\n');
+if (process.env.TRIVY_ATTEMPTS_PATH) {
+  let attempt = 1;
+  try {
+    attempt = Number.parseInt(readFileSync(process.env.TRIVY_ATTEMPTS_PATH, 'utf8'), 10) + 1;
+  } catch {}
+  writeFileSync(process.env.TRIVY_ATTEMPTS_PATH, attempt.toString());
+  if (attempt <= Number.parseInt(process.env.TRIVY_FAILURE_COUNT, 10)) {
+    process.stderr.write('GET https://ghcr.io/v2/compartmentdev/compartment-api/manifests/' + process.env.TRIVY_DENIED_DIGEST + ': DENIED: requested access to the resource is denied\\n');
+    process.exit(1);
+  }
+}
 const outputIndex = process.argv.indexOf('--output');
 if (outputIndex !== -1) {
   writeFileSync(process.argv[outputIndex + 1], JSON.stringify({ SPDXID: 'SPDXRef-DOCUMENT' }) + '\\n');
