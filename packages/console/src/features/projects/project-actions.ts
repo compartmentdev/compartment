@@ -56,6 +56,9 @@ export async function runProjectAction(
 
 async function deleteProject(path: string, organizationSlug: string): Promise<void> {
   const projectName: string = readProjectNameFromActionPath(path);
+  let completionError: Error = new Error(
+    'Project removal is taking longer than expected. Refresh the page to check its status.',
+  );
   try {
     await requestBrowserApi(path, projectDeleteResponseSchema, {
       currentOrganization: organizationSlug,
@@ -66,9 +69,10 @@ async function deleteProject(path: string, organizationSlug: string): Promise<vo
     if (!isBrowserApiNetworkError(caughtError)) {
       throw caughtError;
     }
+    completionError = caughtError;
   }
 
-  await waitForProjectDeleteCompletion(projectName, organizationSlug);
+  await waitForProjectDeleteCompletion(projectName, organizationSlug, completionError);
 }
 
 async function updateProjectLifecycle(path: string, organizationSlug: string): Promise<void> {
@@ -114,7 +118,11 @@ async function waitForProjectArchiveRecovery(
   );
 }
 
-async function waitForProjectDeleteCompletion(projectName: string, organizationSlug: string): Promise<void> {
+async function waitForProjectDeleteCompletion(
+  projectName: string,
+  organizationSlug: string,
+  completionError: Error,
+): Promise<void> {
   for (let attempt: number = 0; attempt < projectDeletePollAttemptCount; attempt += 1) {
     const response: ProjectListResponse | null = await readProjectMutationRecoveryState(
       projectName,
@@ -129,7 +137,7 @@ async function waitForProjectDeleteCompletion(projectName: string, organizationS
     }
   }
 
-  throw new Error('Project removal is taking longer than expected. Refresh the page to check its status.');
+  throw completionError;
 }
 
 async function waitForRecoveredProjectState(
