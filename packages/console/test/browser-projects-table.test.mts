@@ -15,6 +15,7 @@ import { ProjectsTable } from '../src/features/projects/projects-table';
 
 type FetchImplementation = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type MockDropdownMenuItemPropValue = ReactNode;
+type ProjectReadErrorCode = 'organization_not_found' | 'project_archived' | 'project_not_found';
 
 interface MockDropdownMenuItemProps {
   asChild?: boolean;
@@ -63,6 +64,7 @@ configureReactActEnvironment();
 
 afterEach((): void => {
   clearDocumentBody();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -146,6 +148,45 @@ describe('browser projects table', (): void => {
     expect(requestInput).toBe('/v1/projects/billing/archive');
     expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST');
     expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get(compartmentCsrfHeaderName)).toBe('csrf-token');
+  });
+
+  it('recovers an ambiguous project removal when polling no longer finds the project', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const networkError: TypeError = new TypeError('Failed to fetch');
+    let projectExists: boolean = true;
+    const fetchMock: Mock<FetchImplementation> = createProjectDeleteFetchMock(
+      networkError,
+      (): ProjectReadErrorCode => {
+        const currentProjectExists: boolean = projectExists;
+        projectExists = false;
+        return currentProjectExists ? 'project_archived' : 'project_not_found';
+      },
+    );
+
+    vi.stubGlobal('document', { cookie: `${compartmentCsrfCookieName}=csrf-token` });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const actionPromise: Promise<void> = runProjectAction('delete', 'billing', 'acme-dev');
+    const actionResult: Promise<void> = expect(actionPromise).resolves.toBeUndefined();
+    await vi.runAllTimersAsync();
+    await actionResult;
+  });
+
+  it('preserves an ambiguous project removal error when polling is exhausted', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const networkError: TypeError = new TypeError('Failed to fetch');
+    const fetchMock: Mock<FetchImplementation> = createProjectDeleteFetchMock(
+      networkError,
+      (): ProjectReadErrorCode => 'organization_not_found',
+    );
+
+    vi.stubGlobal('document', { cookie: `${compartmentCsrfCookieName}=csrf-token` });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const actionPromise: Promise<void> = runProjectAction('delete', 'billing', 'acme-dev');
+    const actionResult: Promise<void> = expect(actionPromise).rejects.toBe(networkError);
+    await vi.runAllTimersAsync();
+    await actionResult;
   });
 
   it('submits stop action through the project action API', async (): Promise<void> => {
@@ -420,6 +461,32 @@ function createProjectSummary(overrides?: Partial<BrowserProjectSummary>): Brows
     updatedAt: '2026-04-21T09:00:00.000Z',
     ...overrides,
   };
+}
+
+function createProjectDeleteFetchMock(
+  networkError: TypeError,
+  readProjectErrorCode: () => ProjectReadErrorCode,
+): Mock<FetchImplementation> {
+  return vi.fn<FetchImplementation>(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    await Promise.resolve();
+    if (input === '/v1/projects/billing' && init?.method === 'DELETE') {
+      throw networkError;
+    }
+    if (input === '/v1/projects/billing' && init?.method === 'GET') {
+      const code: ProjectReadErrorCode = readProjectErrorCode();
+      return createJsonResponse(
+        {
+          error: {
+            code,
+            message: 'Project read failed.',
+          },
+        },
+        code === 'project_archived' ? 409 : 404,
+      );
+    }
+
+    throw new Error('Unexpected fetch request.');
+  });
 }
 
 async function renderProjectActionConfirmationDialogText(action: 'archive' | 'delete'): Promise<string> {

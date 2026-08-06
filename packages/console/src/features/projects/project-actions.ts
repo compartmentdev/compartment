@@ -2,6 +2,7 @@ import {
   projectDeleteResponseSchema,
   projectLifecycleResponseSchema,
   projectListResponseSchema,
+  projectReadResponseSchema,
   projectResponseSchema,
   type ProjectListResponse,
 } from '@compartment/contracts/browser';
@@ -13,7 +14,7 @@ import {
   buildProjectUnarchiveApiPath,
   projectsApiPathname,
 } from '../../routes/projects/projects-api-paths';
-import { isBrowserApiNetworkError, requestBrowserApi } from '../../lib/browser-api';
+import { BrowserApiError, isBrowserApiNetworkError, requestBrowserApi } from '../../lib/browser-api';
 
 export type ProjectAction = 'archive' | 'delete' | 'start' | 'stop' | 'unarchive';
 
@@ -32,6 +33,8 @@ interface ProjectMutationRecoveryNamedListResponse {
 
 const projectMutationRecoveryAttemptCount: number = 20;
 const projectMutationRecoveryDelayMs: number = 250;
+const projectDeletePollAttemptCount: number = 11;
+const projectDeletePollDelayStepMs: number = 2_000;
 
 export async function runProjectAction(
   action: ProjectAction,
@@ -54,6 +57,9 @@ export async function runProjectAction(
 
 async function deleteProject(path: string, organizationSlug: string): Promise<void> {
   const projectName: string = readProjectNameFromActionPath(path);
+  let completionError: Error = new Error(
+    'Project removal is taking longer than expected. Refresh the page to check its status.',
+  );
   try {
     await requestBrowserApi(path, projectDeleteResponseSchema, {
       currentOrganization: organizationSlug,
@@ -64,8 +70,10 @@ async function deleteProject(path: string, organizationSlug: string): Promise<vo
     if (!isBrowserApiNetworkError(caughtError)) {
       throw caughtError;
     }
-    await waitForProjectDeleteRecovery(projectName, organizationSlug, caughtError);
+    completionError = caughtError;
   }
+
+  await waitForProjectDeleteCompletion(projectName, organizationSlug, completionError);
 }
 
 async function updateProjectLifecycle(path: string, organizationSlug: string): Promise<void> {
@@ -111,18 +119,32 @@ async function waitForProjectArchiveRecovery(
   );
 }
 
-async function waitForProjectDeleteRecovery(
+async function waitForProjectDeleteCompletion(
   projectName: string,
   organizationSlug: string,
-  originalError: Error,
+  completionError: Error,
 ): Promise<void> {
-  await waitForRecoveredProjectState(
-    projectName,
-    organizationSlug,
-    'all',
-    (response: ProjectListResponse): boolean => !responseHasProjectNamed(response, projectName),
-    originalError,
-  );
+  for (let attempt: number = 0; attempt < projectDeletePollAttemptCount; attempt += 1) {
+    if (await isProjectDeleted(projectName, organizationSlug)) {
+      return;
+    }
+    if (attempt < projectDeletePollAttemptCount - 1) {
+      await waitForProjectMutationRecoveryDelay(readProjectDeletePollDelayMs(attempt));
+    }
+  }
+
+  throw completionError;
+}
+
+async function isProjectDeleted(projectName: string, organizationSlug: string): Promise<boolean> {
+  try {
+    await requestBrowserApi(buildProjectApiPath(projectName), projectReadResponseSchema, {
+      currentOrganization: organizationSlug,
+    });
+    return false;
+  } catch (error) {
+    return error instanceof BrowserApiError && error.status === 404 && error.code === 'project_not_found';
+  }
 }
 
 async function waitForRecoveredProjectState(
@@ -141,7 +163,7 @@ async function waitForRecoveredProjectState(
     if (response !== null && isRecovered(response)) {
       return;
     }
-    await waitForProjectMutationRecoveryDelay();
+    await waitForProjectMutationRecoveryDelay(projectMutationRecoveryDelayMs);
   }
 
   throw originalError;
@@ -188,9 +210,13 @@ function buildProjectMutationRecoveryListPath(
   return `${projectsApiPathname}?${searchParams.toString()}`;
 }
 
-async function waitForProjectMutationRecoveryDelay(): Promise<void> {
+function readProjectDeletePollDelayMs(attempt: number): number {
+  return (attempt + 1) * projectDeletePollDelayStepMs;
+}
+
+async function waitForProjectMutationRecoveryDelay(delayMs: number): Promise<void> {
   await new Promise<void>((resolve: () => void): void => {
-    setTimeout((): void => resolve(), projectMutationRecoveryDelayMs);
+    setTimeout((): void => resolve(), delayMs);
   });
 }
 
