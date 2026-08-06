@@ -48,6 +48,7 @@ function renderCaddyfile(): string {
 	request_header -X-Forwarded-Host
 	request_header -X-Forwarded-Proto
 	request_header -X-Forwarded-For
+	encode zstd gzip
 
 	@compartment_host host console.{$COMPARTMENT_BASE_DOMAIN}
 	handle @compartment_host {
