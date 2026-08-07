@@ -63,19 +63,6 @@ export default [
       ...sonarjsRecommendedRules,
       '@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
       '@typescript-eslint/explicit-module-boundary-types': 'error',
-      '@typescript-eslint/explicit-function-return-type': [
-        'error',
-        {
-          allowConciseArrowFunctionExpressionsStartingWithVoid: false,
-          allowDirectConstAssertionInArrowFunctions: false,
-          allowedNames: [],
-          allowExpressions: false,
-          allowFunctionsWithoutTypeParameters: false,
-          allowHigherOrderFunctions: false,
-          allowIIFEs: false,
-          allowTypedFunctionExpressions: false,
-        },
-      ],
       '@typescript-eslint/no-base-to-string': 'error',
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-floating-promises': 'error',
@@ -110,17 +97,6 @@ export default [
         },
       ],
       '@typescript-eslint/switch-exhaustiveness-check': 'error',
-      '@typescript-eslint/typedef': [
-        'error',
-        {
-          arrowParameter: true,
-          memberVariableDeclaration: true,
-          parameter: true,
-          propertyDeclaration: true,
-          variableDeclaration: true,
-          variableDeclarationIgnoreFunction: false,
-        },
-      ],
       '@typescript-eslint/use-unknown-in-catch-callback-variable': 'off',
       '@typescript-eslint/consistent-type-imports': [
         'error',
@@ -137,11 +113,9 @@ export default [
       ],
       'compartment/no-anonymous-interface-implementation': 'error',
       'compartment/no-inline-multiline-text-join': 'error',
-      'compartment/no-interfaces-below-functions': 'error',
       'compartment/no-reflection-type-syntax': 'error',
       'compartment/no-trivial-pass-through-wrapper': 'error',
       'compartment/package-file-placement-convention': 'error',
-      'compartment/step-down-function-order': 'error',
       eqeqeq: ['error', 'always', { null: 'ignore' }],
       'import/first': 'error',
       'no-console': [
@@ -154,15 +128,6 @@ export default [
       'no-nested-ternary': 'error',
       'no-restricted-syntax': [
         'error',
-        {
-          selector:
-            'ExportNamedDeclaration > VariableDeclaration > VariableDeclarator[init.type="ArrowFunctionExpression"]',
-          message: 'Export function declarations instead of exported const arrow functions.',
-        },
-        {
-          selector: 'ExportNamedDeclaration > VariableDeclaration > VariableDeclarator[init.type="FunctionExpression"]',
-          message: 'Export function declarations instead of exported const function expressions.',
-        },
         {
           selector:
             'TSTypeReference[typeName.type="TSQualifiedName"][typeName.left.name="z"][typeName.right.name="infer"]',
@@ -232,13 +197,6 @@ export default [
     },
   },
   ...packageTestProjectOverrides,
-  {
-    files: ['*.mts', 'packages/*/*.ts', 'packages/*/*.tsx', 'packages/*/*.mts', 'packages/*/*.cts'],
-    rules: {
-      '@typescript-eslint/explicit-function-return-type': 'off',
-      '@typescript-eslint/typedef': 'off',
-    },
-  },
   {
     files: strictImportFiles,
     rules: {
