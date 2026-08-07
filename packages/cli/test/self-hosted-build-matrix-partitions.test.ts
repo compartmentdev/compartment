@@ -12,24 +12,16 @@ import {
   type SelfHostedBuildMatrixPartitionDefinition,
 } from './self-hosted-build-matrix-partitions';
 
+const fullMatrixPartitionNames: readonly string[] = ['a', 'b'];
+
 describe('self-hosted build matrix partitions', (): void => {
-  it('assigns every fixture exactly once', (): void => {
-    const coveragePartitions: readonly SelfHostedBuildMatrixPartitionDefinition[] = [
-      'a-1',
-      'a-2',
-      'b-1',
-      'b-2',
-      'b-3',
-    ].map(
-      (partitionName: string): SelfHostedBuildMatrixPartitionDefinition =>
-        selfHostedBuildMatrixPartitions[partitionName]!,
-    );
-    const assignedFixtureNames: string[] = coveragePartitions.flatMap(
-      (partition: SelfHostedBuildMatrixPartitionDefinition): readonly string[] => [
+  it('assigns every fixture exactly once across the full matrix', (): void => {
+    const assignedFixtureNames: string[] = fullMatrixPartitionNames
+      .map(readPartition)
+      .flatMap((partition: SelfHostedBuildMatrixPartitionDefinition): readonly string[] => [
         ...partition.singleServiceFixtureNames,
         ...partition.multiServiceFixtureNames,
-      ],
-    );
+      ]);
     const expectedFixtureNames: string[] = [
       ...selfHostedSingleServiceBuildFixtures.map(
         (fixture: SelfHostedSingleServiceBuildFixture): string => fixture.name,
@@ -44,44 +36,46 @@ describe('self-hosted build matrix partitions', (): void => {
     );
   });
 
-  it('keeps timing-balanced fixtures in their isolated partitions', (): void => {
-    expect(selfHostedBuildMatrixPartitions['a-1']).toEqual({
-      multiServiceFixtureNames: [],
-      singleServiceFixtureNames: ['railpack', 'railpack-pnpm-workspace'],
-    });
-    expect(selfHostedBuildMatrixPartitions['a-2']).toEqual({
-      multiServiceFixtureNames: ['java-api-frontend'],
-      singleServiceFixtureNames: ['dockerfile', 'dockerfile-monorepo', 'python'],
-    });
-    expect(selfHostedBuildMatrixPartitions['b-1']).toEqual({
-      multiServiceFixtureNames: ['multi-service'],
-      singleServiceFixtureNames: ['railpack-monorepo'],
-    });
-    expect(selfHostedBuildMatrixPartitions['b-2']).toEqual({
-      multiServiceFixtureNames: [],
-      singleServiceFixtureNames: ['railpack-build-packages', 'static-poison'],
-    });
-    expect(selfHostedBuildMatrixPartitions['b-3']).toEqual({
-      multiServiceFixtureNames: [],
-      singleServiceFixtureNames: ['vite-react', 'static-vite-react'],
-    });
-  });
+  it('keeps the pull-request partition a subset of the full matrix', (): void => {
+    const pullRequestPartition: SelfHostedBuildMatrixPartitionDefinition = readPartition('pr');
+    const fullMatrixFixtureNames: Set<string> = new Set<string>(
+      fullMatrixPartitionNames
+        .map(readPartition)
+        .flatMap((partition: SelfHostedBuildMatrixPartitionDefinition): readonly string[] => [
+          ...partition.singleServiceFixtureNames,
+          ...partition.multiServiceFixtureNames,
+        ]),
+    );
 
-  it('keeps the gVisor smoke partition to one source build', (): void => {
-    expect(selfHostedBuildMatrixPartitions.gvisor).toEqual({
-      multiServiceFixtureNames: [],
-      singleServiceFixtureNames: ['dockerfile'],
+    expect(pullRequestPartition).toEqual({
+      multiServiceFixtureNames: ['multi-service'],
+      singleServiceFixtureNames: ['railpack'],
     });
+    expect(
+      [...pullRequestPartition.singleServiceFixtureNames, ...pullRequestPartition.multiServiceFixtureNames].every(
+        (fixtureName: string): boolean => fullMatrixFixtureNames.has(fixtureName),
+      ),
+    ).toBe(true);
   });
 
   it('rejects unknown partitions without changing the unpartitioned local default', (): void => {
     expect(readSelfHostedBuildMatrixPartition(undefined)).toBeUndefined();
-    expect(readSelfHostedBuildMatrixPartition('a-1')).toBe(selfHostedBuildMatrixPartitions['a-1']);
+    expect(readSelfHostedBuildMatrixPartition('a')).toBe(selfHostedBuildMatrixPartitions.a);
     expect((): SelfHostedBuildMatrixPartitionDefinition | undefined =>
       readSelfHostedBuildMatrixPartition('unknown'),
     ).toThrow('Unknown self-hosted build matrix partition: unknown');
   });
 });
+
+function readPartition(partitionName: string): SelfHostedBuildMatrixPartitionDefinition {
+  const partition: SelfHostedBuildMatrixPartitionDefinition | undefined =
+    selfHostedBuildMatrixPartitions[partitionName];
+  if (partition === undefined) {
+    throw new Error(`Expected a self-hosted build matrix partition named ${partitionName}.`);
+  }
+
+  return partition;
+}
 
 function compareFixtureNames(left: string, right: string): number {
   return left.localeCompare(right);

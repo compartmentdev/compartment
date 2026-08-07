@@ -38,6 +38,7 @@ export function buildPlatformK3dShardEnvironment(shardName, baseEnv = process.en
     COMPARTMENT_E2E_HTTP_PORT: httpPort,
     COMPARTMENT_E2E_HTTPS_PORT: baseEnv.COMPARTMENT_E2E_HTTPS_PORT ?? (18_443 + portOffset).toString(),
     COMPARTMENT_E2E_INGRESS_CLASS: definition.ingressClass,
+    COMPARTMENT_E2E_INSTALL_AUDIT: definition.installAudit ? '1' : '0',
     COMPARTMENT_E2E_KUBE_CONTEXT: `k3d-${clusterName}`,
     COMPARTMENT_E2E_MANAGED_NAMESPACE: baseEnv.COMPARTMENT_E2E_MANAGED_NAMESPACE ?? `compartment-managed-${shardName}`,
     COMPARTMENT_E2E_MANAGED_VALUES_PATH: `${stateDirectory}/managed-values.yaml`,

@@ -2,11 +2,17 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
-import { platformK3dShardDefinitions, platformK3dShardNames } from '../deploy/platform-k3d-e2e-shards.mjs';
+import {
+  platformK3dFullShardNames,
+  platformK3dPullRequestShardNames,
+  platformK3dShardDefinitions,
+} from '../deploy/platform-k3d-e2e-shards.mjs';
+import { selectPlatformK3dShards } from './select-platform-k3d-shards.mjs';
 import { readSelfHostedBuildMatrixPartition } from '../../packages/cli/test/self-hosted-build-matrix-partitions';
 
 const workflowPath = new URL('../../.github/workflows/_platform-k3d-e2e.yml', import.meta.url);
 const ciWorkflowPath = new URL('../../.github/workflows/ci.yml', import.meta.url);
+const mainWorkflowPath = new URL('../../.github/workflows/main-ci.yml', import.meta.url);
 const imageSecurityWorkflowPath = new URL(
   '../../.github/workflows/_self-hosted-image-security-gate.yml',
   import.meta.url,
@@ -27,30 +33,18 @@ describe('platform k3d e2e workflow', () => {
 
     expect(job.strategy).toEqual({
       'fail-fast': false,
-      matrix: { shard: platformK3dShardNames },
+      matrix: { shard: '${{ fromJson(inputs.shards_json) }}' },
     });
     expect(job.name).toContain('${{ matrix.shard }}');
     expect(job.env.COMPARTMENT_E2E_GVISOR_ENABLED).toBeUndefined();
-    expect(platformK3dShardDefinitions['gvisor-build']).toMatchObject({
-      buildMatrixPartition: 'gvisor',
-      gvisorEnabled: true,
-      suites: ['install', 'build-matrix'],
-    });
     expect(Object.values(platformK3dShardDefinitions).every((definition) => definition.gvisorEnabled)).toBe(true);
-    const buildMatrixShards = Object.values(platformK3dShardDefinitions).filter(
-      (definition) => definition.suites.includes('build-matrix') && definition.buildMatrixPartition !== 'gvisor',
+    expect(
+      Object.values(platformK3dShardDefinitions).every((definition) => !definition.suites.includes('bootstrap')),
+    ).toBe(true);
+    const buildMatrixShards = Object.values(platformK3dShardDefinitions).filter((definition) =>
+      definition.suites.includes('build-matrix'),
     );
-    expect(buildMatrixShards).toHaveLength(5);
-    expect(buildMatrixShards.every((definition) => definition.suites.join(',') === 'bootstrap,build-matrix')).toBe(
-      true,
-    );
-    expect(buildMatrixShards.map((definition) => definition.buildMatrixPartition).toSorted()).toEqual([
-      'a-1',
-      'a-2',
-      'b-1',
-      'b-2',
-      'b-3',
-    ]);
+    expect(buildMatrixShards.map((definition) => definition.buildMatrixPartition).toSorted()).toEqual(['a', 'b', 'pr']);
     for (const definition of Object.values(platformK3dShardDefinitions)) {
       if (definition.buildMatrixPartition !== undefined) {
         expect(readSelfHostedBuildMatrixPartition(definition.buildMatrixPartition)).toBeDefined();
@@ -101,7 +95,50 @@ describe('platform k3d e2e workflow', () => {
     const aggregateJob = workflow.jobs['check-ci'];
 
     expect(aggregateJob.needs).toContain('platform-k3d-e2e');
+    expect(aggregateJob.needs).toContain('select-platform-k3d-shards');
     expect(aggregateJob.steps[0].run).toContain('needs.platform-k3d-e2e.result');
+    expect(aggregateJob.steps[0].run).toContain('needs.select-platform-k3d-shards.result');
+    expect(workflow.jobs['platform-k3d-e2e'].with.shards_json).toContain(
+      'needs.select-platform-k3d-shards.outputs.shards_json',
+    );
+  });
+
+  it('runs the pull-request lane by default and the full matrix for the subsystems it cannot cover', () => {
+    expect(selectPlatformK3dShards(['packages/console/src/features/roles/roles-page.drawer.tsx'])).toEqual({
+      escalated: false,
+      shards: [...platformK3dPullRequestShardNames],
+    });
+    expect(selectPlatformK3dShards(['README.md', 'packages/api/src/routes/deployments.route.ts'])).toEqual({
+      escalated: false,
+      shards: [...platformK3dPullRequestShardNames],
+    });
+
+    for (const escalatingPath of [
+      'deploy/chart/compartment/values.yaml',
+      'packages/cli/src/commands/install/install.command.kubernetes.ts',
+      'packages/cli/src/services/kubernetes-install-helm.service.ts',
+      'packages/docker/src/docker-build.ts',
+      'packages/edge/src/edge-bootstrap.service.ts',
+      'packages/kube-runtime/src/kube-network-policy.ts',
+      'packages/worker/src/build-job.ts',
+      'scripts/deploy/platform-k3d-e2e.mjs',
+      '.github/workflows/ci.yml',
+    ]) {
+      expect(selectPlatformK3dShards(['README.md', escalatingPath])).toEqual({
+        escalated: true,
+        shards: [...platformK3dFullShardNames],
+      });
+    }
+  });
+
+  it('runs the full matrix on main and nightly', async () => {
+    const workflow = parse(await readFile(mainWorkflowPath, 'utf8'));
+
+    expect(workflow.on.schedule).toEqual([{ cron: '0 2 * * *' }]);
+    expect(workflow.jobs['select-platform-k3d-shards'].steps[1].run).toContain('select-platform-k3d-shards.mjs');
+    expect(workflow.jobs['platform-k3d-e2e'].with.shards_json).toContain(
+      'needs.select-platform-k3d-shards.outputs.shards_json',
+    );
   });
 
   it('protects shared cache tags while the image security gate scans them', async () => {

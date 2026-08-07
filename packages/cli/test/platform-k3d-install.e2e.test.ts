@@ -39,6 +39,7 @@ const platformValuesPath: string =
 const platformKubeContext: string = process.env.COMPARTMENT_E2E_KUBE_CONTEXT ?? 'k3d-compartment-e2e';
 const platformNamespace: string = process.env.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? 'compartment';
 const platformIngressClass: string = process.env.COMPARTMENT_E2E_INGRESS_CLASS ?? 'traefik';
+const installAuditEnabled: boolean = process.env.COMPARTMENT_E2E_INSTALL_AUDIT === '1';
 const installTimeoutMs: number = 50 * 60_000;
 const kubernetesCommandTimeoutMs: number = 6 * 60_000;
 const tempRootDirectory: string = readSocketSafeTempRootDirectory('pk3i-', 'system-api.sock');
@@ -88,8 +89,6 @@ describe.sequential('production Kubernetes install', (): void => {
 
       await expectCleanControllerStartup();
       await expectPlatformRuntime();
-      await expectOperatorRegistryInstallValues();
-      await expectIngressControllerCompatibility();
       expect(result.adminEmail).toBe(ownerEmail);
       expect(result.compartmentUrl).toBe(platformCompartmentUrl);
       expect(result.organization.slug).toBe(platformOrganizationSlug);
@@ -125,25 +124,38 @@ describe.sequential('production Kubernetes install', (): void => {
       expect(platformStatus.ready).toBe(true);
       expect(platformStatus.workloads.length).toBeGreaterThan(0);
 
-      const platformRestart: KubernetesSystemRestartResponse = await installerCli.runJson(
-        `system restart --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment`,
-        kubernetesSystemRestartResponseSchema,
-      );
-      expect(platformRestart.restarted).toBe(true);
-
-      const reset: IssuePasswordResetResponse = await installerCli.runJson(
-        `system issue-password-reset --email ${ownerEmail} --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment`,
-        issuePasswordResetResponseSchema,
-      );
-      expect(reset.email).toBe(ownerEmail);
-      expect(reset.resetToken).not.toBe('');
-
-      await expectForwardedMetadataSpoofingRejected();
-      await expectRetainedDomainGenerationProtection();
+      if (installAuditEnabled) {
+        await expectInstalledPlatformAudit(installerCli, ownerEmail);
+      }
     },
     installTimeoutMs,
   );
 });
+
+/**
+ * Every shard installs through this suite, so the assertions that only need proving once for the
+ * product live behind the audit flag and run on the shard that owns install coverage.
+ */
+async function expectInstalledPlatformAudit(installerCli: SelfHostedUserSetupCli, ownerEmail: string): Promise<void> {
+  await expectOperatorRegistryInstallValues();
+  await expectIngressControllerCompatibility();
+
+  const platformRestart: KubernetesSystemRestartResponse = await installerCli.runJson(
+    `system restart --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment`,
+    kubernetesSystemRestartResponseSchema,
+  );
+  expect(platformRestart.restarted).toBe(true);
+
+  const reset: IssuePasswordResetResponse = await installerCli.runJson(
+    `system issue-password-reset --email ${ownerEmail} --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment`,
+    issuePasswordResetResponseSchema,
+  );
+  expect(reset.email).toBe(ownerEmail);
+  expect(reset.resetToken).not.toBe('');
+
+  await expectForwardedMetadataSpoofingRejected();
+  await expectRetainedDomainGenerationProtection();
+}
 
 async function createFreshCli(adminPassword?: string): Promise<SelfHostedUserSetupCli> {
   const homeDirectory: string = await mkdtemp(join(tempRootDirectory, 'client-'));
