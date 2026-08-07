@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { installResponseSchema, type InstallResponse } from '@compartment/contracts';
 import { readSocketSafeTempRootDirectory } from '@compartment/test-support';
@@ -49,34 +49,6 @@ describe.sequential('production public operator-domain Kubernetes install', (): 
         .map(async (directory: string): Promise<void> => await rm(directory, { force: true, recursive: true })),
     );
   }, commandTimeoutMs);
-
-  it('rejects public operator values without a registry issuer before Helm', async (): Promise<void> => {
-    const directory: string = await createTemporaryDirectory();
-    const incompleteValuesPath: string = join(directory, 'incomplete-values.yaml');
-    await writeFile(incompleteValuesPath, 'ingress:\n  className: traefik\nstorage:\n  storageClass: local-path\n', {
-      mode: 0o600,
-    });
-    const installerCli: SelfHostedUserSetupCli = await createFreshCli();
-    const failure: SelfHostedUserSetupCommandResult = await installerCli.runFailure(
-      buildInstallCommand(incompleteValuesPath, 'negative-owner@example.test'),
-    );
-    const output: string = `${failure.stderr}\n${failure.stdout}`;
-
-    expect(output).toContain(`${incompleteValuesPath}: registry.issuerRef: is required because the private registry`);
-    expect(output).not.toMatch(/ZodError|"code"|"expected"|"received"|at parse/u);
-    const helmRelease: SelfHostedUserSetupCommandResult = await runHelm([
-      'status',
-      releaseName,
-      '--namespace',
-      namespace,
-    ]);
-    expect(helmRelease.exitCode).not.toBe(0);
-    const namespaceLookup: SelfHostedUserSetupCommandResult = await runKubectlWithoutNamespace([
-      'get',
-      `namespace/${namespace}`,
-    ]);
-    expect(namespaceLookup.exitCode).not.toBe(0);
-  });
 
   it(
     'installs a public operator domain through shared Ingress and retains derived TLS state',

@@ -10,10 +10,6 @@ export interface ConsoleE2eDeploymentFixture {
   readonly serviceName: string;
 }
 
-export interface ConsoleE2eCleanupProjectFixture {
-  readonly projectName: string;
-}
-
 export interface ConsoleE2eAccessFixture {
   readonly groupDescription: string;
   readonly groupName: string;
@@ -28,16 +24,10 @@ export interface ConsoleE2eProxyRouteFixture {
   readonly routeUrl: string;
 }
 
-export interface ConsoleE2eResourceOwnershipFixture {
-  readonly otherOrganizationSlug: string;
-}
-
 export interface ConsoleE2eFixture {
-  readonly cleanupProject: ConsoleE2eCleanupProjectFixture;
   readonly deployment: ConsoleE2eDeploymentFixture;
   readonly organizationSlug: string;
   readonly proxyRoute: ConsoleE2eProxyRouteFixture;
-  readonly resourceOwnership: ConsoleE2eResourceOwnershipFixture;
 }
 
 export function readConsoleE2eFixture(): ConsoleE2eFixture {
@@ -53,19 +43,11 @@ export function readConsoleE2eFixture(): ConsoleE2eFixture {
     proxyPath: readRequiredEnvironmentValue('COMPARTMENT_E2E_PROXY_TARGET_PATH'),
     routeUrl: readRequiredEnvironmentValue('COMPARTMENT_E2E_PROXY_ROUTE_URL'),
   };
-  const resourceOwnership: ConsoleE2eResourceOwnershipFixture = {
-    otherOrganizationSlug: readRequiredEnvironmentValue('COMPARTMENT_E2E_OTHER_ORGANIZATION_SLUG'),
-  };
-  const cleanupProject: ConsoleE2eCleanupProjectFixture = {
-    projectName: readRequiredEnvironmentValue('COMPARTMENT_E2E_CLEANUP_PROJECT_NAME'),
-  };
 
   return {
-    cleanupProject,
     deployment,
     organizationSlug: readRequiredEnvironmentValue('COMPARTMENT_E2E_ORGANIZATION_SLUG'),
     proxyRoute,
-    resourceOwnership,
   };
 }
 

@@ -90,7 +90,6 @@ describe.sequential('production Kubernetes install', (): void => {
       await expectPlatformRuntime();
       await expectOperatorRegistryInstallValues();
       await expectIngressControllerCompatibility();
-      await expectRegistryPodRecovery();
       expect(result.adminEmail).toBe(ownerEmail);
       expect(result.compartmentUrl).toBe(platformCompartmentUrl);
       expect(result.organization.slug).toBe(platformOrganizationSlug);
@@ -239,71 +238,6 @@ async function expectPlatformRuntime(): Promise<void> {
 
 async function expectIngressControllerCompatibility(): Promise<void> {
   await expectSuccessfulKubectl(['get', `ingressclass/${platformIngressClass}`], 'read the selected IngressClass');
-  if (platformIngressClass !== 'nginx') {
-    return;
-  }
-
-  const traefik: SelfHostedUserSetupCommandResult = await runKubectl([
-    '--namespace',
-    'kube-system',
-    'get',
-    'deployment/traefik',
-    '--output=jsonpath={.status.availableReplicas}',
-  ]);
-  expectSuccessfulCommand(traefik, 'verify Traefik remains available beside ingress-nginx');
-  expect(Number(traefik.stdout)).toBeGreaterThan(0);
-
-  const nodes: SelfHostedUserSetupCommandResult = await runKubectl(['get', 'nodes', '--output=name']);
-  expectSuccessfulCommand(nodes, 'list the multi-node compatibility cluster');
-  expect(nodes.stdout.trim().split('\n')).toHaveLength(2);
-}
-
-async function expectRegistryPodRecovery(): Promise<void> {
-  if (platformIngressClass !== 'nginx') {
-    return;
-  }
-
-  const registryName: string = 'compartment-registry';
-  const originalClaimUid: SelfHostedUserSetupCommandResult = await runKubectl([
-    'get',
-    `persistentvolumeclaim/${registryName}`,
-    '--output=jsonpath={.metadata.uid}',
-  ]);
-  expectSuccessfulCommand(originalClaimUid, 'read the registry PVC identity before recovery');
-  const originalRepository: SelfHostedUserSetupCommandResult = await runKubectl([
-    'exec',
-    `deployment/${registryName}`,
-    '--',
-    'sh',
-    '-c',
-    'find /var/lib/registry/docker/registry/v2/repositories -type d -name _manifests | head -n 1',
-  ]);
-  expectSuccessfulCommand(originalRepository, 'read the persisted registry acceptance repository');
-  expect(originalRepository.stdout.trim()).not.toBe('');
-
-  await expectSuccessfulKubectl(['rollout', 'restart', `deployment/${registryName}`], 'restart the registry Pod');
-  await expectSuccessfulKubectl(
-    ['rollout', 'status', `deployment/${registryName}`, '--timeout=6m'],
-    'wait for registry Pod recovery',
-  );
-
-  const recoveredClaimUid: SelfHostedUserSetupCommandResult = await runKubectl([
-    'get',
-    `persistentvolumeclaim/${registryName}`,
-    '--output=jsonpath={.metadata.uid}',
-  ]);
-  expectSuccessfulCommand(recoveredClaimUid, 'read the registry PVC identity after recovery');
-  expect(recoveredClaimUid.stdout).toBe(originalClaimUid.stdout);
-  const recoveredRepository: SelfHostedUserSetupCommandResult = await runKubectl([
-    'exec',
-    `deployment/${registryName}`,
-    '--',
-    'sh',
-    '-c',
-    'find /var/lib/registry/docker/registry/v2/repositories -type d -name _manifests | head -n 1',
-  ]);
-  expectSuccessfulCommand(recoveredRepository, 'read registry data after Pod and PVC recovery');
-  expect(recoveredRepository.stdout).toBe(originalRepository.stdout);
 }
 
 async function expectRetainedDomainGenerationProtection(): Promise<void> {

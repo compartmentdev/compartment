@@ -2,7 +2,12 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { compartmentSkillInstallResultSchema, type CompartmentSkillInstallResult } from '@compartment/contracts';
+import {
+  compartmentSkillInstallResultSchema,
+  compartmentSkillInstallTargetValues,
+  type CompartmentSkillInstallFile,
+  type CompartmentSkillInstallResult,
+} from '@compartment/contracts';
 import {
   createCliCapture,
   expectCliFailure,
@@ -56,6 +61,45 @@ describe.sequential('compartment skill install command', (): void => {
     await expect(readFile(join(tempRoot, '.agents/skills/compartment-app/SKILL.md'), 'utf8')).resolves.toContain(
       'Compartment hosts this application.',
     );
+  });
+
+  it('installs every agent format for --agent all and leaves a repeated install unchanged', async (): Promise<void> => {
+    await createGitRepositoryRoot(tempRoot);
+    process.chdir(tempRoot);
+
+    const created: CliJsonResult<CompartmentSkillInstallResult> = await runCliJson(
+      ['skill', 'install', '--agent', 'all', '--output', 'json'],
+      compartmentSkillInstallResultSchema,
+    );
+    expectCliSuccess(created);
+
+    expect(created.payload.requestedTarget).toBe('all');
+    expect(created.payload.resolvedTargets).toEqual([...compartmentSkillInstallTargetValues]);
+    expect(created.payload.files.map((file: CompartmentSkillInstallFile): string => file.path)).toEqual([
+      '.agents/skills/compartment-app/SKILL.md',
+      '.claude/skills/compartment-app/SKILL.md',
+      '.cursor/rules/compartment-agent.mdc',
+      '.github/instructions/compartment.instructions.md',
+    ]);
+    expect(created.payload.files.every((file: CompartmentSkillInstallFile): boolean => file.status === 'created')).toBe(
+      true,
+    );
+    await expect(readFile(join(tempRoot, '.claude/skills/compartment-app/SKILL.md'), 'utf8')).resolves.toContain(
+      'Compartment hosts this application.',
+    );
+    await expect(readFile(join(tempRoot, '.cursor/rules/compartment-agent.mdc'), 'utf8')).resolves.toContain(
+      'alwaysApply: true',
+    );
+
+    const repeated: CliJsonResult<CompartmentSkillInstallResult> = await runCliJson(
+      ['skill', 'install', '--agent', 'all', '--output', 'json'],
+      compartmentSkillInstallResultSchema,
+    );
+    expectCliSuccess(repeated);
+
+    expect(
+      repeated.payload.files.every((file: CompartmentSkillInstallFile): boolean => file.status === 'unchanged'),
+    ).toBe(true);
   });
 
   it('uses the nearest compartment.yml ancestor as the install scope', async (): Promise<void> => {

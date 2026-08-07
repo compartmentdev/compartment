@@ -198,6 +198,23 @@ describe('browser access action visibility', (): void => {
     expect(html).not.toContain('Define permission sets for organization access.');
   });
 
+  it('offers only the grantable permissions in the create role drawer', (): void => {
+    vi.stubGlobal('React', React);
+
+    const html: string = renderToStaticMarkup(
+      React.createElement(RolesPageContent, {
+        state: createRolesPageState(['organization.role.read', 'organization.role.manage'], {
+          mode: 'create',
+          permissionKeys: ['project.read', 'deployment.read'],
+        }),
+      }),
+    );
+
+    expect(html).toContain('project.read');
+    expect(html).toContain('deployment.read');
+    expect(html).not.toContain('deployment.create');
+  });
+
   it('keeps the roles table when no roles are returned', (): void => {
     vi.stubGlobal('React', React);
 
