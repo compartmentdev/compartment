@@ -180,9 +180,11 @@ K3s or gVisor state before the job and must be destroyed after it; a persistent 
 this coverage path.
 
 Each Job uses only `emptyDir` local cache and a project/service-scoped registry cache; no unencrypted cache volume is
-shared between tenants. The worker's existing limit of two concurrent builds now limits build pods. NetworkPolicy
-defaults the namespace to deny and admits only DNS, source archive API, base-image, and registry egress. Public
-internet egress excludes metadata, link-local, RFC1918, Pod, and Service CIDRs.
+shared between tenants. The worker admits up to 100 build claims by default, caps each organization at two active
+claims, and chooses the least-active eligible organization before applying FIFO order. The build namespace
+ResourceQuota independently limits aggregate container CPU and memory to the installation-configured hard ceiling.
+NetworkPolicy defaults the namespace to deny and admits only DNS, source archive API, base-image, and registry
+egress. Public internet egress excludes metadata, link-local, RFC1918, Pod, and Service CIDRs.
 
 The F1 chart installs a private persistent bundled registry. External/BYO
 registry values are deferred to F2. Application namespaces use

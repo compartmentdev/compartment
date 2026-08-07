@@ -140,6 +140,14 @@ describe('readWorkerConfig', (): void => {
       });
     }).toThrow();
   });
+
+  it('requires the organization-scoped build limit env', (): void => {
+    const environment: NodeJS.ProcessEnv = validEnvironment();
+    delete environment.COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_ORGANIZATION;
+    environment.COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_PROJECT = '1';
+
+    expect((): WorkerConfig => readWorkerConfig(environment)).toThrow();
+  });
 });
 
 const tenantSchedulingJson: string = JSON.stringify({
@@ -159,7 +167,7 @@ function validEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_KUBE_BUILD_SCHEDULING:
       '{"nodeSelector":{"compartment.dev/node-pool":"build"},"runtimeClassName":"gvisor","tolerations":[]}',
     COMPARTMENT_MAX_CONCURRENT_BUILDS: '2',
-    COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_PROJECT: '1',
+    COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_ORGANIZATION: '1',
     COMPARTMENT_API_INTERNAL_HOST: '127.0.0.1',
     COMPARTMENT_API_PORT: '9443',
     COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY: 'registry-signing-key-with-at-least-32-characters',

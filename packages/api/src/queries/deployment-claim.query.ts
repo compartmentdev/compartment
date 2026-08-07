@@ -15,7 +15,7 @@ const buildQueueAdvisoryLockId: number = 728_050_385;
 const activeBuildsCommonTableExpression: SQL = sql`
   active_builds as (
     select
-      ${projects.id} as project_id,
+      ${projects.organizationId} as organization_id,
       count(*)::integer as active_build_count
     from ${deployments}
     inner join ${environments} on ${deployments.environmentId} = ${environments.id}
@@ -26,7 +26,7 @@ const activeBuildsCommonTableExpression: SQL = sql`
         from ${deploymentKubeReferences}
         where ${deploymentKubeReferences.deploymentId} = ${deployments.id}
       )
-    group by ${projects.id}
+    group by ${projects.organizationId}
   ),
 `;
 
@@ -66,7 +66,7 @@ const queuedBuildCandidateSelection: SQL = sql`
     where ${deployments.status} = ${'queued'}
       and ${projects.archivedAt} is null
   ) as candidate
-  left join active_builds on active_builds.project_id = candidate.project_id
+  left join active_builds on active_builds.organization_id = candidate.organization_id
   cross join total_active_builds
   inner join ${deployments} locked_deployment
     on locked_deployment.id = candidate.deployment_id
@@ -99,11 +99,11 @@ const buildQueueCountsQuery: SQL<BuildQueueCountsRow> = sql<BuildQueueCountsRow>
 export async function findFirstFairQueuedDeploymentCandidateForUpdate(
   tx: DeploymentTransaction,
   maximumConcurrentBuilds: number,
-  maximumConcurrentBuildsPerProject: number,
+  maximumConcurrentBuildsPerOrganization: number,
 ): Promise<QueuedDeploymentClaimCandidateRow | undefined> {
   await tx.execute(sql`select pg_advisory_xact_lock(${buildQueueAdvisoryLockId})`);
   const rows: object[] = (
-    await tx.execute(fairQueuedDeploymentClaimQuery(maximumConcurrentBuilds, maximumConcurrentBuildsPerProject))
+    await tx.execute(fairQueuedDeploymentClaimQuery(maximumConcurrentBuilds, maximumConcurrentBuildsPerOrganization))
   ).rows;
 
   return rows[0] as QueuedDeploymentClaimCandidateRow | undefined;
@@ -111,7 +111,7 @@ export async function findFirstFairQueuedDeploymentCandidateForUpdate(
 
 function fairQueuedDeploymentClaimQuery(
   maximumConcurrentBuilds: number,
-  maximumConcurrentBuildsPerProject: number,
+  maximumConcurrentBuildsPerOrganization: number,
 ): SQL<QueuedDeploymentClaimCandidateRow> {
   return sql<QueuedDeploymentClaimCandidateRow>`
     with
@@ -119,7 +119,7 @@ function fairQueuedDeploymentClaimQuery(
       ${totalActiveBuildsCommonTableExpression}
     ${queuedBuildCandidateSelection}
     where total_active_builds.active_build_count < ${maximumConcurrentBuilds}
-      and coalesce(active_builds.active_build_count, 0) < ${maximumConcurrentBuildsPerProject}
+      and coalesce(active_builds.active_build_count, 0) < ${maximumConcurrentBuildsPerOrganization}
     ${fairBuildCandidateOrder}
   `;
 }

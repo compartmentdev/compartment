@@ -20,11 +20,14 @@ import {
   type ProjectStatusListResponse,
   type UserListQuery,
   type UserListResponse,
+  type WorkerClaimDeploymentRequest,
   type WorkerClaimDeploymentResponse,
   type WorkerClaimedDeployment,
   userListQuerySchema,
   userListResponseSchema,
+  workerClaimDeploymentRequestSchema,
   workerClaimDeploymentResponseSchema,
+  workerClaimDeploymentRollingUpgradeRequestSchema,
 } from '../src';
 import {
   buildDeploymentInspectResponse,
@@ -58,6 +61,33 @@ interface ProjectOverviewListResponseWithSummaryRowsPayload {
 }
 
 describe('contract schemas projects and users', (): void => {
+  it('accepts only the organization-scoped worker build limit', (): void => {
+    const result: WorkerClaimDeploymentRequest = workerClaimDeploymentRequestSchema.parse({
+      maximumConcurrentBuilds: 100,
+      maximumConcurrentBuildsPerOrganization: 2,
+    });
+
+    expect(result.maximumConcurrentBuildsPerOrganization).toBe(2);
+    expect(
+      workerClaimDeploymentRequestSchema.safeParse({
+        maximumConcurrentBuilds: 100,
+        maximumConcurrentBuildsPerProject: 2,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('normalizes the legacy project-scoped worker build limit at the wire boundary', (): void => {
+    expect(
+      workerClaimDeploymentRollingUpgradeRequestSchema.parse({
+        maximumConcurrentBuilds: 100,
+        maximumConcurrentBuildsPerProject: 2,
+      }),
+    ).toEqual({
+      maximumConcurrentBuilds: 100,
+      maximumConcurrentBuildsPerOrganization: 2,
+    });
+  });
+
   it('accepts readonly-safe deployment logs payloads', (): void => {
     const result: DeploymentLogsResponse = deploymentLogsResponseSchema.parse({
       deployments: [
