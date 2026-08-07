@@ -9,6 +9,7 @@ import {
   findPathViolations,
   findPublicInstallerViolations,
   listRepositoryPaths,
+  publicInstallerRequiredTerms,
 } from './check-kubernetes-cutover.mjs';
 
 const temporaryDirectories = [];
@@ -185,18 +186,12 @@ describe('Kubernetes cutover gate', () => {
   });
 
   it('requires the public bootstrap to default to stable and verify signed main artifacts', () => {
-    const validInstaller = renderLines([
-      ['channel=', '"latest"'].join(''),
-      ['https://compartment.dev', '/install.sh'].join(''),
-      ['publish-self-hosted-', 'main.yml@refs/heads/main'].join(''),
-      ['"', '$cosign_command', '" verify'].join(''),
-      ['--certificate-', 'identity'].join(''),
-      ['--certificate-', 'oidc-issuer'].join(''),
-      ['--certificate-', 'github-workflow-sha'].join(''),
-    ]);
+    const validInstaller = renderLines(publicInstallerRequiredTerms);
 
     expect(findPublicInstallerViolations('install.sh', validInstaller)).toEqual([]);
-    expect(findPublicInstallerViolations('install.sh', 'channel="main"')).toHaveLength(7);
+    expect(findPublicInstallerViolations('install.sh', 'channel="main"')).toHaveLength(
+      publicInstallerRequiredTerms.length,
+    );
     expect(
       findPublicInstallerViolations(
         'install.sh',

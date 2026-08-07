@@ -100,7 +100,7 @@ const forbiddenPathPrefixes = [
 const canonicalRemovalSpecificationPath = 'docs/specs/existing-kubernetes-install.md';
 const canonicalCaddyDockerfilePath = 'packages/edge/Dockerfile.caddy.self-hosted';
 const publicInstallerPath = 'install.sh';
-const publicInstallerRequiredTerms = [
+export const publicInstallerRequiredTerms = [
   ['channel=', '"latest"'].join(''),
   ['https://compartment.dev', '/install.sh'].join(''),
   ['publish-self-hosted-', 'main.yml@refs/heads/main'].join(''),
