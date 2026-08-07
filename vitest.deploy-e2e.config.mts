@@ -40,6 +40,10 @@ export default defineConfig({
     fileParallelism: false,
     maxWorkers: 1,
     minWorkers: 1,
+    // These suites share one installed platform and run in order, so everything after the first
+    // failure repeats it against the same broken cluster. Stopping keeps the shard's remaining
+    // budget and its diagnostics pointed at the failure that actually happened.
+    bail: 1,
     ...mockCleanupSettings,
     setupFiles: [resolve(repoRoot, 'vitest.setup.mts')],
     coverage: coverageSettings,

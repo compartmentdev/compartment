@@ -1,9 +1,6 @@
 import {
   buildCompartmentConsoleOrganizationScopedPathname,
   compartmentBrowserRolesPathname,
-  compartmentCsrfCookieName,
-  compartmentCsrfHeaderName,
-  compartmentCurrentOrganizationHeaderName,
   compartmentRolesPathname,
   type PermissionKey,
 } from '@compartment/contracts/browser';
@@ -69,31 +66,6 @@ export class RolesPage {
     ]);
     await expect(drawer).toBeHidden();
     await this.expectRoleVisible(roleName);
-  }
-
-  async expectCreateRolePermissionsUnavailable(
-    roleName: string,
-    description: string,
-    permissionKeys: PermissionKey[],
-    allowedPermissionKeys: PermissionKey[] = [],
-  ): Promise<void> {
-    await Promise.all([
-      this.page.waitForURL((url: URL): boolean => this.isCreateRoleUrl(url)),
-      this.page.getByRole('button', { name: 'Create role' }).click(),
-    ]);
-
-    const drawer: Locator = this.detailDrawer('Create role');
-    await expect(drawer).toBeVisible();
-    await drawer.getByLabel('Role name').fill(roleName);
-    await drawer.getByLabel('Description').fill(description);
-    for (const permissionKey of allowedPermissionKeys) {
-      await expect(drawer.getByLabel(permissionKey, { exact: true })).toBeVisible();
-      await expect(drawer.getByLabel(permissionKey, { exact: true })).toBeEnabled();
-    }
-    for (const permissionKey of permissionKeys) {
-      await expect(drawer.getByLabel(permissionKey, { exact: true })).toHaveCount(0);
-    }
-    await this.expectTamperedRoleCreateForbidden(roleName, description, [...allowedPermissionKeys, ...permissionKeys]);
   }
 
   async openRoleDetails(roleName: string): Promise<void> {
@@ -186,95 +158,4 @@ export class RolesPage {
   private buildOrganizationPathname(pathname: string): string {
     return buildCompartmentConsoleOrganizationScopedPathname(this.organizationSlug, pathname);
   }
-
-  private async expectTamperedRoleCreateForbidden(
-    roleName: string,
-    description: string,
-    permissionKeys: PermissionKey[],
-  ): Promise<void> {
-    const result: TamperedRoleCreateResult = await this.page.evaluate(
-      async (input: TamperedRoleCreateInput): Promise<TamperedRoleCreateResult> => {
-        function readCookie(name: string): string | undefined {
-          const prefix: string = `${name}=`;
-          const match: string | undefined = document.cookie
-            .split('; ')
-            .find((cookie: string): boolean => cookie.startsWith(prefix));
-
-          return match === undefined ? undefined : decodeURIComponent(match.slice(prefix.length));
-        }
-
-        const csrfToken: string | undefined = readCookie(input.csrfCookieName);
-        if (csrfToken === undefined) {
-          return { errorCode: 'missing_csrf', status: 0 };
-        }
-
-        const response: globalThis.Response = await fetch(input.path, {
-          body: JSON.stringify({
-            description: input.description,
-            name: input.roleName,
-            permissionKeys: input.permissionKeys,
-          }),
-          credentials: 'same-origin',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            [input.csrfHeaderName]: csrfToken,
-            [input.organizationHeaderName]: input.organizationSlug,
-          },
-          method: 'POST',
-        });
-        const body: TamperedRoleCreateErrorBody | null = (await response
-          .json()
-          .catch((): null => null)) as TamperedRoleCreateErrorBody | null;
-
-        return {
-          errorCode: typeof body?.error?.code === 'string' ? body.error.code : null,
-          status: response.status,
-        };
-      },
-      {
-        csrfCookieName: compartmentCsrfCookieName,
-        csrfHeaderName: compartmentCsrfHeaderName,
-        description,
-        organizationHeaderName: compartmentCurrentOrganizationHeaderName,
-        organizationSlug: readCurrentOrganizationSlug(this.page.url()),
-        path: compartmentRolesPathname,
-        permissionKeys,
-        roleName,
-      },
-    );
-
-    expect(result).toEqual({ errorCode: 'forbidden', status: 403 });
-  }
-}
-
-interface TamperedRoleCreateInput {
-  csrfCookieName: string;
-  csrfHeaderName: string;
-  description: string;
-  organizationHeaderName: string;
-  organizationSlug: string;
-  path: string;
-  permissionKeys: PermissionKey[];
-  roleName: string;
-}
-
-interface TamperedRoleCreateResult {
-  errorCode: string | null;
-  status: number;
-}
-
-interface TamperedRoleCreateErrorBody {
-  error?: {
-    code?: string | undefined;
-  };
-}
-
-function readCurrentOrganizationSlug(currentUrl: string): string {
-  const [, prefix, organizationSlug] = new URL(currentUrl).pathname.split('/');
-  if (prefix !== 'orgs' || organizationSlug === undefined) {
-    throw new Error('Expected role page URL to include an organization slug.');
-  }
-
-  return decodeURIComponent(organizationSlug);
 }

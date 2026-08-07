@@ -5,29 +5,32 @@ export interface SelfHostedBuildMatrixPartitionDefinition {
 
 export const selfHostedBuildMatrixPartitions: Readonly<Record<string, SelfHostedBuildMatrixPartitionDefinition>> =
   Object.freeze({
-    'a-1': Object.freeze({
-      multiServiceFixtureNames: Object.freeze([]),
-      singleServiceFixtureNames: Object.freeze(['railpack', 'railpack-pnpm-workspace']),
-    }),
-    'a-2': Object.freeze({
-      multiServiceFixtureNames: Object.freeze(['java-api-frontend']),
-      singleServiceFixtureNames: Object.freeze(['dockerfile', 'dockerfile-monorepo', 'python']),
-    }),
-    'b-1': Object.freeze({
+    // Pull requests prove the default builder and the multi-service topology; the remaining
+    // builders run in the full matrix, which stays self-sufficient rather than assuming a
+    // pull-request run covered part of it.
+    pr: Object.freeze({
       multiServiceFixtureNames: Object.freeze(['multi-service']),
-      singleServiceFixtureNames: Object.freeze(['railpack-monorepo']),
+      singleServiceFixtureNames: Object.freeze(['railpack']),
     }),
-    'b-2': Object.freeze({
-      multiServiceFixtureNames: Object.freeze([]),
-      singleServiceFixtureNames: Object.freeze(['railpack-build-packages', 'static-poison']),
+    a: Object.freeze({
+      multiServiceFixtureNames: Object.freeze(['multi-service']),
+      singleServiceFixtureNames: Object.freeze([
+        'railpack',
+        'railpack-pnpm-workspace',
+        'railpack-monorepo',
+        'railpack-build-packages',
+      ]),
     }),
-    'b-3': Object.freeze({
-      multiServiceFixtureNames: Object.freeze([]),
-      singleServiceFixtureNames: Object.freeze(['vite-react', 'static-vite-react']),
-    }),
-    gvisor: Object.freeze({
-      multiServiceFixtureNames: Object.freeze([]),
-      singleServiceFixtureNames: Object.freeze(['dockerfile']),
+    b: Object.freeze({
+      multiServiceFixtureNames: Object.freeze(['java-api-frontend']),
+      singleServiceFixtureNames: Object.freeze([
+        'dockerfile',
+        'dockerfile-monorepo',
+        'python',
+        'vite-react',
+        'static-vite-react',
+        'static-poison',
+      ]),
     }),
   });
 
