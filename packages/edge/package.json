@@ -13,7 +13,7 @@
     "caddyfile:write": "node ./scripts/sync-caddyfile.mjs",
     "build": "tsc -p tsconfig.build.json",
     "build:test": "tsc -p tsconfig.test.json",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "eslint . --max-warnings 0 --cache --cache-location .eslintcache",
     "typecheck": "tsc -p tsconfig.json --noEmit --rootDir ../.. && tsc -p tsconfig.test.json --noEmit --rootDir ../..",
     "test": "vitest run --config ../../vitest.config.mts",
     "test:go": "go -C caddy-ratelimit test -race ./... && go -C caddy-traffic-metering test -race ./...",

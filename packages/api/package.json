@@ -13,7 +13,7 @@
     "dev": "dotenv -e ../../.env -- tsx watch --tsconfig tsconfig.json src/server.ts",
     "build": "tsc -p tsconfig.build.json",
     "build:test": "tsc -p tsconfig.test.json",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "eslint . --max-warnings 0 --cache --cache-location .eslintcache",
     "typecheck": "tsc -p tsconfig.json --noEmit --rootDir ../.. && tsc -p tsconfig.test.json --noEmit --rootDir ../.. && tsc -p tsconfig.vitest.json --noEmit",
     "test": "vitest run --config ./vitest.package.config.mts --no-file-parallelism",
     "db:check": "dotenv -e ../../.env -- tsx src/db/check.ts",

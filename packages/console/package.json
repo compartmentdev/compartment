@@ -22,7 +22,7 @@
     "build": "pnpm run build:browser && tsc -p tsconfig.build.json",
     "build:browser": "pnpm --filter @compartment/contracts build && vite build --config vite.config.ts",
     "build:test": "tsc -p tsconfig.test.json",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "eslint . --max-warnings 0 --cache --cache-location .eslintcache",
     "typecheck": "tsc -p tsconfig.json --noEmit --rootDir ../.. && tsc -p tsconfig.browser.json --noEmit && tsc -p tsconfig.test.json --noEmit --rootDir ../..",
     "test": "vitest run --config ../../vitest.config.mts --no-file-parallelism",
     "test:e2e": "playwright test --config test/e2e/playwright.config.ts",

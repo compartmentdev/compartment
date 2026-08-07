@@ -7,7 +7,7 @@
     "start": "astro dev",
     "build": "astro build",
     "docs:build": "pnpm --dir .. docs:generate && pnpm build",
-    "lint:code": "eslint . --max-warnings 0",
+    "lint:code": "eslint . --max-warnings 0 --cache --cache-location .eslintcache",
     "lint:format": "pnpm --dir .. exec prettier --check public-docs --ignore-path public-docs/.prettierignore",
     "lint": "pnpm lint:code && pnpm lint:format",
     "typecheck": "astro check",
