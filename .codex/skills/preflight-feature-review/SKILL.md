@@ -1,37 +1,19 @@
 ---
 name: preflight-feature-review
-description: Run a required subagent preflight before implementation and return a short coding brief: where to edit, what to avoid, what lint or runtime traps matter, and what to validate.
+description: Review a proposed Compartment change before implementation with three parallel read-only subagents covering the simplest complete solution, correct module placement, and reuse of established libraries.
 ---
 
 # Preflight Feature Review
 
-Use before every implementation task in this repo.
+Launch exactly three parallel Luna Max subagents. Give each the current request and known scope. Use only these cheap agents; they must inspect only: no edits, installs, builds, lint, typecheck, tests, or further delegation.
 
-Goal: make the main implementation agent write the first version close to final instead of discovering ownership, runtime, and lint problems after the code exists.
+1. **Simplest implementation**: inspect the relevant code and propose the smallest implementation that fully meets the current requirements. Call out anything the simple approach would miss.
+2. **Placement**: inspect `AGENTS.md`, the relevant layer docs, and nearby modules. Identify the owning package or module, exact placement, and boundaries that must remain intact.
+3. **Reuse**: inspect existing helpers and dependencies, then decide whether established code or a well-known library should replace custom implementation. Verify any new library from primary sources; recommend it without installing it. Say when custom code is simpler.
 
-## Read
+Wait for all three, resolve contradictions, and return only:
 
-- `AGENTS.md`
-- `docs/layers/README.md`
-- relevant layer docs
-- `docs/specs/type-placement.md` only when type ownership may change
-- `$public-docs-maintenance` only when public docs may be required
-
-## Algorithm
-
-1. Run this in a dedicated subagent. Do not silently replace it with a local pass.
-2. Treat the received plan as a hypothesis. Confirm or correct it before any code is written.
-3. Find the owner, entry boundary, smallest correct surface, and single canonical path.
-4. Check triggers: contracts, shared types, exports, entrypoints, scaffolding, env, ingress, migrations, auth, or org context.
-5. If the change adds or alters permissions, require an explicit default-grant and rollout decision in the brief.
-6. Pull `$audit-type-ownership` for cross-package type ownership or type moves. Pull `$compartment-runtime-hygiene` when runtime surface may change.
-7. Read adjacent code and tests in the owning package. Check the owning-package lint surface before edits so the brief reflects real local constraints and any baseline failures.
-8. Return one short coding brief for the main agent:
-   - `Write in`: owner, boundary, files or layer
-   - `Keep`: canonical path, contracts, runtime rules
-   - `Avoid`: fallback paths, test seams, export drift, likely lint traps
-   - `Docs`: `none` | `reference-only` | `curated`, plus the exact `public-docs/` pages and any nav or generated-reference surfaces in scope
-   - `Validate`: exact checks and test depth
-   - `Blockers`: anything that must be resolved before edits
-
-Editing starts only after the brief is back and blockers are closed.
+- `Simplest`: recommended implementation and why it is complete
+- `Placement`: owner, files, and boundary guidance
+- `Reuse`: existing helper, dependency, verified library, or custom code
+- `Blockers`: only genuine blockers, otherwise `none`

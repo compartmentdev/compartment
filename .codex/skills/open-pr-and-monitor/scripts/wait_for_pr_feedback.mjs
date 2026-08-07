@@ -1,15 +1,11 @@
 #!/usr/bin/env node
 
 import { execFile as execFileCallback } from 'node:child_process';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { promisify } from 'node:util';
-
-import { writePublicDocsWarning } from './public_docs_warning.mjs';
 
 const execFile = promisify(execFileCallback);
 
-const DEFAULT_INTERVAL_SECONDS = 300;
-const DEFAULT_TIMEOUT_SECONDS = 1800;
+const FAILED_CHECK_CONCLUSIONS = new Set(['action_required', 'cancelled', 'failure', 'startup_failure', 'timed_out']);
 const GH_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
 const REVIEW_THREADS_PAGE_SIZE = 100;
 
@@ -62,7 +58,12 @@ const LIST_REVIEW_THREADS_QUERY = `
             isOutdated
             isResolved
             comments(first: 100) {
-              nodes { id }
+              nodes {
+                author { login }
+                createdAt
+                id
+                url
+              }
             }
           }
           pageInfo { endCursor hasNextPage }
@@ -81,191 +82,15 @@ main().catch((error) => {
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const repository = await resolveRepository(options.repo);
-  let baseline = await readSnapshot(repository, options.prNumber);
+  const snapshot = await readSnapshot(repository, options.prNumber);
 
-  if (baseline.terminalEvent !== null) {
-    writeResult(
-      baseline.terminalEvent,
-      options,
-      repository,
-      baseline,
-      null,
-      baseline.terminalEvent === 'merged' ? 'The PR is already merged.' : 'The PR is already closed.',
-    );
-    return;
-  }
-
-  if (baseline.headSha !== options.headSha) {
-    writeResult(
-      'head-changed',
-      options,
-      repository,
-      baseline,
-      null,
-      'The PR head changed away from the pinned head SHA.',
-    );
-    return;
-  }
-
-  await writePublicDocsWarning({
-    execFile,
-    headSha: options.headSha,
-    maxBufferBytes: GH_MAX_BUFFER_BYTES,
-    stderr: process.stderr,
-  });
-
-  const startedAt = Date.now();
-  const deadline = startedAt + options.timeoutSeconds * 1000;
-
-  for (;;) {
-    const remainingMilliseconds = deadline - Date.now();
-    if (remainingMilliseconds <= 0) {
-      writeResult(
-        'timeout',
-        options,
-        repository,
-        baseline,
-        startedAt,
-        'Timed out with no decision-ready PR changes on the pinned head (intermediate check churn may have been absorbed).',
-      );
-      return;
-    }
-
-    await sleep(Math.min(options.intervalSeconds * 1000, remainingMilliseconds));
-
-    const current = await readSnapshot(repository, options.prNumber);
-
-    if (current.terminalEvent !== null) {
-      writeResult(
-        current.terminalEvent,
-        options,
-        repository,
-        current,
-        startedAt,
-        current.terminalEvent === 'merged'
-          ? 'Detected that the PR was merged while monitoring the pinned head.'
-          : 'Detected that the PR was closed while monitoring the pinned head.',
-      );
-      return;
-    }
-
-    if (current.headSha !== options.headSha) {
-      writeResult(
-        'head-changed',
-        options,
-        repository,
-        current,
-        startedAt,
-        'The PR head changed away from the pinned head SHA.',
-      );
-      return;
-    }
-
-    if (current.hasConflicts === true && current.mergeKey !== baseline.mergeKey) {
-      writeResult(
-        'merge-conflict',
-        options,
-        repository,
-        current,
-        startedAt,
-        'Detected PR merge conflicts or a dirty merge state on the pinned head.',
-      );
-      return;
-    }
-
-    if (current.feedbackKey !== baseline.feedbackKey) {
-      writeResult(
-        'feedback-changed',
-        options,
-        repository,
-        current,
-        startedAt,
-        'Detected new PR feedback on the pinned head.',
-      );
-      return;
-    }
-
-    // Checks and merge-state churn constantly while CI runs (every check flips
-    // pending -> in_progress -> success, and mergeStateStatus follows). Waking
-    // the monitoring agent on every transition burns a full inspection pass per
-    // flip. Only return once the picture is decision-ready: a failure appeared
-    // or every check completed. Intermediate churn is absorbed into the
-    // baseline so it never re-triggers.
-    const checksMoved = current.checksKey !== baseline.checksKey;
-    const mergeMoved = current.mergeKey !== baseline.mergeKey;
-    if (checksMoved || mergeMoved) {
-      const progress = readChecksProgress(current.checksKey);
-      if (progress.failed || progress.settled) {
-        writeResult(
-          checksMoved ? 'checks-changed' : 'merge-state-changed',
-          options,
-          repository,
-          current,
-          startedAt,
-          checksMoved
-            ? 'Detected settled or failing required-check changes on the pinned head.'
-            : 'Detected PR merge-state changes on the pinned head.',
-        );
-        return;
-      }
-      baseline = current;
-    }
-  }
-}
-
-const FAILED_CHECK_CONCLUSIONS = new Set(['action_required', 'cancelled', 'failure', 'startup_failure', 'timed_out']);
-
-function readChecksProgress(checksKey) {
-  const checks = JSON.parse(checksKey);
-  if (!Array.isArray(checks) || checks.length === 0) {
-    return { failed: false, settled: false };
-  }
-  let running = false;
-  let failed = false;
-  for (const check of checks) {
-    if (check.kind === 'required-check') {
-      // Entries from `gh pr checks --required` carry bucket/state, not
-      // status/conclusion. Buckets: pass, fail, pending, skipping, cancel.
-      const bucket = typeof check.bucket === 'string' ? check.bucket.toLowerCase() : '';
-      if (bucket === 'pending') {
-        running = true;
-      }
-      if (bucket === 'fail' || bucket === 'cancel') {
-        failed = true;
-      }
-      continue;
-    }
-    if (check.kind === 'commit-status') {
-      if (check.state === 'PENDING' || check.state === 'pending') {
-        running = true;
-      }
-      if (['ERROR', 'FAILURE', 'error', 'failure'].includes(check.state)) {
-        failed = true;
-      }
-      continue;
-    }
-    if (check.kind === 'workflow-run') {
-      if (check.status !== 'completed') {
-        running = true;
-      }
-      if (typeof check.conclusion === 'string' && FAILED_CHECK_CONCLUSIONS.has(check.conclusion)) {
-        failed = true;
-      }
-      continue;
-    }
-    // Unknown snapshot shape: stay conservative — keep waiting; the timeout
-    // heartbeat still bounds the wait.
-    running = true;
-  }
-  return { failed, settled: !running };
+  writeResult(options, repository, snapshot);
 }
 
 function parseArgs(argv) {
   let headSha = null;
-  let intervalSeconds = DEFAULT_INTERVAL_SECONDS;
   let prNumber = null;
   let repo = null;
-  let timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
 
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
@@ -282,18 +107,6 @@ function parseArgs(argv) {
       continue;
     }
 
-    if (value === '--interval-seconds') {
-      intervalSeconds = readPositiveInteger(argv[index + 1], '--interval-seconds');
-      index += 1;
-      continue;
-    }
-
-    if (value === '--timeout-seconds') {
-      timeoutSeconds = readPositiveInteger(argv[index + 1], '--timeout-seconds');
-      index += 1;
-      continue;
-    }
-
     if (value === '--repo') {
       repo = readRequiredValue(argv[index + 1], '--repo');
       index += 1;
@@ -301,9 +114,9 @@ function parseArgs(argv) {
     }
 
     if (value === '--help' || value === '-h') {
-      const helpText = `Usage: node .codex/skills/open-pr-and-monitor/scripts/wait_for_pr_feedback.mjs --pr <number> --head-sha <sha> [--repo <owner/repo>] [--interval-seconds <n>] [--timeout-seconds <n>]
+      const helpText = `Usage: node .codex/skills/open-pr-and-monitor/scripts/wait_for_pr_feedback.mjs --pr <number> --head-sha <sha> [--repo <owner/repo>]
 
-Returns one of: merged, closed, head-changed, merge-conflict, merge-state-changed, feedback-changed, checks-changed, timeout.`;
+Reads the current PR checks, feedback, and merge state once, prints JSON, and exits.`;
 
       process.stdout.write(helpText);
       process.exit(0);
@@ -316,7 +129,7 @@ Returns one of: merged, closed, head-changed, merge-conflict, merge-state-change
     throw new Error('--pr and --head-sha are required');
   }
 
-  return { headSha, intervalSeconds, prNumber, repo, timeoutSeconds };
+  return { headSha, prNumber, repo };
 }
 
 async function resolveRepository(repo) {
@@ -359,27 +172,26 @@ async function readSnapshot(repository, prNumber) {
     mergeable: pullRequestState.mergeable,
     potentialMergeCommitOid: pullRequestState.potentialMergeCommitOid,
   };
+  const comments = normalizeIssueComments(pullRequestFeedback.comments);
+  const reviews = normalizeReviews(pullRequestFeedback.reviews);
 
   return {
-    checksKey: JSON.stringify(checks),
-    feedbackKey: JSON.stringify({
-      comments: normalizeIssueCommentIds(pullRequestFeedback.comments),
-      reviews: normalizeReviewIds(pullRequestFeedback.reviews),
+    checks: {
+      items: checks,
+      status: summarizeChecks(checks),
+    },
+    feedback: {
+      comments,
+      reviews,
       threads: reviewThreads,
-    }),
-    hasConflicts: mergeStatus.hasConflicts,
+      unresolvedThreadCount: reviewThreads.filter((thread) => thread.isResolved === false).length,
+    },
     headSha: pullRequestState.headSha,
     lifecycle: {
       closedAt: pullRequestState.closedAt,
       mergedAt: pullRequestState.mergedAt,
       state: pullRequestState.state,
     },
-    mergeKey: JSON.stringify({
-      hasConflicts: mergeStatus.hasConflicts,
-      isInMergeQueue: mergeStatus.isInMergeQueue,
-      mergeStateStatus: mergeStatus.mergeStateStatus,
-      mergeable: mergeStatus.mergeable,
-    }),
     mergeStatus,
     terminalEvent: readPullRequestTerminalEvent(pullRequestState),
     url: pullRequestState.url,
@@ -388,35 +200,32 @@ async function readSnapshot(repository, prNumber) {
 
 async function readChecks(repository, prNumber, headSha) {
   try {
-    return await readRequiredChecks(repository, prNumber);
+    return await readVisibleChecks(repository, prNumber);
   } catch (error) {
-    if (isCheckFallbackError(error) === false) {
-      throw error;
+    if (isNoChecksError(error)) {
+      return [];
+    }
+    if (isStatusCheckRollupPermissionError(error)) {
+      return await readVisibleChecksByHeadSha(repository, headSha);
     }
 
-    return await readVisibleChecksByHeadSha(repository, headSha);
+    throw error;
   }
 }
 
-async function readRequiredChecks(repository, prNumber) {
-  const checks = await runGhJson([
-    'pr',
-    'checks',
-    String(prNumber),
-    '-R',
-    repository.slug,
-    '--required',
-    '--json',
-    'name,bucket,state,workflow',
-  ]);
+async function readVisibleChecks(repository, prNumber) {
+  const checks = await runGhJson(
+    ['pr', 'checks', String(prNumber), '-R', repository.slug, '--json', 'name,bucket,state,workflow'],
+    [1, 8],
+  );
 
   if (!Array.isArray(checks)) {
-    throw new Error('Expected required checks JSON array.');
+    throw new Error('Expected visible checks JSON array.');
   }
 
   return checks
     .map((check) => ({
-      kind: 'required-check',
+      kind: 'pull-request-check',
       bucket: readString(check.bucket, 'checks.bucket'),
       name: readString(check.name, 'checks.name'),
       state: readString(check.state, 'checks.state'),
@@ -498,7 +307,7 @@ async function listReviewThreads(repository, prNumber) {
 
     threads.push(
       ...nodes.map((thread) => ({
-        comments: normalizeThreadCommentIds(thread?.comments?.nodes),
+        comments: normalizeThreadComments(thread?.comments?.nodes),
         id: readString(thread?.id, 'reviewThreads.id'),
         isOutdated: Boolean(thread?.isOutdated),
         isResolved: Boolean(thread?.isResolved),
@@ -599,17 +408,13 @@ function isStatusCheckRollupPermissionError(error) {
   );
 }
 
-function isCheckFallbackError(error) {
-  return isStatusCheckRollupPermissionError(error) || isNoRequiredChecksError(error);
-}
-
-function isNoRequiredChecksError(error) {
+function isNoChecksError(error) {
   if (!(error instanceof Error)) {
     return false;
   }
 
   const detail = readWrappedErrorDetail(error);
-  return detail !== null && detail.includes('no required checks reported');
+  return detail !== null && detail.includes('no checks reported');
 }
 
 function isMissingIsInMergeQueueError(error) {
@@ -651,11 +456,16 @@ function parseRepositorySlug(repo) {
   };
 }
 
-async function runGhJson(args) {
+async function runGhJson(args, acceptedExitCodes = []) {
   try {
     const result = await execFile('gh', args, { maxBuffer: GH_MAX_BUFFER_BYTES });
     return JSON.parse(result.stdout);
   } catch (error) {
+    const stdout = typeof error.stdout === 'string' ? error.stdout.trim() : '';
+    if (typeof error.code === 'number' && acceptedExitCodes.includes(error.code) && stdout !== '') {
+      return JSON.parse(stdout);
+    }
+
     const detail =
       typeof error.stderr === 'string' && error.stderr.trim().length > 0 ? error.stderr.trim() : error.message;
     const wrappedError = new Error(`gh ${args.join(' ')} failed: ${detail}`);
@@ -681,49 +491,66 @@ function readWrappedErrorDetail(error) {
   return error.message.length > 0 ? error.message : null;
 }
 
-function normalizeIssueCommentIds(comments) {
+function normalizeIssueComments(comments) {
   if (!Array.isArray(comments)) {
     return [];
   }
 
-  return comments.map((comment) => readString(comment?.id, 'comments.id')).sort();
+  return comments
+    .map((comment) => ({
+      author: readOptionalString(comment?.author?.login),
+      createdAt: readOptionalString(comment?.createdAt),
+      id: readString(comment?.id, 'comments.id'),
+      url: readOptionalString(comment?.url),
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
 }
 
-function normalizeReviewIds(reviews) {
+function normalizeReviews(reviews) {
   if (!Array.isArray(reviews)) {
     return [];
   }
 
   return reviews
-    .map((review) => {
-      const commitOid = typeof review?.commit?.oid === 'string' ? review.commit.oid : '';
-      return `${readString(review?.id, 'reviews.id')}:${commitOid}`;
-    })
-    .sort();
+    .map((review) => ({
+      author: readOptionalString(review?.author?.login),
+      commitSha: readOptionalString(review?.commit?.oid),
+      id: readString(review?.id, 'reviews.id'),
+      state: readString(review?.state, 'reviews.state'),
+      submittedAt: readOptionalString(review?.submittedAt),
+      url: readOptionalString(review?.url),
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
 }
 
-function normalizeThreadCommentIds(comments) {
+function normalizeThreadComments(comments) {
   if (!Array.isArray(comments)) {
     return [];
   }
 
-  return comments.map((comment) => readString(comment?.id, 'reviewThreads.comments.id')).sort();
+  return comments
+    .map((comment) => ({
+      author: readOptionalString(comment?.author?.login),
+      createdAt: readOptionalString(comment?.createdAt),
+      id: readString(comment?.id, 'reviewThreads.comments.id'),
+      url: readOptionalString(comment?.url),
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
 }
 
 function compareVisibleChecks(left, right) {
   return JSON.stringify(left).localeCompare(JSON.stringify(right));
 }
 
-function writeResult(event, options, repository, snapshot, startedAt, summary) {
-  const elapsedSeconds = startedAt === null ? 0 : Math.max(0, Math.round((Date.now() - startedAt) / 1000));
-
+function writeResult(options, repository, snapshot) {
   process.stdout.write(
     `${JSON.stringify(
       {
-        currentHeadSha: snapshot.headSha,
-        elapsedSeconds,
-        event,
+        checks: snapshot.checks,
         expectedHeadSha: options.headSha,
+        feedback: snapshot.feedback,
+        headChanged: snapshot.headSha !== options.headSha,
+        headSha: snapshot.headSha,
         mergeStatus: snapshot.mergeStatus,
         pullRequest: {
           closedAt: snapshot.lifecycle.closedAt,
@@ -733,12 +560,50 @@ function writeResult(event, options, repository, snapshot, startedAt, summary) {
           state: snapshot.lifecycle.state,
           url: snapshot.url,
         },
-        summary,
+        terminalEvent: snapshot.terminalEvent,
       },
       null,
       2,
     )}\n`,
   );
+}
+
+function summarizeChecks(checks) {
+  if (checks.length === 0) {
+    return 'none';
+  }
+
+  let pending = false;
+  for (const check of checks) {
+    if (check.kind === 'pull-request-check') {
+      const bucket = readOptionalString(check.bucket).toLowerCase();
+      if (bucket === 'fail' || bucket === 'cancel') {
+        return 'failed';
+      }
+      pending ||= bucket === 'pending';
+      continue;
+    }
+    if (check.kind === 'workflow-run') {
+      const conclusion = readOptionalString(check.conclusion).toLowerCase();
+      if (FAILED_CHECK_CONCLUSIONS.has(conclusion)) {
+        return 'failed';
+      }
+      pending ||= check.status !== 'completed';
+      continue;
+    }
+    if (check.kind === 'commit-status') {
+      const state = readOptionalString(check.state).toLowerCase();
+      if (state === 'error' || state === 'failure') {
+        return 'failed';
+      }
+      pending ||= state === 'pending';
+      continue;
+    }
+
+    return 'unknown';
+  }
+
+  return pending ? 'pending' : 'passed';
 }
 
 function readPositiveInteger(value, flagName) {

@@ -10,7 +10,6 @@ const rootScriptRoots = ['scripts', '.codex/skills'];
 const importSmokePaths = [
   'scripts/docs/public-docs/public-docs-areas.mjs',
   'scripts/docs/public-docs/public-docs-map.mjs',
-  '.codex/skills/open-pr-and-monitor/scripts/public_docs_warning.mjs',
 ];
 
 await main();

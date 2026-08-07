@@ -1,4 +1,4 @@
 interface:
   display_name: 'Preflight Feature Review'
-  short_description: 'Required subagent preflight that returns a coding brief'
-  default_prompt: 'Use $preflight-feature-review before implementation to confirm owner, boundary, canonical path, triggers, lint traps, and validation, then return a short coding brief with write surface, keep rules, avoid rules, validation, and blockers.'
+  short_description: 'Three focused reviews before implementation'
+  default_prompt: 'Use $preflight-feature-review to run three parallel Luna Max reviews for the simplest complete implementation, correct module placement, and established-library reuse.'
