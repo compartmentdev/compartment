@@ -1,0 +1,6 @@
+dependencies:
+- name: capsule
+  repository: https://projectcapsule.github.io/charts
+  version: 0.13.11
+digest: sha256:620e2e0634806cdff8d492b0eb90880d9162ec3d705dfe3f70e03080a66906fc
+generated: "2026-08-07T15:56:09.136465035Z"

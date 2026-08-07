@@ -23,6 +23,9 @@ curl -fsSL https://compartment.dev/install.sh | sh
 
 For an existing Kubernetes cluster, pass the same operator values file used for the installation:
 
+Before updating, upgrade the cluster to Kubernetes 1.35 or newer. The current chart will reject Kubernetes 1.30–1.34;
+Compartment does not upgrade operator-owned clusters.
+
 ```bash
 compartment system update \
   --kube-context production \
@@ -38,7 +41,8 @@ On a Compartment-managed VM, run:
 sudo compartment system update
 ```
 
-That path verifies the Compartment-owned k3s and gVisor runtime, creates a local etcd snapshot, and updates the
+That path upgrades and verifies the Compartment-owned k3s version when required, verifies the gVisor runtime, creates
+a local etcd snapshot, and updates the
 platform through resumable stages. It fails closed when the recorded installer-owned release metadata differs and
 then requires reprovisioning a clean VM; it does not automatically delete generated K3s host files. See
 [Operate a Managed VM](/guides/operate-managed-vm/) for diagnostics, recovery, backup limits, and reprovisioning.

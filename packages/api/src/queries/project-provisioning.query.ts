@@ -1,6 +1,6 @@
 import { and, asc, eq, gt, lt, or, sql, type SQL } from 'drizzle-orm';
 import type { ProjectProvisioningAction } from '@compartment/contracts';
-import { projectKubeProvisioning, projects } from '../db/schema';
+import { organizationQuotaReconciliation, projectKubeProvisioning, projects } from '../db/schema';
 import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { claimSelectedRow } from './claim-row.query.shared';
@@ -96,14 +96,27 @@ async function selectClaimableRow(
   action: ProjectProvisioningAction | 'any',
 ): Promise<ProjectProvisioningClaimSelection | undefined> {
   const rows: ProjectProvisioningClaimSelection[] = await transaction
-    .select({ projectName: projects.name, provisioning: projectKubeProvisioning })
+    .select({
+      organizationId: projects.organizationId,
+      projectName: projects.name,
+      provisioning: projectKubeProvisioning,
+    })
     .from(projectKubeProvisioning)
     .innerJoin(projects, eq(projects.id, projectKubeProvisioning.projectId))
-    .where(provisioningClaimableCondition(now, action))
+    .innerJoin(organizationQuotaReconciliation, organizationQuotaJoinCondition())
+    .where(and(organizationQuotaReadinessCondition(action), provisioningClaimableCondition(now, action)))
     .orderBy(asc(projectKubeProvisioning.createdAt))
     .limit(1)
     .for('update', { skipLocked: true });
   return rows[0];
+}
+
+function organizationQuotaJoinCondition(): SQL {
+  return eq(organizationQuotaReconciliation.organizationId, projects.organizationId);
+}
+
+function organizationQuotaReadinessCondition(action: ProjectProvisioningAction | 'any'): SQL | undefined {
+  return action === 'teardown' ? undefined : eq(organizationQuotaReconciliation.state, 'succeeded');
 }
 
 function provisioningClaimableCondition(now: Date, action: ProjectProvisioningAction | 'any'): SQL | undefined {
@@ -194,7 +207,7 @@ async function leaseProjectProvisioning(
       updatedAt: now,
     })
     .where(eq(projectKubeProvisioning.projectId, row.projectId));
-  return projectProvisioningClaim(action, leaseId, row.projectId, selection.projectName);
+  return projectProvisioningClaim(action, leaseId, row.projectId, selection.organizationId, selection.projectName);
 }
 
 function nextProvisioningAttempts(row: typeof projectKubeProvisioning.$inferSelect): SQL {
@@ -211,6 +224,7 @@ function projectProvisioningClaim(
   action: ProjectProvisioningAction,
   leaseId: string,
   projectId: string,
+  organizationId: string,
   projectName: string,
 ): ProjectProvisioningClaimRow {
   return {
@@ -218,6 +232,7 @@ function projectProvisioningClaim(
     isolationVersion: projectIsolationVersion,
     leaseId,
     namespaceId: projectId,
+    organizationId,
     projectId,
     projectName,
   };

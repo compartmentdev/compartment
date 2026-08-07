@@ -5,7 +5,7 @@ existing-cluster preflight before applying it.
 
 ## Requirements
 
-- Kubernetes 1.30.0 or newer
+- Kubernetes 1.35.0 or newer
 - Helm 4.x
 - an existing Ingress Controller
 - cert-manager
@@ -14,6 +14,9 @@ existing-cluster preflight before applying it.
 - persistent storage
 - gVisor installed on every node eligible for build or tenant workloads, with a working RuntimeClass
 - installer access to the namespaced and cluster-scoped resources rendered by the chart
+
+The chart installs Capsule 0.13.11 and enables its fail-closed calculation admission webhook only for Pods and PVCs in
+Compartment-managed project namespaces. Platform and build namespaces are excluded by the positive namespace labels.
 
 The chart does not install or disable cluster infrastructure and does not mutate nodes.
 

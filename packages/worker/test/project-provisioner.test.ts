@@ -599,6 +599,7 @@ const target: ProjectProvisioningTargetV2 = {
   isolationVersion: 1,
   leaseId: 'lease_1',
   namespaceId: 'prj_1',
+  organizationId: 'org_1',
   projectId: 'prj_1',
   projectName: 'payments',
 };

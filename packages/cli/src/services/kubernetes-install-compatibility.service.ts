@@ -2,9 +2,9 @@ import type { KubernetesInstallCompatibility, SemanticVersion } from './kubernet
 
 export const kubernetesInstallCompatibility: KubernetesInstallCompatibility = {
   helmMinimumVersion: '4.0.0',
-  kubernetesMinimumVersion: '1.30.0',
+  kubernetesMinimumVersion: '1.35.0',
   kubectlMaximumMinorSkew: 1,
-  kubectlMinimumVersion: '1.30.0',
+  kubectlMinimumVersion: '1.35.0',
   managed: {
     certManager: {
       name: 'cert-manager',

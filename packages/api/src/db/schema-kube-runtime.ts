@@ -240,7 +240,7 @@ export const projectKubeProvisioning: KubeRuntimeSchemaTypes.ProjectKubeProvisio
     attempts: integer('attempts').default(0).notNull(),
     isolationVersion: integer('isolation_version')
       .default(0)
-      .$defaultFn((): number => 1)
+      .$defaultFn((): number => 2)
       .notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

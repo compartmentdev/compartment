@@ -11,12 +11,12 @@ const projectQuota: Readonly<Record<string, string>> = {
   'count/secrets': '100',
   'count/serviceaccounts': '10',
   'count/services': '50',
-  'limits.cpu': '20',
-  'limits.memory': '20Gi',
+  'limits.cpu': '4',
+  'limits.memory': '4Gi',
   pods: '50',
-  'requests.cpu': '10',
-  'requests.memory': '10Gi',
-  'requests.storage': '100Gi',
+  'requests.cpu': '2',
+  'requests.memory': '2Gi',
+  'requests.storage': '20Gi',
 };
 
 export function projectResourceQuotaManifest(namespace: string, namespaceId: string, projectId: string): KubeManifest {

@@ -22,7 +22,7 @@ export async function resolvePreflightKubeconfig(
     const failure: Error = error instanceof Error ? error : new Error('Kubeconfig resolution failed.');
     const message: string =
       failure instanceof KubernetesInstallKubeconfigResolutionError && failure.reason === 'no-usable-cluster'
-        ? 'No usable Kubernetes cluster found.\n\nCompartment installs into an existing Kubernetes cluster.\n\nInstall a supported cluster or set KUBECONFIG to an existing one.\n\nAlso required: kubectl >= 1.30 and Helm >= 4.'
+        ? 'No usable Kubernetes cluster found.\n\nCompartment installs into an existing Kubernetes cluster.\n\nInstall a supported cluster or set KUBECONFIG to an existing one.\n\nAlso required: kubectl >= 1.35 and Helm >= 4.'
         : failure.message;
     dependencies.io.stderr(`✗ kubeconfig: ${message}\n`);
     throw new ReportedCliError(message);

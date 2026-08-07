@@ -7,6 +7,7 @@ export type { KubeLeaderElectionConfig, KubeLeaderElector } from './kube-leader-
 export { KubeRuntime } from './kube-runtime';
 export { KubeJobLogAttachmentError } from './kube-job-log-stream';
 export { kubeApplicationIdentityName, kubeNamespaceName, kubeResourceVolumeName } from './kube-naming';
+export { organizationGlobalCustomQuotaManifests } from './kube-organization-quota-projection';
 export { observeCustomDomainProjection, projectCustomDomainManifests } from './kube-custom-domain-projection';
 export type {
   CustomDomainProjectionObservation,

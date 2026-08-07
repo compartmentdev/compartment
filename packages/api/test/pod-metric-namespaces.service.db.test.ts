@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
-import { organizations, projectKubeProvisioning, projects } from '../src/db/schema';
+import { organizationQuotaReconciliation, organizations, projectKubeProvisioning, projects } from '../src/db/schema';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import type {
   ProjectKubeProvisioningState,
@@ -60,6 +60,7 @@ describe('Pod metric namespace scope', (): void => {
 
   it('returns only active provisioned projects in deterministic order', async (): Promise<void> => {
     await db.insert(organizations).values({ id: 'org_metrics', name: 'Metrics', slug: 'metrics' });
+    await seedOrganizationQuota('org_metrics');
     await seedProject('prj_z', 'succeeded');
     await seedProject('prj_a', 'succeeded');
     await seedProject('prj_archived', 'succeeded', new Date('2026-07-21T04:00:00.000Z'));
@@ -72,13 +73,14 @@ describe('Pod metric namespace scope', (): void => {
 
   it('reclaims pre-isolation succeeded projects and rejects stale-generation completion', async (): Promise<void> => {
     await db.insert(organizations).values({ id: 'org_upgrade', name: 'Upgrade', slug: 'upgrade' });
+    await seedOrganizationQuota('org_upgrade');
     await db.insert(projects).values({ id: 'prj_upgrade', name: 'upgrade', organizationId: 'org_upgrade' });
     await db
       .insert(projectKubeProvisioning)
       .values({ isolationVersion: 0, projectId: 'prj_upgrade', state: 'succeeded' });
 
     const target: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning('provision');
-    expect(target).toMatchObject({ isolationVersion: 1, projectId: 'prj_upgrade' });
+    expect(target).toMatchObject({ isolationVersion: 2, projectId: 'prj_upgrade' });
     await expect(
       completeProjectProvisioning({
         action: 'provision',
@@ -93,7 +95,7 @@ describe('Pod metric namespace scope', (): void => {
       completeProjectProvisioning({
         action: 'provision',
         failureMessage: null,
-        isolationVersion: target?.isolationVersion ?? 1,
+        isolationVersion: target?.isolationVersion ?? 2,
         leaseId: target?.leaseId ?? '',
         projectId: 'prj_upgrade',
         status: 'succeeded',
@@ -105,6 +107,7 @@ describe('Pod metric namespace scope', (): void => {
 
   it('starts isolation-upgrade retry accounting in the new generation', async (): Promise<void> => {
     await db.insert(organizations).values({ id: 'org_retry', name: 'Retry', slug: 'retry' });
+    await seedOrganizationQuota('org_retry');
     await db.insert(projects).values({ id: 'prj_retry', name: 'retry', organizationId: 'org_retry' });
     await db
       .insert(projectKubeProvisioning)
@@ -115,7 +118,7 @@ describe('Pod metric namespace scope', (): void => {
       completeProjectProvisioning({
         action: 'provision',
         failureMessage: 'retry upgrade',
-        isolationVersion: first?.isolationVersion ?? 1,
+        isolationVersion: first?.isolationVersion ?? 2,
         leaseId: first?.leaseId ?? '',
         projectId: 'prj_retry',
         status: 'failed',
@@ -127,11 +130,15 @@ describe('Pod metric namespace scope', (): void => {
       .where(eq(projectKubeProvisioning.projectId, 'prj_retry'));
 
     await expect(claimPendingProjectProvisioning('provision')).resolves.toMatchObject({
-      isolationVersion: 1,
+      isolationVersion: 2,
       projectId: 'prj_retry',
     });
   });
 });
+
+async function seedOrganizationQuota(organizationId: string): Promise<void> {
+  await db.insert(organizationQuotaReconciliation).values({ organizationId, state: 'succeeded' });
+}
 
 async function seedProject(
   projectId: string,

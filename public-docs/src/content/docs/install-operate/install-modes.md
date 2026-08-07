@@ -47,7 +47,7 @@ recovery.
 
 ## Existing Kubernetes
 
-Use this target when your organization already operates Kubernetes 1.30 or newer:
+Use this target when your organization already operates Kubernetes 1.35 or newer:
 
 ```bash
 compartment install --target kubernetes --kube-context production
@@ -59,6 +59,10 @@ ClusterIssuers and lets you select an observed issuer. If cert-manager is absent
 setup stops with the prerequisite and exact next commands before collecting an impossible issuer name. It does not
 install an ingress controller, change node container-runtime or CA-trust configuration, or take ownership of cluster
 upgrades and backups.
+
+The Helm release installs Capsule 0.13.11 and its cluster-scoped quota resources. Capsule's calculation webhook fails
+closed for Pod and persistent volume claim admission in Compartment-managed project namespaces, so those operations
+are rejected while the webhook is unavailable. Platform and build namespaces are not selected.
 
 For non-interactive installation, `--target vm|kubernetes` is required. Provide the remaining owner, domain, cluster,
 and values inputs explicitly.

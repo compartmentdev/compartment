@@ -17,6 +17,7 @@ import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { createAuthSessionWithExecutor } from './authentication.query';
 import { insertOperationRecordWithExecutor } from './operations.query';
+import { createOrganizationQuotaReconciliationWithExecutor } from './organization-quota-reconciliation.query';
 import type {
   CreateInitialInstallationInput,
   InstallGuardCallback,
@@ -54,6 +55,7 @@ export async function insertInitialInstallationWithExecutor(
   operationInput: InsertOperationInput,
 ): Promise<OperationRecord> {
   await insertOrganization(tx, input);
+  await createOrganizationQuotaReconciliationWithExecutor(tx, input.organizationId);
   await insertPrincipal(tx, input);
   await insertOrganizationMembership(tx, input);
   const adminRoleId: string = await insertSystemRoles(tx, input.organizationId);

@@ -73,7 +73,7 @@ describe('system command kubeconfig resolution', (): void => {
         return await Promise.resolve({ exitCode: 0, stderr: '', stdout: 'v4.0.0' });
       }
       if (command[0] === 'kubectl' && command[1] === 'version') {
-        return await Promise.resolve(successfulCommand({ clientVersion: { gitVersion: 'v1.30.0' } }));
+        return await Promise.resolve(successfulCommand({ clientVersion: { gitVersion: 'v1.35.0' } }));
       }
       if (command[0] === 'helm') {
         return await Promise.resolve(successfulCommand({ info: { status: 'deployed' } }));

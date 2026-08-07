@@ -8,6 +8,7 @@ export interface ProjectProvisioningTargetV2 {
   isolationVersion: number;
   leaseId: string;
   namespaceId: string;
+  organizationId: string;
   projectId: string;
   projectName: string;
 }
@@ -38,6 +39,7 @@ const projectProvisioningTargetV2Schema: ContractSchema<ProjectProvisioningTarge
     isolationVersion: z.number().int().nonnegative(),
     leaseId: z.string().min(1),
     namespaceId: z.string().min(1),
+    organizationId: z.string().min(1),
     projectId: z.string().min(1),
     projectName: z.string().min(1),
   })

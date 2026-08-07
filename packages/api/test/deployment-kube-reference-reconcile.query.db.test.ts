@@ -27,6 +27,7 @@ import { findActiveDeploymentRouteByHost } from '../src/queries/deployment-route
 import type { DeploymentRouteLookupRow } from '../src/queries/deployment-routes.query.types';
 import { requestDeploymentKubeStop } from '../src/queries/deployment-kube-membership.query';
 import { completeProjectProvisioning } from '../src/queries/project-provisioning-completion.query';
+import { projectIsolationVersion } from '../src/queries/project-provisioning-policy';
 import { claimPendingProjectProvisioning } from '../src/queries/project-provisioning.query';
 import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisioning.query.types';
 import { upsertDeploymentKubeReference } from '../src/queries/deployment-kube-reference.query';
@@ -427,7 +428,9 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
   it('serializes terminal provisioning with preparation of future deployment work', async (): Promise<void> => {
     await seedCandidate(db);
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await db
+      .insert(projectKubeProvisioning)
+      .values({ isolationVersion: projectIsolationVersion, projectId: 'prj_kube', state: 'succeeded' });
     const holder: PoolClient = await pool.connect();
     let preparation: Promise<PrepareDeploymentReconcileResult> | null = null;
     try {
@@ -465,12 +468,14 @@ describe('deployment Kubernetes transition persistence', (): void => {
       await Promise.allSettled(preparation === null ? [] : [preparation]);
       holder.release();
     }
-  });
+  }, 10_000);
 
   it('serializes deployment preparation with project archival', async (): Promise<void> => {
     await seedCandidate(db);
     await db.delete(deploymentKubeReferences).where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate'));
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await db
+      .insert(projectKubeProvisioning)
+      .values({ isolationVersion: projectIsolationVersion, projectId: 'prj_kube', state: 'succeeded' });
     const holder: PoolClient = await pool.connect();
     let preparation: Promise<PrepareDeploymentReconcileResult> | null = null;
     try {
@@ -505,7 +510,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
       await Promise.allSettled(preparation === null ? [] : [preparation]);
       holder.release();
     }
-  });
+  }, 10_000);
 
   it('claims a requested stop and accepts the worker acknowledgement', async (): Promise<void> => {
     await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });

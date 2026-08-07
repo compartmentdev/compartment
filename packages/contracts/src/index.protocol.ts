@@ -119,3 +119,4 @@ export {
   compartmentWhoAmIPathname,
 } from './contracts/control-plane-protocol.contract';
 export * from './contracts/internal-project-provisioning.contract';
+export * from './contracts/internal-organization-quota-reconcile.contract';

@@ -30,6 +30,7 @@ import { registerResourceReconcileRoutes } from './resource-reconcile.routes';
 import { registerPostClaimProjectProvisioningRoute } from './post-claim-project-provisioning.route';
 import { registerPostCompleteProjectProvisioningRoute } from './post-complete-project-provisioning.route';
 import { registerCustomDomainReconcileRoutes } from './custom-domain-reconcile.routes';
+import { registerOrganizationQuotaReconciliationRoutes } from './organization-quota-reconciliation.routes';
 
 type RegisterInternalRoutesDone = (err?: Error) => void;
 interface InternalApiRoutesOptions extends FastifyPluginOptions {
@@ -92,6 +93,7 @@ function registerWorkerInternalRoutes(
 function registerWorkerOperationRoutes(app: ApiApp): void {
   registerPostClaimProjectProvisioningRoute(app);
   registerPostCompleteProjectProvisioningRoute(app);
+  registerOrganizationQuotaReconciliationRoutes(app);
   registerDeploymentReconcileRoutes(app);
   registerPostRunNextScheduledResourceOperationRoute(app);
   registerProductJobRoutes(app);

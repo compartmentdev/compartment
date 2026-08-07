@@ -34,6 +34,7 @@ import {
   environmentVariableValues,
   environments,
   operations,
+  organizationQuotaReconciliation,
   organizations,
   principals,
   projectServices,
@@ -59,7 +60,7 @@ import {
   claimNextQueuedDeployment,
   completeQueuedDeployment,
   injectDeployRequest,
-  installCompartment,
+  installCompartment as installCompartmentHarness,
   requireClaimedDeployment,
   requireDeployResponseDeployment,
   requireSingleDeployment,
@@ -177,6 +178,12 @@ let db!: Database;
 let app!: ApiApp;
 let systemApp!: ApiApp;
 let hasInitializedApiIntegrationRuntime: boolean = false;
+
+async function installCompartment(targetApp: ApiApp): Promise<InstallResponse> {
+  const response: InstallResponse = await installCompartmentHarness(targetApp);
+  await db.update(organizationQuotaReconciliation).set({ state: 'succeeded' });
+  return response;
+}
 
 describe('Phase 0 API integration project lifecycle', (): void => {
   useApiDatabaseTestHarness(apiIntegrationDatabaseUrl);

@@ -277,3 +277,51 @@ resources:
   wait:
     requests: { cpu: 10m, memory: 32Mi }
     limits: { cpu: 100m, memory: 128Mi }
+
+capsule:
+  manager:
+    image:
+      tag: 'v0.13.11'
+  webhooks:
+    hooks:
+      customquotas: { enabled: false }
+      globalcustomquotas: { enabled: false }
+      calculations:
+        enabled: true
+        failurePolicy: Fail
+        namespaceSelector:
+          matchLabels:
+            app.kubernetes.io/managed-by: compartment
+          matchExpressions:
+            - key: compartment.dev/organization-id
+              operator: Exists
+            - key: compartment.dev/project-id
+              operator: Exists
+        rules:
+          - apiGroups: ['']
+            apiVersions: ['v1']
+            operations: [CREATE, UPDATE, DELETE]
+            resources: [pods, persistentvolumeclaims]
+            scope: Namespaced
+      rulestatus: { enabled: false }
+      metadata: { enabled: false }
+      generic: { enabled: false }
+      resourcepools:
+        pools: { enabled: false }
+        claims: { enabled: false }
+      customresources: { enabled: false }
+      namespaces: { enabled: false }
+      cordoning: { enabled: false }
+      gateways: { enabled: false }
+      ingresses: { enabled: false }
+      devices: { enabled: false }
+      pods: { enabled: false }
+      persistentvolumeclaims: { enabled: false }
+      tenants: { enabled: false }
+      owners: { enabled: false }
+      config: { enabled: false }
+      managed: { enabled: false }
+      replications: { enabled: false }
+      services: { enabled: false }
+      nodes: { enabled: false }
+      serviceaccounts: { enabled: false }

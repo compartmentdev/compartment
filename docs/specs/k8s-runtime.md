@@ -207,7 +207,7 @@ cache import and export use the project/service-scoped cache repository for both
 
 The bootstrap role and controller role are derived from the immutable T5 artifacts. No
 production or seeded Compartment principal receives either role by default.
-Fresh installs require Kubernetes 1.30 or newer and install a fail-closed
+Fresh installs require Kubernetes 1.35 or newer and install a fail-closed
 `ValidatingAdmissionPolicy`. Every short-lived bootstrap ServiceAccount is
 named after its immutable `cpt-*` target namespace. Admission permits that
 identity to create the namespace and canonical controller RoleBindings only
@@ -231,6 +231,16 @@ three-attempt terminal limit. A third failed completion fails waiting deployment
 operations and resource reconcile runs instead of leaving them unclaimable.
 Existing project controller RoleBindings remain unchanged; new projects and
 explicit retries use the target-bound bootstrap identity.
+
+Each organization receives one Capsule `GlobalCustomQuota` pool selected by
+its immutable organization label across all managed project namespaces. The
+fixed pool permits 2 CPU requests, 4 CPU limits, 2Gi memory requests, 4Gi
+memory limits, and 20Gi requested PVC storage. Capsule admission evaluates
+only Pod and PVC create, update, and delete requests in positively labeled
+project namespaces and fails closed. Platform and build namespaces are outside
+that selector. Existing workloads are not evicted when aggregate usage is over
+limit; new Pod or PVC admission remains denied until deletion or downsizing
+releases capacity. API state tracks only reconciliation readiness, never usage.
 
 ## Migration and deletion
 

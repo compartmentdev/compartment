@@ -6,6 +6,7 @@ import {
 import {
   claimCustomDomainReconcile,
   claimDeploymentReconcile,
+  claimOrganizationQuotaReconcile,
   claimProductJob,
   claimResourceReconcile,
   createCompartmentRequester,
@@ -14,6 +15,7 @@ import {
 import type {
   WorkerClaimCustomDomainReconcileResponse,
   WorkerClaimDeploymentReconcileResponse,
+  WorkerClaimOrganizationQuotaReconcileResponse,
   WorkerClaimProductJobResponse,
   WorkerClaimResourceReconcileResponse,
   ProductJobClass,
@@ -29,6 +31,7 @@ import { DeploymentRolloutStartTracker } from './services/worker-deployment-roll
 import { executeResourceReconcile } from './services/worker-resource-reconcile.service';
 import { collectAndPublishPodMetrics } from './services/worker-pod-metrics.service';
 import { executeCustomDomainReconcile } from './services/worker-custom-domain-reconcile.service';
+import { executeOrganizationQuotaReconcile } from './services/worker-organization-quota-reconcile.service';
 
 const controllerRequestTimeoutMs: number = 15_000;
 
@@ -161,17 +164,29 @@ class CustomDomainReconcileArea implements KubeControllerHost {
   }
 }
 
+class OrganizationQuotaReconcileArea implements KubeControllerHost {
+  public constructor(
+    private readonly request: CompartmentRequester,
+    private readonly runtime: KubeRuntime,
+  ) {}
+
+  public async reconcile(): Promise<boolean> {
+    const claimed: WorkerClaimOrganizationQuotaReconcileResponse = await claimOrganizationQuotaReconcile(this.request);
+    if (claimed.target === null) {
+      return false;
+    }
+    await executeOrganizationQuotaReconcile(this.request, this.runtime, claimed.target);
+    return true;
+  }
+}
+
 export function createKubeControllerHosts(
   config: WorkerConfig,
   logger: Logger,
   runtime: KubeRuntime = createKubeRuntimeFromEnvironment(),
 ): KubeControllerHost[] {
   assertKubeRuntimeConfigured();
-  const request: CompartmentRequester = createCompartmentRequester({
-    apiUrl: config.apiUrl,
-    internalToken: config.runtimeControlToken,
-    requestTimeoutMs: controllerRequestTimeoutMs,
-  });
+  const request: CompartmentRequester = createControllerRequester(config);
   return [
     new PodMetricsReconcileArea(request, runtime, logger, config.usageMeteringIntervalMs),
     new DeploymentReconcileArea(
@@ -184,7 +199,16 @@ export function createKubeControllerHosts(
     ),
     new ResourceReconcileArea(request, runtime, config.tenantSecretsKek, config.tenantScheduling),
     new CustomDomainReconcileArea(request, runtime, config.customDomains),
+    new OrganizationQuotaReconcileArea(request, runtime),
   ];
+}
+
+function createControllerRequester(config: WorkerConfig): CompartmentRequester {
+  return createCompartmentRequester({
+    apiUrl: config.apiUrl,
+    internalToken: config.runtimeControlToken,
+    requestTimeoutMs: controllerRequestTimeoutMs,
+  });
 }
 
 function assertKubeRuntimeConfigured(): void {

@@ -1,0 +1,202 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`organization GlobalCustomQuota projection > projects five deterministic quotas into one immutable organization namespace pool 1`] = `
+[
+  {
+    "limit": "2",
+    "namespaceSelectors": [
+      {
+        "matchLabels": {
+          "compartment.dev/organization-id": "org_01jz",
+        },
+      },
+    ],
+    "options": {
+      "emitMetricPerClaimUsage": false,
+    },
+    "sources": [
+      {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "path": ".spec.containers[*].resources.requests.cpu",
+        "selectors": [
+          {
+            "fieldSelectors": [
+              ".status.phase!=Succeeded",
+              ".status.phase!=Failed",
+              ".status.phase!=Unknown",
+            ],
+          },
+        ],
+      },
+      {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "path": ".spec.initContainers[*].resources.requests.cpu",
+        "selectors": [
+          {
+            "fieldSelectors": [
+              ".spec.initContainers",
+              ".status.phase!=Succeeded",
+              ".status.phase!=Failed",
+              ".status.phase!=Unknown",
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    "limit": "4",
+    "namespaceSelectors": [
+      {
+        "matchLabels": {
+          "compartment.dev/organization-id": "org_01jz",
+        },
+      },
+    ],
+    "options": {
+      "emitMetricPerClaimUsage": false,
+    },
+    "sources": [
+      {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "path": ".spec.containers[*].resources.limits.cpu",
+        "selectors": [
+          {
+            "fieldSelectors": [
+              ".status.phase!=Succeeded",
+              ".status.phase!=Failed",
+              ".status.phase!=Unknown",
+            ],
+          },
+        ],
+      },
+      {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "path": ".spec.initContainers[*].resources.limits.cpu",
+        "selectors": [
+          {
+            "fieldSelectors": [
+              ".spec.initContainers",
+              ".status.phase!=Succeeded",
+              ".status.phase!=Failed",
+              ".status.phase!=Unknown",
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    "limit": "2Gi",
+    "namespaceSelectors": [
+      {
+        "matchLabels": {
+          "compartment.dev/organization-id": "org_01jz",
+        },
+      },
+    ],
+    "options": {
+      "emitMetricPerClaimUsage": false,
+    },
+    "sources": [
+      {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "path": ".spec.containers[*].resources.requests.memory",
+        "selectors": [
+          {
+            "fieldSelectors": [
+              ".status.phase!=Succeeded",
+              ".status.phase!=Failed",
+              ".status.phase!=Unknown",
+            ],
+          },
+        ],
+      },
+      {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "path": ".spec.initContainers[*].resources.requests.memory",
+        "selectors": [
+          {
+            "fieldSelectors": [
+              ".spec.initContainers",
+              ".status.phase!=Succeeded",
+              ".status.phase!=Failed",
+              ".status.phase!=Unknown",
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    "limit": "4Gi",
+    "namespaceSelectors": [
+      {
+        "matchLabels": {
+          "compartment.dev/organization-id": "org_01jz",
+        },
+      },
+    ],
+    "options": {
+      "emitMetricPerClaimUsage": false,
+    },
+    "sources": [
+      {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "path": ".spec.containers[*].resources.limits.memory",
+        "selectors": [
+          {
+            "fieldSelectors": [
+              ".status.phase!=Succeeded",
+              ".status.phase!=Failed",
+              ".status.phase!=Unknown",
+            ],
+          },
+        ],
+      },
+      {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "path": ".spec.initContainers[*].resources.limits.memory",
+        "selectors": [
+          {
+            "fieldSelectors": [
+              ".spec.initContainers",
+              ".status.phase!=Succeeded",
+              ".status.phase!=Failed",
+              ".status.phase!=Unknown",
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    "limit": "20Gi",
+    "namespaceSelectors": [
+      {
+        "matchLabels": {
+          "compartment.dev/organization-id": "org_01jz",
+        },
+      },
+    ],
+    "options": {
+      "emitMetricPerClaimUsage": false,
+    },
+    "sources": [
+      {
+        "apiVersion": "v1",
+        "kind": "PersistentVolumeClaim",
+        "path": ".spec.resources.requests.storage",
+      },
+    ],
+  },
+]
+`;

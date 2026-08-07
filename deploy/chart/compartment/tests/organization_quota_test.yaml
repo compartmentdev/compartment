@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: organization quota reconciliation authority
+templates:
+  - templates/organization-quota-rbac.yaml
+release:
+  name: compartment
+  namespace: compartment
+tests:
+  - it: grants only GlobalCustomQuota reconciliation to the leader worker
+    set:
+      platform.startupStage: full
+    asserts:
+      - hasDocuments:
+          count: 2
+      - isKind:
+          of: ClusterRole
+        documentIndex: 0
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [capsule.clastix.io]
+              resources: [globalcustomquotas]
+              verbs: [get, create, update, patch]
+        documentIndex: 0
+      - isKind:
+          of: ClusterRoleBinding
+        documentIndex: 1
+      - equal:
+          path: subjects[0]
+          value:
+            kind: ServiceAccount
+            name: compartment-worker
+            namespace: compartment
+        documentIndex: 1
+
+  - it: emits no quota authority before the full startup stage
+    set:
+      platform.startupStage: foundation
+    asserts:
+      - hasDocuments:
+          count: 0

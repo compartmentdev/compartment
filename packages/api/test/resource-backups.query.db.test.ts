@@ -7,6 +7,7 @@ import { createDatabase, createDatabasePool, type Database } from '../src/db/cli
 import {
   environments,
   operations,
+  organizationQuotaReconciliation,
   organizations,
   principals,
   projectResources,
@@ -1438,7 +1439,9 @@ function resourceOperationProductJobIntent(operationId: string): ProductJobInten
 }
 
 async function seedResourceBackupScope(): Promise<void> {
-  await db.insert(organizations).values({ id: 'org_resource_backups', name: 'Acme Dev', slug: 'acme-dev' });
+  const organizationId: string = 'org_resource_backups';
+  await db.insert(organizations).values({ id: organizationId, name: 'Acme Dev', slug: 'acme-dev' });
+  await db.insert(organizationQuotaReconciliation).values({ organizationId, state: 'succeeded' });
   await db.insert(principals).values({
     email: 'admin@example.com',
     id: 'prn_resource_backups',
@@ -1447,7 +1450,7 @@ async function seedResourceBackupScope(): Promise<void> {
   await db.insert(projects).values({
     id: 'prj_internal_tools',
     name: 'internal-tools',
-    organizationId: 'org_resource_backups',
+    organizationId,
   });
   await db.insert(projectKubeProvisioning).values({ projectId: 'prj_internal_tools', state: 'succeeded' });
   await db.insert(environments).values({

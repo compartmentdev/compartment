@@ -37,7 +37,7 @@ describe('Kubernetes install local tool preflight', (): void => {
     });
 
     await expect(assertKubernetesInstallLocalTools()).rejects.toThrow(
-      /kubectl not found on PATH.*Install kubectl >= 1\.30\.0/su,
+      /kubectl not found on PATH.*Install kubectl >= 1\.35\.0/su,
     );
     expect(mockedRunCommand).toHaveBeenCalledTimes(1);
   });
@@ -50,7 +50,7 @@ describe('Kubernetes install local tool preflight', (): void => {
     });
 
     await expect(assertKubernetesInstallLocalTools()).rejects.toThrow(
-      /kubectl v1\.29\.9 is installed, but kubectl >= 1\.30\.0 is required/su,
+      /kubectl v1\.29\.9 is installed, but kubectl >= 1\.35\.0 is required/su,
     );
   });
 
@@ -102,7 +102,7 @@ describe('Kubernetes install local tool preflight', (): void => {
 
     await expect(assertKubernetesInstallLocalTools()).resolves.toEqual({
       helm: 'v4.2.3+gdbd5f13',
-      kubectl: 'v1.33.2',
+      kubectl: 'v1.35.2',
     });
     expect(mockedRunCommand).toHaveBeenNthCalledWith(1, ['kubectl', 'version', '--client', '--output=json']);
     expect(mockedRunCommand).toHaveBeenNthCalledWith(2, ['helm', 'version', '--template', '{{.Version}}']);
@@ -159,6 +159,6 @@ function successfulKubectlVersion(): { exitCode: number; stderr: string; stdout:
   return {
     exitCode: 0,
     stderr: '',
-    stdout: JSON.stringify({ clientVersion: { gitVersion: 'v1.33.2' } }),
+    stdout: JSON.stringify({ clientVersion: { gitVersion: 'v1.35.2' } }),
   };
 }

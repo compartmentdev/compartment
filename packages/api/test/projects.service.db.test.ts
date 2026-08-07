@@ -8,6 +8,7 @@ import { createDatabase, createDatabasePool, type Database } from '../src/db/cli
 import {
   gitProviderRegistrations,
   organizationMemberships,
+  organizationQuotaReconciliation,
   organizations,
   principals,
   productJobRuns,
@@ -21,7 +22,13 @@ import {
 } from '../src/db/schema';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { claimProductJob } from '../src/queries/product-job-runs.query';
+import {
+  claimOrganizationQuotaReconciliation,
+  completeOrganizationQuotaReconciliation,
+} from '../src/queries/organization-quota-reconciliation.query';
+import type { OrganizationQuotaReconcileClaimRow } from '../src/queries/organization-quota-reconciliation.query.types';
 import { completeProjectProvisioning } from '../src/queries/project-provisioning-completion.query';
+import { projectIsolationVersion } from '../src/queries/project-provisioning-policy';
 import {
   claimPendingProjectProvisioning,
   failExhaustedProjectTeardownLeases,
@@ -128,6 +135,46 @@ describe('projects service', (): void => {
       mocks.resolveActiveProjectScope.mockReset();
       mocks.resolveRequiredProjectScope.mockResolvedValue(createResolvedProjectScope());
     },
+  });
+
+  it('serializes organization quota claims and gates namespace provisioning on infrastructure only', async (): Promise<void> => {
+    await db
+      .update(projectKubeProvisioning)
+      .set({ isolationVersion: projectIsolationVersion - 1 })
+      .where(eq(projectKubeProvisioning.projectId, 'prj_ops'));
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ state: 'pending' })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toBeNull();
+
+    const claims: (OrganizationQuotaReconcileClaimRow | null)[] = await Promise.all([
+      claimOrganizationQuotaReconciliation(),
+      claimOrganizationQuotaReconciliation(),
+    ]);
+    const claimed: OrganizationQuotaReconcileClaimRow | undefined = claims.find(
+      (claim: OrganizationQuotaReconcileClaimRow | null): claim is OrganizationQuotaReconcileClaimRow => claim !== null,
+    );
+    expect(
+      claims.filter(
+        (claim: OrganizationQuotaReconcileClaimRow | null): claim is OrganizationQuotaReconcileClaimRow =>
+          claim !== null,
+      ),
+    ).toHaveLength(1);
+    if (claimed === undefined) {
+      throw new Error('Expected one organization quota claim.');
+    }
+    await expect(
+      completeOrganizationQuotaReconciliation({
+        failureMessage: null,
+        leaseId: claimed.leaseId,
+        organizationId: claimed.organizationId,
+        status: 'succeeded',
+      }),
+    ).resolves.toBe(true);
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toMatchObject({
+      organizationId: 'org_git_sources',
+    });
   });
 
   it('blocks renaming projects while an active git binding exists', async (): Promise<void> => {
@@ -721,6 +768,7 @@ async function seedDeleteScope(): Promise<void> {
     name: 'Git Sources Org',
     slug: 'acme-dev',
   });
+  await db.insert(organizationQuotaReconciliation).values({ organizationId: 'org_git_sources', state: 'succeeded' });
   await db.insert(organizationMemberships).values({
     id: 'mem_git_sources',
     organizationId: 'org_git_sources',
@@ -741,7 +789,9 @@ async function seedDeleteScope(): Promise<void> {
     organizationId: 'org_git_sources',
     updatedAt: new Date('2026-04-28T12:00:00.000Z'),
   });
-  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_billing', state: 'succeeded' });
+  await db
+    .insert(projectKubeProvisioning)
+    .values({ isolationVersion: projectIsolationVersion, projectId: 'prj_billing', state: 'succeeded' });
   await db.insert(projects).values({
     archivedAt: null,
     id: 'prj_ops',
@@ -749,7 +799,9 @@ async function seedDeleteScope(): Promise<void> {
     organizationId: 'org_git_sources',
     updatedAt: new Date('2026-04-28T12:00:00.000Z'),
   });
-  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_ops', state: 'succeeded' });
+  await db
+    .insert(projectKubeProvisioning)
+    .values({ isolationVersion: projectIsolationVersion, projectId: 'prj_ops', state: 'succeeded' });
   await db.insert(projects).values({
     archivedAt: null,
     id: 'prj_plain',
@@ -757,7 +809,9 @@ async function seedDeleteScope(): Promise<void> {
     organizationId: 'org_git_sources',
     updatedAt: new Date('2026-04-28T12:00:00.000Z'),
   });
-  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_plain', state: 'succeeded' });
+  await db
+    .insert(projectKubeProvisioning)
+    .values({ isolationVersion: projectIsolationVersion, projectId: 'prj_plain', state: 'succeeded' });
   await db.insert(gitProviderRegistrations).values({
     appId: 'app_123',
     appName: 'Compartment GitHub App',

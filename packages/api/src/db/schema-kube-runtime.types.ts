@@ -200,3 +200,23 @@ export type ProjectKubeProvisioningExtraConfigColumns = PgExtraConfigColumnsOf<
   'project_kube_provisioning',
   ProjectKubeProvisioningColumnBuilders
 >;
+
+interface OrganizationQuotaReconciliationColumnBuilders {
+  organizationId: PrimaryTextBuilder<'organization_id'>;
+  state: DefaultEnumTextBuilder<'state', ['pending', 'running', 'succeeded', 'failed']>;
+  leaseId: OptionalTextBuilder<'lease_id'>;
+  leaseExpiresAt: OptionalTimestampBuilder<'lease_expires_at'>;
+  failureMessage: OptionalTextBuilder<'failure_message'>;
+  attempts: DefaultIntegerBuilder<'attempts'>;
+  createdAt: DefaultTimestampBuilder<'created_at'>;
+  updatedAt: DefaultTimestampBuilder<'updated_at'>;
+}
+
+export type OrganizationQuotaReconciliationTable = PgTableOf<
+  'organization_quota_reconciliation',
+  OrganizationQuotaReconciliationColumnBuilders
+>;
+export type OrganizationQuotaReconciliationExtraConfigColumns = PgExtraConfigColumnsOf<
+  'organization_quota_reconciliation',
+  OrganizationQuotaReconciliationColumnBuilders
+>;

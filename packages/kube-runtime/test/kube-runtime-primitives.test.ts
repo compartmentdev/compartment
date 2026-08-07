@@ -679,8 +679,7 @@ describe('KubeRuntime Job primitive', (): void => {
     const result: KubeJobResult = await runtime.runJob(spec);
 
     expect(objectApi.patches.at(-1)![0].spec).toMatchObject({ backoffLimit: 1 });
-    expect(result.exitCode).toBe(23);
-    expect(stop).toHaveBeenCalledOnce();
+    expect([result.exitCode, stop.mock.calls.length]).toEqual([23, 1]);
   });
 
   it('removes bootstrap authority after applying the namespace-local controller binding', async (): Promise<void> => {
@@ -693,6 +692,7 @@ describe('KubeRuntime Job primitive', (): void => {
         labels: {
           'app.kubernetes.io/managed-by': 'compartment',
           'compartment.dev/namespace-id': 'prj-01jz',
+          'compartment.dev/organization-id': 'org_1',
           'compartment.dev/project-id': 'prj-01jz',
         },
         name: kubeNamespaceName('prj-01jz'),
@@ -949,6 +949,7 @@ function provisioningRow(namespaceId: string): ProjectNamespaceProvisioningRow {
       resourcePorts: [5432],
       serviceCidr: ['10', '43', '0', '0/16'].join('.'),
     },
+    organizationId: 'org_1',
     projectId: namespaceId,
     projectName: 'payments',
     registryPullCredentials: {

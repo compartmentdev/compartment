@@ -1,6 +1,7 @@
 import { createOrganizationMembershipWithExecutor } from '../queries/organization-memberships.query';
 import { insertOperationRecordWithExecutor } from '../queries/operations.query';
 import { createOrganizationWithExecutor } from '../queries/organizations.query';
+import { createOrganizationQuotaReconciliationWithExecutor } from '../queries/organization-quota-reconciliation.query';
 import type {
   CreateOrganizationInput as CreateOrganizationRowInput,
   OrganizationCreationTransaction,
@@ -38,6 +39,7 @@ async function createOrganizationInTransaction(
     tx,
     buildCreateOrganizationRowInput(input),
   );
+  await createOrganizationQuotaReconciliationWithExecutor(tx, organization.id);
   await createOrganizationMembershipWithExecutor(tx, {
     id: createId('mem'),
     organizationId: organization.id,

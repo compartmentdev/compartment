@@ -27,6 +27,7 @@ function projectProvisioningRow(environment: ProjectProvisionerJobEnvironment): 
     },
     namespaceId: environment.COMPARTMENT_PROJECT_ID,
     networkPolicy: projectNetworkPolicy(environment, { applicationPorts: [], resourcePorts: [] }),
+    organizationId: environment.COMPARTMENT_ORGANIZATION_ID,
     projectId: environment.COMPARTMENT_PROJECT_ID,
     projectName: environment.COMPARTMENT_PROJECT_NAME,
     installationId: environment.COMPARTMENT_INSTALLATION_ID,

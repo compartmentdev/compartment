@@ -19,6 +19,16 @@ compartment deployment logs --follow
 Compartment queues deployments per selected service, runs the service build path, stores immutable image references, and
 activates runtime state only after the candidate starts successfully.
 
+## Organization resource limits
+
+All projects in an organization share fixed Kubernetes capacity: 2 CPU requests, 4 CPU limits, 2Gi memory requests,
+4Gi memory limits, and 20Gi requested persistent storage. A workload in one project consumes the same organization
+pool as workloads in every other project. Projects in another organization use a separate pool.
+
+Compartment enforces these limits when Kubernetes admits a Pod or persistent volume claim. Existing workloads are not
+evicted if the organization is already over a limit. New or updated Pods and volume claims are denied until you delete
+or reduce workloads enough to release capacity. Platform and build workloads do not consume this pool.
+
 If a service declares `release.command`, it runs once before the candidate starts and routes switch. A non-zero exit or
 10-minute timeout fails that deploy attempt and leaves the previous active deployment serving traffic.
 

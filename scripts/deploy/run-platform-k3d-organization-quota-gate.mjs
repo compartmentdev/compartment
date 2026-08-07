@@ -1,0 +1,266 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createRequire } from 'node:module';
+import { setTimeout as delay } from 'node:timers/promises';
+import { captureCommand, runCommandAsync } from '../lib/command.mjs';
+import { readRepositoryRoot } from '../lib/repository-root.mjs';
+import { runMain } from '../lib/run-main.mjs';
+
+const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
+const require = createRequire(import.meta.url);
+await runCommandAsync('pnpm', ['--filter', '@compartment/kube-runtime', 'build'], repositoryRoot, process.env);
+const { organizationGlobalCustomQuotaManifests } = require(join(repositoryRoot, 'packages/kube-runtime/dist/index.js'));
+const context = process.env.COMPARTMENT_E2E_KUBE_CONTEXT;
+const namespaces = ['quota-a-1', 'quota-a-2', 'quota-b', 'quota-platform', 'quota-build'];
+
+async function kubectl(args) {
+  await runCommandAsync('kubectl', ['--context', context, ...args], repositoryRoot, process.env);
+}
+
+function captureKubectl(args) {
+  return captureCommand('kubectl', ['--context', context, ...args], repositoryRoot, process.env);
+}
+
+async function createNamespace(name, organizationId) {
+  await kubectl(['create', 'namespace', name]);
+  if (organizationId !== undefined) {
+    await kubectl([
+      'label',
+      'namespace',
+      name,
+      'app.kubernetes.io/managed-by=compartment',
+      `compartment.dev/organization-id=${organizationId}`,
+      `compartment.dev/project-id=${name}`,
+    ]);
+  }
+}
+
+async function applyManifest(name, manifest) {
+  const manifestDirectory = mkdtempSync(join(tmpdir(), 'compartment-quota-gate-'));
+  const manifestPath = join(manifestDirectory, `${name}.json`);
+  try {
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    await kubectl(['apply', '-f', manifestPath]);
+  } finally {
+    rmSync(manifestDirectory, { force: true, recursive: true });
+  }
+}
+
+async function createPod(namespace, name, cpu) {
+  const resources = {
+    limits: { cpu, memory: '64Mi' },
+    requests: { cpu, memory: '64Mi' },
+  };
+  await kubectl([
+    'run',
+    name,
+    '--namespace',
+    namespace,
+    '--image=registry.k8s.io/pause:3.10',
+    '--restart=Never',
+    '--overrides',
+    JSON.stringify({
+      spec: { containers: [{ image: 'registry.k8s.io/pause:3.10', name, resources }] },
+    }),
+  ]);
+}
+
+async function createPvc(namespace, name, storage) {
+  await applyManifest(name, {
+    apiVersion: 'v1',
+    kind: 'PersistentVolumeClaim',
+    metadata: { name, namespace },
+    spec: { accessModes: ['ReadWriteOnce'], resources: { requests: { storage } } },
+  });
+}
+
+async function expectDenied(action, label) {
+  try {
+    await action();
+  } catch (error) {
+    const message = String(error);
+    if (/custom quota|globalcustomquota|quota.*exceed|exceed.*quota/i.test(message)) {
+      return;
+    }
+    throw new Error(`Expected a Capsule quota denial for ${label}, received: ${message}`, { cause: error });
+  }
+  throw new Error(`Expected Capsule to deny ${label}.`);
+}
+
+async function waitForReleasedCapacity(name) {
+  await kubectl(['wait', '--for=jsonpath={.status.usage.used}=0', `globalcustomquota/${name}`, '--timeout=120s']);
+  await waitForLedgerSettled(name);
+}
+
+async function waitForQuotaMaterialized(name, usage) {
+  await kubectl([
+    'wait',
+    `--for=jsonpath={.status.usage.used}=${usage}`,
+    `globalcustomquota/${name}`,
+    '--timeout=120s',
+  ]);
+  await waitForLedgerSettled(name);
+}
+
+async function waitForLedgerSettled(name) {
+  for (let attempt = 1; attempt <= 240; attempt += 1) {
+    const reserved = captureKubectl([
+      'get',
+      'quantityledger',
+      '--all-namespaces',
+      '--field-selector',
+      `metadata.name=${name}`,
+      '--output',
+      'jsonpath={.items[0].status.reserved}',
+    ]);
+    if (reserved === '0') {
+      return;
+    }
+    await delay(500);
+  }
+  throw new Error(`Timed out waiting for quota ledger ${name} to settle.`);
+}
+
+async function expectEventuallyAdmitted(action, label) {
+  for (let attempt = 1; attempt <= 120; attempt += 1) {
+    try {
+      await action();
+      return;
+    } catch (error) {
+      if (attempt === 120) {
+        throw new Error(`Timed out waiting for Capsule to admit ${label}.`, { cause: error });
+      }
+      await delay(500);
+    }
+  }
+}
+
+async function admitExactlyOneConcurrentPod() {
+  for (let attempt = 1; attempt <= 120; attempt += 1) {
+    const concurrent = await Promise.allSettled([
+      createPod('quota-a-1', 'concurrent-a', '1200m'),
+      createPod('quota-a-2', 'concurrent-b', '1200m'),
+    ]);
+    const admittedCount = concurrent.filter((result) => result.status === 'fulfilled').length;
+    if (admittedCount === 1) {
+      const denied = concurrent.find((result) => result.status === 'rejected');
+      if (
+        denied?.status === 'rejected' &&
+        !/custom quota|globalcustomquota|quota.*exceed|exceed.*quota/i.test(String(denied.reason))
+      ) {
+        throw new Error(`Concurrent Pod failed for a reason other than quota admission: ${String(denied.reason)}`);
+      }
+      return concurrent[0].status === 'fulfilled'
+        ? { name: 'concurrent-a', namespace: 'quota-a-1' }
+        : { name: 'concurrent-b', namespace: 'quota-a-2' };
+    }
+    if (admittedCount > 1) {
+      throw new Error('Expected exactly one concurrent organization quota admission.');
+    }
+    await delay(500);
+  }
+  throw new Error('Timed out waiting for one concurrent organization quota admission.');
+}
+
+async function readInstalledOrganizationQuota() {
+  for (let attempt = 1; attempt <= 120; attempt += 1) {
+    const payload = JSON.parse(
+      captureKubectl([
+        'get',
+        'globalcustomquota',
+        '--selector',
+        'app.kubernetes.io/managed-by=compartment',
+        '--output',
+        'json',
+      ]),
+    );
+    const organizations = new Map();
+    for (const item of payload.items ?? []) {
+      const organizationId = item.metadata?.labels?.['compartment.dev/organization-id'];
+      if (organizationId !== undefined) {
+        organizations.set(organizationId, [...(organizations.get(organizationId) ?? []), item]);
+      }
+    }
+    const installed = [...organizations.entries()].find(([, items]) => items.length === 5);
+    if (
+      installed !== undefined &&
+      installed[1].every((item) =>
+        item.status?.conditions?.some((condition) => condition.type === 'Ready' && condition.status === 'True'),
+      )
+    ) {
+      return { manifests: installed[1], organizationId: installed[0] };
+    }
+    await delay(500);
+  }
+  throw new Error('Timed out waiting for the worker-reconciled organization quota pool.');
+}
+
+async function applyProjectedOrganizationQuota(organizationId) {
+  const manifests = organizationGlobalCustomQuotaManifests({ organizationId });
+  for (const manifest of manifests) {
+    await applyManifest(manifest.metadata.name, manifest);
+    await kubectl(['wait', '--for=condition=Ready', `globalcustomquota/${manifest.metadata.name}`, '--timeout=120s']);
+  }
+  return manifests;
+}
+
+async function runGate() {
+  if (context === undefined || context === '') {
+    throw new Error('COMPARTMENT_E2E_KUBE_CONTEXT is required.');
+  }
+  let secondaryQuotaNames = [];
+  try {
+    const installedQuota = await readInstalledOrganizationQuota();
+    const organizationId = installedQuota.organizationId;
+    const requestsCpuQuota = installedQuota.manifests.find(
+      (manifest) => manifest.spec.limit === '2' && manifest.spec.sources[0]?.path?.endsWith('requests.cpu'),
+    );
+    const storageQuota = installedQuota.manifests.find((manifest) => manifest.spec.limit === '20Gi');
+    if (requestsCpuQuota === undefined || storageQuota === undefined) {
+      throw new Error('Worker-reconciled quota pool does not contain the fixed CPU and storage projections.');
+    }
+    await createNamespace('quota-a-1', organizationId);
+    await createNamespace('quota-a-2', organizationId);
+    await createNamespace('quota-b', 'quota-org-b');
+    await createNamespace('quota-platform');
+    await createNamespace('quota-build');
+    const secondaryManifests = await applyProjectedOrganizationQuota('quota-org-b');
+    secondaryQuotaNames = secondaryManifests.map((manifest) => manifest.metadata.name);
+    await createPod('quota-a-1', 'first', '1500m');
+    await waitForQuotaMaterialized(requestsCpuQuota.metadata.name, '1500m');
+    await expectDenied(async () => await createPod('quota-a-2', 'shared-denied', '1'), 'shared project CPU');
+    await kubectl(['delete', 'pod', 'first', '--namespace', 'quota-a-1', '--wait=true']);
+    await waitForReleasedCapacity(requestsCpuQuota.metadata.name);
+
+    const admitted = await admitExactlyOneConcurrentPod();
+    await waitForQuotaMaterialized(requestsCpuQuota.metadata.name, '1200m');
+    await kubectl(['delete', 'pod', admitted.name, '--namespace', admitted.namespace, '--wait=true']);
+    await waitForReleasedCapacity(requestsCpuQuota.metadata.name);
+    await expectEventuallyAdmitted(
+      async () => await createPod('quota-a-2', 'released-capacity', '1200m'),
+      'released Pod capacity',
+    );
+    await createPod('quota-b', 'isolated-org', '2');
+    await createPod('quota-platform', 'platform-unaffected', '1');
+    await createPod('quota-build', 'build-unaffected', '1');
+    await createPvc('quota-a-1', 'storage-first', '15Gi');
+    await waitForQuotaMaterialized(storageQuota.metadata.name, '15Gi');
+    await expectDenied(async () => await createPvc('quota-a-2', 'storage-denied', '10Gi'), 'shared PVC storage');
+    await kubectl(['delete', 'pvc', 'storage-first', '--namespace', 'quota-a-1', '--wait=true']);
+    await waitForReleasedCapacity(storageQuota.metadata.name);
+    await expectEventuallyAdmitted(
+      async () => await createPvc('quota-a-2', 'storage-released', '10Gi'),
+      'released PVC capacity',
+    );
+    await createPvc('quota-platform', 'platform-storage-unaffected', '25Gi');
+    await createPvc('quota-build', 'build-storage-unaffected', '25Gi');
+  } finally {
+    if (secondaryQuotaNames.length > 0) {
+      await kubectl(['delete', 'globalcustomquota', ...secondaryQuotaNames, '--ignore-not-found']);
+    }
+    await kubectl(['delete', 'namespace', ...namespaces, '--ignore-not-found', '--wait=false']);
+  }
+}
+
+runMain(import.meta.url, process.argv[1], runGate);
