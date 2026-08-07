@@ -49,6 +49,7 @@ test.describe('console users and permissions real app', (): void => {
     await usersPage.expectUserVisible(e2eAccess.userEmail);
     await usersPage.openUserDetails(e2eAccess.userEmail);
     await usersPage.expectUserDetailsVisible(e2eAccess.userEmail, e2eAccess.groupName, e2eAccess.rolePermissions);
+    await usersPage.closeUserDetails(e2eAccess.userEmail);
 
     await auditEventsPage.openFromPrimaryNavigation();
     await auditEventsPage.expectFilteredEventTarget('organization.user.invited', e2eAccess.userEmail);
