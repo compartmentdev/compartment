@@ -72,7 +72,7 @@ async function finalizePasswordReset(
   const revokedSessionIds: string[] = await revokePrincipalAuthSessionsWithExecutor(tx, principal.principalId, now);
   const session: AuthSessionPlan = await issuePasswordResetSession(tx, validation, plan.config);
 
-  await recordPasswordResetCompletion(tx, principal, now);
+  await recordPasswordResetCompletion(tx, principal, validation.sessionOrganizationId, now);
   return {
     organizations: validation.organizations,
     principalEmail: principal.email,
@@ -138,11 +138,13 @@ async function applyPasswordReset(
 async function recordPasswordResetCompletion(
   tx: OrganizationUsersTransaction,
   principal: PrincipalCredentialRow,
+  organizationId: string,
   now: Date,
 ): Promise<void> {
   await insertOperationRecordWithExecutor(tx, {
     actorPrincipalId: principal.principalId,
     completedAt: now,
+    organizationId,
     status: 'succeeded',
     summary: `Reset password for ${principal.email}`,
     targetId: principal.principalId,

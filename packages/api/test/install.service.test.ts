@@ -143,6 +143,7 @@ const operationRecord: OperationRecord = {
   completedAt: new Date('2026-03-21T12:00:00.000Z'),
   createdAt: new Date('2026-03-21T12:00:00.000Z'),
   id: 'op_123',
+  organizationId: 'org_123',
   status: 'succeeded',
   summary: 'Installed compartment with organization acme-dev',
   targetId: 'org_123',

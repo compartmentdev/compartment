@@ -188,6 +188,7 @@ function createDeploymentJoinedRow(
       completedAt: completedAt === null ? null : new Date(completedAt),
       createdAt: now,
       id: `op_${serviceName}`,
+      organizationId: 'org_123',
       status: failureMessage === null ? 'succeeded' : 'failed',
       summary: failureMessage ?? 'deployment completed',
       targetId: `dep_${serviceName}`,

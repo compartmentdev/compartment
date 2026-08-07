@@ -1,16 +1,18 @@
 import type { EnvironmentRow } from '../queries/deployments.query.types';
 import { insertOperationRecord, updateOperationRecord } from '../queries/operations.query';
 import type { OperationRecord } from '../queries/operations.query.types';
+import type { ProjectRow } from '../queries/projects.query.types';
 
 export async function createProjectStopOperation(
   actorPrincipalId: string,
-  projectName: string,
+  project: ProjectRow,
   environment: EnvironmentRow,
 ): Promise<string> {
   const operation: OperationRecord = await insertOperationRecord({
     actorPrincipalId,
+    organizationId: project.organizationId,
     status: 'running',
-    summary: `Stopping project ${projectName}/${environment.name}`,
+    summary: `Stopping project ${project.name}/${environment.name}`,
     targetId: environment.id,
     targetType: 'environment',
     type: 'deployment.stop',
@@ -21,28 +23,30 @@ export async function createProjectStopOperation(
 
 export async function recordProjectStopOperationSuccess(
   operationId: string,
-  projectName: string,
+  project: ProjectRow,
   environment: EnvironmentRow,
   completedAt: Date,
 ): Promise<void> {
   await updateOperationRecord({
     completedAt,
     operationId,
+    organizationId: project.organizationId,
     status: 'succeeded',
-    summary: `Stopped project ${projectName}/${environment.name}`,
+    summary: `Stopped project ${project.name}/${environment.name}`,
   });
 }
 
 export async function recordProjectStopOperationFailure(
   operationId: string,
-  projectName: string,
+  project: ProjectRow,
   environment: EnvironmentRow,
   completedAt: Date,
 ): Promise<void> {
   await updateOperationRecord({
     completedAt,
     operationId,
+    organizationId: project.organizationId,
     status: 'failed',
-    summary: `Failed to stop project ${projectName}/${environment.name}`,
+    summary: `Failed to stop project ${project.name}/${environment.name}`,
   });
 }

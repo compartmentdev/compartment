@@ -1,5 +1,5 @@
 {
-  "id": "a295363e-dce5-41ad-a3a1-e50d77a20d2f",
+  "id": "0131e2a9-2b30-4041-8c50-cfd72cd15536",
   "prevId": "9208e119-fee6-4565-a3aa-9c1d49e04aa4",
   "version": "7",
   "dialect": "postgresql",
@@ -1997,6 +1997,12 @@
           "primaryKey": true,
           "notNull": true
         },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "type": {
           "name": "type",
           "type": "text",
@@ -2049,6 +2055,15 @@
       },
       "indexes": {},
       "foreignKeys": {
+        "operations_organization_id_organizations_id_fk": {
+          "name": "operations_organization_id_organizations_id_fk",
+          "tableFrom": "operations",
+          "tableTo": "organizations",
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
         "operations_actor_principal_id_principals_id_fk": {
           "name": "operations_actor_principal_id_principals_id_fk",
           "tableFrom": "operations",

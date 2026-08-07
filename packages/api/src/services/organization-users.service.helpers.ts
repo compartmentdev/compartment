@@ -47,6 +47,7 @@ export function buildInviteOperation(input: InviteOrganizationUserInput, princip
   return {
     actorPrincipalId: input.actorPrincipalId,
     completedAt: new Date(),
+    organizationId: input.organizationId,
     status: 'succeeded',
     summary: `Invited ${input.email} to ${input.organizationSlug}`,
     targetId: principalId,
@@ -71,6 +72,7 @@ export function buildRemoveOperation(input: RemoveOrganizationUserInput, princip
   return {
     actorPrincipalId: input.actorPrincipalId,
     completedAt: new Date(),
+    organizationId: input.organizationId,
     status: 'succeeded',
     summary: `Removed ${input.email} from ${input.organizationSlug}`,
     targetId: principalId,
@@ -86,6 +88,7 @@ export function buildBlockOperation(
   return {
     actorPrincipalId: input.actorPrincipalId,
     completedAt: new Date(),
+    organizationId: input.organizationId,
     status: 'succeeded',
     summary: `Blocked ${input.email} from ${input.organizationSlug}`,
     targetId: principalId,
@@ -101,6 +104,7 @@ export function buildUnblockOperation(
   return {
     actorPrincipalId: input.actorPrincipalId,
     completedAt: new Date(),
+    organizationId: input.organizationId,
     status: 'succeeded',
     summary: `Unblocked ${input.email} in ${input.organizationSlug}`,
     targetId: principalId,

@@ -182,6 +182,7 @@ interface SystemDomainIdempotencyKeysColumnBuilders {
 
 interface OperationsColumnBuilders {
   id: PrimaryTextBuilder<'id'>;
+  organizationId: OptionalTextBuilder<'organization_id'>;
   type: RequiredTextBuilder<'type'>;
   status: RequiredTextBuilder<'status'>;
   actorPrincipalId: OptionalTextBuilder<'actor_principal_id'>;

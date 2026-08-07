@@ -22,6 +22,7 @@ export async function finalizeFailedDeployment(input: WorkerFailDeploymentReques
   await updateOperationRecord({
     completedAt,
     operationId: deployment.operation.id,
+    organizationId: deployment.project.organizationId,
     status: 'failed',
     summary: input.message,
   });

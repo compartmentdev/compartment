@@ -39,6 +39,8 @@ import type {
   RecordAuditEventInput,
 } from './audit-events.service.types';
 
+type AuditEventScopeFields = Pick<InsertAuditEventInput, 'organizationId' | 'scopeType'>;
+
 export async function recordAuditEvent(input: RecordAuditEventInput): Promise<AuditEventResult> {
   const insertInput: InsertAuditEventInput = toInsertAuditEventInput(input);
   const row: AuditEventRow =
@@ -99,6 +101,8 @@ async function buildOrganizationAuditEventsExport(
 }
 
 function toInsertAuditEventInput(input: RecordAuditEventInput): InsertAuditEventInput {
+  const scope: AuditEventScopeFields = readAuditEventScope(input);
+
   return {
     actorEmail: input.actor.email,
     actorPrincipalId: input.actor.principalId,
@@ -108,10 +112,10 @@ function toInsertAuditEventInput(input: RecordAuditEventInput): InsertAuditEvent
     environmentId: input.target.environmentId,
     eventType: input.eventType,
     metadata: sanitizeAuditEventMetadata(input.metadata),
-    organizationId: input.organizationId,
+    organizationId: scope.organizationId,
     projectId: input.target.projectId,
     projectServiceId: input.target.serviceId,
-    scopeType: 'organization',
+    scopeType: scope.scopeType,
     sourceIp: input.actor.sourceIp,
     status: input.status ?? 'succeeded',
     targetDisplayName: input.target.displayName,
@@ -119,6 +123,12 @@ function toInsertAuditEventInput(input: RecordAuditEventInput): InsertAuditEvent
     targetType: input.target.type,
     userAgent: input.actor.userAgent,
   };
+}
+
+function readAuditEventScope(input: RecordAuditEventInput): AuditEventScopeFields {
+  return input.scopeType === 'installation'
+    ? { organizationId: null, scopeType: 'installation' }
+    : { organizationId: input.organizationId, scopeType: 'organization' };
 }
 
 function toAuditEventSummary(row: AuditEventRow): AuditEventSummary {

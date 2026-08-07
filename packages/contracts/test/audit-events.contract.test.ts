@@ -3,8 +3,10 @@ import {
   auditEventExportQuerySchema,
   auditEventListQuerySchema,
   auditEventListResponseSchema,
+  auditEventTypeOptions,
   auditRetentionConfiguredPolicySchema,
   type AuditEventListResponse,
+  type AuditEventType,
 } from '../src';
 
 describe('audit event contracts', (): void => {
@@ -105,6 +107,15 @@ describe('audit event contracts', (): void => {
       orderBy: 'eventType',
       sort: 'desc',
     });
+  });
+
+  it('offers every audit event type as a filter value', (): void => {
+    const eventTypes: AuditEventType[] = ['installation.organization.created', 'installation.owner.activated'];
+
+    for (const eventType of eventTypes) {
+      expect(auditEventTypeOptions).toContain(eventType);
+      expect(auditEventListQuerySchema.parse({ eventType })).toMatchObject({ eventType });
+    }
   });
 
   it('validates audit retention policy shapes', (): void => {

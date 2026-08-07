@@ -613,6 +613,7 @@ function createDeployment(
       completedAt: createdAt,
       createdAt,
       id: `op_${projectName}_${serviceName}`,
+      organizationId: `org_${projectName}`,
       status: 'succeeded',
       summary: 'deployment.run',
       targetId: `dep_${projectName}_${serviceName}`,

@@ -201,6 +201,7 @@ async function persistPasswordResetIssue(
   });
   await insertOperationRecordWithExecutor(tx, {
     completedAt: input.plan.now,
+    organizationId: input.organizationId,
     status: 'succeeded',
     summary: input.summary,
     targetId: input.principalId,

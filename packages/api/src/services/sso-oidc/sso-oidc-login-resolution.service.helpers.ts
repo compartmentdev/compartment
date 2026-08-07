@@ -147,6 +147,7 @@ async function recordSsoOidcAutoJoinOperation(
   await recordPrincipalSsoOidcOperation(
     transaction,
     principal,
+    provider.organizationId,
     `Auto-joined ${principal.principalEmail} with ${provider.displayName} as ${provisioningPolicy.defaultRole}`,
     'auth.sso_oidc.auto_join',
   );
@@ -160,6 +161,7 @@ async function recordSsoOidcLoginOperation(
   await recordPrincipalSsoOidcOperation(
     transaction,
     principal,
+    provider.organizationId,
     `Logged in ${principal.principalEmail} with ${provider.displayName}`,
     'auth.sso_oidc.login',
   );
@@ -168,12 +170,14 @@ async function recordSsoOidcLoginOperation(
 async function recordPrincipalSsoOidcOperation(
   transaction: OrganizationUsersTransaction,
   principal: SsoOidcPrincipalRow,
+  organizationId: string,
   summary: string,
   type: 'auth.sso_oidc.auto_join' | 'auth.sso_oidc.login',
 ): Promise<void> {
   await insertOperationRecordWithExecutor(transaction, {
     actorPrincipalId: principal.principalId,
     completedAt: new Date(),
+    organizationId,
     status: 'succeeded',
     summary,
     targetId: principal.principalId,

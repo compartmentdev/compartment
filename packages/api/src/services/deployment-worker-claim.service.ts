@@ -71,7 +71,7 @@ async function reserveClaimedDeploymentRoute(
     return null;
   }
 
-  await markClaimedDeploymentOperationRunning(tx, deployment.operationId);
+  await markClaimedDeploymentOperationRunning(tx, deployment.operationId, candidate.organizationId);
   await reserveDeploymentPublicRouteWithExecutor(
     tx,
     buildDeploymentPublicRouteReservationContext(candidate, deployment.id, now),
@@ -85,9 +85,14 @@ async function reserveClaimedDeploymentRoute(
   };
 }
 
-async function markClaimedDeploymentOperationRunning(tx: DeploymentTransaction, operationId: string): Promise<void> {
+async function markClaimedDeploymentOperationRunning(
+  tx: DeploymentTransaction,
+  operationId: string,
+  organizationId: string,
+): Promise<void> {
   await updateOperationRecordWithExecutor(tx, {
     operationId,
+    organizationId,
     status: 'running',
   });
 }

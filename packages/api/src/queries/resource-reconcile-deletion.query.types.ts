@@ -12,11 +12,13 @@ export interface ResourceDeletionDemandRow {
   environmentId: string;
   expectedClaimsJson: string;
   name: string;
+  organizationId: string;
 }
 
 export interface ResourceDeletionOutcomeValues {
   completedAt: Date;
   id: string;
+  organizationId: string;
   status: string;
   summary: string;
   targetId: string;

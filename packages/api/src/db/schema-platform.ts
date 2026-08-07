@@ -36,6 +36,9 @@ export const systemDomainIdempotencyKeys: CoreSchemaTypes.SystemDomainIdempotenc
 
 export const operations: CoreSchemaTypes.OperationsTable = pgTable('operations', {
   id: text('id').primaryKey(),
+  organizationId: text('organization_id').references((): typeof organizations.id => organizations.id, {
+    onDelete: 'cascade',
+  }),
   type: text('type').notNull(),
   status: text('status').notNull(),
   actorPrincipalId: text('actor_principal_id').references((): typeof principals.id => principals.id),

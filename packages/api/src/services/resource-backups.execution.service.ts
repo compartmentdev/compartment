@@ -160,6 +160,7 @@ async function createRunningResourceBackupOperationRecord(
 ): Promise<OperationRecord> {
   return await insertOperationRecordWithExecutor(tx, {
     ...(input.actorPrincipalId !== null ? { actorPrincipalId: input.actorPrincipalId } : {}),
+    organizationId: input.context.organization.id,
     status: 'running',
     summary: `Resource ${input.resource.name} backup is running.`,
     targetId: input.resource.id,
@@ -221,6 +222,7 @@ async function failRunningResourceBackup(
     await updateOperationRecordWithExecutor(tx, {
       completedAt: failedBackup.completedAt,
       operationId: runningBackup.operationRecord.id,
+      organizationId: input.context.organization.id,
       status: 'failed',
       summary: error.message,
     });

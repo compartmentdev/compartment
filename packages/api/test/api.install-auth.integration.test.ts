@@ -718,6 +718,41 @@ describe('Phase 0 API integration install auth', (): void => {
     expect(whoAmIPayload.currentOrganizationPermissions).toContain('deployment.read');
     expect(whoAmIPayload.currentOrganizationPermissions).toContain('deployment.rollback');
   });
+  it('records an installation-scoped audit event when an organization is created', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+
+    const createOrganizationResponse: LightMyRequestResponse = await app.inject({
+      headers: {
+        authorization: `Bearer ${installPayload.sessionToken}`,
+      },
+      method: 'POST',
+      payload: {
+        name: 'Second Dev',
+        slug: 'second-dev',
+      },
+      url: '/v1/organizations',
+    });
+
+    expect(createOrganizationResponse.statusCode).toBe(200);
+    const createdOrganization: CreateOrganizationResponse = createOrganizationResponseSchema.parse(
+      createOrganizationResponse.json(),
+    );
+    const storedAuditEvents: (typeof auditEvents.$inferSelect)[] = await db
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.eventType, 'installation.organization.created'));
+    expect(storedAuditEvents).toEqual([
+      expect.objectContaining({
+        actorEmail: 'admin@example.com',
+        organizationId: null,
+        scopeType: 'installation',
+        status: 'succeeded',
+        targetId: createdOrganization.organization.id,
+        targetType: 'organization',
+      }),
+    ]);
+  });
+
   it('rejects organization creation when admin access only exists in a hidden session organization', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     const hiddenOrganizationResponse: LightMyRequestResponse = await app.inject({

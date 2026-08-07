@@ -83,7 +83,7 @@ async function activateLocalUserWithExecutor(
   );
   await assertLocalPasswordActivationAllowed(tx, principal.principalId, activationOrganization.id);
   await finalizePrincipalActivation(tx, principal.principalId, input.password, tokenHash, activationOrganization.id);
-  await recordActivationOperation(tx, principal);
+  await recordActivationOperation(tx, principal, activationOrganization.id);
 
   return await buildActivatedLocalUserResult(tx, principal, activationOrganization, config);
 }
@@ -215,10 +215,12 @@ async function finalizePrincipalActivation(
 async function recordActivationOperation(
   tx: OrganizationUsersTransaction,
   principal: PrincipalCredentialRow,
+  organizationId: string,
 ): Promise<void> {
   await insertOperationRecordWithExecutor(tx, {
     actorPrincipalId: principal.principalId,
     completedAt: new Date(),
+    organizationId,
     status: 'succeeded',
     summary: `Activated local access for ${principal.email}`,
     targetId: principal.principalId,

@@ -86,6 +86,7 @@ function buildInstallOperationInput(plan: InstallPlan): InsertOperationInput {
   return {
     actorPrincipalId: plan.principalId,
     completedAt: new Date(),
+    organizationId: plan.organizationId,
     status: 'succeeded',
     summary: `Installed compartment with organization ${plan.organizationSlug}`,
     targetId: plan.organizationId,
