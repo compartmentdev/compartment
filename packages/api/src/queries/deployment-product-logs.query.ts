@@ -72,7 +72,7 @@ async function insertProductLogsWithinAppWindows(
   transaction: ApiDatabaseTransaction,
   events: InsertProductLogInput[],
 ): Promise<InsertDeploymentProductLogsResult> {
-  await lockProductLogApps(transaction, orderedAppKeys(events.map(eventAppKey)));
+  await lockProductLogApps(transaction, events.map(eventAppKey));
   const inserted: InsertedProductLogAppKey[] = await transaction
     .insert(deploymentProductLogs)
     .values(events.map(toInsertValues))
@@ -86,18 +86,13 @@ async function insertProductLogsWithinAppWindows(
  * Serializes concurrent ingest batches per app so their retention windows cannot interleave.
  * Apps hash to effectively distinct locks, so organizations never wait on each other.
  *
- * Locks are acquired in the row order of the `values` list, so `appKeys` must already be sorted by
- * `orderedAppKeys`. Overlapping batches then take shared keys in the same order and cannot deadlock.
+ * One awaited statement per key, because a set-returning form leaves the acquisition order to the
+ * executor. Overlapping batches must take shared keys in the same order, or they deadlock.
  */
 async function lockProductLogApps(transaction: ApiDatabaseTransaction, appKeys: string[]): Promise<void> {
-  if (appKeys.length === 0) {
-    return;
+  for (const appKey of orderedAppKeys(appKeys)) {
+    await transaction.execute(sql`select pg_advisory_xact_lock(hashtextextended(${appKey}, ${productLogAppLockSalt}))`);
   }
-  const rows: SQL[] = appKeys.map((appKey: string): SQL => sql`(${appKey})`);
-  await transaction.execute(sql`
-    select pg_advisory_xact_lock(hashtextextended(app_key, ${productLogAppLockSalt}))
-    from (values ${sql.join(rows, sql`, `)}) as apps(app_key)
-  `);
 }
 
 /**
