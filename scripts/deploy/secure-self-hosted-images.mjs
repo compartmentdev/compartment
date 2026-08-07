@@ -22,6 +22,8 @@ const slsaProvenanceV1FileSuffix = '.slsa-v1-provenance.json';
 const slsaProvenanceV1AttestationType = 'slsaprovenance1';
 const transientCosignBundleRegistryErrorMessage = 'no valid bundles exist in registry';
 const cosignVerifyRetryDelaysMs = Object.freeze([1_000, 2_000, 4_000, 8_000, 16_000, 32_000]);
+const trivySbomRegistryReadRetryDelaysMs = Object.freeze([1_000, 2_000, 4_000]);
+const trivyRegistryReadDeniedMessage = 'DENIED: requested access to the resource is denied';
 const validationDigestRef = `docker.io/compartmentdev/compartment-api@sha256:${'a'.repeat(64)}`;
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const selfHostedRuntimeImageSignaturePolicy = readSelfHostedRuntimeImageSignaturePolicy(repositoryRoot);
@@ -92,7 +94,7 @@ async function secureSelfHostedImages(input) {
     const sbomPath = buildSelfHostedImageSbomPath(outputDirectory, digestRef);
     const provenancePath = buildSelfHostedImageProvenancePath(outputDirectory, digestRef);
     process.stdout.write(`Securing self-hosted image ${digestRef} from ${imageRef}.\n`);
-    writeSelfHostedImageSbom(input.repositoryRoot, digestRef, sbomPath);
+    await writeSelfHostedImageSbom(input.repositoryRoot, digestRef, sbomPath);
     writeSelfHostedImageProvenance(digestRef, serviceName, provenancePath);
     signSelfHostedImage(input.repositoryRoot, digestRef);
     await verifySelfHostedImageSignature(input.repositoryRoot, digestRef);
@@ -595,12 +597,29 @@ function readErrorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function writeSelfHostedImageSbom(repositoryRoot, digestRef, sbomPath) {
-  runCommand(
-    'trivy',
-    ['image', '--no-progress', '--format', 'spdx-json', '--output', sbomPath, digestRef],
-    repositoryRoot,
-  );
+async function writeSelfHostedImageSbom(repositoryRoot, digestRef, sbomPath) {
+  const args = ['image', '--no-progress', '--format', 'spdx-json', '--output', sbomPath, digestRef];
+  for (const retryDelayMs of [...trivySbomRegistryReadRetryDelaysMs, undefined]) {
+    const result = captureCommandResult('trivy', args, repositoryRoot);
+    if (result.error !== undefined) {
+      throw result.error;
+    }
+    process.stdout.write(result.stdout);
+    process.stderr.write(result.stderr);
+    if (result.status === 0) {
+      return;
+    }
+
+    const imageDigest = digestRef.slice(digestRef.lastIndexOf('@') + 1);
+    const isTargetImageRegistryReadDenied = result.stderr.includes(
+      `/manifests/${imageDigest}: ${trivyRegistryReadDeniedMessage}`,
+    );
+    if (!isTargetImageRegistryReadDenied || retryDelayMs === undefined) {
+      throw new Error(`Command failed: ${['trivy', ...args].join(' ')}`);
+    }
+
+    await delay(retryDelayMs);
+  }
 }
 
 function writeSelfHostedImageProvenance(digestRef, serviceName, provenancePath) {

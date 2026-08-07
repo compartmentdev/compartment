@@ -43,36 +43,11 @@ runs:
     - name: Set up Docker Scout
       uses: ./.github/actions/setup-docker-scout
 
-    - name: Build self-hosted images
-      shell: bash
-      env:
-        COMPARTMENT_CADDY_RUNTIME_IMAGE: public.ecr.aws/docker/library/alpine:3.22
-        COMPARTMENT_GO_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.5-bookworm
-        COMPARTMENT_NODE_BUILD_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
-        COMPARTMENT_NODE_RUNTIME_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm-slim
-        PUBLISH_SHA: ${{ inputs.publish-sha }}
-      run: |
-        mkdir -p ./.compartment/release-assets
-        node ./scripts/deploy/build-self-hosted-images.mjs \
-          --tag "sha-${PUBLISH_SHA}" \
-          --repository-prefix docker.io/compartmentdev
-
     - name: Log in to Docker Hub
       uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
       with:
         username: ${{ inputs.dockerhub-username }}
         password: ${{ inputs.dockerhub-token }}
-
-    - name: Scan self-hosted images before publish
-      shell: bash
-      env:
-        PUBLISH_SHA: ${{ inputs.publish-sha }}
-      run: |
-        node ./scripts/deploy/secure-self-hosted-images.mjs \
-          --scan-only \
-          --docker-scout \
-          --repository-prefix docker.io/compartmentdev \
-          "sha-${PUBLISH_SHA}"
 
     - name: Log in to GitHub Container Registry
       uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
@@ -107,13 +82,20 @@ runs:
         )
         push_dockerhub_image() {
           local image_name="$1"
+          local service="${image_name#compartment-}"
           local dockerfile="$2"
           local metadata_file="./.compartment/release-assets/${image_name}-build-metadata.json"
+          if [ -n "${scanned_digest_by_service[$service]:-}" ]; then
+            return
+          fi
           shift 2
           docker buildx build "${common_args[@]}" "$@" \
             --tag "docker.io/compartmentdev/${image_name}:${STAGING_TAG}" \
             --metadata-file "$metadata_file" \
             --file "$dockerfile" .
+          scanned_digest_by_service["$service"]="$(node ./scripts/deploy/secure-self-hosted-images.mjs \
+            --read-build-metadata-digest "$metadata_file")"
+          scanned_ref_by_service["$service"]="docker.io/compartmentdev/${image_name}@${scanned_digest_by_service[$service]}"
         }
 
         read_image_digest() {
@@ -132,7 +114,8 @@ runs:
             printf '%s\n' "$digest"
             return 0
           fi
-          if grep -Eiq 'manifest unknown|not found' "$inspect_error_file"; then
+          if grep -Fqi 'manifest unknown' "$inspect_error_file" || \
+            grep -Fqx "ERROR: ${image_ref}: not found" "$inspect_error_file"; then
             return 2
           fi
 
@@ -144,7 +127,7 @@ runs:
         reconcile_immutable_image_pair() {
           local image_name="$1"
           local scanned_digest="$2"
-          local scanned_ref="docker.io/compartmentdev/${image_name}@${scanned_digest}"
+          local scanned_ref="$3"
           local dockerhub_ref="docker.io/compartmentdev/${image_name}:${PRIMARY_TAG}"
           local ghcr_ref="ghcr.io/compartmentdev/${image_name}:${PRIMARY_TAG}"
           local dockerhub_error_file="./.compartment/release-assets/${image_name}-dockerhub-inspect-error.txt"
@@ -197,30 +180,66 @@ runs:
           echo "Immutable image pair for ${image_name} is pinned at ${canonical_digest}."
         }
 
+        mapfile -t self_hosted_services < <(node ./scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs)
+        mkdir -p ./.compartment/release-assets
+
+        declare -A scanned_digest_by_service
+        declare -A scanned_ref_by_service
+        for service in "${self_hosted_services[@]}"; do
+          image_name="compartment-${service}"
+          dockerhub_ref="docker.io/compartmentdev/${image_name}:${PRIMARY_TAG}"
+          ghcr_ref="ghcr.io/compartmentdev/${image_name}:${PRIMARY_TAG}"
+          dockerhub_digest=""
+          ghcr_digest=""
+          if dockerhub_digest="$(read_optional_image_digest "$dockerhub_ref" "./.compartment/release-assets/${image_name}-dockerhub-inspect-error.txt")"; then
+            :
+          else
+            status=$?
+            [ "$status" -eq 2 ] || exit "$status"
+          fi
+          if ghcr_digest="$(read_optional_image_digest "$ghcr_ref" "./.compartment/release-assets/${image_name}-ghcr-inspect-error.txt")"; then
+            :
+          else
+            status=$?
+            [ "$status" -eq 2 ] || exit "$status"
+          fi
+          existing_digest="${dockerhub_digest:-$ghcr_digest}"
+          if [ -n "$existing_digest" ]; then
+            scanned_digest_by_service["$service"]="$(node ./scripts/deploy/secure-self-hosted-images.mjs \
+              --resolve-scanned-digest \
+              "$image_name" \
+              "$existing_digest" \
+              "$dockerhub_digest" \
+              "$ghcr_digest")"
+          fi
+          if [ -n "$dockerhub_digest" ]; then
+            scanned_ref_by_service["$service"]="docker.io/compartmentdev/${image_name}@${dockerhub_digest}"
+          elif [ -n "$ghcr_digest" ]; then
+            scanned_ref_by_service["$service"]="ghcr.io/compartmentdev/${image_name}@${ghcr_digest}"
+          fi
+        done
+
         push_dockerhub_image compartment-api packages/api/Dockerfile.self-hosted "${node_args[@]}"
         push_dockerhub_image compartment-caddy packages/edge/Dockerfile.caddy.self-hosted "${caddy_args[@]}"
         push_dockerhub_image compartment-edge packages/edge/Dockerfile.self-hosted "${node_args[@]}"
         push_dockerhub_image compartment-worker packages/worker/Dockerfile.self-hosted "${worker_args[@]}"
         push_dockerhub_image compartment-dns01-solver packages/managed-domain-dns01-solver/Dockerfile "${worker_args[@]}"
 
-        mapfile -t self_hosted_services < <(node ./scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs)
-
-        declare -A scanned_digest_by_service
         digest_manifest="./.compartment/release-assets/self-hosted-scanned-digests.tsv"
         : > "$digest_manifest"
         scan_args=(--scan-only --docker-scout)
         for service in "${self_hosted_services[@]}"; do
           image_name="compartment-${service}"
-          metadata_file="./.compartment/release-assets/${image_name}-build-metadata.json"
-          scanned_digest_by_service["$service"]="$(node ./scripts/deploy/secure-self-hosted-images.mjs \
-            --read-build-metadata-digest "$metadata_file")"
-          scan_args+=(--image-ref "docker.io/compartmentdev/${image_name}@${scanned_digest_by_service[$service]}")
+          scan_args+=(--image-ref "${scanned_ref_by_service[$service]}")
           printf '%s\t%s\n' "$service" "${scanned_digest_by_service[$service]}" >> "$digest_manifest"
         done
         node ./scripts/deploy/secure-self-hosted-images.mjs "${scan_args[@]}"
 
         for service in "${self_hosted_services[@]}"; do
-          reconcile_immutable_image_pair "compartment-${service}" "${scanned_digest_by_service[$service]}"
+          reconcile_immutable_image_pair \
+            "compartment-${service}" \
+            "${scanned_digest_by_service[$service]}" \
+            "${scanned_ref_by_service[$service]}"
         done
 
     - name: Secure self-hosted image digests
