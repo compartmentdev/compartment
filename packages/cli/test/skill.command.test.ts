@@ -97,6 +97,9 @@ describe.sequential('compartment skill install command', (): void => {
     );
     expectCliSuccess(repeated);
 
+    expect(repeated.payload.files.map((file: CompartmentSkillInstallFile): string => file.path)).toEqual(
+      created.payload.files.map((file: CompartmentSkillInstallFile): string => file.path),
+    );
     expect(
       repeated.payload.files.every((file: CompartmentSkillInstallFile): boolean => file.status === 'unchanged'),
     ).toBe(true);

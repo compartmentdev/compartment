@@ -89,6 +89,7 @@ describe.sequential('production Kubernetes install', (): void => {
 
       await expectCleanControllerStartup();
       await expectPlatformRuntime();
+      await expectIngressControllerCompatibility();
       expect(result.adminEmail).toBe(ownerEmail);
       expect(result.compartmentUrl).toBe(platformCompartmentUrl);
       expect(result.organization.slug).toBe(platformOrganizationSlug);
@@ -138,7 +139,6 @@ describe.sequential('production Kubernetes install', (): void => {
  */
 async function expectInstalledPlatformAudit(installerCli: SelfHostedUserSetupCli, ownerEmail: string): Promise<void> {
   await expectOperatorRegistryInstallValues();
-  await expectIngressControllerCompatibility();
 
   const platformRestart: KubernetesSystemRestartResponse = await installerCli.runJson(
     `system restart --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment`,
