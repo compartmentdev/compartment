@@ -16,6 +16,7 @@ export function buildAuditEventForRequest(
     ...input,
     actor: buildAuditEventActorForRequest(request),
     organizationId: request.currentOrganization.id,
+    scopeType: 'organization',
   };
 }
 

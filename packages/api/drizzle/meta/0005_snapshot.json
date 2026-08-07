@@ -1,5 +1,5 @@
 {
-  "id": "0131e2a9-2b30-4041-8c50-cfd72cd15536",
+  "id": "a58d6db1-68a0-45f9-83d7-9b21e6e4ab15",
   "prevId": "9208e119-fee6-4565-a3aa-9c1d49e04aa4",
   "version": "7",
   "dialect": "postgresql",
@@ -2061,7 +2061,7 @@
           "tableTo": "organizations",
           "columnsFrom": ["organization_id"],
           "columnsTo": ["id"],
-          "onDelete": "cascade",
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "operations_actor_principal_id_principals_id_fk": {
