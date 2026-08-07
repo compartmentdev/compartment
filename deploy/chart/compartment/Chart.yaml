@@ -3,5 +3,5 @@ name: compartment
 description: Compartment platform runtime for Kubernetes
 type: application
 version: 0.1.0
-appVersion: 0.10.7
+appVersion: 0.10.8
 kubeVersion: '>=1.30.0-0'

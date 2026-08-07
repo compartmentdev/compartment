@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.10.8](https://github.com/compartmentdev/compartment/compare/v0.10.7...v0.10.8) (2026-08-07)
+
+
+### Bug Fixes
+
+* **console:** refresh completed project removals ([#302](https://github.com/compartmentdev/compartment/issues/302)) ([9839696](https://github.com/compartmentdev/compartment/commit/9839696387b6f0e43402d5acd9c99c0574025130))
+* **eslint-config:** ignore runtime state in duplicate checks ([#306](https://github.com/compartmentdev/compartment/issues/306)) ([761f799](https://github.com/compartmentdev/compartment/commit/761f7999cd2d7b864bbe6df6a0a745cd5d2a3074))
+* **scripts:** make self-hosted image publishing retry-safe ([#307](https://github.com/compartmentdev/compartment/issues/307)) ([f41097d](https://github.com/compartmentdev/compartment/commit/f41097d492008f57680bba44d57f6cf4c996d1bb))
+* **worker:** start readiness timeout when container runs ([#305](https://github.com/compartmentdev/compartment/issues/305)) ([28d1fb1](https://github.com/compartmentdev/compartment/commit/28d1fb125810b365584702bd88f1a343eebda902))
+
+
+### Performance Improvements
+
+* **docker:** accelerate BuildKit exporters with zstd ([ea67bf6](https://github.com/compartmentdev/compartment/commit/ea67bf6fcccb2e7c69107b6902e401221333ace5))
+* **edge:** compress platform and application responses ([#303](https://github.com/compartmentdev/compartment/issues/303)) ([5f62fb0](https://github.com/compartmentdev/compartment/commit/5f62fb03859fac7f19cf3679152d869e447ff2ad))
+
 ## [0.10.7](https://github.com/compartmentdev/compartment/compare/v0.10.6...v0.10.7) (2026-08-05)
 
 
