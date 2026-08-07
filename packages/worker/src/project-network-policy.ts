@@ -15,7 +15,8 @@ export function projectNetworkPolicy(
     applicationPodLabels: { app: 'application' },
     applicationPorts: ports.applicationPorts,
     edgeNamespaceName: environment.COMPARTMENT_EDGE_NAMESPACE,
-    edgePodLabels: { 'app.kubernetes.io/component': 'edge' },
+    // Caddy proxies to tenant Services. Edge only answers forward_auth subrequests and never dials tenant Pods.
+    edgePodLabels: { 'app.kubernetes.io/component': 'caddy' },
     podCidr: environment.COMPARTMENT_KUBE_POD_CIDR,
     resourcePodLabels: { app: 'resource' },
     resourcePorts: ports.resourcePorts,

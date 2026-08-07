@@ -113,9 +113,14 @@ kind: Deployment
 metadata: { name: caddy, namespace: platform-ns }
 spec:
   replicas: 1
-  selector: { matchLabels: { app: caddy } }
+  selector: { matchLabels: { app.kubernetes.io/component: caddy } }
   template:
-    metadata: { labels: { app: caddy } }
+    metadata:
+      # The chart labels Caddy Pods with compartment.componentLabels: name, instance, and component.
+      labels:
+        app.kubernetes.io/name: compartment
+        app.kubernetes.io/instance: compartment
+        app.kubernetes.io/component: caddy
     spec:
       automountServiceAccountToken: false
       containers:
