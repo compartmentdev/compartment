@@ -153,6 +153,8 @@ describe('platform k3d e2e shard runner', () => {
     expect(readPlatformK3dShardSuites('system-update')).toEqual(['install', 'system-update']);
     expect(buildPlatformK3dShardEnvironment('install-ha-network-policy', {}).COMPARTMENT_E2E_INSTALL_AUDIT).toBe('1');
     expect(buildPlatformK3dShardEnvironment('pr-product', {}).COMPARTMENT_E2E_INSTALL_AUDIT).toBe('0');
+    expect(buildPlatformK3dShardEnvironment('pr-console', {}).COMPARTMENT_E2E_SCOPE).toBe('pr');
+    expect(buildPlatformK3dShardEnvironment('console', {}).COMPARTMENT_E2E_SCOPE).toBe('full');
   });
 
   it('cleans successful and failed runs by default while preserving the original failure', async () => {

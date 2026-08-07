@@ -8,6 +8,11 @@ import {
 const isCi: boolean = process.env.CI === 'true';
 const consoleBaseUrl: string = readConsoleE2eBaseUrl();
 const consoleE2eProxySettings: ConsoleE2eProxySettings | undefined = readConsoleE2eProxySettings();
+/**
+ * The pull-request lane proves the flows that only a live platform can prove; @full marks the
+ * variants that harden an already-covered boundary and run in the full matrix.
+ */
+const runsFullScope: boolean = process.env.COMPARTMENT_E2E_SCOPE !== 'pr';
 
 const chromiumProject: Project = {
   name: 'chromium',
@@ -23,6 +28,7 @@ const config: PlaywrightTestConfig = defineConfig({
   },
   forbidOnly: isCi,
   fullyParallel: false,
+  ...(runsFullScope ? {} : { grepInvert: /@full/u }),
   outputDir: '../../dist-test/playwright-results',
   projects: [chromiumProject],
   reporter: isCi ? [['list'], ['github']] : [['list']],
