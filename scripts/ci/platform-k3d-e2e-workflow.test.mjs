@@ -131,10 +131,11 @@ describe('platform k3d e2e workflow', () => {
     }
   });
 
-  it('runs the full matrix on main and nightly', async () => {
+  it('runs the full matrix on every main commit', async () => {
     const workflow = parse(await readFile(mainWorkflowPath, 'utf8'));
 
-    expect(workflow.on.schedule).toEqual([{ cron: '0 2 * * *' }]);
+    expect(workflow.on.push.branches).toEqual(['main']);
+    expect(workflow.on.schedule).toBeUndefined();
     expect(workflow.jobs['select-platform-k3d-shards'].steps[1].run).toContain('select-platform-k3d-shards.mjs');
     expect(workflow.jobs['platform-k3d-e2e'].with.shards_json).toContain(
       'needs.select-platform-k3d-shards.outputs.shards_json',

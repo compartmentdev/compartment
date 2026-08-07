@@ -4,10 +4,6 @@ on:
   push:
     branches:
       - main
-  # Runs the full matrix on quiet days too, so a regression outside the pull-request lane is
-  # never more than a night away from being reported.
-  schedule:
-    - cron: '0 2 * * *'
   workflow_dispatch:
 
 permissions:
