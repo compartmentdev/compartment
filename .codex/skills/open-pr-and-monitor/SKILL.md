@@ -1,47 +1,30 @@
 ---
 name: open-pr-and-monitor
-description: Open or reuse a repo PR, then monitor checks, merge readiness, and review feedback until the PR is done, blocked, or redirected.
+description: Open or reuse a repo PR and monitor it with a five-minute Codex heartbeat until it is ready, terminal, or blocked.
 ---
 
 # Open PR and Monitor
 
-Use when the user wants PR creation or PR follow-up through terminal outcome.
-
-Before anything else, remove plumbing tests: delete tests that only assert mocked forwarding, call chains, or implementation plumbing without protecting boundary-level behavior.
-
 ## Read
 
 - `AGENTS.md`
-- `$develop-a-feature` only for fix waves
-- `$commit-a-change` only before committing
-- Use `wait_for_pr_feedback.mjs --help`; read skill-local script source only when debugging it.
+- `$develop-a-feature` for fix waves
+- `$commit-a-change` before committing
+- `wait_for_pr_feedback.mjs --help`
 
-## Algorithm
+## Workflow
 
-1. Resolve the mode: open a new PR or reuse an existing one.
-2. For a new PR, require a clean tree, `git fetch origin main`, stop on `main`, review `origin/main..HEAD`, run the narrow validation the diff needs, choose the PR title from the full branch meaning in commit format `type(scope): subject`, push, and open against `main`. Keep the PR body short: what changed, user flow or UX, and new commands or routes if any. If the work is for a GitHub issue, include `Closes #<issue-number>` in the PR body. Do not fill the PR body with validation notes. Default to ready-for-review unless the user asked for draft.
-3. For an existing PR, resolve the PR number or URL first. If it is unexpectedly draft and the user did not ask for draft mode, convert it before monitoring.
-4. As soon as the PR is opened or resolved, print one short chat line with the clickable PR link, for example `[PR #123](https://github.com/owner/repo/pull/123)`.
-5. Start monitoring immediately. Pin the current PR head SHA. The wait script emits a non-blocking public-docs advisory only when mapped files may require user-action, public-contract, or operator-decision docs. If you create a monitor, prefer a Codex heartbeat on the current thread with `FREQ=MINUTELY;INTERVAL=5`; use a detached Codex automation only when the follow-up cannot stay on the current thread, and keep the same five-minute cadence there too. The monitor prompt must explicitly say to continue this PR by following `open-pr-and-monitor`. Do not create a generic reminder, do not use a broader 15-30 minute cadence, and do not resume on a different workflow. Wait between full passes with `.codex/skills/open-pr-and-monitor/scripts/wait_for_pr_feedback.mjs`, and after every push restart the loop on the new PR head.
-   Cadence contract (token budget): the wait script is the only poller — never run your own `gh` polling loop between its returns. Keep its defaults (300s interval, 1800s max wait); do not pass a smaller `--interval-seconds` unless the user explicitly asks for faster monitoring. The script stays silent through intermediate check churn and returns only on decision-ready changes (a failure appeared, all checks settled, new feedback, conflicts, head change, merge, close) or its timeout heartbeat. Run exactly one full inspection pass per script return, then act or call the script again.
-6. On every full pass, inspect all required surfaces:
-   - all visible checks and status contexts for the current head, including third-party review statuses such as `Devin Review`
-   - top-level comments
-   - review threads, not just `gh pr view --comments`
-   - merge readiness: `mergeable`, `mergeStateStatus`, `potentialMergeCommit`, `isInMergeQueue`
-7. Treat review threads and merge readiness as first-class signals. `merge-conflict` or dirty merge state is a blocker until the branch is refreshed or conflicts are resolved. If conflicts touch migrations, regenerate the migrations cleanly and never hand-edit migration files or journals to force a merge.
-8. If `mergeStateStatus` is `BLOCKED` while visible checks look green, do not assume a GitHub lag first. Re-inspect all unresolved review threads and top-level comments, answer anything still hanging, and explicitly resolve every thread that is fixed, intentionally accepted, or purely informational. A blocked merge with green checks often means review feedback still needs a reply or resolution.
-9. For every actionable top-level comment, reply on that exact comment or reject it with a short technical reason. For every actionable review thread, reply on that exact thread and resolve it after the fix or decision. Never leave actionable feedback silent or unresolved.
-10. For every valid fix wave, change the smallest owning surface, run the narrow checks the new diff needs, commit with `$commit-a-change`, push, refresh the pinned head SHA, and return to monitoring on that new head. If monitoring was interrupted by edits, resume it immediately after the push.
-11. Do not finish while any visible check or status context is pending or failing on the current head, including external review statuses such as `Devin Review`, any actionable top-level comment or review thread is unresolved on the current head, or the PR is not mergeable and clean for the current head.
-12. Finish only when the current PR head is green across all visible checks and status contexts, actionable comments and threads are resolved, and merge readiness is clean, or when the run is clearly blocked or redirected by the user.
+1. Open a PR or resolve the existing PR. For a new PR, require a clean tree, fetch `origin/main`, stop on `main`, review `origin/main..HEAD`, run the narrow validation the diff needs, push, and open against `main`. Use a commit-format title, a short body, `Closes #<number>` when applicable, and ready-for-review unless the user asked for draft.
+2. Return the clickable PR URL immediately.
+3. Pin the current head SHA. Use `automation_update` to create or update one Codex heartbeat on the current thread to run every five minutes. Do not create a detached automation or duplicate heartbeat.
+4. The heartbeat prompt must name this skill, the PR URL or number, and the pinned head SHA. On each run it must invoke the script exactly once:
+
+   `node .codex/skills/open-pr-and-monitor/scripts/wait_for_pr_feedback.mjs --pr <number> --head-sha <sha> [--repo <owner/repo>]`
+
+5. Use that snapshot to check every visible status, top-level comment, review, unresolved thread, and merge-readiness field. If work is still pending, end the heartbeat run without polling.
+6. For actionable feedback, failures, or conflicts, inspect the exact GitHub surface and respond there. Apply valid fixes through `$develop-a-feature`, commit through `$commit-a-change`, push, then update the heartbeat prompt with the new head SHA.
+7. Stop the heartbeat when the pinned head is green, actionable feedback is resolved, and merge readiness is clean; when the PR is merged or closed; or when the run is genuinely blocked or redirected.
 
 ## Output
 
-Return only:
-
-- PR URL
-- CI state
-- review status
-- merge status
-- blocker or next action
+Return only the PR URL.

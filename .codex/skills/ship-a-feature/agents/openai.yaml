@@ -1,4 +1,4 @@
 interface:
   display_name: 'Ship a Feature'
-  short_description: 'Repo delivery orchestration through terminal PR outcome'
-  default_prompt: 'Use $ship-a-feature to carry an approved repo change through $develop-a-feature, optional test cleanup, parallel review and smoke subagents, commit waves, and $open-pr-and-monitor until the PR reaches a terminal outcome or a real blocker stops the run.'
+  short_description: 'Repo delivery through monitored PR handoff'
+  default_prompt: 'Use $ship-a-feature to carry an approved repo change through $develop-a-feature, review, commit waves, and $open-pr-and-monitor until monitored PR handoff or a real blocker stops the run.'
