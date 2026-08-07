@@ -71,7 +71,7 @@ test.describe('console auth cookie isolation', (): void => {
     await expectWhoAmIEmail(page.request, currentAccount.email);
   });
 
-  test('does not authorize target app access from a cross-tenant legacy app session cookie', async ({
+  test('does not authorize target app access from a cross-tenant legacy app session cookie @full', async ({
     e2eDeployment,
     loginPage,
     page,
@@ -123,7 +123,7 @@ test.describe('console auth cookie isolation', (): void => {
     await expectAppPrincipalEmail(page, e2eDeployment.attackerRouteUrl, currentAccount.email);
   });
 
-  test('strips tenant-set reserved Set-Cookie names before they reach the browser', async ({
+  test('strips tenant-set reserved Set-Cookie names before they reach the browser @full', async ({
     e2eDeployment,
     loginPage,
     page,

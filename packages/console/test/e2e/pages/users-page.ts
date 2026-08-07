@@ -208,6 +208,16 @@ export class UsersPage {
     ]);
   }
 
+  async closeUserDetails(email: string): Promise<void> {
+    const drawer: Locator = this.detailDrawer(email);
+
+    await Promise.all([
+      this.page.waitForURL((url: URL): boolean => !this.isUserDetailUrl(url, email)),
+      drawer.getByRole('button', { name: 'Close panel' }).click(),
+    ]);
+    await expect(drawer).toBeHidden();
+  }
+
   async expectUserDetailsVisible(email: string, groupName: string, permissionKeys: PermissionKey[]): Promise<void> {
     const drawer: Locator = this.detailDrawer(email);
 

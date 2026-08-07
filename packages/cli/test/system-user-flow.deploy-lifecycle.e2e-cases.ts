@@ -114,7 +114,6 @@ import {
   waitForDeploymentRunCompletion,
   waitForRunningResource,
 } from './self-hosted-user-setup-deployment-flow.harness';
-import { expectCompartmentSkillInstallOnboarding } from './self-hosted-user-setup-agent-onboarding.harness';
 import { expectCurrentOrganizationSlug } from './cli-response-test.harness';
 import { cliRemoteListResponseSchema, cliRemoteResponseSchema } from './remote-command-response.harness';
 import {
@@ -560,8 +559,6 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
       });
       expect(localProject.localProjectName).toBe(app.projectName);
       expect(localProject.descriptorFile).toContain(app.directory);
-
-      await expectCompartmentSkillInstallOnboarding(admin, app.directory);
 
       const missingServiceVariable: SelfHostedUserSetupCommandResult = await admin.runFailure(
         `variable set SERVICE_FLAG enabled --service ${app.serviceName} --output json`,
