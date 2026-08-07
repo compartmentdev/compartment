@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -48,12 +49,28 @@ jobs:
       dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
       dockerhub_token: ${{ secrets.DOCKERHUB_TOKEN }}
 
+  select-platform-k3d-shards:
+    name: main:ci / select platform k3d shards
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      shards_json: ${{ steps.select.outputs.shards_json }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Select the full platform k3d matrix
+        id: select
+        run: node ./scripts/ci/select-platform-k3d-shards.mjs
+
   platform-k3d-e2e:
     name: main:ci / platform-k3d-e2e
     needs:
       - select-runner
+      - select-platform-k3d-shards
       - self-hosted-image-cache
     uses: ./.github/workflows/_platform-k3d-e2e.yml
     with:
       self_hosted_image_cache_key: ${{ needs.self-hosted-image-cache.outputs.cache_key }}
       runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
+      shards_json: ${{ needs.select-platform-k3d-shards.outputs.shards_json }}

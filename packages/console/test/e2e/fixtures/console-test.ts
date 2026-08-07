@@ -22,23 +22,19 @@ import {
   buildConsoleE2eAccessFixture,
   readConsoleE2eFixture,
   type ConsoleE2eAccessFixture,
-  type ConsoleE2eCleanupProjectFixture,
   type ConsoleE2eDeploymentFixture,
   type ConsoleE2eFixture,
   type ConsoleE2eProxyRouteFixture,
-  type ConsoleE2eResourceOwnershipFixture,
 } from '../support/console-e2e-fixture';
 
 export interface ConsoleFixtures {
   auditEventsPage: AuditEventsPage;
-  e2eCleanupProject: ConsoleE2eCleanupProjectFixture;
   deploymentDetailsPage: DeploymentDetailsPage;
   deploymentHistoryPage: DeploymentHistoryPage;
   edgeRoutePage: EdgeRoutePage;
   e2eAccess: ConsoleE2eAccessFixture;
   e2eDeployment: ConsoleE2eDeploymentFixture;
   e2eProxyRoute: ConsoleE2eProxyRouteFixture;
-  e2eResourceOwnership: ConsoleE2eResourceOwnershipFixture;
   groupsPage: GroupsPage;
   loginPage: LoginPage;
   projectsPage: ProjectsPage;
@@ -98,23 +94,11 @@ export const test: TestType<ConsoleTestArgs, ConsoleWorkerArgs> = base.extend<Co
   ): Promise<void> => {
     await use(consoleE2eFixture.deployment);
   },
-  e2eCleanupProject: async (
-    { consoleE2eFixture }: ConsoleE2eFixtureArgs,
-    use: FixtureUse<ConsoleE2eCleanupProjectFixture>,
-  ): Promise<void> => {
-    await use(consoleE2eFixture.cleanupProject);
-  },
   e2eProxyRoute: async (
     { consoleE2eFixture }: ConsoleE2eFixtureArgs,
     use: FixtureUse<ConsoleE2eProxyRouteFixture>,
   ): Promise<void> => {
     await use(consoleE2eFixture.proxyRoute);
-  },
-  e2eResourceOwnership: async (
-    { consoleE2eFixture }: ConsoleE2eFixtureArgs,
-    use: FixtureUse<ConsoleE2eResourceOwnershipFixture>,
-  ): Promise<void> => {
-    await use(consoleE2eFixture.resourceOwnership);
   },
   groupsPage: async (
     { consoleE2eFixture, page }: ConsoleE2eFixtureArgs & PageFixtureArgs,

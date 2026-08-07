@@ -53,5 +53,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run DB integration checks
+      # Covers the database layer and the product log agent, whose transport behaviour needs a
+      # container runtime and a loopback sink rather than a Kubernetes cluster.
+      - name: Run integration checks
         run: pnpm test:integration

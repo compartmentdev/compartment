@@ -27,7 +27,7 @@ interface ProjectsErrorDetails {
 const targetUserCredential: string = ['console', 'e2e', 'target', 'credential'].join('-');
 
 test.describe('console auth security real app', (): void => {
-  test('does not let a second organization take over invite activation or reset an active user', async ({
+  test('does not let a second organization take over invite activation or reset an active user @full', async ({
     e2eAccess,
     page,
     projectsPage,

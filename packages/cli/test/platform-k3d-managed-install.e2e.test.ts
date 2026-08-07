@@ -27,6 +27,7 @@ import {
   readManagedInstallBrokerState,
   readManagedInstallPublicDnsAddresses,
   renewManagedInstallWildcardCertificate,
+  managedDomainRenewalCleanupTimeoutMs,
   waitForManagedDomainBrokerChallengeCleanup,
   type ManagedDomainAuditObservation,
   type ManagedDomainBrokerObservation,
@@ -147,6 +148,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       await renewManagedInstallWildcardCertificate();
       const renewedBroker: ManagedDomainBrokerObservation = await waitForManagedDomainBrokerChallengeCleanup(
         cleanedChallengeCount + 1,
+        managedDomainRenewalCleanupTimeoutMs,
       );
       const presentedChallenges: ManagedDomainAuditObservation[] = renewedBroker.audit.filter(
         (event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_presented',
