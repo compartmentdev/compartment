@@ -16,13 +16,11 @@ import {
   accessAssignmentResponseSchema,
   accessRoleResponseSchema,
   activateResponseSchema,
-  createOrganizationResponseSchema,
   inviteUserResponseSchema,
   variableResponseSchema,
   type AccessAssignmentResponse,
   type AccessRoleResponse,
   type ActivateResponse,
-  type CreateOrganizationResponse,
   type DeploymentReadSummary,
   type InviteUserResponse,
   type VariableResponse,
@@ -46,7 +44,6 @@ import {
   buildSelfHostedAdvertisedCompartmentUrl,
   type SelfHostedUserSetupRuntime,
 } from './self-hosted-user-setup.e2e.harness';
-import { organizationUseResponseSchema, type OrganizationUseResponse } from './system-user-flow-response.harness';
 import {
   expectSuccessfulCommand,
   runCommand,
@@ -80,20 +77,10 @@ interface ConsoleE2eProxyRouteFixture {
   readonly routeUrl: string;
 }
 
-interface ConsoleE2eCleanupProjectFixture {
-  readonly projectName: string;
-}
-
-interface ConsoleE2eResourceOwnershipFixture {
-  readonly otherOrganizationSlug: string;
-}
-
 interface ConsoleE2ePreparedFixture {
   readonly account: ConsoleE2eAccountFixture;
-  readonly cleanupProject: ConsoleE2eCleanupProjectFixture;
   readonly deployment: ConsoleE2eDeploymentFixture;
   readonly proxyRoute: ConsoleE2eProxyRouteFixture;
-  readonly resourceOwnership: ConsoleE2eResourceOwnershipFixture;
 }
 
 class ConsoleE2eIngressProxy {
@@ -178,16 +165,8 @@ async function prepareConsoleE2eFixture(
 
   const deployment: ConsoleE2eDeploymentFixture = await deployConsoleE2eFixture(admin, app);
   const proxyRoute: ConsoleE2eProxyRouteFixture = await deployConsoleE2eProxyRouteFixture(admin, tempDirectories);
-  const cleanupProject: ConsoleE2eCleanupProjectFixture = await deployConsoleE2eCleanupProject(admin, tempDirectories);
   const account: ConsoleE2eAccountFixture = await provisionConsoleE2eLoginPrincipal(admin, viewer, runtime);
-  const resourceOwnership: ConsoleE2eResourceOwnershipFixture = await provisionConsoleE2eResourceOwnershipFixture(
-    admin,
-    app,
-    runtime,
-    account,
-  );
-
-  return { account, cleanupProject, deployment, proxyRoute, resourceOwnership };
+  return { account, deployment, proxyRoute };
 }
 
 async function createConsoleE2eAppFixture(tempDirectories: string[]): Promise<SelfHostedUserSetupAppFixture> {
@@ -278,29 +257,6 @@ async function deployConsoleE2eProxyRouteFixture(
   };
 }
 
-async function deployConsoleE2eCleanupProject(
-  admin: SelfHostedUserSetupCli,
-  tempDirectories: string[],
-): Promise<ConsoleE2eCleanupProjectFixture> {
-  const projectName: string = `console-e2e-cleanup-${randomUUID().replaceAll('-', '').slice(0, 12)}`;
-  const fixture: SelfHostedUserSetupAppFixture = await createSelfHostedUserSetupAppFixture(
-    consoleE2eTempRootDirectory,
-    {
-      projectName,
-    },
-  );
-  tempDirectories.push(fixture.directory);
-  await seedConsoleE2eBuildVariables(admin, fixture);
-
-  const deployPayload: SelfHostedDeployCommandResponse = await admin.runJson('deploy', deployCommandResponseParser, {
-    cwd: fixture.directory,
-  });
-  expect(deployPayload.project.name).toBe(projectName);
-  expect(requireSingleActiveDeployment(deployPayload, fixture.serviceName).status).toBe('succeeded');
-
-  return { projectName };
-}
-
 async function createConsoleE2eProxyRouteFixture(tempDirectories: string[]): Promise<string> {
   const directory: string = await mkdtemp(join(consoleE2eTempRootDirectory, 'edge-route-auth-'));
   tempDirectories.push(directory);
@@ -347,54 +303,6 @@ async function seedConsoleE2eBuildVariables(
 
   expect(buildVariablePayload.variable.keyName).toBe('E2E_BUILD_MESSAGE');
   expect(buildVariablePayload.variable.value).toBe(consoleE2eBuildMessage);
-}
-
-async function provisionConsoleE2eResourceOwnershipFixture(
-  admin: SelfHostedUserSetupCli,
-  app: SelfHostedUserSetupAppFixture,
-  runtime: SelfHostedUserSetupRuntime,
-  account: ConsoleE2eAccountFixture,
-): Promise<ConsoleE2eResourceOwnershipFixture> {
-  const suffix: string = randomUUID().replaceAll('-', '').slice(0, 12);
-  const otherOrganizationSlug: string = `ownership-${suffix}`;
-  const createPayload: CreateOrganizationResponse = await admin.runJson(
-    `org create --name "Ownership ${otherOrganizationSlug}" --slug ${otherOrganizationSlug}`,
-    createOrganizationResponseSchema,
-  );
-  expect(createPayload.organization.slug).toBe(otherOrganizationSlug);
-
-  const invitePayload: InviteUserResponse = await admin.runJson(
-    `user invite ${account.email}`,
-    inviteUserResponseSchema,
-  );
-  expect(invitePayload.user.email).toBe(account.email);
-  expect(invitePayload.invitation).toBeNull();
-
-  const rolePayload: AccessRoleResponse = await admin.runJson(
-    [
-      `role create console-e2e-resource-ownership-${suffix}`,
-      '--permission project.read',
-      '--permission deployment.read',
-      '--permission deployment.logs.read',
-    ].join(' '),
-    accessRoleResponseSchema,
-  );
-  const assignmentPayload: AccessAssignmentResponse = await admin.runJson(
-    `assignment create --role ${rolePayload.role.id} --scope organization --user ${account.email}`,
-    accessAssignmentResponseSchema,
-  );
-  expect(assignmentPayload.assignment.roleId).toBe(rolePayload.role.id);
-
-  const otherOrganizationDeployment: ConsoleE2eDeploymentFixture = await deployConsoleE2eFixture(admin, app);
-  expect(otherOrganizationDeployment.projectName).toBe(app.projectName);
-
-  const restorePayload: OrganizationUseResponse = await admin.runJson(
-    `org use ${runtime.organizationSlug}`,
-    organizationUseResponseSchema,
-  );
-  expect(restorePayload.organization.slug).toBe(runtime.organizationSlug);
-
-  return { otherOrganizationSlug };
 }
 
 async function provisionConsoleE2eLoginPrincipal(
@@ -463,14 +371,12 @@ function buildConsoleE2ePlaywrightEnv(
   env.COMPARTMENT_E2E_PASSWORD = fixture.account.password;
   env.COMPARTMENT_E2E_ATTACKER_APP_BASE_URL = fixture.deployment.attackerRouteUrl;
   env.COMPARTMENT_E2E_PROJECT_NAME = fixture.deployment.projectName;
-  env.COMPARTMENT_E2E_CLEANUP_PROJECT_NAME = fixture.cleanupProject.projectName;
   env.COMPARTMENT_E2E_APP_BASE_URL = fixture.deployment.routeUrl;
   env.COMPARTMENT_E2E_SERVICE_NAME = fixture.deployment.serviceName;
   env.COMPARTMENT_E2E_DEPLOYMENT_RUN_ID = fixture.deployment.deploymentRunId;
   env.COMPARTMENT_E2E_ENVIRONMENT_NAME = fixture.deployment.environmentName;
   env.COMPARTMENT_E2E_PROXY_ROUTE_URL = fixture.proxyRoute.routeUrl;
   env.COMPARTMENT_E2E_PROXY_TARGET_PATH = fixture.proxyRoute.proxyPath;
-  env.COMPARTMENT_E2E_OTHER_ORGANIZATION_SLUG = fixture.resourceOwnership.otherOrganizationSlug;
 
   return env;
 }

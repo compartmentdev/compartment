@@ -96,10 +96,8 @@ describe('platform k3d e2e shard runner', () => {
     expect(environment.COMPARTMENT_E2E_MANAGED_BROKER_PORT).toBeUndefined();
   });
 
-  it('assigns pinned ingress-nginx and multi-node coverage to every matrix-B partition', () => {
-    for (const shard of ['build-matrix-b-1', 'build-matrix-b-2', 'build-matrix-b-3']) {
-      expect(buildPlatformK3dShardEnvironment(shard, {}).COMPARTMENT_E2E_INGRESS_CLASS).toBe('nginx');
-    }
+  it('assigns pinned ingress-nginx coverage to the matrix-B partition', () => {
+    expect(buildPlatformK3dShardEnvironment('build-matrix-b', {}).COMPARTMENT_E2E_INGRESS_CLASS).toBe('nginx');
     expect(buildPlatformK3dShardEnvironment('user-flow', {}).COMPARTMENT_E2E_INGRESS_CLASS).toBe('traefik');
   });
 
@@ -110,11 +108,11 @@ describe('platform k3d e2e shard runner', () => {
         COMPARTMENT_E2E_GVISOR_ENABLED: '1',
       });
     }
-    expect(buildPlatformK3dShardEnvironment('gvisor-build', {})).toMatchObject({
-      COMPARTMENT_E2E_BUILD_MATRIX_PARTITION: 'gvisor',
-      COMPARTMENT_E2E_HTTP_PORT: '18780',
-      COMPARTMENT_E2E_HTTPS_PORT: '19143',
-      COMPARTMENT_E2E_REGISTRY_PORT: '16200',
+    expect(buildPlatformK3dShardEnvironment('build-matrix-b', {})).toMatchObject({
+      COMPARTMENT_E2E_BUILD_MATRIX_PARTITION: 'b',
+      COMPARTMENT_E2E_HTTP_PORT: '18680',
+      COMPARTMENT_E2E_HTTPS_PORT: '19043',
+      COMPARTMENT_E2E_REGISTRY_PORT: '16100',
     });
   });
 
@@ -132,27 +130,31 @@ describe('platform k3d e2e shard runner', () => {
     expect(buildPlatformK3dShardEnvironment('install-ha-network-policy', {})).toMatchObject({
       COMPARTMENT_E2E_HIGH_AVAILABILITY: '1',
     });
-    for (const shard of [
-      'build-matrix-a-1',
-      'build-matrix-a-2',
-      'build-matrix-b-1',
-      'build-matrix-b-2',
-      'build-matrix-b-3',
-    ]) {
-      expect(readPlatformK3dShardSuites(shard)).toEqual(['bootstrap', 'build-matrix']);
+    for (const shard of ['build-matrix-a', 'build-matrix-b']) {
+      expect(readPlatformK3dShardSuites(shard)).toEqual(['install', 'build-matrix']);
       expect(buildPlatformK3dShardEnvironment(shard, {}).COMPARTMENT_E2E_BUILD_MATRIX_PARTITION).toBe(
         shard.replace('build-matrix-', ''),
       );
     }
-    expect(readPlatformK3dShardSuites('gvisor-build')).toEqual(['install', 'build-matrix']);
-    expect(readPlatformK3dShardSuites('user-flow')).toEqual(['bootstrap', 'system-user']);
-    expect(readPlatformK3dShardSuites('console')).toEqual(['bootstrap', 'console', 'g1', 'product-log']);
+    expect(readPlatformK3dShardSuites('pr-product')).toEqual([
+      'install',
+      'network-policy',
+      'system-user',
+      'build-matrix',
+    ]);
+    expect(readPlatformK3dShardSuites('pr-console')).toEqual(['install', 'console']);
+    expect(readPlatformK3dShardSuites('user-flow')).toEqual(['install', 'system-user']);
+    expect(readPlatformK3dShardSuites('console')).toEqual(['install', 'console', 'g1', 'product-log']);
     expect(readPlatformK3dShardSuites('managed-install')).toEqual([
       'public-operator-install',
       'managed-install',
       'retained-state',
     ]);
-    expect(readPlatformK3dShardSuites('system-update')).toEqual(['bootstrap', 'system-update']);
+    expect(readPlatformK3dShardSuites('system-update')).toEqual(['install', 'system-update']);
+    expect(buildPlatformK3dShardEnvironment('install-ha-network-policy', {}).COMPARTMENT_E2E_INSTALL_AUDIT).toBe('1');
+    expect(buildPlatformK3dShardEnvironment('pr-product', {}).COMPARTMENT_E2E_INSTALL_AUDIT).toBe('0');
+    expect(buildPlatformK3dShardEnvironment('pr-console', {}).COMPARTMENT_E2E_SCOPE).toBe('pr');
+    expect(buildPlatformK3dShardEnvironment('console', {}).COMPARTMENT_E2E_SCOPE).toBe('full');
   });
 
   it('cleans successful and failed runs by default while preserving the original failure', async () => {
