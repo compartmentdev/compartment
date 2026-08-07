@@ -9,7 +9,7 @@ import type {
 import type { CompartmentRawRequester, CompartmentRequester } from '@compartment/sdk';
 import type { KubeRuntime } from '@compartment/kube-runtime';
 import pino, { type Logger } from 'pino';
-import { runWorkerIteration as runWorkerIterationWithConfig } from '../src/services/worker.service';
+import { runAuxiliaryWorkerIteration, startNextBuild } from '../src/services/worker.service';
 import type { WorkerConfig } from '../src/config';
 import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
 import type { WorkerDeploymentEventContext } from '../src/services/worker-deployment-event.types';
@@ -148,20 +148,34 @@ vi.mock(
   }),
 );
 
-async function runWorkerIteration(
+async function runNextBuild(
+  apiUrl: string,
+  internalToken: string,
+  artifactRegistry: WorkerArtifactRegistryConfig,
+  iterationLogger: Logger<never, boolean>,
+): Promise<void> {
+  const task = await startNextBuild(
+    createWorkerConfig(apiUrl, internalToken, artifactRegistry),
+    runtime,
+    iterationLogger,
+  );
+  expect(task).not.toBeNull();
+  await task?.completion;
+}
+
+async function runAuxiliaryIteration(
   apiUrl: string,
   internalToken: string,
   artifactRegistry: WorkerArtifactRegistryConfig,
   iterationLogger: Logger<never, boolean>,
 ): Promise<boolean> {
-  return await runWorkerIterationWithConfig(
+  return await runAuxiliaryWorkerIteration(
     createWorkerConfig(apiUrl, internalToken, artifactRegistry),
-    runtime,
     iterationLogger,
   );
 }
 
-describe('runWorkerIteration', (): void => {
+describe('worker service iterations', (): void => {
   beforeEach((): void => {
     mocks.runGitSourceResolutionIteration.mockResolvedValue(false);
     mocks.runNextScheduledResourceOperation.mockResolvedValue({
@@ -197,7 +211,7 @@ describe('runWorkerIteration', (): void => {
       queue: { activeBuildCount: 1, queueDepth: 0, waitTimeMs: 25 },
     });
 
-    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
+    await expect(runNextBuild('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBeUndefined();
 
     expect(mocks.buildReleaseImageFromSource).toHaveBeenCalledWith(
       mocks.request,
@@ -220,7 +234,7 @@ describe('runWorkerIteration', (): void => {
     });
     mocks.handoffBuiltDeploymentToKube.mockRejectedValueOnce(new Error('namespace provisioning failed'));
 
-    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
+    await expect(runNextBuild('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBeUndefined();
 
     expect(mocks.failDeployment).toHaveBeenCalledWith(mocks.request, {
       deploymentId: 'dep_123',
@@ -238,7 +252,7 @@ describe('runWorkerIteration', (): void => {
       });
       mocks.handoffBuiltDeploymentToKube.mockRejectedValueOnce(createCompartmentRequestError(code));
 
-      await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
+      await expect(runNextBuild('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBeUndefined();
 
       expect(mocks.failDeployment).not.toHaveBeenCalled();
       expect(mocks.appendDeploymentStepEventSafely).not.toHaveBeenCalled();
@@ -252,7 +266,7 @@ describe('runWorkerIteration', (): void => {
     });
     mocks.buildReleaseImageFromSource.mockRejectedValueOnce('build failed');
 
-    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
+    await expect(runNextBuild('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBeUndefined();
 
     expect(mocks.failDeployment).toHaveBeenCalledWith(mocks.request, {
       deploymentId: 'dep_123',
@@ -260,48 +274,36 @@ describe('runWorkerIteration', (): void => {
     });
   });
 
-  it('continues to later queues when no deployment is claimable', async (): Promise<void> => {
+  it('runs later auxiliary queues when earlier auxiliary queues are empty', async (): Promise<void> => {
     mocks.runGitSourceSyncIteration.mockResolvedValueOnce(true);
 
-    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
+    await expect(runAuxiliaryIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
 
-    expect(mocks.claimNextDeployment).toHaveBeenCalledWith(mocks.request, {
-      maximumConcurrentBuilds: 2,
-      maximumConcurrentBuildsPerProject: 1,
-    });
     expect(mocks.runGitSourceSyncIteration).toHaveBeenCalledWith(mocks.request);
-  });
-
-  it('does not claim a deployment while an earlier queue has work', async (): Promise<void> => {
-    mocks.runGitSourceResolutionIteration.mockResolvedValueOnce(true);
-
-    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
-
     expect(mocks.claimNextDeployment).not.toHaveBeenCalled();
   });
 
-  it('continues to deployment work when the scheduled resource phase throws', async (): Promise<void> => {
-    const deployment: WorkerClaimedDeployment = createClaimedDeployment();
-    vi.spyOn(logger, 'error');
-    mocks.runNextScheduledResourceOperation.mockRejectedValueOnce(new Error('retention delete failed'));
-    mocks.claimNextDeployment.mockResolvedValueOnce({
-      deployment,
-      queue: { activeBuildCount: 1, queueDepth: 0, waitTimeMs: 25 },
-    });
+  it('stops auxiliary polling when an earlier queue has work', async (): Promise<void> => {
+    mocks.runGitSourceResolutionIteration.mockResolvedValueOnce(true);
 
-    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
+    await expect(runAuxiliaryIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
 
-    expect(logger.error).toHaveBeenCalledOnce();
-    expect(mocks.buildReleaseImageFromSource).toHaveBeenCalledWith(
-      mocks.request,
-      deployment,
-      createWorkerConfig('http://api', 'worker-secret', artifactRegistry),
-      runtime,
-    );
+    expect(mocks.claimNextDeployment).not.toHaveBeenCalled();
+    expect(mocks.runGitSourceSyncIteration).not.toHaveBeenCalled();
   });
 
-  it('continues to deployment work after the API records a scheduled operation failure', async (): Promise<void> => {
-    const deployment: WorkerClaimedDeployment = createClaimedDeployment();
+  it('continues to later auxiliary work when the scheduled resource phase throws', async (): Promise<void> => {
+    vi.spyOn(logger, 'error');
+    mocks.runNextScheduledResourceOperation.mockRejectedValueOnce(new Error('retention delete failed'));
+    mocks.runGitSourceSyncIteration.mockResolvedValueOnce(true);
+
+    await expect(runAuxiliaryIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
+
+    expect(logger.error).toHaveBeenCalledOnce();
+    expect(mocks.runGitSourceSyncIteration).toHaveBeenCalledOnce();
+  });
+
+  it('continues to later auxiliary work after the API records a scheduled operation failure', async (): Promise<void> => {
     mocks.runNextScheduledResourceOperation.mockResolvedValueOnce({
       backupId: null,
       cleanedBackups: [],
@@ -310,19 +312,23 @@ describe('runWorkerIteration', (): void => {
       recordedFailure: true,
       resourceName: 'postgres',
     });
-    mocks.claimNextDeployment.mockResolvedValueOnce({
-      deployment,
-      queue: { activeBuildCount: 1, queueDepth: 0, waitTimeMs: 25 },
+    mocks.runGitSourceSyncIteration.mockResolvedValueOnce(true);
+
+    await expect(runAuxiliaryIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
+
+    expect(mocks.runGitSourceSyncIteration).toHaveBeenCalledOnce();
+  });
+
+  it('returns no build task after one empty claim', async (): Promise<void> => {
+    await expect(
+      startNextBuild(createWorkerConfig('http://api', 'worker-secret', artifactRegistry), runtime, logger),
+    ).resolves.toBeNull();
+
+    expect(mocks.claimNextDeployment).toHaveBeenCalledOnce();
+    expect(mocks.claimNextDeployment).toHaveBeenCalledWith(mocks.request, {
+      maximumConcurrentBuilds: 2,
+      maximumConcurrentBuildsPerOrganization: 1,
     });
-
-    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
-
-    expect(mocks.buildReleaseImageFromSource).toHaveBeenCalledWith(
-      mocks.request,
-      deployment,
-      createWorkerConfig('http://api', 'worker-secret', artifactRegistry),
-      runtime,
-    );
   });
 });
 
@@ -351,7 +357,7 @@ function createWorkerConfig(
       scheduling: { nodeSelector: {}, runtimeClassName: 'gvisor', tolerations: [] },
       timeoutMs: 900000,
     },
-    buildQueue: { maximumConcurrentBuilds: 2, maximumConcurrentBuildsPerProject: 1 },
+    buildQueue: { maximumConcurrentBuilds: 2, maximumConcurrentBuildsPerOrganization: 1 },
     customDomains: {
       caddyServiceName: 'compartment-caddy',
       ingressClassName: 'traefik',

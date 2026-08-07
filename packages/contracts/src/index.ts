@@ -227,6 +227,7 @@ export {
   workerAppendDeploymentEventRequestSchema,
   workerClaimDeploymentResponseSchema,
   workerClaimDeploymentRequestSchema,
+  workerClaimDeploymentRollingUpgradeRequestSchema,
   workerFailDeploymentRequestSchema,
   workerRecoverOrphanedBuildClaimsResponseSchema,
   workerRecoverOrphanedBuildClaimsRequestSchema,

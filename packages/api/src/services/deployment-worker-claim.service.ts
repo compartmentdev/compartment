@@ -48,7 +48,7 @@ async function claimQueuedDeploymentWithReservation(
     await findFirstFairQueuedDeploymentCandidateForUpdate(
       tx,
       input.maximumConcurrentBuilds,
-      input.maximumConcurrentBuildsPerProject,
+      input.maximumConcurrentBuildsPerOrganization,
     );
   if (candidate === undefined) {
     return null;

@@ -176,8 +176,12 @@ buildkit:
   enabled: true
   namespace: compartment-build
   gcKeepStorageMb: 2000
-  maximumConcurrentBuilds: 2
-  maximumConcurrentBuildsPerProject: 2
+  maximumConcurrentBuilds: 100
+  maximumConcurrentBuildsPerOrganization: 2
+  resourceQuota:
+    limits:
+      cpu: '48'
+      memory: 64Gi
   timeoutMs: 1800000
   dnsNamespaceSelector:
     kubernetes.io/metadata.name: kube-system
@@ -263,10 +267,10 @@ resources:
     limits: { cpu: 500m, memory: 256Mi }
   buildkit:
     requests: { cpu: 250m, memory: 512Mi }
-    limits: { cpu: '2', memory: 3Gi }
+    limits: { cpu: 1750m, memory: 1536Mi }
   buildRunner:
     requests: { cpu: 100m, memory: 256Mi }
-    limits: { cpu: '1', memory: 1Gi }
+    limits: { cpu: 250m, memory: 512Mi }
   productLogAgent:
     requests: { cpu: 50m, memory: 64Mi, ephemeral-storage: 320Mi }
     limits: { cpu: '1', memory: 256Mi, ephemeral-storage: 384Mi }

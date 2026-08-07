@@ -64,7 +64,7 @@ interface WorkerConfigEnvironment extends WorkerBuildConfigEnvironment {
   COMPARTMENT_TENANT_SECRETS_PREVIOUS_KEK?: string | undefined;
   COMPARTMENT_KUBE_TENANT_SCHEDULING?: string | undefined;
   COMPARTMENT_MAX_CONCURRENT_BUILDS: number;
-  COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_PROJECT: number;
+  COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_ORGANIZATION: number;
 }
 
 interface WorkerTrustedOutboundHostsEnvironment {
@@ -114,7 +114,7 @@ const workerConfigSchema: z.ZodType<WorkerConfigEnvironment> = workerBuildConfig
     COMPARTMENT_TENANT_SECRETS_PREVIOUS_KEK: z.union([z.literal(''), z.string().regex(/^[0-9a-fA-F]{64}$/)]).optional(),
     COMPARTMENT_KUBE_TENANT_SCHEDULING: z.string().min(1).optional(),
     COMPARTMENT_MAX_CONCURRENT_BUILDS: z.coerce.number().int().positive(),
-    COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_PROJECT: z.coerce.number().int().positive(),
+    COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_ORGANIZATION: z.coerce.number().int().positive(),
   }),
 );
 
@@ -159,7 +159,7 @@ export function readWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
 function buildWorkerBuildQueueConfig(parsed: WorkerConfigEnvironment): WorkerBuildQueueConfig {
   return {
     maximumConcurrentBuilds: parsed.COMPARTMENT_MAX_CONCURRENT_BUILDS,
-    maximumConcurrentBuildsPerProject: parsed.COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_PROJECT,
+    maximumConcurrentBuildsPerOrganization: parsed.COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_ORGANIZATION,
   };
 }
 
