@@ -125,7 +125,9 @@ Failed rollout recovery reapplies the saved active manifest by SSA; it does not 
 Tenant node-pool scheduling is installation-owned and opt-in. When configured, application and resource Deployments
 plus product and provisioning Jobs project the tenant selector, tolerations, and `compartment-tenant` PriorityClass.
 When it is absent, all three Pod fields are omitted so existing server-side-apply ownership remains unchanged.
-Platform and build scheduling remains owned by the Helm chart.
+Build Jobs run tenant-authored code, so they carry the same `compartment-tenant` PriorityClass through their
+always-configured build scheduling and never preempt tenant workloads.
+Platform scheduling and the build node pool remain owned by the Helm chart.
 
 Kernel sandboxing is installation-owned and required through `sandboxRuntime.runtimeClassName`.
 The selected RuntimeClass is projected onto build Jobs, application Deployments, resource Deployments, product Jobs,
