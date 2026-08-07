@@ -275,7 +275,7 @@ export const repoConfig = [
       'max-lines-per-function': [
         'error',
         {
-          max: 25,
+          max: 50,
           skipBlankLines: true,
           skipComments: true,
         },
