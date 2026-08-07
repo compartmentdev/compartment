@@ -4,15 +4,12 @@ import { getApiDatabase } from '../runtime/runtime-access';
 import {
   failGitProviderRegistrationWithCurrentStatus,
   findGitProviderRegistrationByStatusWithExecutor,
-  mapGitProviderRegistrationRow,
 } from './git-provider-registration.query';
-import { buildGitProviderRegistrationOrganizationFilter } from './git-provider-registration-scope.query.helpers';
 import type {
   FailGitProviderRegistrationInput,
   GitProviderReadExecutor,
   GitProviderRegistrationRow,
   GitProviderWriteExecutor,
-  PersistedGitProviderRegistrationRow,
   ReopenActiveGitProviderRegistrationBootstrapInput,
 } from './git-provider-registration.query.types';
 
@@ -75,7 +72,7 @@ export async function reopenActiveGitProviderRegistrationBootstrap(
   executor: GitProviderWriteExecutor,
   input: ReopenActiveGitProviderRegistrationBootstrapInput,
 ): Promise<GitProviderRegistrationRow | undefined> {
-  const [registration]: PersistedGitProviderRegistrationRow[] = await executor
+  const [registration]: GitProviderRegistrationRow[] = await executor
     .update(gitProviderRegistrations)
     .set({
       bootstrapStateId: input.bootstrapStateId,
@@ -86,11 +83,11 @@ export async function reopenActiveGitProviderRegistrationBootstrap(
     .where(
       and(
         eq(gitProviderRegistrations.id, input.id),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId, input.id),
+        eq(gitProviderRegistrations.organizationId, input.organizationId),
         eq(gitProviderRegistrations.status, 'active'),
       ),
     )
     .returning();
 
-  return mapGitProviderRegistrationRow(registration, input.organizationId);
+  return registration;
 }

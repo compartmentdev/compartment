@@ -2,10 +2,6 @@ import { and, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import { gitProviderBootstrapStates, gitProviderRegistrations } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { requirePersistedRow } from './persisted-row.query.shared';
-import {
-  buildGitProviderRegistrationOrganizationFilter,
-  readGitProviderRegistrationOrganizationId,
-} from './git-provider-registration-scope.query.helpers';
 import type {
   CreateGitProviderBootstrapStateInput,
   FindGitProviderBootstrapStateByIdInput,
@@ -17,7 +13,7 @@ import type {
 } from './git-provider-registration.query.types';
 
 interface PersistedGitProviderBootstrapStateScopeRow {
-  registrationWebhookUrl: string;
+  registrationOrganizationId: string;
   state: PersistedGitProviderBootstrapStateRow;
 }
 
@@ -106,7 +102,7 @@ export async function findGitProviderBootstrapStateByIdWithExecutor(
     executor,
     and(
       eq(gitProviderBootstrapStates.id, input.bootstrapStateId),
-      buildGitProviderRegistrationOrganizationFilter(input.organizationId),
+      eq(gitProviderRegistrations.organizationId, input.organizationId),
     ),
   );
 }
@@ -126,7 +122,7 @@ async function findGitProviderBootstrapStateScopeRow(
 ): Promise<GitProviderBootstrapStateRow | undefined> {
   const rows: PersistedGitProviderBootstrapStateScopeRow[] = await executor
     .select({
-      registrationWebhookUrl: gitProviderRegistrations.webhookUrl,
+      registrationOrganizationId: gitProviderRegistrations.organizationId,
       state: gitProviderBootstrapStates,
     })
     .from(gitProviderBootstrapStates)
@@ -143,12 +139,9 @@ async function findGitProviderBootstrapStateScopeRow(
 function mapGitProviderBootstrapStateScopeRow(
   row: PersistedGitProviderBootstrapStateScopeRow | undefined,
 ): GitProviderBootstrapStateRow | undefined {
-  if (row === undefined) {
-    return undefined;
-  }
-
-  const organizationId: string | undefined = readGitProviderRegistrationOrganizationId(row.registrationWebhookUrl);
-  return organizationId === undefined ? undefined : mapRequiredGitProviderBootstrapStateRow(row.state, organizationId);
+  return row === undefined
+    ? undefined
+    : mapRequiredGitProviderBootstrapStateRow(row.state, row.registrationOrganizationId);
 }
 
 function mapRequiredGitProviderBootstrapStateRow(

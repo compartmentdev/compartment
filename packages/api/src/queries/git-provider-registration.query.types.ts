@@ -5,35 +5,9 @@ import type { gitProviderBootstrapStates, gitProviderRegistrations } from '../db
 export type GitProviderReadExecutor = Pick<Database, 'select'>;
 export type GitProviderWriteExecutor = Database | ApiDatabaseTransaction;
 export type GitProviderMutationTransaction = ApiDatabaseTransaction;
-export type PersistedGitProviderRegistrationRow = typeof gitProviderRegistrations.$inferSelect;
 export type PersistedGitProviderBootstrapStateRow = typeof gitProviderBootstrapStates.$inferSelect;
 
-export interface GitProviderRegistrationRow {
-  appId: string | null;
-  appName: string | null;
-  appSlug: string | null;
-  appUrl: string | null;
-  bootstrapStateId: string | null;
-  callbackUrl: string;
-  createdAt: Date;
-  createdByPrincipalId: string;
-  id: string;
-  installationAccountLogin: string | null;
-  installationAccountType: string | null;
-  installationId: string | null;
-  pendingExpiresAt: Date | null;
-  privateKeyPemCiphertext: string | null;
-  privateKeyPemEncryptionKeyId: string | null;
-  webhookSecretCiphertext: string | null;
-  webhookSecretEncryptionKeyId: string | null;
-  webhookUrl: string;
-  organizationId: string;
-  providerHost: string;
-  providerType: string;
-  repositoryOwner: string;
-  status: string;
-  updatedAt: Date;
-}
+export type GitProviderRegistrationRow = typeof gitProviderRegistrations.$inferSelect;
 
 export interface GitProviderBootstrapStateRow {
   completedAt: Date | null;

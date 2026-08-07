@@ -68,13 +68,14 @@ This split keeps repository transport settings separate from app-specific deploy
 
 - Source list, show, and sync require at least organization `deployer`.
 - `connect git` and disconnect require organization `admin`.
-- Install-owned provider bootstrap and shared registration use the same organization `admin`/`source.manage` surface as `connect git`; registration requests must still match the selected provider host and repository owner.
+- Install-owned provider bootstrap and registration use the same organization `admin`/`source.manage` surface as `connect git`; registration requests must still match the selected provider host and repository owner.
 - Git-triggered deploys run through an org-scoped non-human automation principal, not by bypassing normal auth.
 
 ## Provider Model
 
 - v1 prefers install-owned GitHub App registrations for GitHub and supported GHES hosts.
-- Registrations are install-scoped, not organization-scoped.
+- Registrations are organization-scoped, never shared across organizations, and each one owns its own GitHub App credentials and webhook URL.
+- Two organizations in one installation may each hold their own registration for the same provider host and repository owner. GitHub App names are globally unique and derived from the repository owner, so the second organization must rename the app on GitHub's registration page.
 - Managed-domain installs may use the broker only as a stateless short-lived GitHub OAuth helper, authorized by the existing managed-domain token, to list the user's account and organization choices before install-owned app bootstrap. That helper must not request repo scopes, store GitHub OAuth tokens or account lists, or proxy repository operations.
 - Source creation must verify that the selected repository is accessible through the active install-owned GitHub App registration before source creation.
 - Git auto-deploy requires a public HTTPS callback and webhook surface for the install.
