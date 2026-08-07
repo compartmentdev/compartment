@@ -1,5 +1,5 @@
 import { and, asc, eq, gt, lt, or, type SQL } from 'drizzle-orm';
-import { organizationQuotaReconciliation } from '../db/schema';
+import { organizationQuotaReconciliation, projects } from '../db/schema';
 import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { claimSelectedRow } from './claim-row.query.shared';
@@ -9,7 +9,7 @@ import type {
   OrganizationQuotaTransaction,
 } from './organization-quota-reconciliation.query.types';
 
-const organizationQuotaLeaseDurationMs: number = 60_000;
+const organizationQuotaLeaseDurationMs: number = 300_000;
 const organizationQuotaRetryDelayMs: number = 5_000;
 
 export async function createOrganizationQuotaReconciliationWithExecutor(
@@ -87,7 +87,10 @@ async function leaseOrganizationQuota(
       updatedAt: now,
     })
     .where(eq(organizationQuotaReconciliation.organizationId, row.organizationId));
-  return { leaseId, organizationId: row.organizationId };
+  const namespaceIds: string[] = (
+    await transaction.select({ id: projects.id }).from(projects).where(eq(projects.organizationId, row.organizationId))
+  ).map(({ id }: { id: string }): string => id);
+  return { leaseId, namespaceIds, organizationId: row.organizationId };
 }
 
 export async function completeOrganizationQuotaReconciliation(

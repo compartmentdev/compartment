@@ -8,12 +8,12 @@ describe('internal organization quota reconciliation contract', (): void => {
   it('accepts an immutable organization target without usage counters', (): void => {
     expect(
       workerClaimOrganizationQuotaReconcileResponseSchema.parse({
-        target: { leaseId: 'oql_1', organizationId: 'org_1' },
+        target: { leaseId: 'oql_1', namespaceIds: ['prj_1'], organizationId: 'org_1' },
       }),
-    ).toEqual({ target: { leaseId: 'oql_1', organizationId: 'org_1' } });
+    ).toEqual({ target: { leaseId: 'oql_1', namespaceIds: ['prj_1'], organizationId: 'org_1' } });
     expect((): void => {
       workerClaimOrganizationQuotaReconcileResponseSchema.parse({
-        target: { leaseId: 'oql_1', organizationId: 'org_1', usage: { cpu: '1' } },
+        target: { leaseId: 'oql_1', namespaceIds: ['prj_1'], organizationId: 'org_1', usage: { cpu: '1' } },
       });
     }).toThrow();
   });

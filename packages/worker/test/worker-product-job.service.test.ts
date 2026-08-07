@@ -101,7 +101,7 @@ describe('executeProductJob', (): void => {
     expect(runtime.runJob).not.toHaveBeenCalled();
   });
 
-  it('persists full terminal evidence before enabling TTL cleanup', async (): Promise<void> => {
+  it('persists full terminal evidence before deleting the completed Job', async (): Promise<void> => {
     let durable: boolean = false;
     mocks.persistResult.mockImplementation(
       async (
@@ -116,7 +116,7 @@ describe('executeProductJob', (): void => {
       ...successResult(),
       finalize: vi.fn(async (): Promise<void> => {
         if (!durable) {
-          throw new Error('TTL enabled before durable evidence.');
+          throw new Error('Job deleted before durable evidence.');
         }
         await Promise.resolve();
       }),
@@ -125,6 +125,7 @@ describe('executeProductJob', (): void => {
 
     await executeProductJob(requester(), runtime, releaseIntent());
 
+    expect(runtime.runJob).toHaveBeenCalledWith(expect.objectContaining({ cleanupPolicy: 'delete' }));
     expect(mocks.persistResult).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ exitCode: 0, logs: 'complete output\n', status: 'succeeded' }),

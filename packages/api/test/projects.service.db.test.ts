@@ -1,5 +1,7 @@
 import type { ExistingProjectRemoteState } from '@compartment/contracts';
-import type { Pool } from 'pg';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type { Pool, PoolClient, QueryResult } from 'pg';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
@@ -69,6 +71,11 @@ interface ProjectScopeServiceModule {
 interface ProjectScopeMocks {
   resolveActiveProjectScope: Mock<ResolveActiveProjectScope>;
   resolveRequiredProjectScope: Mock<ResolveRequiredProjectScope>;
+}
+
+interface OrganizationQuotaBackfillRow {
+  attempts: number;
+  state: string;
 }
 
 const mocks: ProjectScopeMocks = vi.hoisted(
@@ -164,6 +171,7 @@ describe('projects service', (): void => {
     if (claimed === undefined) {
       throw new Error('Expected one organization quota claim.');
     }
+    expect(claimed.namespaceIds).toContain('prj_ops');
     await expect(
       completeOrganizationQuotaReconciliation({
         failureMessage: null,
@@ -175,6 +183,61 @@ describe('projects service', (): void => {
     await expect(claimPendingProjectProvisioning('provision')).resolves.toMatchObject({
       organizationId: 'org_git_sources',
     });
+  });
+
+  it('reclaims expired quota leases, fences stale completion, and isolates organizations', async (): Promise<void> => {
+    await db.insert(organizations).values({ id: 'org_quota_other', name: 'Other quota org', slug: 'quota-other' });
+    await db.insert(organizationQuotaReconciliation).values({ organizationId: 'org_quota_other', state: 'pending' });
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ state: 'pending' })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+
+    const first: OrganizationQuotaReconcileClaimRow | null = await claimOrganizationQuotaReconciliation();
+    if (first === null) {
+      throw new Error('Expected the first organization quota claim.');
+    }
+    const second: OrganizationQuotaReconcileClaimRow | null = await claimOrganizationQuotaReconciliation();
+    expect(second?.organizationId).not.toBe(first.organizationId);
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ leaseExpiresAt: new Date('2020-01-01T00:00:00.000Z') })
+      .where(eq(organizationQuotaReconciliation.organizationId, first.organizationId));
+    await expect(
+      completeOrganizationQuotaReconciliation({
+        failureMessage: null,
+        leaseId: first.leaseId,
+        organizationId: first.organizationId,
+        status: 'succeeded',
+      }),
+    ).resolves.toBe(false);
+
+    const reclaimed: OrganizationQuotaReconcileClaimRow | null = await claimOrganizationQuotaReconciliation();
+    expect(reclaimed).toMatchObject({ organizationId: first.organizationId });
+    expect(reclaimed?.leaseId).not.toBe(first.leaseId);
+  });
+
+  it('backfills exactly one durable quota row for an existing organization', async (): Promise<void> => {
+    const client: PoolClient = await pool.connect();
+    const migration: string = readFileSync(
+      join(process.cwd(), 'packages/api/drizzle/0005_volatile_harpoon.sql'),
+      'utf8',
+    ).replaceAll('--> statement-breakpoint', '');
+    try {
+      await client.query('BEGIN');
+      await client.query('DROP TABLE organization_quota_reconciliation');
+      await client.query(migration);
+      const backfillStatement: string = /INSERT INTO[\s\S]*?DO NOTHING;/.exec(migration)?.[0] ?? 'SELECT 1';
+      await client.query(backfillStatement);
+      const result: QueryResult<OrganizationQuotaBackfillRow> = await client.query<OrganizationQuotaBackfillRow>(
+        'SELECT attempts, state FROM organization_quota_reconciliation WHERE organization_id = $1',
+        ['org_git_sources'],
+      );
+      expect(result.rows).toEqual([{ attempts: 0, state: 'pending' }]);
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+    }
   });
 
   it('blocks renaming projects while an active git binding exists', async (): Promise<void> => {

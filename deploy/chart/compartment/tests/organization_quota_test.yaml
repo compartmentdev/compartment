@@ -6,12 +6,12 @@ release:
   name: compartment
   namespace: compartment
 tests:
-  - it: grants only GlobalCustomQuota reconciliation to the leader worker
+  - it: grants quota reconciliation and constrained namespace backfill to the leader worker
     set:
       platform.startupStage: full
     asserts:
       - hasDocuments:
-          count: 2
+          count: 4
       - isKind:
           of: ClusterRole
         documentIndex: 0
@@ -21,10 +21,35 @@ tests:
             - apiGroups: [capsule.clastix.io]
               resources: [globalcustomquotas]
               verbs: [get, create, update, patch]
+            - apiGroups: ['']
+              resources: [namespaces]
+              verbs: [get, patch]
         documentIndex: 0
       - isKind:
           of: ClusterRoleBinding
         documentIndex: 1
+      - isKind:
+          of: ValidatingAdmissionPolicy
+        documentIndex: 2
+      - equal:
+          path: spec.failurePolicy
+          value: Fail
+        documentIndex: 2
+      - matchRegex:
+          path: spec.matchConditions[0].expression
+          pattern: system:serviceaccount:compartment:compartment-worker
+        documentIndex: 2
+      - matchRegex:
+          path: spec.validations[0].expression
+          pattern: oldObject.metadata.labels
+        documentIndex: 2
+      - isKind:
+          of: ValidatingAdmissionPolicyBinding
+        documentIndex: 3
+      - equal:
+          path: spec.validationActions
+          value: [Deny]
+        documentIndex: 3
       - equal:
           path: subjects[0]
           value:

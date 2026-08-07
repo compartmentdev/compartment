@@ -1,5 +1,6 @@
 export interface OrganizationQuotaReconciliationClaim {
   leaseId: string;
+  namespaceIds: string[];
   organizationId: string;
 }
 

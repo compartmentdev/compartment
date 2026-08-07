@@ -2,6 +2,7 @@ import type { ApiDatabaseTransaction } from '../db/client.types';
 
 export interface OrganizationQuotaReconcileClaimRow {
   leaseId: string;
+  namespaceIds: string[];
   organizationId: string;
 }
 export type OrganizationQuotaTransaction = ApiDatabaseTransaction;

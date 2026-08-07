@@ -57,7 +57,7 @@ type KubePatchInvocation = [
   object: KubeManifest,
   pretty: string | undefined,
   dryRun: string | undefined,
-  fieldManager: string,
+  fieldManager: string | undefined,
   force: boolean,
   strategy: PatchStrategy,
 ];

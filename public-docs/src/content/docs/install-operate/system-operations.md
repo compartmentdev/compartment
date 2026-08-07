@@ -21,10 +21,10 @@ Install the current verified stable CLI before updating:
 curl -fsSL https://compartment.dev/install.sh | sh
 ```
 
-For an existing Kubernetes cluster, pass the same operator values file used for the installation:
+Before updating an operator-owned cluster, upgrade it to Kubernetes 1.35 or newer. The current chart rejects
+Kubernetes 1.30–1.34; Compartment does not upgrade operator-owned clusters.
 
-Before updating, upgrade the cluster to Kubernetes 1.35 or newer. The current chart will reject Kubernetes 1.30–1.34;
-Compartment does not upgrade operator-owned clusters.
+For an existing Kubernetes cluster, pass the same operator values file used for the installation:
 
 ```bash
 compartment system update \

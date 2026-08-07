@@ -25,6 +25,7 @@ import {
   requireCleanupObjectApi,
   isJobTimeoutError,
   readObjectIgnoringNotFound,
+  mergePatchExistingObject,
   startJobDeadline,
   type JobDeadline,
 } from './kube-runtime-operations';
@@ -90,6 +91,10 @@ export class KubeRuntime {
 
   public async read(object: KubeManifest): Promise<KubeObservedManifest | null> {
     return await readObjectIgnoringNotFound(this.objectApi, object);
+  }
+
+  public async mergePatchExisting(object: KubeManifest): Promise<KubeManifest | null> {
+    return await mergePatchExistingObject(this.objectApi, object);
   }
 
   public async delete(objects: KubeManifest[]): Promise<void> {

@@ -181,7 +181,10 @@ let hasInitializedApiIntegrationRuntime: boolean = false;
 
 async function installCompartment(targetApp: ApiApp): Promise<InstallResponse> {
   const response: InstallResponse = await installCompartmentHarness(targetApp);
-  await db.update(organizationQuotaReconciliation).set({ state: 'succeeded' });
+  await db
+    .update(organizationQuotaReconciliation)
+    .set({ state: 'succeeded' })
+    .where(eq(organizationQuotaReconciliation.organizationId, response.organization.id));
   return response;
 }
 

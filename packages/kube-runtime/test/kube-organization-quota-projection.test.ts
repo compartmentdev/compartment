@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { organizationGlobalCustomQuotaManifests, type KubeManifest } from '../src';
+import {
+  organizationGlobalCustomQuotaManifests,
+  kubeNamespaceName,
+  projectNamespaceOrganizationLabelManifest,
+  type KubeManifest,
+} from '../src';
 import type { GlobalCustomQuotaSpec } from '../src/kube-organization-quota-projection.types';
 
 describe('organization GlobalCustomQuota projection', (): void => {
@@ -37,5 +42,16 @@ describe('organization GlobalCustomQuota projection', (): void => {
       expect(quota.sources[0]?.path).toContain('.spec.containers[*]');
       expect(quota.sources[1]?.path).toContain('.spec.initContainers[*]');
     }
+  });
+
+  it('projects an organization label onto the deterministic project namespace', (): void => {
+    expect(projectNamespaceOrganizationLabelManifest('prj_01jz', 'org_01jz')).toEqual({
+      apiVersion: 'v1',
+      kind: 'Namespace',
+      metadata: {
+        labels: { 'compartment.dev/organization-id': 'org_01jz' },
+        name: kubeNamespaceName('prj_01jz'),
+      },
+    });
   });
 });
