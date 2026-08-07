@@ -16,6 +16,7 @@ import {
   readPlatformK3dIngressNginxManifestUrl,
   readPlatformK3dEnvironment,
   renderManagedPlatformK3dValues,
+  resolveTransientKubernetesApiRetry,
   renderPreviousPlatformK3dValues,
   renderPublicOperatorPlatformK3dValues,
   renderPlatformK3dValues,
@@ -93,6 +94,38 @@ describe('platform k3d e2e command boundary', () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+
+  it('retries a transient Kubernetes API failure until the caller deadline expires', () => {
+    const deadline = 120_000;
+
+    expect(resolveTransientKubernetesApiRetry({ attempt: 1, deadline, elapsedNowMs: 0 })).toEqual({
+      delayMs: 1_000,
+      exhausted: false,
+    });
+    expect(resolveTransientKubernetesApiRetry({ attempt: 9, deadline, elapsedNowMs: 40_000 })).toEqual({
+      delayMs: 16_000,
+      exhausted: false,
+    });
+    expect(resolveTransientKubernetesApiRetry({ attempt: 12, deadline, elapsedNowMs: 119_000 })).toEqual({
+      delayMs: 1_000,
+      exhausted: false,
+    });
+    expect(resolveTransientKubernetesApiRetry({ attempt: 13, deadline, elapsedNowMs: 120_000 })).toEqual({
+      delayMs: 0,
+      exhausted: true,
+    });
+  });
+
+  it('keeps the fixed attempt ceiling when no deadline bounds the retry', () => {
+    expect(resolveTransientKubernetesApiRetry({ attempt: 5, deadline: undefined, elapsedNowMs: 0 })).toEqual({
+      delayMs: 16_000,
+      exhausted: false,
+    });
+    expect(resolveTransientKubernetesApiRetry({ attempt: 6, deadline: undefined, elapsedNowMs: 0 })).toEqual({
+      delayMs: 16_000,
+      exhausted: true,
+    });
   });
 
   it('classifies only transient Kubernetes API availability failures', () => {

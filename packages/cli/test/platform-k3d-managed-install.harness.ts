@@ -14,6 +14,12 @@ const repositoryRoot: string = resolve(__dirname, '../../..');
 const fixtureDirectory: string = resolve(repositoryRoot, 'deploy/e2e/managed-install');
 const kubernetesTimeoutMs: number = 6 * 60_000;
 const brokerStateTimeoutMs: number = 60_000;
+/**
+ * cert-manager cleans a DNS-01 challenge asynchronously after the order completes, so a renewal
+ * reaches the broker well after the certificate reports Ready. The issuance budget is too tight
+ * for that leg and made the renewal assertion the shard's most frequent flake.
+ */
+export const managedDomainRenewalCleanupTimeoutMs: number = 5 * 60_000;
 const managedBrokerServicePort: number = 19_000;
 const managedBrokerPortForwardTimeoutMs: number = 30_000;
 const managedBrokerPortForwardTerminateTimeoutMs: number = 5_000;
@@ -441,8 +447,9 @@ async function writeManagedInstallCertificateAuthority(): Promise<void> {
 
 export async function waitForManagedDomainBrokerChallengeCleanup(
   minimumCleanedChallengeCount: number,
+  timeoutMs: number = brokerStateTimeoutMs,
 ): Promise<ManagedDomainBrokerObservation> {
-  const deadline: number = Date.now() + brokerStateTimeoutMs;
+  const deadline: number = Date.now() + timeoutMs;
   let lastFailure: string = '';
   for (;;) {
     const result: SelfHostedUserSetupCommandResult = await runKubectl([

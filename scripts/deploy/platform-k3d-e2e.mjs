@@ -68,6 +68,7 @@ const registryNodePullResourceName = 'registry-node-pull';
 const imageDigestPattern = /^sha256:[a-f0-9]{64}$/u;
 const kubernetesReadinessTimeoutSeconds = 240;
 const kubernetesReadinessTimeout = `${kubernetesReadinessTimeoutSeconds}s`;
+const apiServerReadinessBudgetMs = 120_000;
 const prerequisiteSetupBudgetMs = 120_000;
 const transientKubernetesApiMaxAttempts = 6;
 const transientKubernetesApiInitialDelayMs = 1_000;
@@ -397,12 +398,10 @@ function createRegistryTestCertificateAuthority() {
 }
 
 async function createCluster() {
+  await runCommandAsync('k3d', buildPlatformK3dClusterCreateArgs(), repositoryRoot);
+  await waitForApiServerReadiness();
   const prerequisiteSetupStartedAt = performance.now();
   const prerequisiteSetupDeadline = prerequisiteSetupStartedAt + prerequisiteSetupBudgetMs;
-  await runCommandAsync('k3d', buildPlatformK3dClusterCreateArgs(), repositoryRoot);
-  await runKubectlWithTransientApiRetry(['--context', contextName, '--request-timeout=5s', 'get', '--raw=/readyz'], {
-    deadline: prerequisiteSetupDeadline,
-  });
   installSandboxRuntimeClass();
   if (isIngressNginxShard) {
     await installIngressNginx(prerequisiteSetupStartedAt, prerequisiteSetupDeadline);
@@ -420,11 +419,22 @@ async function createCluster() {
       '--filename',
       certManagerManifestUrl,
     ],
-    repositoryRoot,
+    { deadline: prerequisiteSetupDeadline },
   );
   await waitForCertManager(prerequisiteSetupStartedAt, prerequisiteSetupDeadline);
   reportPrerequisiteSetupCost(performance.now() - prerequisiteSetupStartedAt);
   await installRegistryTestIssuer();
+}
+
+/**
+ * The apiserver reports its post-start hooks as not ready for a while after k3d returns, so the
+ * readiness gate keeps its own budget: retrying until it expires instead of after a fixed attempt
+ * count stops a slow runner from tearing down a cluster that was still coming up.
+ */
+async function waitForApiServerReadiness() {
+  await runKubectlWithTransientApiRetry(['--context', contextName, '--request-timeout=5s', 'get', '--raw=/readyz'], {
+    deadline: performance.now() + apiServerReadinessBudgetMs,
+  });
 }
 
 function installSandboxRuntimeClass() {
@@ -596,42 +606,57 @@ async function installRegistryTestIssuer() {
   rmSync(issuerPath, { force: true });
 }
 
+/**
+ * Retries transient Kubernetes API failures until the caller's deadline, falling back to a fixed
+ * attempt count when no deadline is given. Attempt-capped retries used to give up ~31s into a
+ * cluster that was still starting, and the harness then deleted it as if the create had failed.
+ */
 async function runKubectlWithTransientApiRetry(args, options = {}) {
-  let lastResult;
-
-  for (let attempt = 1; attempt <= transientKubernetesApiMaxAttempts; attempt += 1) {
-    lastResult = captureCommandResult('kubectl', args, repositoryRoot);
-    if (lastResult.status === 0) {
+  for (let attempt = 1; ; attempt += 1) {
+    const result = captureCommandResult('kubectl', args, repositoryRoot);
+    if (result.status === 0) {
       return;
     }
     const allowNotReady = args.includes('--raw=/readyz');
+    const retry = resolveTransientKubernetesApiRetry({
+      attempt,
+      deadline: options.deadline,
+      elapsedNowMs: performance.now(),
+    });
     if (
-      !isTransientKubernetesApiFailure(lastResult, allowNotReady, options.allowResourceNotFound === true) ||
-      attempt === transientKubernetesApiMaxAttempts
+      !isTransientKubernetesApiFailure(result, allowNotReady, options.allowResourceNotFound === true) ||
+      retry.exhausted
     ) {
-      if (lastResult.stderr !== '') {
-        process.stderr.write(lastResult.stderr);
+      if (result.stderr !== '') {
+        process.stderr.write(result.stderr);
       }
-      throw lastResult.error ?? new Error(`Command failed: kubectl ${args.join(' ')}`);
+      throw result.error ?? new Error(`Command failed: kubectl ${args.join(' ')}`);
     }
 
-    const retryDelayMs = Math.min(
-      transientKubernetesApiInitialDelayMs * 2 ** (attempt - 1),
-      transientKubernetesApiMaxDelayMs,
-    );
-    const remainingDelayMs =
-      typeof options.deadline === 'number' ? Math.max(0, options.deadline - performance.now()) : retryDelayMs;
-    if (remainingDelayMs === 0) {
-      throw new Error('Kubernetes API did not become ready within the prerequisite setup budget.');
-    }
-    const boundedRetryDelayMs = Math.min(retryDelayMs, remainingDelayMs);
     process.stderr.write(
-      `Kubernetes API is not ready (attempt ${String(attempt)}/${String(transientKubernetesApiMaxAttempts)}); retrying in ${String(Math.ceil(boundedRetryDelayMs))}ms.\n`,
+      `Kubernetes API is not ready (attempt ${String(attempt)}); retrying in ${String(Math.ceil(retry.delayMs))}ms.\n`,
     );
-    await delay(boundedRetryDelayMs);
+    await delay(retry.delayMs);
+  }
+}
+
+/**
+ * Decides whether a transient Kubernetes API failure gets another attempt. A caller-supplied
+ * deadline retries for as long as it lasts, so a cluster that is merely slow to start is not torn
+ * down; callers without one keep the fixed attempt ceiling.
+ */
+export function resolveTransientKubernetesApiRetry({ attempt, deadline, elapsedNowMs }) {
+  const backoffDelayMs = Math.min(
+    transientKubernetesApiInitialDelayMs * 2 ** (attempt - 1),
+    transientKubernetesApiMaxDelayMs,
+  );
+  if (typeof deadline !== 'number') {
+    return { delayMs: backoffDelayMs, exhausted: attempt >= transientKubernetesApiMaxAttempts };
   }
 
-  throw lastResult?.error ?? new Error(`Command failed after Kubernetes API retry: kubectl ${args.join(' ')}`);
+  const remainingMs = Math.max(0, deadline - elapsedNowMs);
+
+  return { delayMs: Math.min(backoffDelayMs, remainingMs), exhausted: remainingMs === 0 };
 }
 
 export function isTransientKubernetesApiFailure(result, allowNotReady = false, allowResourceNotFound = false) {
