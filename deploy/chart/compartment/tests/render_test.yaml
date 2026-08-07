@@ -505,6 +505,21 @@ tests:
             - '1'
         template: product-log-agent.yaml
         documentIndex: 4
+      - equal:
+          path: spec.template.spec.volumes[2].hostPath.path
+          value: /var/lib/compartment/compartment-log-agent
+        template: product-log-agent.yaml
+        documentIndex: 4
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits["ephemeral-storage"]
+          value: 384Mi
+        template: product-log-agent.yaml
+        documentIndex: 4
+      - matchRegex:
+          path: data["vector.yaml"]
+          pattern: 'uri: \$\{COMPARTMENT_LOG_INGEST_URL\}'
+        template: product-log-agent.yaml
+        documentIndex: 1
       - hasDocuments:
           count: 5
         template: buildkit.yaml

@@ -9,6 +9,9 @@ on:
       runner_labels_json:
         required: true
         type: string
+      shards_json:
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -22,18 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard:
-          - managed-install
-          - install-ha-network-policy
-          - build-matrix-a-1
-          - build-matrix-a-2
-          - build-matrix-b-1
-          - build-matrix-b-2
-          - build-matrix-b-3
-          - gvisor-build
-          - user-flow
-          - console
-          - system-update
+        shard: ${{ fromJson(inputs.shards_json) }}
     env:
       COMPARTMENT_E2E_IMAGE_ARCHIVE_DIR: ./.compartment/self-hosted-image-cache
       COMPARTMENT_E2E_KEEP_ON_FAILURE: ${{ vars.COMPARTMENT_E2E_KEEP_ON_FAILURE || '0' }}
@@ -144,7 +136,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Validate Helm chart renders
-        if: ${{ matrix.shard == 'managed-install' }}
+        if: ${{ matrix.shard == 'pr-product' || matrix.shard == 'managed-install' }}
         env:
           HELM_DATA_HOME: ${{ runner.temp }}/helm-data
         run: |
