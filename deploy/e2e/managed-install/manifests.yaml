@@ -102,6 +102,7 @@ spec:
           args: ['-config', 'test/config/pebble-config.json', '-strict', '-dnsserver', 'challtestsrv:8053']
           env:
             - { name: PEBBLE_VA_NOSLEEP, value: '1' }
+            - { name: PEBBLE_AUTHZREUSE, value: '0' }
           ports:
             - { name: acme, containerPort: 14000 }
             - { name: management, containerPort: 15000 }
