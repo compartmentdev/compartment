@@ -114,7 +114,7 @@ async function runPlatformK3dProductLogGate() {
       repositoryRoot,
     );
     loadTarget = await startLoadPods();
-    const bufferBytes = await waitForBoundedRetainedWindow();
+    const bufferBytes = await waitForBoundedRetainedWindow(loadTarget.containerName);
     await assertPlatformHealthy(loadTarget);
     process.stdout.write(
       `product_log_gate retained_lines=${retainedLinesPerApp} buffer_bytes=${bufferBytes} buffer_max_bytes=${configuredBufferMaxBytes} status=ok\n`,
@@ -146,6 +146,17 @@ function psql(statement) {
       statement,
     ],
     repositoryRoot,
+  );
+}
+
+/** Counts the window of the app the load pods write into, identified by the container name they borrow. */
+function readLoadTargetWindow(containerName) {
+  return parseNonNegativeInteger(
+    psql(
+      `select count(*) from deployment_product_logs where app_key =
+         (select app_key from deployment_product_logs where container_name = '${containerName}' limit 1);`,
+    ),
+    'load target product-log window',
   );
 }
 
@@ -220,7 +231,7 @@ async function startLoadPods() {
     );
     await delay(10_000);
   }
-  return { namespace, podNames };
+  return { containerName, namespace, podNames };
 }
 
 /**
@@ -228,7 +239,7 @@ async function startLoadPods() {
  * single app window. That window must fill to the retained line count and then stop growing, while the
  * agent keeps draining instead of accumulating an unbounded disk buffer.
  */
-async function waitForBoundedRetainedWindow() {
+async function waitForBoundedRetainedWindow(containerName) {
   const agentPod = captureCommand(
     'kubectl',
     [
@@ -245,24 +256,28 @@ async function waitForBoundedRetainedWindow() {
     ],
     repositoryRoot,
   );
-  let widestWindow = 0;
+  let loadTargetWindow = 0;
   for (let attempt = 0; attempt < 300; attempt += 1) {
-    widestWindow = readWidestRetainedWindow();
-    if (widestWindow >= retainedLinesPerApp) {
+    loadTargetWindow = readLoadTargetWindow(containerName);
+    if (loadTargetWindow >= retainedLinesPerApp) {
       break;
     }
     await delay(1_000);
   }
-  if (widestWindow !== retainedLinesPerApp) {
-    throw new Error(`Product-log window did not reach the retained line count: lines=${widestWindow}.`);
+  if (loadTargetWindow !== retainedLinesPerApp) {
+    throw new Error(`Flooded product-log window did not reach the retained line count: lines=${loadTargetWindow}.`);
   }
   let bufferBytes = readProductLogBufferBytes(agentPod);
   for (let attempt = 0; attempt < windowHoldAttempts; attempt += 1) {
     await delay(1_000);
-    widestWindow = readWidestRetainedWindow();
+    loadTargetWindow = readLoadTargetWindow(containerName);
+    const widestWindow = readWidestRetainedWindow();
     bufferBytes = readProductLogBufferBytes(agentPod);
+    if (loadTargetWindow !== retainedLinesPerApp) {
+      throw new Error(`Flooded product-log window left the retained line count: lines=${loadTargetWindow}.`);
+    }
     if (widestWindow > retainedLinesPerApp) {
-      throw new Error(`Product-log window grew past the retained line count: lines=${widestWindow}.`);
+      throw new Error(`A product-log window grew past the retained line count: lines=${widestWindow}.`);
     }
     if (bufferBytes > bufferMaxBytes) {
       throw new Error(`Product-log buffer grew past its runaway guard: bytes=${bufferBytes}.`);
