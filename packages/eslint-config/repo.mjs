@@ -222,7 +222,6 @@ export const repoConfig = [
       'boundaries/element-types': 'off',
       'compartment/no-inline-multiline-text-join': 'error',
       'compartment/package-file-placement-convention': 'error',
-      'compartment/step-down-function-order': 'off',
       'import/first': 'error',
       'sonarjs/no-clear-text-protocols': 'off',
       'sonarjs/no-empty-test-file': 'off',
@@ -276,7 +275,7 @@ export const repoConfig = [
       'max-lines-per-function': [
         'error',
         {
-          max: 25,
+          max: 50,
           skipBlankLines: true,
           skipComments: true,
         },

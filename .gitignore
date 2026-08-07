@@ -31,7 +31,7 @@ tmp/
 .cache/
 .pnpm-store/
 .direnv/
-.eslintcache
+.eslintcache*
 .husky/_/
 public-docs/.astro/
 

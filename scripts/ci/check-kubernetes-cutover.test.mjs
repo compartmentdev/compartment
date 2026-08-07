@@ -9,10 +9,21 @@ import {
   findPathViolations,
   findPublicInstallerViolations,
   listRepositoryPaths,
+  publicInstallerRequiredTerms,
 } from './check-kubernetes-cutover.mjs';
 
 const temporaryDirectories = [];
 const renderLines = (lines) => lines.join('\n');
+const expectedInstallerTermCount = 7;
+const expectedInstallerTrustMarkers = [
+  'channel=',
+  'compartment.dev',
+  'publish-self-hosted-main.yml',
+  'cosign',
+  '--certificate-identity',
+  '--certificate-oidc-issuer',
+  '--certificate-github-workflow-sha',
+];
 const guardedRuntimeTerms = [
   'node|SocketPath',
   'container|Id',
@@ -184,19 +195,20 @@ describe('Kubernetes cutover gate', () => {
     expect(listRepositoryPaths(repository)).toContain('packages/cli/dist/installer.js');
   });
 
+  it('locks the security-critical installer trust terms independently of the guard list', () => {
+    const rendered = renderLines(publicInstallerRequiredTerms);
+
+    expect(publicInstallerRequiredTerms).toHaveLength(expectedInstallerTermCount);
+    for (const marker of expectedInstallerTrustMarkers) {
+      expect(rendered).toContain(marker);
+    }
+  });
+
   it('requires the public bootstrap to default to stable and verify signed main artifacts', () => {
-    const validInstaller = renderLines([
-      ['channel=', '"latest"'].join(''),
-      ['https://compartment.dev', '/install.sh'].join(''),
-      ['publish-self-hosted-', 'main.yml@refs/heads/main'].join(''),
-      ['"', '$cosign_command', '" verify'].join(''),
-      ['--certificate-', 'identity'].join(''),
-      ['--certificate-', 'oidc-issuer'].join(''),
-      ['--certificate-', 'github-workflow-sha'].join(''),
-    ]);
+    const validInstaller = renderLines(publicInstallerRequiredTerms);
 
     expect(findPublicInstallerViolations('install.sh', validInstaller)).toEqual([]);
-    expect(findPublicInstallerViolations('install.sh', 'channel="main"')).toHaveLength(7);
+    expect(findPublicInstallerViolations('install.sh', 'channel="main"')).toHaveLength(expectedInstallerTermCount);
     expect(
       findPublicInstallerViolations(
         'install.sh',

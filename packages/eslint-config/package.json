@@ -13,7 +13,7 @@
     "./typed": "./typed.mjs"
   },
   "scripts": {
-    "lint": "eslint . --max-warnings 0",
+    "lint": "eslint . --max-warnings 0 --cache --cache-location .eslintcache",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

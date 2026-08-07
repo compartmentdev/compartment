@@ -4,21 +4,11 @@ import tseslint from 'typescript-eslint';
 import { noAnonymousInterfaceImplementationRule } from '../rules/no-anonymous-interface-implementation.mjs';
 import { noContractDtoInApiServicesRule } from '../rules/no-contract-dto-in-api-services.mjs';
 import { packageFilePlacementConventionRule } from '../rules/package-file-placement-convention.mjs';
-import { stepDownFunctionOrderRule } from '../rules/step-down-function-order.mjs';
 
 function createTypeScriptRuleTester() {
   return new RuleTester({
     languageOptions: {
       parser: tseslint.parser,
-      ecmaVersion: 'latest',
-      sourceType: 'module',
-    },
-  });
-}
-
-function createJavaScriptRuleTester() {
-  return new RuleTester({
-    languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
     },
@@ -96,81 +86,6 @@ test('package file placement convention rule', () => {
           {
             message:
               'Do not add *.query.test.ts or other thin useless tests. Cover persistence behavior with DB-backed, integration, or higher-layer service/API tests.',
-          },
-        ],
-      },
-    ],
-  });
-});
-
-test('step-down function order rule', () => {
-  const ruleTester = createJavaScriptRuleTester();
-
-  ruleTester.run('step-down-function-order', stepDownFunctionOrderRule, {
-    valid: [
-      {
-        code: `
-          export function createNodeApp() {
-            registerNodeLifecycle();
-            createHeartbeatRunner();
-          }
-
-          function registerNodeLifecycle() {}
-
-          function createHeartbeatRunner() {}
-        `,
-      },
-      {
-        code: `
-          function createNodeApp() {
-            const createHeartbeatRunner = () => {};
-
-            createHeartbeatRunner();
-          }
-
-          function createHeartbeatRunner() {}
-        `,
-      },
-      {
-        code: `
-          function createNodeApp() {
-            queueMicrotask(() => {
-              createHeartbeatRunner();
-            });
-          }
-
-          function createHeartbeatRunner() {}
-        `,
-      },
-    ],
-    invalid: [
-      {
-        code: `
-          function createHeartbeatRunner() {}
-
-          export function createNodeApp() {
-            createHeartbeatRunner();
-          }
-        `,
-        errors: [
-          {
-            message:
-              'Top-level function "createHeartbeatRunner" is declared above "createNodeApp". Move "createHeartbeatRunner" below "createNodeApp" to keep step-down order.',
-          },
-        ],
-      },
-      {
-        code: `
-          async function executeInstallCommand() {}
-
-          export function registerInstallCommand(program) {
-            program.action(async () => await executeInstallCommand());
-          }
-        `,
-        errors: [
-          {
-            message:
-              'Top-level function "executeInstallCommand" is declared above "registerInstallCommand". Move "executeInstallCommand" below "registerInstallCommand" to keep step-down order.',
           },
         ],
       },
