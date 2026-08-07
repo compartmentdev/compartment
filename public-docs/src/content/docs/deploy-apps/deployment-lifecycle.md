@@ -101,7 +101,9 @@ They do not describe a Kubernetes rollout failure or rollback as an image build.
 
 The browser control plane also exposes deployment history and deployment run details for projects, which is useful when you want to inspect older rollouts interactively instead of staying in the CLI.
 
-`compartment logs` reads the retained product log store. `--follow` polls that same store for new lines; it is a viewing convenience and does not replace durable capture. Logs remain available after a Kubernetes Pod is replaced or removed until the install retention window expires.
+`compartment logs` reads the retained product log store. `--follow` polls that same store for new lines; it is a viewing convenience and does not replace durable capture. The store keeps the most recent 1000 lines for each deployed service in an environment, so logs remain available after a Kubernetes Pod is replaced or removed, and a redeploy continues the same window rather than starting a new one. A service that logs heavily loses its oldest lines sooner, and one service's volume never evicts another's.
+
+Retention is bounded by line count only. Product logs are not expired by age, so `COMPARTMENT_AUDIT_RETENTION_DAYS` does not apply to them, and a quiet service keeps its last lines indefinitely until the service or environment is deleted. Ship logs to an external system if you need age-based expiry or longer history.
 
 `compartment status` includes the latest raw CPU and RAM sample for each active Pod when metrics-server is available. The deployment details page shows the same samples. These values are point-in-time operational data, not monitoring or alerting; stale and unavailable samples are labelled explicitly.
 

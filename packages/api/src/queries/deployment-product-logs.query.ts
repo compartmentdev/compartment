@@ -4,33 +4,25 @@ import {
   deploymentProductLogs,
   deployments,
   environments,
-  productLogStoreQuota,
   projectResources,
 } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { ApiDatabaseTransaction } from '../db/client.types';
 import type {
-  DeleteExpiredDeploymentProductLogsInput,
   DeploymentLogIdentityRow,
   DeploymentProductLogLine,
   InsertDeploymentProductLogsResult,
   InsertProductLogInput,
-  InsertedProductLogMessage,
+  InsertedProductLogAppKey,
   ListDeploymentProductLogsInput,
   ListResourceProductLogsInput,
-  ProductLogQuotaRow,
   ResourceLogIdentityRow,
   ResourceProductLogLine,
 } from './deployment-product-logs.query.types';
-import {
-  productLogRecordBytes,
-  productLogRecordOverheadBytes,
-  productLogStoreMaxBytes,
-} from './product-log-storage-policy';
 
-interface DeleteExpiredProductLogsBatchResult {
-  rows: object[];
-}
+const productLogRetainedLinesPerApp: number = 1_000;
+
+const productLogAppLockSalt: number = 92_317;
 
 export async function listDeploymentLogIdentities(namespaces: string[]): Promise<DeploymentLogIdentityRow[]> {
   if (namespaces.length === 0) {
@@ -68,63 +60,80 @@ export async function insertDeploymentProductLogs(
   events: InsertProductLogInput[],
 ): Promise<InsertDeploymentProductLogsResult> {
   if (events.length === 0) {
-    return { inserted: 0, quotaAccepted: 0 };
+    return { attempted: 0, inserted: 0 };
   }
   return await getApiDatabase().transaction(
     async (transaction: ApiDatabaseTransaction): Promise<InsertDeploymentProductLogsResult> =>
-      await insertDeploymentProductLogsWithQuota(transaction, events),
+      await insertProductLogsWithinAppWindows(transaction, events),
   );
 }
 
-async function insertDeploymentProductLogsWithQuota(
+async function insertProductLogsWithinAppWindows(
   transaction: ApiDatabaseTransaction,
   events: InsertProductLogInput[],
 ): Promise<InsertDeploymentProductLogsResult> {
-  const quota: ProductLogQuotaRow = await lockProductLogQuota(transaction);
-  const quotaEvents: InsertProductLogInput[] = takeEventsWithinQuota(events, productLogStoreMaxBytes - quota.usedBytes);
-  return quotaEvents.length === 0
-    ? { inserted: 0, quotaAccepted: 0 }
-    : await insertQuotaAcceptedProductLogs(transaction, quotaEvents);
-}
-
-async function insertQuotaAcceptedProductLogs(
-  transaction: ApiDatabaseTransaction,
-  events: InsertProductLogInput[],
-): Promise<InsertDeploymentProductLogsResult> {
-  const inserted: InsertedProductLogMessage[] = await transaction
+  await lockProductLogApps(transaction, orderedAppKeys(events.map(eventAppKey)));
+  const inserted: InsertedProductLogAppKey[] = await transaction
     .insert(deploymentProductLogs)
     .values(events.map(toInsertValues))
     .onConflictDoNothing()
-    .returning({ message: deploymentProductLogs.message });
-  const insertedBytes: number = inserted.reduce(
-    (total: number, row: InsertedProductLogMessage): number =>
-      total + Buffer.byteLength(row.message, 'utf8') + productLogRecordOverheadBytes,
-    0,
-  );
-  await addProductLogStoreUsage(transaction, insertedBytes);
-  return { inserted: inserted.length, quotaAccepted: events.length };
+    .returning({ appKey: deploymentProductLogs.appKey });
+  await trimProductLogAppWindows(transaction, orderedAppKeys(inserted.map(eventAppKey)));
+  return { attempted: events.length, inserted: inserted.length };
 }
 
-async function addProductLogStoreUsage(transaction: ApiDatabaseTransaction, insertedBytes: number): Promise<void> {
-  if (insertedBytes === 0) {
+/**
+ * Serializes concurrent ingest batches per app so their retention windows cannot interleave.
+ * Apps hash to effectively distinct locks, so organizations never wait on each other.
+ *
+ * Locks are acquired in the row order of the `values` list, so `appKeys` must already be sorted by
+ * `orderedAppKeys`. Overlapping batches then take shared keys in the same order and cannot deadlock.
+ */
+async function lockProductLogApps(transaction: ApiDatabaseTransaction, appKeys: string[]): Promise<void> {
+  if (appKeys.length === 0) {
     return;
   }
-  await transaction
-    .update(productLogStoreQuota)
-    .set({ usedBytes: sql`${productLogStoreQuota.usedBytes} + ${insertedBytes}` })
-    .where(eq(productLogStoreQuota.id, 'global'));
+  const rows: SQL[] = appKeys.map((appKey: string): SQL => sql`(${appKey})`);
+  await transaction.execute(sql`
+    select pg_advisory_xact_lock(hashtextextended(app_key, ${productLogAppLockSalt}))
+    from (values ${sql.join(rows, sql`, `)}) as apps(app_key)
+  `);
 }
 
-function takeEventsWithinQuota(events: InsertProductLogInput[], availableBytes: number): InsertProductLogInput[] {
-  let remainingBytes: number = Math.max(0, availableBytes);
-  return events.filter((event: InsertProductLogInput): boolean => {
-    const eventBytes: number = productLogRecordBytes(event);
-    if (eventBytes > remainingBytes) {
-      return false;
-    }
-    remainingBytes -= eventBytes;
-    return true;
-  });
+/**
+ * Drops every line beyond the newest `productLogRetainedLinesPerApp` of each app. Ranking is bounded
+ * to the touched apps by the `app_key` index, so the table is never scanned.
+ */
+async function trimProductLogAppWindows(transaction: ApiDatabaseTransaction, appKeys: string[]): Promise<void> {
+  if (appKeys.length === 0) {
+    return;
+  }
+  await transaction.execute(sql`
+    with ranked as (
+      select ${deploymentProductLogs}.ctid as line_ctid,
+        row_number() over (
+          partition by ${deploymentProductLogs.appKey}
+          order by ${deploymentProductLogs.occurredAt} desc, ${deploymentProductLogs.sourceOffset} desc
+        ) as line_rank
+      from ${deploymentProductLogs}
+      where ${inArray(deploymentProductLogs.appKey, appKeys)}
+    )
+    delete from ${deploymentProductLogs}
+    where ctid in (select line_ctid from ranked where line_rank > ${productLogRetainedLinesPerApp})
+  `);
+}
+
+function eventAppKey(row: InsertedProductLogAppKey): string {
+  return row.appKey;
+}
+
+/**
+ * Sorts by code unit rather than `localeCompare`, so every process derives the same lock order
+ * regardless of its locale or ICU build. A locale-dependent order would let two replicas take the
+ * same pair of app locks in opposite order and deadlock.
+ */
+function orderedAppKeys(appKeys: string[]): string[] {
+  return [...new Set(appKeys)].sort((left: string, right: string): number => (left < right ? -1 : 1));
 }
 
 export async function listDeploymentProductLogLines(
@@ -184,56 +193,9 @@ export async function listResourceProductLogLines(
   );
 }
 
-export async function deleteExpiredDeploymentProductLogsBatch(
-  input: DeleteExpiredDeploymentProductLogsInput,
-): Promise<number> {
-  return await getApiDatabase().transaction(async (transaction: ApiDatabaseTransaction): Promise<number> => {
-    await lockProductLogQuota(transaction);
-    return await deleteExpiredDeploymentProductLogsWithTransaction(transaction, input);
-  });
-}
-
-async function deleteExpiredDeploymentProductLogsWithTransaction(
-  transaction: ApiDatabaseTransaction,
-  input: DeleteExpiredDeploymentProductLogsInput,
-): Promise<number> {
-  const result: DeleteExpiredProductLogsBatchResult = await transaction.execute(sql`
-    WITH expired_product_logs AS (
-      SELECT ${deploymentProductLogs.podUid}, ${deploymentProductLogs.containerName},
-        ${deploymentProductLogs.restartIdentity}, ${deploymentProductLogs.sourceOffset}, ${deploymentProductLogs.sourceFingerprint}
-      FROM ${deploymentProductLogs}
-      WHERE ${deploymentProductLogs.capturedAt} < ${input.capturedBefore}
-      ORDER BY ${deploymentProductLogs.capturedAt} ASC
-      LIMIT ${input.limit}
-      FOR UPDATE SKIP LOCKED
-    )
-    DELETE FROM ${deploymentProductLogs}
-    USING expired_product_logs
-    WHERE ${deploymentProductLogs.podUid} = expired_product_logs.pod_uid
-      AND ${deploymentProductLogs.containerName} = expired_product_logs.container_name
-      AND ${deploymentProductLogs.restartIdentity} = expired_product_logs.restart_identity
-      AND ${deploymentProductLogs.sourceOffset} = expired_product_logs.source_offset
-      AND ${deploymentProductLogs.sourceFingerprint} = expired_product_logs.source_fingerprint
-    RETURNING ${deploymentProductLogs.sourceOffset}
-  `);
-  return result.rows.length;
-}
-
-async function lockProductLogQuota(transaction: ApiDatabaseTransaction): Promise<ProductLogQuotaRow> {
-  const [quota] = await transaction
-    .select({ usedBytes: productLogStoreQuota.usedBytes })
-    .from(productLogStoreQuota)
-    .where(eq(productLogStoreQuota.id, 'global'))
-    .for('update');
-  if (quota === undefined) {
-    throw new Error('Product log store quota is not initialized.');
-  }
-  return quota;
-}
-
 function toInsertValues(event: InsertProductLogInput): typeof deploymentProductLogs.$inferInsert {
   return {
-    capturedAt: new Date(),
+    appKey: event.appKey,
     containerName: event.containerName,
     ...('deploymentId' in event ? { deploymentId: event.deploymentId } : { resourceId: event.resourceId }),
     message: event.message,
