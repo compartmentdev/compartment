@@ -14,7 +14,7 @@ export async function runScheduledResourceOperationIteration(
   } catch (error) {
     logger.error(
       buildWorkerCaughtErrorLogPayload(error as WorkerCaughtError),
-      'Scheduled resource operation iteration failed. Continuing to deployment work.',
+      'Scheduled resource operation iteration failed. Continuing to auxiliary work.',
     );
     return false;
   }

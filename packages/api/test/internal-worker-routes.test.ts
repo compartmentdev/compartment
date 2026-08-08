@@ -146,6 +146,35 @@ describe('internal worker routes', (): void => {
     });
   });
 
+  it('normalizes legacy project-scoped build limits on the worker claim route', async (): Promise<void> => {
+    applyApiRouteTestEnv();
+    mocks.claimQueuedDeploymentForWorker.mockResolvedValueOnce({
+      deployment: null,
+      queue: { activeBuildCount: 0, queueDepth: 0, waitTimeMs: null },
+    });
+    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
+      const response: LightMyRequestResponse = await injectApiRoute(app, {
+        headers: {
+          accept: 'application/json',
+          authorization: 'Bearer test-runtime-control-token',
+        },
+        method: 'POST',
+        payload: {
+          maximumConcurrentBuilds: 100,
+          maximumConcurrentBuildsPerProject: 2,
+        },
+        timeoutMs: 1000,
+        url: workerClaimNextDeploymentPathname,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(mocks.claimQueuedDeploymentForWorker).toHaveBeenCalledWith({
+        maximumConcurrentBuilds: 100,
+        maximumConcurrentBuildsPerOrganization: 2,
+      });
+    });
+  });
+
   it('keeps project provisioning claims behind worker authentication', async (): Promise<void> => {
     applyApiRouteTestEnv();
     await withApiRouteApp(async (app: ApiApp): Promise<void> => {

@@ -1,25 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { WorkerConfig } from '../src/config';
-import type { KubeControllerHost } from '../src/kube-controller-host';
-import { runWorker } from '../src/app';
-import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
 import type { CompartmentRequester } from '@compartment/sdk';
 import type { KubeLeaderElector, KubeRuntime } from '@compartment/kube-runtime';
+import type { WorkerConfig } from '../src/config';
+import type { KubeControllerHost } from '../src/kube-controller-host';
+import type { WorkerBuildTask } from '../src/services/worker-iteration.types';
+import { runWorker } from '../src/app';
+import { createWorkerAppTestConfig, DeferredValue } from './worker-app-test.fixtures';
 
-type RunWorkerIteration = (config: WorkerConfig, runtime: KubeRuntime) => Promise<boolean>;
+type RunAuxiliaryWorkerIteration = (config: WorkerConfig) => Promise<boolean>;
+type StartNextBuild = (config: WorkerConfig, runtime: KubeRuntime) => Promise<WorkerBuildTask | null>;
 type RecoverOrphanedBuildClaims = (
   request: CompartmentRequester,
   input: { claimTimeoutMs: number },
 ) => Promise<{ requeuedDeploymentCount: number }>;
-type WorkerTimeoutHandle = NodeJS.Timeout;
-type WorkerTimerHandler = string | (() => void);
 
 interface WorkerAppMocks {
-  reconcileKube: Mock<() => Promise<boolean>>;
-  runWorkerIteration: Mock<RunWorkerIteration>;
-  runKubeControllerLoop: Mock<() => Promise<void>>;
+  controller: AbortController;
   recoverOrphanedBuildClaims: Mock<RecoverOrphanedBuildClaims>;
   request: CompartmentRequester;
+  runAuxiliaryWorkerIteration: Mock<RunAuxiliaryWorkerIteration>;
+  runKubeControllerLoop: Mock<() => Promise<void>>;
+  startNextBuild: Mock<StartNextBuild>;
 }
 
 interface KubeControllerHostModuleMock {
@@ -28,11 +29,12 @@ interface KubeControllerHostModuleMock {
 
 const mocks: WorkerAppMocks = vi.hoisted(
   (): WorkerAppMocks => ({
-    reconcileKube: vi.fn<() => Promise<boolean>>(),
+    controller: new AbortController(),
     recoverOrphanedBuildClaims: vi.fn<RecoverOrphanedBuildClaims>(),
     request: vi.fn() as CompartmentRequester,
+    runAuxiliaryWorkerIteration: vi.fn<RunAuxiliaryWorkerIteration>(),
     runKubeControllerLoop: vi.fn<() => Promise<void>>(),
-    runWorkerIteration: vi.fn<RunWorkerIteration>(),
+    startNextBuild: vi.fn<StartNextBuild>(),
   }),
 );
 
@@ -40,7 +42,7 @@ vi.mock(
   '../src/kube-controller-host',
   (): KubeControllerHostModuleMock => ({
     createKubeControllerHosts: (): KubeControllerHost[] =>
-      Array.from({ length: 3 }, (): KubeControllerHost => ({ reconcile: mocks.reconcileKube })),
+      Array.from({ length: 3 }, (): KubeControllerHost => ({ reconcile: vi.fn() })),
   }),
 );
 
@@ -55,8 +57,7 @@ vi.mock(
     createKubeRuntimeFromEnvironment: () => KubeRuntime;
   } => ({
     createKubeLeaderElectionFromEnvironment: (): KubeLeaderElector => ({
-      run: async (work: (signal: AbortSignal) => Promise<void>): Promise<void> =>
-        await work(new AbortController().signal),
+      run: async (work: (signal: AbortSignal) => Promise<void>): Promise<void> => await work(mocks.controller.signal),
     }),
     createKubeRuntimeFromEnvironment: (): KubeRuntime => ({}) as KubeRuntime,
   }),
@@ -75,103 +76,141 @@ vi.mock(
   }),
 );
 
-vi.mock('../src/services/worker.service', (): { runWorkerIteration: Mock<RunWorkerIteration> } => ({
-  runWorkerIteration: mocks.runWorkerIteration,
-}));
+vi.mock(
+  '../src/services/worker.service',
+  (): {
+    runAuxiliaryWorkerIteration: Mock<RunAuxiliaryWorkerIteration>;
+    startNextBuild: Mock<StartNextBuild>;
+  } => ({
+    runAuxiliaryWorkerIteration: mocks.runAuxiliaryWorkerIteration,
+    startNextBuild: mocks.startNextBuild,
+  }),
+);
 
 describe('runWorker', (): void => {
   afterEach((): void => {
-    vi.restoreAllMocks();
-    vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   beforeEach((): void => {
-    mocks.reconcileKube.mockResolvedValue(false);
+    vi.clearAllMocks();
+    mocks.controller = new AbortController();
     mocks.recoverOrphanedBuildClaims.mockResolvedValue({ requeuedDeploymentCount: 0 });
+    mocks.runAuxiliaryWorkerIteration.mockResolvedValue(false);
     mocks.runKubeControllerLoop.mockResolvedValue(undefined);
+    mocks.startNextBuild.mockResolvedValue(null);
   });
 
-  it('keeps polling the current worker path', async (): Promise<void> => {
-    const stopLoopError: Error = new Error('stop worker loop');
-    mocks.runWorkerIteration.mockResolvedValue(false);
-    vi.spyOn(globalThis, 'setTimeout').mockImplementation(createSetTimeoutImplementation(stopLoopError));
+  it('keeps auxiliary concurrency bounded when maximum build concurrency is high', async (): Promise<void> => {
+    const config: WorkerConfig = createWorkerAppTestConfig(100);
+    const auxiliaryCompletions: DeferredValue<boolean>[] = createAuxiliaryCompletions();
+    mocks.runAuxiliaryWorkerIteration
+      .mockReturnValueOnce(auxiliaryCompletions[0]?.promise ?? Promise.resolve(false))
+      .mockReturnValueOnce(auxiliaryCompletions[1]?.promise ?? Promise.resolve(false));
+    mocks.startNextBuild.mockImplementationOnce(async (): Promise<null> => {
+      mocks.controller.abort();
+      return await Promise.resolve(null);
+    });
 
-    await expect(runWorker(createWorkerConfig())).rejects.toBe(stopLoopError);
+    const workerPromise: Promise<void> = runWorker(config);
+    await vi.waitFor((): void => expect(mocks.runAuxiliaryWorkerIteration).toHaveBeenCalledTimes(2));
+    auxiliaryCompletions.forEach((completion: DeferredValue<boolean>): void => completion.resolve(false));
+    await expect(workerPromise).resolves.toBeUndefined();
 
-    expect(mocks.runWorkerIteration).toHaveBeenCalledTimes(2);
-    expect(mocks.recoverOrphanedBuildClaims).toHaveBeenCalledTimes(1);
-    expect(mocks.runWorkerIteration).toHaveBeenCalledWith(createWorkerConfig(), expect.any(Object), expect.any(Object));
-    expect(mocks.runKubeControllerLoop).toHaveBeenCalledTimes(3);
-    expect(mocks.recoverOrphanedBuildClaims).toHaveBeenCalledWith(mocks.request, { claimTimeoutMs: 1 });
+    expect(mocks.runAuxiliaryWorkerIteration).toHaveBeenCalledTimes(2);
+    expect(mocks.startNextBuild).toHaveBeenCalledTimes(1);
   });
 
-  it('retries after a transient worker iteration failure', async (): Promise<void> => {
-    const stopLoopError: Error = new Error('stop worker loop');
-    mocks.runWorkerIteration.mockRejectedValueOnce(new Error('api unavailable')).mockResolvedValue(false);
-    vi.spyOn(globalThis, 'setTimeout').mockImplementation(createSetTimeoutImplementation(stopLoopError));
+  it('fills the configured build capacity without multiplying auxiliary polling', async (): Promise<void> => {
+    const config: WorkerConfig = createWorkerAppTestConfig(3);
+    const completions: DeferredValue<void>[] = Array.from(
+      { length: 3 },
+      (): DeferredValue<void> => new DeferredValue<void>(),
+    );
+    const auxiliaryCompletions: DeferredValue<boolean>[] = createAuxiliaryCompletions();
+    const fourthClaim: DeferredValue<WorkerBuildTask | null> = new DeferredValue<WorkerBuildTask | null>();
+    mocks.runAuxiliaryWorkerIteration
+      .mockReturnValueOnce(auxiliaryCompletions[0]?.promise ?? Promise.resolve(false))
+      .mockReturnValueOnce(auxiliaryCompletions[1]?.promise ?? Promise.resolve(false));
+    for (const completion of completions) {
+      mocks.startNextBuild.mockResolvedValueOnce({ completion: completion.promise });
+    }
+    mocks.startNextBuild.mockReturnValueOnce(fourthClaim.promise);
 
-    await expect(runWorker(createWorkerConfig())).rejects.toBe(stopLoopError);
+    const workerPromise: Promise<void> = runWorker(config);
+    await vi.waitFor((): void => expect(mocks.startNextBuild).toHaveBeenCalledTimes(3));
 
-    expect(mocks.runWorkerIteration).toHaveBeenCalledTimes(2);
+    expect(mocks.runAuxiliaryWorkerIteration).toHaveBeenCalledTimes(2);
+    completions[0]?.resolve(undefined);
+    await vi.waitFor((): void => expect(mocks.startNextBuild).toHaveBeenCalledTimes(4));
+
+    mocks.controller.abort();
+    fourthClaim.resolve(null);
+    auxiliaryCompletions.forEach((completion: DeferredValue<boolean>): void => completion.resolve(false));
+    completions.slice(1).forEach((completion: DeferredValue<void>): void => completion.resolve(undefined));
+    await expect(workerPromise).resolves.toBeUndefined();
+
+    expect(mocks.runAuxiliaryWorkerIteration).toHaveBeenCalledTimes(2);
+  });
+
+  it('polls an empty build queue only after the configured interval', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const auxiliaryCompletions: DeferredValue<boolean>[] = createAuxiliaryCompletions();
+    mocks.runAuxiliaryWorkerIteration
+      .mockReturnValueOnce(auxiliaryCompletions[0]?.promise ?? Promise.resolve(false))
+      .mockReturnValueOnce(auxiliaryCompletions[1]?.promise ?? Promise.resolve(false));
+    mocks.startNextBuild.mockResolvedValueOnce(null).mockImplementationOnce(async (): Promise<null> => {
+      mocks.controller.abort();
+      return await Promise.resolve(null);
+    });
+
+    const workerPromise: Promise<void> = runWorker(createWorkerAppTestConfig(100));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.startNextBuild).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(9);
+    expect(mocks.startNextBuild).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    auxiliaryCompletions.forEach((completion: DeferredValue<boolean>): void => completion.resolve(false));
+    await expect(workerPromise).resolves.toBeUndefined();
+    expect(mocks.startNextBuild).toHaveBeenCalledTimes(2);
+  });
+
+  it('releases build capacity after a completion rejects', async (): Promise<void> => {
+    const failedCompletion: DeferredValue<void> = new DeferredValue<void>();
+    mocks.startNextBuild
+      .mockResolvedValueOnce({ completion: failedCompletion.promise })
+      .mockImplementationOnce(async (): Promise<null> => {
+        mocks.controller.abort();
+        return await Promise.resolve(null);
+      });
+
+    const workerPromise: Promise<void> = runWorker(createWorkerAppTestConfig(1));
+    await vi.waitFor((): void => expect(mocks.startNextBuild).toHaveBeenCalledTimes(1));
+    failedCompletion.reject(new Error('completion failed'));
+    await expect(workerPromise).resolves.toBeUndefined();
+    expect(mocks.startNextBuild).toHaveBeenCalledTimes(2);
+  });
+
+  it('drains active builds before shutdown completes', async (): Promise<void> => {
+    const completion: DeferredValue<void> = new DeferredValue<void>();
+    mocks.startNextBuild.mockResolvedValueOnce({ completion: completion.promise });
+    const workerPromise: Promise<void> = runWorker(createWorkerAppTestConfig(1));
+    let workerSettled: boolean = false;
+    void workerPromise.finally((): void => {
+      workerSettled = true;
+    });
+    await vi.waitFor((): void => expect(mocks.startNextBuild).toHaveBeenCalledTimes(1));
+
+    mocks.controller.abort();
+    await Promise.resolve();
+    expect(workerSettled).toBe(false);
+    expect(mocks.startNextBuild).toHaveBeenCalledTimes(1);
+    completion.resolve(undefined);
+    await expect(workerPromise).resolves.toBeUndefined();
+    expect(workerSettled).toBe(true);
   });
 });
 
-function createWorkerConfig(): WorkerConfig {
-  return {
-    apiUrl: 'http://127.0.0.1:9443',
-    artifactRegistry: createArtifactRegistryConfig(),
-    buildSandbox: {
-      buildKitResources: {},
-      gcKeepStorageMb: 2000,
-      namespace: 'compartment-build',
-      runnerImage: 'compartment-worker@sha256:runner',
-      runnerResources: {},
-      scheduling: { nodeSelector: {}, runtimeClassName: 'gvisor', tolerations: [] },
-      timeoutMs: 900000,
-    },
-    buildQueue: { maximumConcurrentBuilds: 1, maximumConcurrentBuildsPerProject: 1 },
-    customDomains: {
-      caddyServiceName: 'compartment-caddy',
-      ingressClassName: 'traefik',
-      issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
-      namespace: 'compartment',
-    },
-    deploymentInfrastructureTimeoutMs: 600_000,
-    logLevel: 'silent',
-    leaderElection: {
-      identity: 'worker-1',
-      leaseDurationMs: 15_000,
-      renewDeadlineMs: 10_000,
-      retryPeriodMs: 2_000,
-    },
-    pollIntervalMs: 10,
-    runtimeControlToken: 'worker-secret',
-    tenantSecretsKek: { current: Buffer.alloc(32, 1) },
-    usageMeteringIntervalMs: 60_000,
-  };
-}
-
-function createArtifactRegistryConfig(): WorkerArtifactRegistryConfig {
-  return {
-    address: '127.0.0.1:5517',
-    credentialSigningKey: 'registry-signing-key-with-at-least-32-characters',
-    internalAddress: 'registry:5000',
-    internalUrl: 'http://registry:5000',
-  };
-}
-
-function createSetTimeoutImplementation(stopLoopError: Error): typeof setTimeout {
-  let timeoutCallCount: number = 0;
-
-  return ((callback: WorkerTimerHandler): WorkerTimeoutHandle => {
-    timeoutCallCount += 1;
-    if (timeoutCallCount >= 2) {
-      throw stopLoopError;
-    }
-    if (typeof callback === 'function') {
-      callback();
-    }
-
-    return {} as WorkerTimeoutHandle;
-  }) as typeof setTimeout;
+function createAuxiliaryCompletions(): DeferredValue<boolean>[] {
+  return [new DeferredValue<boolean>(), new DeferredValue<boolean>()];
 }

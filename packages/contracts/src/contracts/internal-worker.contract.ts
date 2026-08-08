@@ -67,8 +67,15 @@ export interface WorkerBuildQueueObservation {
 
 export interface WorkerClaimDeploymentRequest {
   maximumConcurrentBuilds: number;
+  maximumConcurrentBuildsPerOrganization: number;
+}
+
+interface LegacyWorkerClaimDeploymentRequest {
+  maximumConcurrentBuilds: number;
   maximumConcurrentBuildsPerProject: number;
 }
+
+type WorkerClaimDeploymentWireRequest = WorkerClaimDeploymentRequest | LegacyWorkerClaimDeploymentRequest;
 
 export interface WorkerRecoverOrphanedBuildClaimsRequest {
   claimTimeoutMs: number;
@@ -103,9 +110,30 @@ export const workerRecoverOrphanedBuildClaimsPathname: string = '/internal/deplo
 export const workerClaimDeploymentRequestSchema: ContractSchema<WorkerClaimDeploymentRequest> = z
   .object({
     maximumConcurrentBuilds: z.number().int().positive(),
+    maximumConcurrentBuildsPerOrganization: z.number().int().positive(),
+  })
+  .strict();
+
+// Compatibility for API-first rolling upgrades from 0.10.x. Remove in 0.12.0 after the 0.11.x upgrade window.
+const legacyWorkerClaimDeploymentRequestSchema: ContractSchema<LegacyWorkerClaimDeploymentRequest> = z
+  .object({
+    maximumConcurrentBuilds: z.number().int().positive(),
     maximumConcurrentBuildsPerProject: z.number().int().positive(),
   })
   .strict();
+
+export const workerClaimDeploymentRollingUpgradeRequestSchema: ContractSchema<
+  WorkerClaimDeploymentRequest,
+  WorkerClaimDeploymentWireRequest
+> = z.union([workerClaimDeploymentRequestSchema, legacyWorkerClaimDeploymentRequestSchema]).transform(
+  (request: WorkerClaimDeploymentWireRequest): WorkerClaimDeploymentRequest =>
+    'maximumConcurrentBuildsPerOrganization' in request
+      ? request
+      : {
+          maximumConcurrentBuilds: request.maximumConcurrentBuilds,
+          maximumConcurrentBuildsPerOrganization: request.maximumConcurrentBuildsPerProject,
+        },
+);
 
 const workerProjectServiceSummarySchema: ContractSchema<WorkerProjectServiceSummary> = z
   .object({
