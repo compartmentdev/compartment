@@ -545,13 +545,37 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
       );
       expect(deployerAssignmentPayload.assignment.roleId).toBe(deployerRolePayload.role.id);
 
-      const viewerStagingDeployPayload: SelfHostedDeployCommandResponse = await viewer.runJson(
-        'deploy --env staging',
-        deployCommandResponseParser,
-        { cwd: app.directory },
+      const stoppedStagingProject: ProjectLifecycleResponse = await admin.runJson(
+        `project stop --project ${app.projectName} --env staging`,
+        projectLifecycleResponseSchema,
       );
-      expect(viewerStagingDeployPayload.environment.name).toBe('staging');
-      expect(requireSingleActiveDeployment(viewerStagingDeployPayload, app.serviceName).status).toBe('succeeded');
+      expect(stoppedStagingProject.state).toBe('stopped');
+      let viewerStagingDeployError: Error | undefined;
+      try {
+        const viewerStagingDeployPayload: SelfHostedDeployCommandResponse = await viewer.runJson(
+          'deploy --env staging',
+          deployCommandResponseParser,
+          {
+            cwd: app.directory,
+          },
+        );
+        expect(viewerStagingDeployPayload.environment.name).toBe('staging');
+        expect(requireSingleActiveDeployment(viewerStagingDeployPayload, app.serviceName).status).toBe('succeeded');
+      } catch (error) {
+        viewerStagingDeployError = error instanceof Error ? error : new Error(String(error));
+      }
+      if (viewerStagingDeployError !== undefined) {
+        try {
+          const restartedStagingProject: ProjectLifecycleResponse = await admin.runJson(
+            `project start --project ${app.projectName} --env staging`,
+            projectLifecycleResponseSchema,
+          );
+          expect(restartedStagingProject.state).toBe('updating');
+        } catch {
+          // Preserve the staging deployment failure as the primary error.
+        }
+        throw viewerStagingDeployError;
+      }
 
       const deniedProductionDeploy: SelfHostedUserSetupCommandResult = await viewer.runFailure(
         'deploy --env production --output json',
