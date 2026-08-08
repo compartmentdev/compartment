@@ -252,12 +252,14 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
         restoreIntervalError = error instanceof Error ? error : new Error(String(error));
       }
       let restartError: Error | undefined;
-      let startedProject: ProjectLifecycleResponse | undefined;
       try {
-        startedProject = await admin.runJson(
+        const startedProject: ProjectLifecycleResponse = await admin.runJson(
           `project start --project ${app.projectName}`,
           projectLifecycleResponseSchema,
         );
+        expect(startedProject.state).toBe('updating');
+        await expectAppEnvMessage(routeUrl, adminAppSessionCookie, appMessage);
+        await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue, true);
       } catch (error) {
         restartError = error instanceof Error ? error : new Error(String(error));
       }
@@ -267,12 +269,6 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
       if (restartError !== undefined) {
         throw restartError;
       }
-      if (startedProject === undefined) {
-        throw new Error('Project restart completed without a lifecycle response.');
-      }
-      expect(startedProject.state).toBe('updating');
-      await expectAppEnvMessage(routeUrl, adminAppSessionCookie, appMessage);
-      await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue, true);
       context.completedCaseCount = 5;
     },
     selfHostedUserSetupTimeoutMs,

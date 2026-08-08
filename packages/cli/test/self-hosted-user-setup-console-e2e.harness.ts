@@ -165,7 +165,9 @@ export async function expectConsoleE2e(runtime: SelfHostedUserSetupRuntime): Pro
     }),
   );
   const localCleanupResults: PromiseSettledResult<void>[] = await Promise.allSettled([
-    ingressProxy?.close() ?? Promise.resolve(),
+    (async (): Promise<void> => {
+      await ingressProxy?.close();
+    })(),
     cleanupConsoleE2eTempDirectories(tempDirectories),
   ]);
   if (primaryError !== undefined) {
