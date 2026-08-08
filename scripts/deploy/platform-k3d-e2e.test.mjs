@@ -431,7 +431,7 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).toContain('className: traefik');
     expect(values).not.toContain('NodePort');
     expect(values).not.toContain('service:');
-    expect(values).not.toContain('maximumConcurrentBuildsPerProject:');
+    expect(values).not.toContain('maximumConcurrentBuildsPerOrganization:');
     expect(values).toContain('namespace: compartment-build');
     expect(values).toContain('clusterIP: 10.43.250.250');
     expect(values).not.toContain('hostname:');

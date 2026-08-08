@@ -47,7 +47,7 @@ export interface WorkerConfig extends WorkerBuildConfig {
 
 export interface WorkerBuildQueueConfig {
   maximumConcurrentBuilds: number;
-  maximumConcurrentBuildsPerProject: number;
+  maximumConcurrentBuildsPerOrganization: number;
 }
 
 export interface WorkerCustomDomainConfig {

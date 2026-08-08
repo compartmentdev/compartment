@@ -19,3 +19,7 @@ export interface AttemptClaimedDeploymentCompletionInput {
   request: CompartmentRequester;
   runtime: KubeRuntime;
 }
+
+export interface WorkerBuildTask {
+  completion: Promise<void>;
+}

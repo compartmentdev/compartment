@@ -40,7 +40,7 @@ data:
   COMPARTMENT_BUILD_RUNNER_RESOURCES: {{ .Values.resources.buildRunner | toJson | quote }}
   COMPARTMENT_BUILD_TIMEOUT_MS: {{ .Values.buildkit.timeoutMs | quote }}
   COMPARTMENT_MAX_CONCURRENT_BUILDS: {{ .Values.buildkit.maximumConcurrentBuilds | quote }}
-  COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_PROJECT: {{ .Values.buildkit.maximumConcurrentBuildsPerProject | quote }}
+  COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_ORGANIZATION: {{ .Values.buildkit.maximumConcurrentBuildsPerOrganization | quote }}
   COMPARTMENT_KUBE_BUILD_SCHEDULING: {{ include "compartment.buildSchedulingJson" . | quote }}
   COMPARTMENT_SYSTEM_API_SOCKET: /var/run/compartment/api/system-api.sock
   COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: {{ ternary $installState.effective.platform.managedDomainBrokerUrl "" (not (empty $installState.effective.secrets.managedDomainAcmeDnsToken)) | quote }}

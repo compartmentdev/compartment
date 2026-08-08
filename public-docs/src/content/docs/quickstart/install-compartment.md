@@ -105,6 +105,35 @@ nodePools:
 An empty build pool uses the system pool. Pass the file to `compartment install` with `--values
 compartment-values.yaml`.
 
+Build concurrency has separate logical and physical limits. By default, Compartment admits up to 100 in-flight build
+claims, allows two active builds per organization, and applies a build-namespace quota of 48 CPU and 64 GiB. Each
+default build Pod is limited to 2 CPU and 2 GiB, so CPU limits the namespace to 24 concurrently admitted build Pods.
+Set the queue limits, namespace quota, and per-container resources together when sizing a cluster:
+
+```yaml
+buildkit:
+  maximumConcurrentBuilds: 100
+  maximumConcurrentBuildsPerOrganization: 2
+  resourceQuota:
+    limits: { cpu: '48', memory: 64Gi }
+resources:
+  buildkit:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: 1750m, memory: 1536Mi }
+  buildRunner:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 250m, memory: 512Mi }
+```
+
+The namespace quota requires every build container to declare CPU and memory limits. During an upgrade, replace the
+removed `buildkit.maximumConcurrentBuildsPerProject` value with
+`buildkit.maximumConcurrentBuildsPerOrganization`; the chart rejects the old key.
+
+The namespace quota does not return a claimed build to Compartment's fair queue. If the quota blocks its Pod, the
+Kubernetes Job continues consuming the configured build timeout while it waits for capacity. Sustained quota
+saturation can therefore fail builds; size the quota for the concurrency you expect or increase `buildkit.timeoutMs`
+to cover the expected wait.
+
 For an existing cluster, configure the operator-installed RuntimeClass listed above. Compartment does not mutate
 operator-managed nodes:
 
