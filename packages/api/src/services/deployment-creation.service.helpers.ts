@@ -146,6 +146,7 @@ function resolveDescriptorServiceRelease(
 function buildQueuedOperationInput(context: ResolvedProjectContext, actorPrincipalId: string): InsertOperationInput {
   return {
     actorPrincipalId,
+    organizationId: context.project.organizationId,
     status: 'queued',
     summary: `Queued deployment for ${buildDeploymentTargetLabel(
       context.project.name,

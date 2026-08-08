@@ -181,6 +181,7 @@ async function createPersistScope(): Promise<void> {
     callbackUrl: 'https://console.example/v1/sources/git/providers/github/callback',
     createdByPrincipalId: 'prn_git_sources',
     id: 'gpr_git_sources',
+    organizationId: 'org_git_sources',
     pendingExpiresAt: null,
     privateKeyPemCiphertext: null,
     privateKeyPemEncryptionKeyId: null,

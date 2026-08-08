@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import type { ApiDatabaseTransaction } from '../db/client.types';
-import { operations, projectResources, resourceReconcileRuns } from '../db/schema';
+import { environments, operations, projectResources, projects, resourceReconcileRuns } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { lockProjectResourceReconciliation } from './resources.query';
 import type {
@@ -63,6 +63,7 @@ function buildResourceDeletionOutcomes(
   return [
     buildResourceDeletionOutcomeValues(
       resourceDeletionOutcomeId(resourceId),
+      resource.organizationId,
       resourceId,
       resourceDeletionOutcomeTargetType,
       type,
@@ -71,6 +72,7 @@ function buildResourceDeletionOutcomes(
     ),
     buildResourceDeletionOutcomeValues(
       resourceDeletionBindingOutcomeId(resourceId),
+      resource.organizationId,
       resourceDeletionBindingTargetId(resource.environmentId, resource.name),
       resourceDeletionBindingOutcomeTargetType,
       type,
@@ -86,13 +88,14 @@ function resourceDeletionOutcomeSummary(deleteData: boolean): string {
 
 function buildResourceDeletionOutcomeValues(
   id: string,
+  organizationId: string,
   targetId: string,
   targetType: string,
   type: string,
   summary: string,
   completedAt: Date,
 ): ResourceDeletionOutcomeValues {
-  return { completedAt, id, status: 'succeeded', summary, targetId, targetType, type };
+  return { completedAt, id, organizationId, status: 'succeeded', summary, targetId, targetType, type };
 }
 
 async function readResourceDeletionOutcome(
@@ -152,7 +155,10 @@ async function lockResourceDeletionDemand(
     .where(eq(projectResources.id, resourceId))
     .limit(1)
     .for('no key update');
-  return resource ?? null;
+
+  // The owning organization cannot move between environments, so the locked
+  // re-read keeps the tenant resolved before the lock instead of joining under it.
+  return resource === undefined ? null : { ...resource, organizationId: candidate.organizationId };
 }
 
 async function readResourceDeletionDemand(
@@ -165,8 +171,11 @@ async function readResourceDeletionDemand(
       environmentId: projectResources.environmentId,
       expectedClaimsJson: projectResources.expectedClaimsJson,
       name: projectResources.name,
+      organizationId: projects.organizationId,
     })
     .from(projectResources)
+    .innerJoin(environments, eq(environments.id, projectResources.environmentId))
+    .innerJoin(projects, eq(projects.id, environments.projectId))
     .where(eq(projectResources.id, resourceId))
     .limit(1);
   return resource ?? null;

@@ -18,6 +18,7 @@ export async function completeResourceBackupOperationRecord(
     await updateOperationRecordWithExecutor(tx, {
       completedAt: backup.completedAt,
       operationId: operationRecord.id,
+      organizationId: input.context.organization.id,
       status: 'succeeded',
       summary: `Resource ${input.resource.name} backup succeeded.`,
     });

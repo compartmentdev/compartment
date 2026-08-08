@@ -180,6 +180,7 @@ async function seedAutomationPrincipalScope(): Promise<void> {
     callbackUrl: 'https://console.example.com/callback',
     createdByPrincipalId: 'prn_admin',
     id: 'gpr_123',
+    organizationId: 'org_123',
     providerHost: 'github.example.com',
     providerType: 'github_app',
     repositoryOwner: 'acme',

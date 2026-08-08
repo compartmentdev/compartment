@@ -34,7 +34,7 @@ export async function login(input: LoginServiceInput): Promise<LoginServiceResul
     }
 
     const session: AuthSessionPlan = await issuePasswordSession(tx, principal.principalId, null, config);
-    await recordLoginOperation(tx, principal);
+    await recordLoginOperation(tx, principal, null);
 
     return buildLoginResult(principal, session, organizations);
   });
@@ -61,7 +61,7 @@ export async function loginForOrganization(input: OrganizationLoginServiceInput)
       input.organizationId,
       config,
     );
-    await recordLoginOperation(tx, principal);
+    await recordLoginOperation(tx, principal, input.organizationId);
 
     return buildLoginResult(principal, session, organizations);
   });
@@ -125,10 +125,15 @@ async function issuePasswordSession(
   return await issueAuthSessionWithExecutor(tx, createPasswordAuthSessionInput(principalId, organizationId), config);
 }
 
-async function recordLoginOperation(tx: OrganizationUsersTransaction, principal: LoginRow): Promise<void> {
+async function recordLoginOperation(
+  tx: OrganizationUsersTransaction,
+  principal: LoginRow,
+  organizationId: string | null,
+): Promise<void> {
   await insertOperationRecordWithExecutor(tx, {
     actorPrincipalId: principal.principalId,
     completedAt: new Date(),
+    organizationId,
     status: 'succeeded',
     summary: `Logged in ${principal.principalEmail}`,
     targetId: principal.principalId,

@@ -234,6 +234,7 @@ async function seedRuntimeAuthorizationScope(): Promise<void> {
     callbackUrl: 'https://console.example.com/callback',
     createdByPrincipalId: 'prn_human_active',
     id: 'gpr_123',
+    organizationId: 'org_123',
     providerHost: 'github.example.com',
     providerType: 'github_app',
     repositoryOwner: 'acme',

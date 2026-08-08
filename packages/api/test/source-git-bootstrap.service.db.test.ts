@@ -12,7 +12,10 @@ import {
   principals,
 } from '../src/db/schema';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
-import { failGitProviderRegistration } from '../src/queries/git-provider-registration.query';
+import {
+  activateGitProviderRegistration,
+  failGitProviderRegistration,
+} from '../src/queries/git-provider-registration.query';
 import type {
   GitProviderRegistrationRow,
   GitProviderWriteExecutor,
@@ -406,6 +409,40 @@ describe('git source bootstrap service', (): void => {
     expect(await db.select().from(gitProviderBootstrapStates)).toHaveLength(1);
   });
 
+  it('registers the same repository owner separately per organization', async (): Promise<void> => {
+    const firstBootstrap: GitHubProviderBootstrapView = await startGitHubProviderBootstrap({
+      actor: createGitSourceActor(),
+      organizationId: gitSourceOrganizationId,
+      compartmentUrl: 'https://console.example',
+      providerHost: 'github.com',
+      repositoryOwner: 'acme',
+    });
+
+    const otherBootstrap: GitHubProviderBootstrapView = await startGitHubProviderBootstrap({
+      actor: createGitSourceActor(),
+      organizationId: otherGitSourceOrganizationId,
+      compartmentUrl: 'https://console.example',
+      providerHost: 'github.com',
+      repositoryOwner: 'acme',
+    });
+
+    expect(otherBootstrap.registrationId).not.toBe(firstBootstrap.registrationId);
+
+    const registrations: GitProviderRegistrationRowRecord[] = await db.select().from(gitProviderRegistrations);
+    expect(
+      registrations.map((registration: GitProviderRegistrationRowRecord): [string, string] => [
+        registration.id,
+        registration.organizationId,
+      ]),
+    ).toEqual(
+      expect.arrayContaining([
+        [firstBootstrap.registrationId, gitSourceOrganizationId],
+        [otherBootstrap.registrationId, otherGitSourceOrganizationId],
+      ]),
+    );
+    expect(registrations).toHaveLength(2);
+  });
+
   it('does not expose another organization pending GitHub provider registration', async (): Promise<void> => {
     const firstBootstrap: GitHubProviderBootstrapView = await startGitHubProviderBootstrap({
       actor: createGitSourceActor(),
@@ -415,17 +452,6 @@ describe('git source bootstrap service', (): void => {
       repositoryOwner: 'acme',
     });
 
-    await expect(
-      startGitHubProviderBootstrap({
-        actor: createGitSourceActor(),
-        organizationId: otherGitSourceOrganizationId,
-        compartmentUrl: 'https://console.example',
-        providerHost: 'github.com',
-        repositoryOwner: 'acme',
-      }),
-    ).rejects.toMatchObject({
-      code: 'git_source_registration_failed',
-    });
     await expect(
       readGitHubProviderBootstrapStatus({
         actor: createGitSourceActor(),
@@ -448,7 +474,36 @@ describe('git source bootstrap service', (): void => {
 
     const registrations: GitProviderRegistrationRowRecord[] = await db.select().from(gitProviderRegistrations);
     expect(registrations).toHaveLength(1);
-    expect(registrations[0]?.webhookUrl).toContain(`/organizations/${gitSourceOrganizationId}/registrations/`);
+    expect(registrations[0]?.organizationId).toBe(gitSourceOrganizationId);
+  });
+
+  it('refuses to activate another organization pending registration', async (): Promise<void> => {
+    const bootstrap: GitHubProviderBootstrapView = await startGitHubProviderBootstrap({
+      actor: createGitSourceActor(),
+      organizationId: gitSourceOrganizationId,
+      compartmentUrl: 'https://console.example',
+      providerHost: 'github.com',
+      repositoryOwner: 'acme',
+    });
+
+    await expect(
+      activateGitProviderRegistration(db, {
+        id: bootstrap.registrationId,
+        installationAccountLogin: 'acme',
+        installationAccountType: 'Organization',
+        installationId: '98765',
+        organizationId: otherGitSourceOrganizationId,
+        status: 'active',
+        updatedAt: new Date(),
+      }),
+    ).resolves.toBeUndefined();
+
+    const [registration] = await db.select().from(gitProviderRegistrations);
+    expect(registration).toMatchObject({
+      installationId: null,
+      organizationId: gitSourceOrganizationId,
+      status: 'pending',
+    });
   });
 
   it('reuses a pending install bootstrap when the GitHub app still authenticates', async (): Promise<void> => {

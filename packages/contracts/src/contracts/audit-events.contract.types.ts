@@ -14,6 +14,7 @@ export type AuditEventType =
   | 'deployment.created'
   | 'deployment.kubernetes.drift_detected'
   | 'deployment.rolled_back'
+  | 'installation.organization.created'
   | 'installation.owner.activated'
   | 'organization.assignment.created'
   | 'organization.assignment.deleted'

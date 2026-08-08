@@ -2,7 +2,7 @@ import { readHeaderValue } from '@compartment/utils';
 import type { AuditEventType } from '@compartment/contracts';
 import type { FastifyRequest } from 'fastify';
 import { recordAuditEvent } from '../services/audit-events.service';
-import type { RecordAuditEventInput } from '../services/audit-events.service.types';
+import type { RecordOrganizationAuditEventInput } from '../services/audit-events.service.types';
 import type { Actor } from '../services/auth-actor.types';
 import type { CurrentOrganizationAccess } from './request.types';
 
@@ -36,7 +36,7 @@ function buildFailedRequestAuditInput(
   context: FailedRequestAuditContext,
   eventType: AuditEventType,
   errorCode: string,
-): RecordAuditEventInput {
+): RecordOrganizationAuditEventInput {
   const routeUrl: string = request.routeOptions.url ?? request.url;
   return {
     actor: {

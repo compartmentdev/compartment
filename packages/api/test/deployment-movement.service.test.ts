@@ -382,6 +382,7 @@ function createDeployment(
       completedAt: createdAt,
       createdAt,
       id: `op_${deploymentId}`,
+      organizationId: 'org_123',
       status: 'succeeded',
       summary: deploymentId,
       targetId: deploymentId,

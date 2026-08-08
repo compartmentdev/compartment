@@ -176,6 +176,7 @@ async function recordResourceBackupRetentionFailure(
     });
     await insertOperationRecordWithExecutor(tx, {
       completedAt: input.now,
+      organizationId: input.context.organization.id,
       status: 'failed',
       summary: `Backup retention failed: ${failure.message}. Retry scheduled for ${failedBackup.retentionNextAttemptAt?.toISOString() ?? 'later'}.`,
       targetId: backup.id,

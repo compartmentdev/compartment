@@ -81,6 +81,7 @@ async function recordOrganizationSettingsUpdateOperation(input: UpdateOrganizati
   await insertOperationRecord({
     actorPrincipalId: input.actorPrincipalId,
     completedAt: new Date(),
+    organizationId: input.organizationId,
     status: 'succeeded',
     summary: `Updated organization settings for ${input.organizationSlug}`,
     targetId: input.organizationId,
