@@ -2,7 +2,7 @@ import type { ClaimedDeploymentContext } from './deployments.service.types';
 
 export interface BuildQueueClaimInput {
   maximumConcurrentBuilds: number;
-  maximumConcurrentBuildsPerProject: number;
+  maximumConcurrentBuildsPerOrganization: number;
 }
 
 export interface BuildQueueObservation {

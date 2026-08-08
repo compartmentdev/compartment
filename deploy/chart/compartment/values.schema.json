@@ -340,12 +340,14 @@
     },
     "buildkit": {
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "enabled",
         "namespace",
         "gcKeepStorageMb",
         "maximumConcurrentBuilds",
-        "maximumConcurrentBuildsPerProject",
+        "maximumConcurrentBuildsPerOrganization",
+        "resourceQuota",
         "timeoutMs",
         "podCidr",
         "serviceCidr"
@@ -355,7 +357,23 @@
         "namespace": { "type": "string", "minLength": 1 },
         "gcKeepStorageMb": { "type": "integer", "minimum": 1 },
         "maximumConcurrentBuilds": { "type": "integer", "minimum": 1 },
-        "maximumConcurrentBuildsPerProject": { "type": "integer", "minimum": 1 },
+        "maximumConcurrentBuildsPerOrganization": { "type": "integer", "minimum": 1 },
+        "resourceQuota": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["limits"],
+          "properties": {
+            "limits": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["cpu", "memory"],
+              "properties": {
+                "cpu": { "$ref": "#/definitions/kubernetesQuantity" },
+                "memory": { "$ref": "#/definitions/kubernetesQuantity" }
+              }
+            }
+          }
+        },
         "timeoutMs": { "type": "integer", "minimum": 1 },
         "dnsNamespaceSelector": { "type": "object", "additionalProperties": { "type": "string" } },
         "dnsPodSelector": { "type": "object", "additionalProperties": { "type": "string" } },
@@ -407,6 +425,10 @@
     }
   ],
   "definitions": {
+    "kubernetesQuantity": {
+      "type": "string",
+      "pattern": "^(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[numkMGTPE]|[KMGTPE]i|[eE][+-]?[0-9]+)?$"
+    },
     "haComponent": {
       "type": "object",
       "additionalProperties": false,

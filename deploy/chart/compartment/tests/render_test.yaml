@@ -188,11 +188,19 @@ tests:
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_MAX_CONCURRENT_BUILDS
+          value: '100'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_ORGANIZATION
           value: '2'
         template: configmap.yaml
       - equal:
-          path: data.COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_PROJECT
-          value: '2'
+          path: data.COMPARTMENT_BUILDKIT_RESOURCES
+          value: '{"limits":{"cpu":"1750m","memory":"1536Mi"},"requests":{"cpu":"250m","memory":"512Mi"}}'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_BUILD_RUNNER_RESOURCES
+          value: '{"limits":{"cpu":"250m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"256Mi"}}'
         template: configmap.yaml
       - hasDocuments:
           count: 2
@@ -521,7 +529,7 @@ tests:
         template: product-log-agent.yaml
         documentIndex: 1
       - hasDocuments:
-          count: 5
+          count: 6
         template: buildkit.yaml
       - isKind:
           of: Namespace
@@ -538,57 +546,73 @@ tests:
         template: buildkit.yaml
         documentIndex: 0
       - isKind:
-          of: RoleBinding
+          of: ResourceQuota
         template: buildkit.yaml
-        documentIndex: 2
+        documentIndex: 1
       - equal:
           path: metadata.namespace
           value: compartment-build
         template: buildkit.yaml
-        documentIndex: 2
+        documentIndex: 1
+      - equal:
+          path: spec.hard
+          value:
+            limits.cpu: '48'
+            limits.memory: 64Gi
+        template: buildkit.yaml
+        documentIndex: 1
+      - isKind:
+          of: RoleBinding
+        template: buildkit.yaml
+        documentIndex: 3
+      - equal:
+          path: metadata.namespace
+          value: compartment-build
+        template: buildkit.yaml
+        documentIndex: 3
       - isKind:
           of: ValidatingAdmissionPolicy
         template: buildkit.yaml
-        documentIndex: 3
+        documentIndex: 4
       - equal:
           path: spec.failurePolicy
           value: Fail
         template: buildkit.yaml
-        documentIndex: 3
+        documentIndex: 4
       - matchRegex:
           path: spec.validations[0].expression
           pattern: "runtimeClassName == 'gvisor'"
         template: buildkit.yaml
-        documentIndex: 3
+        documentIndex: 4
       - matchRegex:
           path: spec.validations[1].expression
           pattern: "'compartment.dev/secret-checksum' in"
         template: buildkit.yaml
-        documentIndex: 3
+        documentIndex: 4
       - matchRegex:
           path: spec.validations[1].expression
           pattern: "all\\(key, key == 'compartment.dev/secret-checksum' \\|\\| key in"
         template: buildkit.yaml
-        documentIndex: 3
+        documentIndex: 4
       - matchRegex:
           path: spec.validations[10].expression
           pattern: "container.image == 'ghcr.io/compartmentdev/compartment-worker:latest'.*container.command == \\['node', 'dist/build-job.js'\\].*!has\\(container.ports\\).*!has\\(container.securityContext.procMount\\).*!has\\(container.securityContext.appArmorProfile\\)"
         template: buildkit.yaml
-        documentIndex: 3
+        documentIndex: 4
       - matchRegex:
           path: spec.validations[11].expression
           pattern: "container.image == 'ghcr.io/compartmentdev/compartment-worker:latest'.*buildkit-runc-gvisor.*!has\\(container.ports\\).*!has\\(container.securityContext.procMount\\).*!has\\(container.securityContext.appArmorProfile\\)"
         template: buildkit.yaml
-        documentIndex: 3
+        documentIndex: 4
       - isKind:
           of: ValidatingAdmissionPolicyBinding
         template: buildkit.yaml
-        documentIndex: 4
+        documentIndex: 5
       - equal:
           path: spec.validationActions[0]
           value: Deny
         template: buildkit.yaml
-        documentIndex: 4
+        documentIndex: 5
       - hasDocuments:
           count: 2
         template: buildkit-network-policy.yaml

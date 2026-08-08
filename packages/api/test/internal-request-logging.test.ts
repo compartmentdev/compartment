@@ -101,7 +101,7 @@ describe('internal request logging', (): void => {
             authorization: 'Bearer wrong-token',
           },
           method: 'POST',
-          payload: { maximumConcurrentBuilds: 2, maximumConcurrentBuildsPerProject: 1 },
+          payload: { maximumConcurrentBuilds: 2, maximumConcurrentBuildsPerOrganization: 1 },
           timeoutMs: 1000,
           url: workerClaimNextDeploymentPathname,
         });
@@ -150,7 +150,7 @@ describe('internal request logging', (): void => {
             authorization: 'Bearer test-runtime-control-token',
           },
           method: 'POST',
-          payload: { maximumConcurrentBuilds: 2, maximumConcurrentBuildsPerProject: 1 },
+          payload: { maximumConcurrentBuilds: 2, maximumConcurrentBuildsPerOrganization: 1 },
           timeoutMs: 1000,
           url: workerClaimNextDeploymentPathname,
         });
@@ -218,7 +218,7 @@ async function injectPollingRequest(app: ApiApp, input: PollingRouteRequest): Pr
     },
     method: input.method,
     ...(input.method === 'POST'
-      ? { payload: { maximumConcurrentBuilds: 2, maximumConcurrentBuildsPerProject: 1 } }
+      ? { payload: { maximumConcurrentBuilds: 2, maximumConcurrentBuildsPerOrganization: 1 } }
       : {}),
     timeoutMs: 1000,
     url: input.url,

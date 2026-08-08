@@ -131,43 +131,93 @@ describe('deployment runtime movement claim order integration', (): void => {
   );
 
   it(
-    'does not let ten queued builds from one project block another project',
+    'visits idle organizations before returning to an older deep organization queue',
     async (): Promise<void> => {
       const installPayload: InstallResponse = await installCompartment(app);
       await createOrganization(installPayload, 'Beta Dev', 'beta-dev');
+      await createOrganization(installPayload, 'Gamma Dev', 'gamma-dev');
 
-      await deployAndClaimCurrentEnvironment(installPayload);
-      await deployAndClaimCurrentEnvironment(installPayload, { environmentName: 'staging' });
-      await deployAndClaimCurrentEnvironment(installPayload, { organizationSlug: 'beta-dev' });
-      await deployAndClaimCurrentEnvironment(installPayload, {
-        environmentName: 'staging',
-        organizationSlug: 'beta-dev',
-      });
+      const firstAcmeDeployment: DeploymentSummary = await queueInitialDeployment(
+        installPayload,
+        'acme-dev',
+        'smoke-web',
+      );
+      const secondAcmeDeployment: DeploymentSummary = await queueInitialDeployment(
+        installPayload,
+        'acme-dev',
+        'billing',
+      );
+      const thirdAcmeDeployment: DeploymentSummary = await queueInitialDeployment(
+        installPayload,
+        'acme-dev',
+        'analytics',
+      );
+      const betaDeployment: DeploymentSummary = await queueInitialDeployment(installPayload, 'beta-dev', 'smoke-web');
+      const gammaDeployment: DeploymentSummary = await queueInitialDeployment(installPayload, 'gamma-dev', 'smoke-web');
+      await setQueuedDeploymentCreationTime(firstAcmeDeployment.id, '2026-04-27T10:00:00.000Z');
+      await setQueuedDeploymentCreationTime(secondAcmeDeployment.id, '2026-04-27T10:01:00.000Z');
+      await setQueuedDeploymentCreationTime(thirdAcmeDeployment.id, '2026-04-27T10:02:00.000Z');
+      await setQueuedDeploymentCreationTime(betaDeployment.id, '2026-04-27T11:00:00.000Z');
+      await setQueuedDeploymentCreationTime(gammaDeployment.id, '2026-04-27T12:00:00.000Z');
 
-      for (let index: number = 0; index < 10; index += 1) {
-        await queuePromotion(installPayload, {
-          sourceEnvironmentName: 'staging',
-          targetEnvironmentName: `preview-${index.toString()}`,
-        });
-      }
-      await queuePromotion(installPayload, { organizationSlug: 'beta-dev' });
-
-      const acmeProjectId: string = await findProjectIdForOrganization('smoke-web', 'acme-dev');
+      const firstAcmeProjectId: string = await findProjectIdForOrganization('smoke-web', 'acme-dev');
+      const secondAcmeProjectId: string = await findProjectIdForOrganization('billing', 'acme-dev');
       const betaProjectId: string = await findProjectIdForOrganization('smoke-web', 'beta-dev');
-      const firstClaimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(
-        await claimNextQueuedDeployment(app, 2, 1),
-      );
+      const gammaProjectId: string = await findProjectIdForOrganization('smoke-web', 'gamma-dev');
 
-      expect(readClaimedOrganizationSlug(firstClaimedDeployment, acmeProjectId, betaProjectId)).toBe('acme-dev');
+      const claimedProjectIds: string[] = [];
+      for (let claimIndex: number = 0; claimIndex < 4; claimIndex += 1) {
+        claimedProjectIds.push(requireClaimedDeployment(await claimNextQueuedDeployment(app, 10, 2)).projectId);
+      }
 
-      const secondClaimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(
-        await claimNextQueuedDeployment(app, 2, 1),
-      );
+      expect(claimedProjectIds).toEqual([firstAcmeProjectId, betaProjectId, gammaProjectId, secondAcmeProjectId]);
+    },
+    deploymentRuntimeMovementTimeoutMs,
+  );
 
-      expect(readClaimedOrganizationSlug(secondClaimedDeployment, acmeProjectId, betaProjectId)).toBe('beta-dev');
-      const cappedClaim: WorkerClaimDeploymentResponse = await claimNextQueuedDeployment(app, 2, 1);
+  it(
+    'stops claiming when the global build cap is full',
+    async (): Promise<void> => {
+      const installPayload: InstallResponse = await installCompartment(app);
+      await createOrganization(installPayload, 'Beta Dev', 'beta-dev');
+      await createOrganization(installPayload, 'Gamma Dev', 'gamma-dev');
+
+      await queueInitialDeployment(installPayload, 'acme-dev', 'smoke-web');
+      await queueInitialDeployment(installPayload, 'beta-dev', 'smoke-web');
+      await queueInitialDeployment(installPayload, 'gamma-dev', 'smoke-web');
+
+      requireClaimedDeployment(await claimNextQueuedDeployment(app, 2, 2));
+      requireClaimedDeployment(await claimNextQueuedDeployment(app, 2, 2));
+      const cappedClaim: WorkerClaimDeploymentResponse = await claimNextQueuedDeployment(app, 2, 2);
+
       expect(cappedClaim.deployment).toBeNull();
-      expect(cappedClaim.queue).toMatchObject({ activeBuildCount: 2, queueDepth: 9 });
+      expect(cappedClaim.queue).toMatchObject({ activeBuildCount: 2, queueDepth: 1 });
+    },
+    deploymentRuntimeMovementTimeoutMs,
+  );
+
+  it(
+    'enforces the organization cap when distinct project claims race',
+    async (): Promise<void> => {
+      const installPayload: InstallResponse = await installCompartment(app);
+      await queueInitialDeployment(installPayload, 'acme-dev', 'smoke-web');
+      await queueInitialDeployment(installPayload, 'acme-dev', 'billing');
+
+      const claims: WorkerClaimDeploymentResponse[] = await Promise.all([
+        claimNextQueuedDeployment(app, 2, 1),
+        claimNextQueuedDeployment(app, 2, 1),
+      ]);
+      const claimedDeployments: WorkerClaimedDeployment[] = claims
+        .map((claim: WorkerClaimDeploymentResponse): WorkerClaimedDeployment | null => claim.deployment)
+        .filter(
+          (deployment: WorkerClaimedDeployment | null): deployment is WorkerClaimedDeployment => deployment !== null,
+        );
+      const cappedClaim: WorkerClaimDeploymentResponse | undefined = claims.find(
+        (claim: WorkerClaimDeploymentResponse): boolean => claim.deployment === null,
+      );
+
+      expect(claimedDeployments).toHaveLength(1);
+      expect(cappedClaim?.queue).toMatchObject({ activeBuildCount: 1, queueDepth: 1 });
     },
     deploymentRuntimeMovementTimeoutMs,
   );
@@ -324,6 +374,26 @@ async function createOrganization(installPayload: InstallResponse, name: string,
   expect(response.statusCode).toBe(200);
 }
 
+async function queueInitialDeployment(
+  installPayload: InstallResponse,
+  organizationSlug: string,
+  projectName: string,
+): Promise<DeploymentSummary> {
+  const response: LightMyRequestResponse = await injectDeployRequest(
+    app,
+    installPayload.sessionToken,
+    organizationSlug,
+    projectName,
+  );
+  expect(response.statusCode).toBe(200);
+  return requireDeployResponseDeployment(deployResponseSchema.parse(response.json()));
+}
+
+async function setQueuedDeploymentCreationTime(deploymentId: string, timestamp: string): Promise<void> {
+  const createdAt: Date = new Date(timestamp);
+  await db.update(deployments).set({ createdAt, updatedAt: createdAt }).where(eq(deployments.id, deploymentId));
+}
+
 async function findProjectIdForOrganization(projectName: string, organizationSlug: string): Promise<string> {
   const rows: IdentifiedRow[] = await db
     .select({ id: projects.id })
@@ -367,21 +437,6 @@ async function injectPromoteRequest(
       targetEnvironmentName: input.targetEnvironmentName ?? 'production',
     },
   });
-}
-
-function readClaimedOrganizationSlug(
-  deployment: WorkerClaimedDeployment,
-  acmeProjectId: string,
-  betaProjectId: string,
-): string {
-  if (deployment.projectId === acmeProjectId) {
-    return 'acme-dev';
-  }
-  if (deployment.projectId === betaProjectId) {
-    return 'beta-dev';
-  }
-
-  throw new Error(`Unexpected claimed project "${deployment.projectId}".`);
 }
 
 async function assertReservedRouteIsHiddenForOrganization(

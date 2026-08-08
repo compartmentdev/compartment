@@ -64,6 +64,9 @@ vi.mock(
   }),
 );
 
+const hourMs: number = 60 * 60 * 1000;
+const auditOrderingAnchorMs: number = Date.now();
+
 const harness: RbacTestHarness = createRbacTestHarness('api_rbac_crud_integration');
 const app: ApiApp = createApp({ config: harness.apiConfig, pool: harness.pool });
 
@@ -672,7 +675,7 @@ describe('rbac crud integration', (): void => {
         eventType: 'organization.role.created',
         id: 'aud_sort_role_created',
         metadataJson: '{}',
-        occurredAt: new Date('2026-05-10T10:00:00.000Z'),
+        occurredAt: auditOrderingHoursAgo(3),
         organizationId: installPayload.organization.id,
         scopeType: 'organization',
         status: 'succeeded',
@@ -686,7 +689,7 @@ describe('rbac crud integration', (): void => {
         eventType: 'organization.group.created',
         id: 'aud_sort_group_created',
         metadataJson: '{}',
-        occurredAt: new Date('2026-05-10T11:00:00.000Z'),
+        occurredAt: auditOrderingHoursAgo(2),
         organizationId: installPayload.organization.id,
         scopeType: 'organization',
         status: 'succeeded',
@@ -726,7 +729,7 @@ describe('rbac crud integration', (): void => {
         eventType: 'organization.group.created',
         id: 'aud_default_latest',
         metadataJson: '{}',
-        occurredAt: new Date('2026-05-10T12:00:00.000Z'),
+        occurredAt: auditOrderingHoursAgo(1),
         organizationId: installPayload.organization.id,
         scopeType: 'organization',
         status: 'succeeded',
@@ -740,7 +743,7 @@ describe('rbac crud integration', (): void => {
         eventType: 'organization.group.created',
         id: 'aud_status_b',
         metadataJson: '{}',
-        occurredAt: new Date('2026-05-10T11:00:00.000Z'),
+        occurredAt: auditOrderingHoursAgo(2),
         organizationId: installPayload.organization.id,
         scopeType: 'organization',
         status: 'failed',
@@ -754,7 +757,7 @@ describe('rbac crud integration', (): void => {
         eventType: 'organization.group.created',
         id: 'aud_status_a',
         metadataJson: '{}',
-        occurredAt: new Date('2026-05-10T11:00:00.000Z'),
+        occurredAt: auditOrderingHoursAgo(2),
         organizationId: installPayload.organization.id,
         scopeType: 'organization',
         status: 'failed',
@@ -768,7 +771,7 @@ describe('rbac crud integration', (): void => {
         eventType: 'organization.group.created',
         id: 'aud_default_oldest',
         metadataJson: '{}',
-        occurredAt: new Date('2026-05-10T10:00:00.000Z'),
+        occurredAt: auditOrderingHoursAgo(3),
         organizationId: installPayload.organization.id,
         scopeType: 'organization',
         status: 'succeeded',
@@ -876,6 +879,12 @@ function readUserAccessDetail(response: LightMyRequestResponse): UserAccessDetai
 
 function countAuditEventType(events: readonly AuditEventSummary[], eventType: string): number {
   return events.filter((event: AuditEventSummary): boolean => event.eventType === eventType).length;
+}
+
+// Fixtures stay relative because audit reads are floored at now - auditRetentionDays.
+// They share one anchor so rows meant to tie on occurredAt compare equal to the millisecond.
+function auditOrderingHoursAgo(hours: number): Date {
+  return new Date(auditOrderingAnchorMs - hours * hourMs);
 }
 
 async function seedAuditExportLimitEvents(organizationId: string): Promise<void> {

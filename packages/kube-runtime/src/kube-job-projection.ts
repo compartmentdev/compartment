@@ -93,7 +93,6 @@ function jobSpec(spec: KubeJobSpec, labels: Record<string, string>): KubeJobMani
       spec.imagePullSecretId === undefined ? undefined : [{ name: kubeSecretName(spec.imagePullSecretId) }],
     ...(spec.sidecars === undefined ? {} : { initContainers: spec.sidecars.map(projectSidecar) }),
     ...projectTenantScheduling(spec.scheduling),
-    ...(spec.priorityClassName === undefined ? {} : { priorityClassName: spec.priorityClassName }),
     restartPolicy: 'Never',
     securityContext: jobPodSecurityContext(spec),
     serviceAccountName: spec.serviceAccountName,

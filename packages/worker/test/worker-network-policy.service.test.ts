@@ -19,7 +19,17 @@ import { decryptTenantProjection } from '../src/tenant-workload-projections';
 import { encryptTestTenantEnvironment, testTenantSecretsKek } from './tenant-secret-test.fixtures';
 
 interface NetworkPolicyRule {
+  from?: NetworkPolicyPeer[] | undefined;
   ports?: NetworkPolicyRulePort[] | undefined;
+}
+
+interface NetworkPolicyPeer {
+  namespaceSelector?: NetworkPolicySelector | undefined;
+  podSelector?: NetworkPolicySelector | undefined;
+}
+
+interface NetworkPolicySelector {
+  matchLabels?: Record<string, string> | undefined;
 }
 
 interface NetworkPolicyRulePort {
@@ -59,20 +69,25 @@ interface ApplicationServiceSpec {
 
 describe('worker NetworkPolicy desired state', (): void => {
   beforeEach((): void => {
-    process.env.COMPARTMENT_EDGE_NAMESPACE = 'edge';
+    process.env.COMPARTMENT_EDGE_NAMESPACE = 'platform';
     process.env.COMPARTMENT_KUBE_POD_CIDR = ['10', '42', '0', '0/16'].join('.');
     process.env.COMPARTMENT_KUBE_SERVICE_CIDR = ['10', '43', '0', '0/16'].join('.');
   });
 
   it('projects the current deployment port even when the aggregate payload is stale', (): void => {
-    const ports: ProjectNetworkPolicyPorts = includeApplicationNetworkPolicyPorts(
-      { applicationPorts: [], resourcePorts: [] },
-      [8080],
-    );
+    expect(readPolicyPorts(applicationPolicyManifests([8080]), 'application-ingress', 'ingress')).toEqual([8080]);
+  });
 
-    expect(
-      readPolicyPorts(projectProjectNetworkPolicyManifests('project', ports), 'application-ingress', 'ingress'),
-    ).toEqual([8080]);
+  it('admits only the platform Caddy proxy into tenant application Pods', (): void => {
+    const ingress: NetworkPolicyRule[] = readPolicyIngress(applicationPolicyManifests([8080]), 'application-ingress');
+
+    expect(ingress).toHaveLength(1);
+    expect(ingress[0]?.from).toEqual([
+      {
+        namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': 'platform' } },
+        podSelector: { matchLabels: { 'app.kubernetes.io/component': 'caddy' } },
+      },
+    ]);
   });
 
   it('uses the descriptor default serving port for policy, Deployment, and Service', (): void => {
@@ -85,13 +100,9 @@ describe('worker NetworkPolicy desired state', (): void => {
     const service: KubeManifest = requiredManifest(applicationManifests, 'Service');
     const deploymentSpec: ApplicationDeploymentSpec = deployment.spec as ApplicationDeploymentSpec;
     const serviceSpec: ApplicationServiceSpec = service.spec as ApplicationServiceSpec;
-    const policyPorts: ProjectNetworkPolicyPorts = includeApplicationNetworkPolicyPorts(
-      { applicationPorts: [], resourcePorts: [] },
-      projection.containerPorts,
-    );
 
     expect(
-      readPolicyPorts(projectProjectNetworkPolicyManifests('project', policyPorts), 'application-ingress', 'ingress'),
+      readPolicyPorts(applicationPolicyManifests(projection.containerPorts), 'application-ingress', 'ingress'),
     ).toEqual(defaultApplicationPorts);
     expect(
       deploymentSpec.template.spec.containers[0]?.ports.find(
@@ -155,16 +166,34 @@ function requiredManifest(manifests: KubeManifest[], kind: string): KubeManifest
   return manifest;
 }
 
+function applicationPolicyManifests(applicationPorts: number[]): KubeManifest[] {
+  const ports: ProjectNetworkPolicyPorts = includeApplicationNetworkPolicyPorts(
+    { applicationPorts: [], resourcePorts: [] },
+    applicationPorts,
+  );
+  return projectProjectNetworkPolicyManifests('project', ports);
+}
+
+function requiredPolicySpec(manifests: KubeManifest[], policyNameSuffix: string): NetworkPolicySpec {
+  const manifest: KubeManifest | undefined = manifests.find(
+    (candidate: KubeManifest): boolean => candidate.metadata?.name?.includes(`np-${policyNameSuffix}`) === true,
+  );
+  if (manifest === undefined) {
+    throw new Error(`Expected np-${policyNameSuffix} manifest.`);
+  }
+  return manifest.spec as NetworkPolicySpec;
+}
+
 function readPolicyPorts(
   manifests: KubeManifest[],
   policyNameSuffix: string,
   direction: 'egress' | 'ingress',
 ): number[] {
-  const manifest: KubeManifest | undefined = manifests.find(
-    (candidate: KubeManifest): boolean => candidate.metadata?.name?.includes(`np-${policyNameSuffix}`) === true,
-  );
-  const spec: NetworkPolicySpec = manifest?.spec as NetworkPolicySpec;
-  return (spec[direction] ?? []).flatMap(
+  return (requiredPolicySpec(manifests, policyNameSuffix)[direction] ?? []).flatMap(
     (rule: NetworkPolicyRule): number[] => rule.ports?.map((port: NetworkPolicyRulePort): number => port.port) ?? [],
   );
+}
+
+function readPolicyIngress(manifests: KubeManifest[], policyNameSuffix: string): NetworkPolicyRule[] {
+  return requiredPolicySpec(manifests, policyNameSuffix).ingress ?? [];
 }
