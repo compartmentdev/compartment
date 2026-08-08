@@ -78,14 +78,23 @@ await_matrix() {
 : >"${results}"
 await_matrix allow
 run_matrix without-policy allow
-pnpm --silent --dir "${dir}/.." test:network-policy:render "${pod_cidr}" "${service_cidr}" |
+# The render lives in the worker package because it calls the production projection, and
+# kube-runtime must not depend on worker. Reaching it as a subprocess keeps that direction intact.
+pnpm --silent --dir "${dir}/../../worker" test:network-policy:render "${pod_cidr}" "${service_cidr}" |
   kubectl --context "${context}" apply -f - >/dev/null
 
-await_matrix deny
+# A wrong production peer keeps the deny matrix from settling, so record the probes before failing;
+# aborting here would report the regression this gate exists to catch as a bare non-zero exit.
+settled='yes'
+await_matrix deny || settled='no'
 run_matrix with-policy deny
 
 if grep -q $'\tFAIL$' "${results}"; then
   echo 'VERDICT=matrix-failed'
+  exit 1
+fi
+if [[ "${settled}" != 'yes' ]]; then
+  echo 'VERDICT=deny-settle-timeout'
   exit 1
 fi
 echo 'VERDICT=enforced'

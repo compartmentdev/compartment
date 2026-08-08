@@ -16,9 +16,11 @@ kind: Deployment
 metadata: { name: app, namespace: ns-a }
 spec:
   replicas: 1
-  selector: { matchLabels: { app: app } }
+  selector: { matchLabels: { app: application } }
   template:
-    metadata: { labels: { app: app, compartment.test/role: application } }
+    # The worker projects tenant application Pods with app: application; compartment.test/role only
+    # addresses this Pod from the check script and is never selected by a rendered policy.
+    metadata: { labels: { app: application, compartment.test/role: application } }
     spec:
       automountServiceAccountToken: false
       containers:
@@ -30,7 +32,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata: { name: app, namespace: ns-a }
-spec: { selector: { app: app }, ports: [{ port: 8080, targetPort: 8080 }] }
+spec: { selector: { app: application }, ports: [{ port: 8080, targetPort: 8080 }] }
 ---
 apiVersion: apps/v1
 kind: Deployment
