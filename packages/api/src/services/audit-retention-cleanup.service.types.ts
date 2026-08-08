@@ -14,7 +14,6 @@ export interface AuditRetentionCleanupLimits {
 export interface AuditRetentionCleanupResult {
   deletedCount: number;
   organizations: AuditRetentionCleanupOrganizationResult[];
-  productLogsDeletedCount: number;
 }
 
 export type AuditRetentionBatchDeleteHandler = () => Promise<number>;

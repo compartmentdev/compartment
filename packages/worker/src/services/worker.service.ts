@@ -19,14 +19,14 @@ import { runGitSourceSyncIteration } from './worker-git-source-sync.service';
 import type {
   AttemptClaimedDeploymentCompletionInput,
   AttemptedClaimedDeploymentResult,
+  WorkerBuildTask,
   WorkerRequesterInput,
 } from './worker-iteration.types';
 import { handoffBuiltDeploymentToKube } from './worker-kube-deployment-handoff.service';
 import { runScheduledResourceOperationIteration } from './worker-resource-operation-scheduler.service';
 
-export async function runWorkerIteration(
+export async function runAuxiliaryWorkerIteration(
   config: WorkerConfig,
-  runtime: KubeRuntime,
   logger: Logger<never, boolean>,
 ): Promise<boolean> {
   const requesterInput: WorkerRequesterInput = {
@@ -39,29 +39,33 @@ export async function runWorkerIteration(
   return (
     (await runGitSourceResolutionIteration(request, rawRequest)) ||
     (await runScheduledResourceOperationIteration(request, logger)) ||
-    (await handleClaimedDeploymentOrContinue(request, config, runtime, logger)) ||
     (await runGitSourceSyncIteration(request))
   );
 }
 
-async function handleClaimedDeploymentOrContinue(
-  request: CompartmentRequester,
+export async function startNextBuild(
   config: WorkerConfig,
   runtime: KubeRuntime,
   logger: Logger<never, boolean>,
-): Promise<boolean> {
+): Promise<WorkerBuildTask | null> {
+  const request: CompartmentRequester = createCompartmentRequester({
+    apiUrl: config.apiUrl,
+    internalToken: config.runtimeControlToken,
+  });
   const claimed: WorkerClaimDeploymentResponse = await claimNextDeployment(request, config.buildQueue);
   logBuildQueueObservation(logger, claimed);
   if (claimed.deployment === null) {
-    return false;
+    return null;
   }
 
-  return await completeAndPersistClaimedDeployment({
-    config,
-    deployment: claimed.deployment,
-    request,
-    runtime,
-  });
+  return {
+    completion: completeAndPersistClaimedDeployment({
+      config,
+      deployment: claimed.deployment,
+      request,
+      runtime,
+    }).then((): void => undefined),
+  };
 }
 
 function logBuildQueueObservation(logger: Logger<never, boolean>, claimed: WorkerClaimDeploymentResponse): void {

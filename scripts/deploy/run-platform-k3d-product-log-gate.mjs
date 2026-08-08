@@ -9,12 +9,11 @@ const platformNamespace = process.env.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? 'com
 const platformName = 'compartment';
 const observabilityNamespace = `${platformName}-observability`;
 const agentName = `${platformName}-log-agent`;
-const quotaMaxBytes = 1_073_741_824;
+const retainedLinesPerApp = 1_000;
 const configuredBufferMaxBytes = 268_435_488;
-// Backpressure settles near 112.8 MiB; observe it between 100 MiB and the unchanged 144 MiB runaway guard.
-const bufferMinBytes = 104_857_600;
+// Ingest is never refused now, so the agent drains continuously and must stay well under its runaway guard.
 const bufferMaxBytes = 150_994_944;
-const bufferHoldAttempts = 10;
+const windowHoldAttempts = 10;
 const loadPodCount = 7;
 const loadPodImage = 'public.ecr.aws/docker/library/node:24.15.0-bookworm';
 const kubernetesReadinessTimeout = '4m';
@@ -98,7 +97,6 @@ export function createLoadPodOverrides(containerName) {
 }
 
 async function runPlatformK3dProductLogGate() {
-  let originalQuota;
   let loadTarget;
   try {
     runCommand(
@@ -115,20 +113,14 @@ async function runPlatformK3dProductLogGate() {
       ],
       repositoryRoot,
     );
-    originalQuota = readQuota();
-    writeQuota(quotaMaxBytes);
     loadTarget = await startLoadPods();
-    const bufferBytes = await waitForBoundedBuffer();
+    const bufferBytes = await waitForBoundedRetainedWindow(loadTarget.containerName);
     await assertPlatformHealthy(loadTarget);
-    const currentQuota = readQuota();
-    if (currentQuota !== quotaMaxBytes) {
-      throw new Error(`Product-log quota changed while ingest was backpressured: ${currentQuota}.`);
-    }
     process.stdout.write(
-      `product_log_gate buffer_bytes=${bufferBytes} buffer_max_bytes=${configuredBufferMaxBytes} quota_bytes=${currentQuota} status=ok\n`,
+      `product_log_gate retained_lines=${retainedLinesPerApp} buffer_bytes=${bufferBytes} buffer_max_bytes=${configuredBufferMaxBytes} status=ok\n`,
     );
   } finally {
-    cleanup(originalQuota, loadTarget);
+    cleanup(loadTarget);
   }
 }
 
@@ -157,15 +149,25 @@ function psql(statement) {
   );
 }
 
-function readQuota() {
+/** Counts the window of the app the load pods write into, identified by the container name they borrow. */
+function readLoadTargetWindow(containerName) {
   return parseNonNegativeInteger(
-    psql("select used_bytes from product_log_store_quota where id = 'global';"),
-    'product-log quota',
+    psql(
+      `select count(*) from deployment_product_logs where app_key =
+         (select app_key from deployment_product_logs where container_name = '${containerName}' limit 1);`,
+    ),
+    'load target product-log window',
   );
 }
 
-function writeQuota(value) {
-  psql(`update product_log_store_quota set used_bytes = ${value} where id = 'global';`);
+function readWidestRetainedWindow() {
+  return parseNonNegativeInteger(
+    psql(
+      `select coalesce(max(line_count), 0) from
+         (select count(*) as line_count from deployment_product_logs group by app_key) as windows;`,
+    ),
+    'widest retained product-log window',
+  );
 }
 
 async function startLoadPods() {
@@ -229,10 +231,15 @@ async function startLoadPods() {
     );
     await delay(10_000);
   }
-  return { namespace, podNames };
+  return { containerName, namespace, podNames };
 }
 
-async function waitForBoundedBuffer() {
+/**
+ * The load pods share one product deployment's container identity, so every line they emit lands in a
+ * single app window. That window must fill to the retained line count and then stop growing, while the
+ * agent keeps draining instead of accumulating an unbounded disk buffer.
+ */
+async function waitForBoundedRetainedWindow(containerName) {
   const agentPod = captureCommand(
     'kubectl',
     [
@@ -249,26 +256,32 @@ async function waitForBoundedBuffer() {
     ],
     repositoryRoot,
   );
-  let bufferBytes = 0;
+  let loadTargetWindow = 0;
   for (let attempt = 0; attempt < 300; attempt += 1) {
-    bufferBytes = readProductLogBufferBytes(agentPod);
-    if (bufferBytes >= bufferMinBytes) {
+    loadTargetWindow = readLoadTargetWindow(containerName);
+    if (loadTargetWindow >= retainedLinesPerApp) {
       break;
     }
     await delay(1_000);
   }
-  if (bufferBytes < bufferMinBytes) {
-    throw new Error(`Product-log buffer did not backpressure within bounds: bytes=${bufferBytes}.`);
+  if (loadTargetWindow !== retainedLinesPerApp) {
+    throw new Error(`Flooded product-log window did not reach the retained line count: lines=${loadTargetWindow}.`);
   }
-  for (let attempt = 0; attempt < bufferHoldAttempts; attempt += 1) {
-    if (bufferBytes < bufferMinBytes || bufferBytes > bufferMaxBytes) {
-      throw new Error(`Product-log buffer did not backpressure within bounds: bytes=${bufferBytes}.`);
-    }
+  let bufferBytes = readProductLogBufferBytes(agentPod);
+  for (let attempt = 0; attempt < windowHoldAttempts; attempt += 1) {
     await delay(1_000);
+    loadTargetWindow = readLoadTargetWindow(containerName);
+    const widestWindow = readWidestRetainedWindow();
     bufferBytes = readProductLogBufferBytes(agentPod);
-  }
-  if (bufferBytes < bufferMinBytes || bufferBytes > bufferMaxBytes) {
-    throw new Error(`Product-log buffer did not backpressure within bounds: bytes=${bufferBytes}.`);
+    if (loadTargetWindow !== retainedLinesPerApp) {
+      throw new Error(`Flooded product-log window left the retained line count: lines=${loadTargetWindow}.`);
+    }
+    if (widestWindow > retainedLinesPerApp) {
+      throw new Error(`A product-log window grew past the retained line count: lines=${widestWindow}.`);
+    }
+    if (bufferBytes > bufferMaxBytes) {
+      throw new Error(`Product-log buffer grew past its runaway guard: bytes=${bufferBytes}.`);
+    }
   }
   return bufferBytes;
 }
@@ -357,14 +370,7 @@ async function assertPlatformHealthy(loadTarget) {
   }
 }
 
-function cleanup(originalQuota, loadTarget) {
-  if (originalQuota !== undefined) {
-    try {
-      writeQuota(originalQuota);
-    } catch {
-      // Cleanup remains best-effort so the original gate failure is preserved.
-    }
-  }
+function cleanup(loadTarget) {
   if (loadTarget !== undefined) {
     try {
       runCommand(

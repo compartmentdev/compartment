@@ -1,5 +1,5 @@
 {
-  "id": "a58d6db1-68a0-45f9-83d7-9b21e6e4ab15",
+  "id": "e4d7f130-b212-4a7f-a32a-9391fb16a1eb",
   "prevId": "9208e119-fee6-4565-a3aa-9c1d49e04aa4",
   "version": "7",
   "dialect": "postgresql",
@@ -1997,12 +1997,6 @@
           "primaryKey": true,
           "notNull": true
         },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "type": {
           "name": "type",
           "type": "text",
@@ -2055,15 +2049,6 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "operations_organization_id_organizations_id_fk": {
-          "name": "operations_organization_id_organizations_id_fk",
-          "tableFrom": "operations",
-          "tableTo": "organizations",
-          "columnsFrom": ["organization_id"],
-          "columnsTo": ["id"],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "operations_actor_principal_id_principals_id_fk": {
           "name": "operations_actor_principal_id_principals_id_fk",
           "tableFrom": "operations",
@@ -3824,6 +3809,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "app_key": {
+          "name": "app_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "pod_uid": {
           "name": "pod_uid",
           "type": "text",
@@ -3883,13 +3874,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
-        },
-        "captured_at": {
-          "name": "captured_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
         }
       },
       "indexes": {
@@ -3974,13 +3958,25 @@
           "method": "btree",
           "with": {}
         },
-        "deployment_product_logs_captured_at_idx": {
-          "name": "deployment_product_logs_captured_at_idx",
+        "deployment_product_logs_app_window_idx": {
+          "name": "deployment_product_logs_app_window_idx",
           "columns": [
             {
-              "expression": "captured_at",
+              "expression": "app_key",
               "isExpression": false,
               "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "source_offset",
+              "isExpression": false,
+              "asc": false,
               "nulls": "last"
             }
           ],
@@ -4414,32 +4410,6 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.product_log_store_quota": {
-      "name": "product_log_store_quota",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "used_bytes": {
-          "name": "used_bytes",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        }
-      },
-      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -5452,12 +5422,6 @@
           "primaryKey": true,
           "notNull": true
         },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "provider_type": {
           "name": "provider_type",
           "type": "text",
@@ -5598,12 +5562,6 @@
           "name": "git_provider_registrations_active_owner_unique",
           "columns": [
             {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
               "expression": "provider_type",
               "isExpression": false,
               "asc": true,
@@ -5632,12 +5590,6 @@
           "name": "git_provider_registrations_pending_owner_unique",
           "columns": [
             {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
               "expression": "provider_type",
               "isExpression": false,
               "asc": true,
@@ -5664,15 +5616,6 @@
         }
       },
       "foreignKeys": {
-        "git_provider_registrations_organization_id_organizations_id_fk": {
-          "name": "git_provider_registrations_organization_id_organizations_id_fk",
-          "tableFrom": "git_provider_registrations",
-          "tableTo": "organizations",
-          "columnsFrom": ["organization_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "git_provider_registrations_created_by_principal_id_principals_id_fk": {
           "name": "git_provider_registrations_created_by_principal_id_principals_id_fk",
           "tableFrom": "git_provider_registrations",

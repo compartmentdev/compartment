@@ -188,3 +188,43 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: images.api.digest.*pattern
+
+  - it: rejects a malformed build CPU quota through the values schema
+    set:
+      buildkit:
+        resourceQuota:
+          limits:
+            cpu: forty-eight
+    asserts:
+      - failedTemplate:
+          errorPattern: buildkit.resourceQuota.limits.cpu.*pattern
+
+  - it: accepts an exabyte build CPU quota through the values schema
+    set:
+      buildkit:
+        resourceQuota:
+          limits:
+            cpu: '1E'
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: rejects an uppercase kilo build CPU quota through the values schema
+    set:
+      buildkit:
+        resourceQuota:
+          limits:
+            cpu: '1K'
+    asserts:
+      - failedTemplate:
+          errorPattern: buildkit.resourceQuota.limits.cpu.*pattern
+
+  - it: rejects a malformed build memory quota through the values schema
+    set:
+      buildkit:
+        resourceQuota:
+          limits:
+            memory: 64-gibibytes
+    asserts:
+      - failedTemplate:
+          errorPattern: buildkit.resourceQuota.limits.memory.*pattern

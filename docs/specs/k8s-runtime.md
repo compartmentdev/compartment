@@ -125,7 +125,9 @@ Failed rollout recovery reapplies the saved active manifest by SSA; it does not 
 Tenant node-pool scheduling is installation-owned and opt-in. When configured, application and resource Deployments
 plus product and provisioning Jobs project the tenant selector, tolerations, and `compartment-tenant` PriorityClass.
 When it is absent, all three Pod fields are omitted so existing server-side-apply ownership remains unchanged.
-Platform and build scheduling remains owned by the Helm chart.
+Build Jobs run tenant-authored code, so they carry the same `compartment-tenant` PriorityClass through their
+always-configured build scheduling and never preempt tenant workloads.
+Platform scheduling and the build node pool remain owned by the Helm chart.
 
 Kernel sandboxing is installation-owned and required through `sandboxRuntime.runtimeClassName`.
 The selected RuntimeClass is projected onto build Jobs, application Deployments, resource Deployments, product Jobs,
@@ -180,9 +182,11 @@ K3s or gVisor state before the job and must be destroyed after it; a persistent 
 this coverage path.
 
 Each Job uses only `emptyDir` local cache and a project/service-scoped registry cache; no unencrypted cache volume is
-shared between tenants. The worker's existing limit of two concurrent builds now limits build pods. NetworkPolicy
-defaults the namespace to deny and admits only DNS, source archive API, base-image, and registry egress. Public
-internet egress excludes metadata, link-local, RFC1918, Pod, and Service CIDRs.
+shared between tenants. The worker admits up to 100 build claims by default, caps each organization at two active
+claims, and chooses the least-active eligible organization before applying FIFO order. The build namespace
+ResourceQuota independently limits aggregate container CPU and memory to the installation-configured hard ceiling.
+NetworkPolicy defaults the namespace to deny and admits only DNS, source archive API, base-image, and registry
+egress. Public internet egress excludes metadata, link-local, RFC1918, Pod, and Service CIDRs.
 
 The F1 chart installs a private persistent bundled registry. External/BYO
 registry values are deferred to F2. Application namespaces use

@@ -12,6 +12,18 @@ metadata:
     pod-security.kubernetes.io/audit: baseline
     pod-security.kubernetes.io/warn: baseline
 ---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: {{ include "compartment.fullname" . }}-build
+  namespace: {{ .Values.buildkit.namespace }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  hard:
+    limits.cpu: {{ .Values.buildkit.resourceQuota.limits.cpu | quote }}
+    limits.memory: {{ .Values.buildkit.resourceQuota.limits.memory | quote }}
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
