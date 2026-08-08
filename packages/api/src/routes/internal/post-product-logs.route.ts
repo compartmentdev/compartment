@@ -23,14 +23,6 @@ export function registerPostProductLogsRoute(app: ApiApp): void {
         'invalid_product_log_ingest_request',
       );
       const result: ProductLogIngestResult = await ingestDeploymentProductLogs(input);
-      if ((result.deferred ?? 0) > 0) {
-        return await reply.code(503).send({
-          error: {
-            code: 'product_log_ingest_deferred',
-            message: 'Product log identity or store capacity is not available yet.',
-          },
-        });
-      }
       const response: ProductLogIngestResponse = toProductLogIngestResponse(result);
       return await reply.send(productLogIngestResponseSchema.parse(response));
     },

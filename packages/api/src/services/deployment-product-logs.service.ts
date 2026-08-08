@@ -17,7 +17,7 @@ import type {
 import type { DeploymentJoinedRow } from '../queries/deployments.query.types';
 import { listDeploymentLogWorkloadScopes } from '../queries/deployment-log-workload.query';
 import type { DeploymentLogWorkloadScopeRow } from '../queries/deployment-log-workload.query.types';
-import type { ProductLogIngestResult } from './deployment-product-logs.service.types';
+import type { DeploymentLogIdentity, ProductLogIngestResult } from './deployment-product-logs.service.types';
 
 const resourcePodNamePattern: RegExp = /^resource-res-([0-9a-f]{32})/;
 
@@ -25,32 +25,29 @@ export async function ingestDeploymentProductLogs(events: ProductLogIngestEvent[
   const identities: DeploymentLogIdentityRow[] = await listDeploymentLogIdentities(uniqueNamespaces(events));
   const resourceIds: string[] = resourceIdsFromEvents(events);
   const resourceIdentities: ResourceLogIdentityRow[] = await listResourceLogIdentities(resourceIds);
-  const deploymentByContainer: Map<string, string> = buildDeploymentIdentityMap(identities);
+  const deploymentByContainer: Map<string, DeploymentLogIdentity> = buildDeploymentIdentityMap(identities);
   const acceptedEvents: InsertProductLogInput[] = events.flatMap(
     (event: ProductLogIngestEvent): InsertProductLogInput[] => {
       if (event.containerName === 'resource') {
         const resourceId: string | undefined = resolveResourceIdentity(event, resourceIdentities);
-        return resourceId === undefined ? [] : [{ ...event, resourceId }];
+        return resourceId === undefined ? [] : [{ ...event, appKey: resourceId, resourceId }];
       }
-      const deploymentId: string | undefined = resolveDeploymentIdentity(event, deploymentByContainer);
-      return deploymentId === undefined ? [] : [{ ...event, deploymentId }];
+      const identity: DeploymentLogIdentity | undefined = resolveDeploymentIdentity(event, deploymentByContainer);
+      return identity === undefined ? [] : [{ ...event, appKey: identity.appKey, deploymentId: identity.deploymentId }];
     },
   );
   const result: InsertDeploymentProductLogsResult = await insertDeploymentProductLogs(acceptedEvents);
-  return buildProductLogIngestResult(events.length, acceptedEvents.length, result);
+  return buildProductLogIngestResult(events.length, result);
 }
 
 function buildProductLogIngestResult(
   eventCount: number,
-  acceptedIdentityCount: number,
   result: InsertDeploymentProductLogsResult,
 ): ProductLogIngestResult {
-  const deferred: number = acceptedIdentityCount - result.quotaAccepted;
   return {
     accepted: result.inserted,
-    ...(deferred > 0 ? { deferred } : {}),
-    duplicates: result.quotaAccepted - result.inserted,
-    rejected: eventCount - result.quotaAccepted,
+    duplicates: result.attempted - result.inserted,
+    rejected: eventCount - result.attempted,
   };
 }
 
@@ -86,8 +83,8 @@ function extractResourceIdFromPodName(podName: string): string | undefined {
 
 function resolveDeploymentIdentity(
   event: ProductLogIngestEvent,
-  deploymentByContainer: ReadonlyMap<string, string>,
-): string | undefined {
+  deploymentByContainer: ReadonlyMap<string, DeploymentLogIdentity>,
+): DeploymentLogIdentity | undefined {
   return deploymentByContainer.get(identityKey(event.namespace, event.containerName));
 }
 
@@ -156,11 +153,18 @@ function uniqueNamespaces(events: ProductLogIngestEvent[]): string[] {
   return [...new Set(events.map((event: ProductLogIngestEvent): string => event.namespace))];
 }
 
-function buildDeploymentIdentityMap(rows: DeploymentLogIdentityRow[]): Map<string, string> {
-  return new Map<string, string>(
-    rows.map((row: DeploymentLogIdentityRow): [string, string] => [
+/**
+ * Container names are per deployment, but `deploymentName` is the workload identity shared by every
+ * redeploy of one service in one environment. Reads group by that same name, so it is the retention key.
+ *
+ * It is used unqualified because `kubeApplicationIdentityName` digests the environment and service ids,
+ * making the name globally unique. A namespace-scoped naming scheme would need the namespace mixed in.
+ */
+function buildDeploymentIdentityMap(rows: DeploymentLogIdentityRow[]): Map<string, DeploymentLogIdentity> {
+  return new Map<string, DeploymentLogIdentity>(
+    rows.map((row: DeploymentLogIdentityRow): [string, DeploymentLogIdentity] => [
       identityKey(row.namespace, immutableKubeName('app', row.deploymentId)),
-      row.deploymentId,
+      { appKey: row.deploymentName, deploymentId: row.deploymentId },
     ]),
   );
 }

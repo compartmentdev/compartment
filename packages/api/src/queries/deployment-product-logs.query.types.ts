@@ -8,11 +8,13 @@ export interface DeploymentLogIdentityRow {
 }
 
 export interface InsertDeploymentProductLogInput extends ProductLogIngestEvent {
+  appKey: string;
   deploymentId: string;
   resourceId?: never;
 }
 
 export interface InsertResourceProductLogInput extends ProductLogIngestEvent {
+  appKey: string;
   deploymentId?: never;
   resourceId: string;
 }
@@ -20,16 +22,12 @@ export interface InsertResourceProductLogInput extends ProductLogIngestEvent {
 export type InsertProductLogInput = InsertDeploymentProductLogInput | InsertResourceProductLogInput;
 
 export interface InsertDeploymentProductLogsResult {
+  attempted: number;
   inserted: number;
-  quotaAccepted: number;
 }
 
-export interface InsertedProductLogMessage {
-  message: string;
-}
-
-export interface ProductLogQuotaRow {
-  usedBytes: number;
+export interface InsertedProductLogAppKey {
+  appKey: string;
 }
 
 export interface ListDeploymentProductLogsInput {
@@ -52,8 +50,3 @@ export interface ListResourceProductLogsInput {
 }
 
 export type ResourceProductLogLine = ResourceLogLine;
-
-export interface DeleteExpiredDeploymentProductLogsInput {
-  capturedBefore: Date;
-  limit: number;
-}

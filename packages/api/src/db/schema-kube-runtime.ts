@@ -169,6 +169,7 @@ export const deploymentProductLogs: KubeRuntimeSchemaTypes.DeploymentProductLogs
     resourceId: text('resource_id').references((): typeof projectResources.id => projectResources.id, {
       onDelete: 'cascade',
     }),
+    appKey: text('app_key').notNull(),
     podUid: text('pod_uid').notNull(),
     podName: text('pod_name').notNull(),
     namespace: text('namespace').notNull(),
@@ -179,7 +180,6 @@ export const deploymentProductLogs: KubeRuntimeSchemaTypes.DeploymentProductLogs
     stream: text('stream', { enum: ['stdout', 'stderr'] }).notNull(),
     message: text('message').notNull(),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
-    capturedAt: timestamp('captured_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table: KubeRuntimeSchemaTypes.DeploymentProductLogsExtraConfigColumns): PgTableExtraConfig => ({
     ownerCheck: check(
@@ -201,16 +201,12 @@ export const deploymentProductLogs: KubeRuntimeSchemaTypes.DeploymentProductLogs
       table.sourceOffset,
       table.sourceFingerprint,
     ),
-    retentionIndex: index('deployment_product_logs_captured_at_idx').on(table.capturedAt),
+    appWindowIndex: index('deployment_product_logs_app_window_idx').on(
+      table.appKey,
+      table.occurredAt.desc(),
+      table.sourceOffset.desc(),
+    ),
   }),
-);
-
-export const productLogStoreQuota: KubeRuntimeSchemaTypes.ProductLogStoreQuotaTable = pgTable(
-  'product_log_store_quota',
-  {
-    id: text('id').primaryKey(),
-    usedBytes: integer('used_bytes').default(0).notNull(),
-  },
 );
 
 export const projectKubeProvisioning: KubeRuntimeSchemaTypes.ProjectKubeProvisioningTable = pgTable(
