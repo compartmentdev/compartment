@@ -28,7 +28,7 @@ export const platformK3dShardDefinitions = Object.freeze({
     ingressClass: 'nginx',
   }),
   'user-flow': defineShard(7, [installSuite, 'system-user']),
-  console: defineShard(8, [installSuite, 'console', 'product-log', 'g1']),
+  console: defineShard(8, [installSuite, 'console', 'g1', 'product-log']),
 });
 
 assertPlatformK3dShardSecurityModes(platformK3dShardDefinitions);
