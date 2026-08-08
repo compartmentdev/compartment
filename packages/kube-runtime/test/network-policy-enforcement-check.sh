@@ -16,10 +16,12 @@ done
 
 application="$(kubectl --context "${context}" -n ns-a get pod -l compartment.test/role=application -o jsonpath='{.items[0].metadata.name}')"
 release="$(kubectl --context "${context}" -n ns-a get pod -l compartment.dev/job-class=release -o jsonpath='{.items[0].metadata.name}')"
-caddy="$(kubectl --context "${context}" -n platform-ns get pod -l app=caddy -o jsonpath='{.items[0].metadata.name}')"
+caddy="$(kubectl --context "${context}" -n platform-ns get pod -l app.kubernetes.io/component=caddy -o jsonpath='{.items[0].metadata.name}')"
+platform="$(kubectl --context "${context}" -n platform-ns get pod -l app=platform -o jsonpath='{.items[0].metadata.name}')"
 from_application() { kubectl --context "${context}" -n ns-a exec "${application}" -- sh -c "$1" >/dev/null 2>&1; }
 from_release() { kubectl --context "${context}" -n ns-a exec "${release}" -- sh -c "$1" >/dev/null 2>&1; }
 from_caddy() { kubectl --context "${context}" -n platform-ns exec "${caddy}" -- sh -c "$1" >/dev/null 2>&1; }
+from_platform() { kubectl --context "${context}" -n platform-ns exec "${platform}" -- sh -c "$1" >/dev/null 2>&1; }
 
 record() {
   local phase="$1" probe="$2" expected="$3" command="$4" actual='deny'
@@ -40,6 +42,8 @@ run_matrix() {
   record "${phase}" release-to-resource allow "from_release 'wget -q -T 2 -O /dev/null http://resource.ns-a.svc:8080'"
   record "${phase}" release-dns allow "from_release 'nslookup kubernetes.default.svc.cluster.local'"
   record "${phase}" caddy-to-application allow "from_caddy 'wget -q -T 2 -O /dev/null http://app.ns-a.svc:8080'"
+  # A non-Caddy platform Pod must stay out, otherwise an over-broad peer selector would pass unnoticed.
+  record "${phase}" platform-to-application "${isolated}" "from_platform 'wget -q -T 2 -O /dev/null http://app.ns-a.svc:8080'"
 }
 
 matrix_matches() {

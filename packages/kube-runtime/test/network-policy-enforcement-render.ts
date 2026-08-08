@@ -12,7 +12,7 @@ const manifests: KubeManifest[] = projectNetworkPolicyManifests('ns-a', 't2-name
   applicationPodLabels: { 'compartment.test/role': 'application' },
   applicationPorts: [8080],
   edgeNamespaceName: 'platform-ns',
-  edgePodLabels: { app: 'caddy' },
+  edgePodLabels: { 'app.kubernetes.io/component': 'caddy' },
   podCidr,
   resourcePodLabels: { app: 'resource' },
   resourcePorts: [6379, 8080],
