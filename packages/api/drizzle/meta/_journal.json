@@ -43,6 +43,13 @@
       "when": 1786113672193,
       "tag": "0005_steep_mesmero",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786211928623,
+      "tag": "0006_organization_scoping",
+      "breakpoints": true
     }
   ]
 }
