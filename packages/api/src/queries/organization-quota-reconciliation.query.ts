@@ -89,7 +89,7 @@ async function leaseOrganizationQuota(
     .where(eq(organizationQuotaReconciliation.organizationId, row.organizationId));
   const namespaceIds: string[] = (
     await transaction.select({ id: projects.id }).from(projects).where(eq(projects.organizationId, row.organizationId))
-  ).map(({ id }: { id: string }): string => id);
+  ).map(({ id }): string => id);
   return { leaseId, namespaceIds, organizationId: row.organizationId };
 }
 

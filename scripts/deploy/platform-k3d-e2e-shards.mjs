@@ -15,7 +15,7 @@ export const platformK3dShardDefinitions = Object.freeze({
     lane: prLane,
   }),
   'pr-console': defineShard(1, [installSuite, 'console'], { lane: prLane }),
-  'install-ha-network-policy': defineShard(2, [installSuite, 'ha', 'network-policy', 'organization-quota'], {
+  'install-ha-network-policy': defineShard(2, [installSuite, 'organization-quota', 'ha', 'network-policy'], {
     clusterName: 'compartment-e2e-install-ha-np',
     highAvailability: true,
     installAudit: true,

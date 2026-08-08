@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
-import { captureCommand, runCommandAsync } from '../lib/command.mjs';
+import { captureCommand, captureCommandResult, runCommandAsync } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 
@@ -17,7 +17,16 @@ const platformNamespace = process.env.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? 'com
 const buildNamespace = `${platformNamespace}-build`;
 
 async function kubectl(args) {
-  await runCommandAsync('kubectl', ['--context', context, ...args], repositoryRoot, process.env);
+  const command = ['--context', context, ...args];
+  const result = captureCommandResult('kubectl', command, repositoryRoot, process.env);
+  process.stdout.write(result.stdout);
+  process.stderr.write(result.stderr);
+  if (result.error !== undefined) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(`Command failed: kubectl ${command.join(' ')}\n${result.stderr}`);
+  }
 }
 
 function captureKubectl(args) {

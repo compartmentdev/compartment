@@ -237,7 +237,6 @@ function buildKubeJobSpec(
   tenantSecretsKek: TenantSecretsKeyring,
 ): KubeJobSpec {
   return {
-    cleanupPolicy: 'delete',
     command: intent.command,
     env: decryptTenantSecretEnvironment(intent.env, tenantSecretsKek),
     id: productJobRuntimeId(intent.jobClass, identityId),
