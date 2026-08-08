@@ -15,6 +15,7 @@ import {
   inviteUserResponseSchema,
   organizationUserResponseSchema,
   projectListResponseSchema,
+  projectLifecycleResponseSchema,
   projectResponseSchema,
   projectShowResponseSchema,
   resourceBackupListResponseSchema,
@@ -54,6 +55,7 @@ import {
   type OrganizationUserResponse,
   type OrganizationUserListRow,
   type ProjectListResponse,
+  type ProjectLifecycleResponse,
   type ProjectResponse,
   type ProjectShowResponse,
   type ResourceBackupListResponse,
@@ -224,6 +226,12 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
       await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, afterBackupValue, false);
       await expectAppEnvMessage(routeUrl, adminAppSessionCookie, appMessage);
 
+      const stoppedProject: ProjectLifecycleResponse = await admin.runJson(
+        `project stop --project ${app.projectName}`,
+        projectLifecycleResponseSchema,
+      );
+      expect(stoppedProject.state).toBe('stopped');
+
       const restoreAsPayload: ResourceRestoreAsResponse = await admin.runJson(
         `resource backup restore --project ${app.projectName} --backup ${backupId} --as ${restoredResourceName}`,
         resourceRestoreAsResponseSchema,
@@ -238,6 +246,13 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
       );
       expect(deleteRestoredResourcePayload.success).toBe(true);
       expect(deleteRestoredResourcePayload.retainedVolumes).toEqual([]);
+
+      const startedProject: ProjectLifecycleResponse = await admin.runJson(
+        `project start --project ${app.projectName}`,
+        projectLifecycleResponseSchema,
+      );
+      expect(startedProject.state).toBe('updating');
+      await expectAppEnvMessage(routeUrl, adminAppSessionCookie, appMessage);
       context.completedCaseCount = 5;
     },
     selfHostedUserSetupTimeoutMs,
