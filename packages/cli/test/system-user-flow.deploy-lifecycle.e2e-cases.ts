@@ -15,6 +15,7 @@ import {
   organizationAuthSettingsResponseSchema,
   organizationListResponseSchema,
   organizationSettingsResponseSchema,
+  projectLifecycleResponseSchema,
   projectListResponseSchema,
   projectShowResponseSchema,
   resourceResponseSchema,
@@ -51,6 +52,7 @@ import {
   type OrganizationSettingsResponse,
   type OrganizationSummary,
   type ProjectListResponse,
+  type ProjectLifecycleResponse,
   type ProjectOverviewSummary,
   type ProjectShowResponse,
   type ResourceResponse,
@@ -610,14 +612,58 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
       );
       expect(bootstrapPayload.resource.name).toBe(app.resourceName);
       await waitForRunningResource(admin, app.projectName, app.resourceName);
-      await enableSelfHostedUserSetupResourceRelease(app);
-      const resourceReleaseDeployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
-        'deploy',
-        deployCommandResponseParser,
-        { cwd: app.directory },
-      );
-      expect(requireSingleActiveDeployment(resourceReleaseDeployPayload, app.serviceName).status).toBe('succeeded');
-      await disableSelfHostedUserSetupResourceRelease(app);
+      let restoreResourceReleaseDescriptor = async (): Promise<void> => await Promise.resolve();
+      let resourceReleaseDeployError: Error | undefined;
+      let productionEnvironmentStopped = false;
+      let resourceReleaseDeploySucceeded = false;
+      try {
+        const stoppedProject: ProjectLifecycleResponse = await admin.runJson(
+          `project stop --project ${app.projectName} --env ${app.environmentName}`,
+          projectLifecycleResponseSchema,
+        );
+        productionEnvironmentStopped = true;
+        expect(stoppedProject.state).toBe('stopped');
+        const runningResource: ResourceResponse = await admin.runJson(
+          `resource inspect --project ${app.projectName} --resource ${app.resourceName}`,
+          resourceResponseSchema,
+        );
+        expect(runningResource.resource.status).toBe('running');
+        restoreResourceReleaseDescriptor = async (): Promise<void> =>
+          await disableSelfHostedUserSetupResourceRelease(app);
+        await enableSelfHostedUserSetupResourceRelease(app);
+        const resourceReleaseDeployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
+          'deploy',
+          deployCommandResponseParser,
+          { cwd: app.directory },
+        );
+        expect(requireSingleActiveDeployment(resourceReleaseDeployPayload, app.serviceName).status).toBe('succeeded');
+        resourceReleaseDeploySucceeded = true;
+      } catch (error) {
+        resourceReleaseDeployError = error instanceof Error ? error : new Error(String(error));
+      }
+      let descriptorRestoreError: Error | undefined;
+      try {
+        await restoreResourceReleaseDescriptor();
+      } catch (error) {
+        descriptorRestoreError = error instanceof Error ? error : new Error(String(error));
+      }
+      if (productionEnvironmentStopped && !resourceReleaseDeploySucceeded) {
+        try {
+          const restartedProject: ProjectLifecycleResponse = await admin.runJson(
+            `project start --project ${app.projectName} --env ${app.environmentName}`,
+            projectLifecycleResponseSchema,
+          );
+          expect(restartedProject.state).toBe('updating');
+        } catch {
+          // Preserve the resource-release deployment failure as the primary error.
+        }
+      }
+      if (resourceReleaseDeployError !== undefined) {
+        throw resourceReleaseDeployError;
+      }
+      if (descriptorRestoreError !== undefined) {
+        throw descriptorRestoreError;
+      }
       const statusPayload: DeploymentStatusResponse = await admin.runJson(
         `status --project ${app.projectName}`,
         deploymentStatusCommandResponseParser,
