@@ -226,33 +226,53 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
       await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, afterBackupValue, false);
       await expectAppEnvMessage(routeUrl, adminAppSessionCookie, appMessage);
 
-      const stoppedProject: ProjectLifecycleResponse = await admin.runJson(
-        `project stop --project ${app.projectName}`,
-        projectLifecycleResponseSchema,
-      );
-      expect(stoppedProject.state).toBe('stopped');
+      let restoreIntervalError: Error | undefined;
+      try {
+        const stoppedProject: ProjectLifecycleResponse = await admin.runJson(
+          `project stop --project ${app.projectName}`,
+          projectLifecycleResponseSchema,
+        );
+        expect(stoppedProject.state).toBe('stopped');
 
-      const restoreAsPayload: ResourceRestoreAsResponse = await admin.runJson(
-        `resource backup restore --project ${app.projectName} --backup ${backupId} --as ${restoredResourceName}`,
-        resourceRestoreAsResponseSchema,
-      );
-      expect(restoreAsPayload.success).toBe(true);
-      expect(restoreAsPayload.resource.name).toBe(restoredResourceName);
-      expect(restoreAsPayload.resource.status).toBe('running');
+        const restoreAsPayload: ResourceRestoreAsResponse = await admin.runJson(
+          `resource backup restore --project ${app.projectName} --backup ${backupId} --as ${restoredResourceName}`,
+          resourceRestoreAsResponseSchema,
+        );
+        expect(restoreAsPayload.success).toBe(true);
+        expect(restoreAsPayload.resource.name).toBe(restoredResourceName);
+        expect(restoreAsPayload.resource.status).toBe('running');
 
-      const deleteRestoredResourcePayload: ResourceDeleteResponse = await admin.runJson(
-        `resource delete --project ${app.projectName} --resource ${restoredResourceName} --delete-data --yes`,
-        resourceDeleteResponseSchema,
-      );
-      expect(deleteRestoredResourcePayload.success).toBe(true);
-      expect(deleteRestoredResourcePayload.retainedVolumes).toEqual([]);
-
-      const startedProject: ProjectLifecycleResponse = await admin.runJson(
-        `project start --project ${app.projectName}`,
-        projectLifecycleResponseSchema,
-      );
+        const deleteRestoredResourcePayload: ResourceDeleteResponse = await admin.runJson(
+          `resource delete --project ${app.projectName} --resource ${restoredResourceName} --delete-data --yes`,
+          resourceDeleteResponseSchema,
+        );
+        expect(deleteRestoredResourcePayload.success).toBe(true);
+        expect(deleteRestoredResourcePayload.retainedVolumes).toEqual([]);
+      } catch (error) {
+        restoreIntervalError = error instanceof Error ? error : new Error(String(error));
+      }
+      let restartError: Error | undefined;
+      let startedProject: ProjectLifecycleResponse | undefined;
+      try {
+        startedProject = await admin.runJson(
+          `project start --project ${app.projectName}`,
+          projectLifecycleResponseSchema,
+        );
+      } catch (error) {
+        restartError = error instanceof Error ? error : new Error(String(error));
+      }
+      if (restoreIntervalError !== undefined) {
+        throw restoreIntervalError;
+      }
+      if (restartError !== undefined) {
+        throw restartError;
+      }
+      if (startedProject === undefined) {
+        throw new Error('Project restart completed without a lifecycle response.');
+      }
       expect(startedProject.state).toBe('updating');
       await expectAppEnvMessage(routeUrl, adminAppSessionCookie, appMessage);
+      await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue, true);
       context.completedCaseCount = 5;
     },
     selfHostedUserSetupTimeoutMs,
