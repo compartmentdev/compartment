@@ -150,12 +150,14 @@ function claimableResourceStateCondition(): SQL | undefined {
 }
 
 function claimableResourceReconcileRunCondition(): SQL | undefined {
+  // Every lease clause reads Postgres `now()`, which is the transaction start, so the candidate select and the
+  // claiming update judge one instant even while the locks between them block.
   return and(
     or(
       inArray(resourceReconcileRuns.phase, ['bootstrap-pending', 'reconcile-pending']),
       and(
         eq(resourceReconcileRuns.phase, 'running'),
-        or(isNull(resourceReconcileRuns.leaseExpiresAt), lt(resourceReconcileRuns.leaseExpiresAt, new Date())),
+        or(isNull(resourceReconcileRuns.leaseExpiresAt), lt(resourceReconcileRuns.leaseExpiresAt, sql`now()`)),
       ),
     ),
     sql`not exists (
