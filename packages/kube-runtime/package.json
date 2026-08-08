@@ -21,7 +21,6 @@
     "build:test": "tsc -p tsconfig.test.json",
     "lint": "eslint . --max-warnings 0 --cache --cache-location .eslintcache",
     "test:network-policy": "bash test/network-policy-enforcement-check.sh",
-    "test:network-policy:render": "tsx test/network-policy-enforcement-render.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit --rootDir ../.. && tsc -p tsconfig.test.json --noEmit --rootDir ../..",
     "test": "vitest run --config ../../vitest.config.mts"
   },
