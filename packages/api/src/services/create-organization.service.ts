@@ -72,6 +72,7 @@ function buildCreateOrganizationOperationInput(
   return {
     actorPrincipalId: principalId,
     completedAt: new Date(),
+    organizationId: organization.id,
     status: 'succeeded',
     summary: `Created organization ${organization.slug}`,
     targetId: organization.id,

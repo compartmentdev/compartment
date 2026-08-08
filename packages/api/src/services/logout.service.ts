@@ -12,6 +12,7 @@ export async function logout(actor: Actor): Promise<void> {
   await insertOperationRecord({
     actorPrincipalId: actor.principalId,
     completedAt: now,
+    organizationId: actor.authSession.organizationId,
     status: 'succeeded',
     summary: `Logged out ${actor.principalEmail}`,
     targetId: actor.sessionId,

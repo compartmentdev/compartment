@@ -49,12 +49,13 @@ export async function lockResourceReconcileProject(
 }
 
 export function claimableResourceProjectCondition(): SQL | undefined {
+  // Postgres `now()` keeps this lease check on the clock the rest of the claim decision uses.
   return or(
     isNull(projects.archivedAt),
     and(
       eq(resourceReconcileRuns.operationType, 'bootstrap'),
       eq(resourceReconcileRuns.phase, 'running'),
-      or(isNull(resourceReconcileRuns.leaseExpiresAt), lt(resourceReconcileRuns.leaseExpiresAt, new Date())),
+      or(isNull(resourceReconcileRuns.leaseExpiresAt), lt(resourceReconcileRuns.leaseExpiresAt, sql`now()`)),
     ),
     and(
       eq(resourceReconcileRuns.operationType, 'reconcile'),

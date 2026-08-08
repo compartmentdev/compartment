@@ -86,7 +86,6 @@ function buildKubeJobSpec(config: WorkerBuildSandboxConfig, input: RunWorkerBuil
     jobClass: 'build',
     labels: { 'compartment.dev/job-class': 'build' },
     namespace: config.namespace,
-    priorityClassName: 'compartment-platform',
     resources: config.runnerResources,
     scheduling: config.scheduling,
     securityProfile: 'restricted',

@@ -8,9 +8,8 @@ interface NamedSchemaObjectRow {
   name: string;
 }
 
-interface ProductLogQuotaRow {
-  id: string;
-  usedBytes: string;
+interface SchemaColumnRow {
+  isNullable: string;
 }
 
 interface SchemaIndexRow {
@@ -62,9 +61,11 @@ describe('Kubernetes cutover schema', (): void => {
     expect(columnRows.rows).toEqual([]);
   });
 
-  it('preserves the manual product-log quota objects in the squashed baseline', async (): Promise<void> => {
-    const quotaRows: QueryResult<ProductLogQuotaRow> = await pool.query<ProductLogQuotaRow>(
-      `select id, used_bytes::text as "usedBytes" from product_log_store_quota where id = 'global'`,
+  it('removes every product-log byte quota object', async (): Promise<void> => {
+    const tableRows: QueryResult<NamedSchemaObjectRow> = await pool.query<NamedSchemaObjectRow>(
+      `select table_name as name
+       from information_schema.tables
+       where table_schema = 'public' and table_name = 'product_log_store_quota'`,
     );
     const functionRows: QueryResult<NamedSchemaObjectRow> = await pool.query<NamedSchemaObjectRow>(
       `select proname as name from pg_proc where proname = 'decrement_product_log_store_usage'`,
@@ -73,9 +74,27 @@ describe('Kubernetes cutover schema', (): void => {
       `select tgname as name from pg_trigger where tgname = 'deployment_product_logs_quota_delete'`,
     );
 
-    expect(quotaRows.rows).toEqual([{ id: 'global', usedBytes: '0' }]);
-    expect(functionRows.rows).toEqual([{ name: 'decrement_product_log_store_usage' }]);
-    expect(triggerRows.rows).toEqual([{ name: 'deployment_product_logs_quota_delete' }]);
+    expect(tableRows.rows).toEqual([]);
+    expect(functionRows.rows).toEqual([]);
+    expect(triggerRows.rows).toEqual([]);
+  });
+
+  it('indexes the per-app product-log retention window', async (): Promise<void> => {
+    const columnRows: QueryResult<SchemaColumnRow> = await pool.query<SchemaColumnRow>(
+      `select is_nullable as "isNullable"
+       from information_schema.columns
+       where table_name = 'deployment_product_logs' and column_name = 'app_key'`,
+    );
+    const indexRows: QueryResult<SchemaIndexRow> = await pool.query<SchemaIndexRow>(
+      `select indexname as name, indexdef as definition
+       from pg_indexes
+       where schemaname = 'public' and indexname = 'deployment_product_logs_app_window_idx'`,
+    );
+
+    expect(columnRows.rows).toEqual([{ isNullable: 'NO' }]);
+    expect(indexRows.rows).toHaveLength(1);
+    expect(indexRows.rows[0]?.definition).toContain('app_key, occurred_at DESC');
+    expect(indexRows.rows[0]?.definition).toContain('source_offset DESC');
   });
 
   it('indexes the globally serialized active resource reconcile order', async (): Promise<void> => {

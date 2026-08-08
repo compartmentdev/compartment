@@ -6,7 +6,7 @@ import {
   buildGitSourceSyncAuditMetadata,
 } from '../audit-event-metadata.service';
 import type { BuildGitSourceSyncAuditMetadataInput } from '../audit-event-metadata.service.types';
-import type { AuditEventActorInput, RecordAuditEventInput } from '../audit-events.service.types';
+import type { AuditEventActorInput, RecordOrganizationAuditEventInput } from '../audit-events.service.types';
 import type { SourceRow } from '../../queries/source.query.types';
 import type {
   BuildGitSourceBindingCreatedAuditEventInput,
@@ -16,7 +16,9 @@ import type {
 } from './git-source-audit.service.types';
 import { buildGitSourceAuditTarget } from './git-source-audit-target.service';
 
-export function buildGitSourceSyncAuditEventInput(input: BuildGitSourceSyncAuditEventInput): RecordAuditEventInput {
+export function buildGitSourceSyncAuditEventInput(
+  input: BuildGitSourceSyncAuditEventInput,
+): RecordOrganizationAuditEventInput {
   return {
     actor: buildGitSourceAutomationActor(input.source),
     executor: input.executor,
@@ -30,7 +32,7 @@ export function buildGitSourceSyncAuditEventInput(input: BuildGitSourceSyncAudit
 
 export function buildGitSourceBindingCreatedAuditEventInput(
   input: BuildGitSourceBindingCreatedAuditEventInput,
-): RecordAuditEventInput {
+): RecordOrganizationAuditEventInput {
   return {
     actor: buildGitSourceAutomationActor(input.source),
     executor: input.executor,
@@ -64,11 +66,13 @@ function buildGitSourceSyncAuditMetadataInput(
 
 export function buildGitSourcePushAuditEventInputs(
   input: BuildGitSourcePushAuditEventInputsInput,
-): RecordAuditEventInput[] {
+): RecordOrganizationAuditEventInput[] {
   return [buildGitSourcePushReceivedAuditEvent(input), buildGitSourceAutoDeployAuditEvent(input)];
 }
 
-function buildGitSourcePushReceivedAuditEvent(input: BuildGitSourcePushAuditEventInputsInput): RecordAuditEventInput {
+function buildGitSourcePushReceivedAuditEvent(
+  input: BuildGitSourcePushAuditEventInputsInput,
+): RecordOrganizationAuditEventInput {
   return {
     actor: buildGitSourceSystemActor(),
     executor: input.executor,
@@ -85,7 +89,9 @@ function buildGitSourcePushReceivedAuditEvent(input: BuildGitSourcePushAuditEven
   };
 }
 
-function buildGitSourceAutoDeployAuditEvent(input: BuildGitSourcePushAuditEventInputsInput): RecordAuditEventInput {
+function buildGitSourceAutoDeployAuditEvent(
+  input: BuildGitSourcePushAuditEventInputsInput,
+): RecordOrganizationAuditEventInput {
   return {
     actor: buildGitSourceSystemActor(),
     executor: input.executor,

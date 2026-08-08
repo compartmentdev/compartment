@@ -220,7 +220,7 @@ describe('projects service', (): void => {
   it('backfills exactly one durable quota row for an existing organization', async (): Promise<void> => {
     const client: PoolClient = await pool.connect();
     const migration: string = readFileSync(
-      join(process.cwd(), 'packages/api/drizzle/0005_volatile_harpoon.sql'),
+      join(process.cwd(), 'packages/api/drizzle/0007_fixed_lord_hawal.sql'),
       'utf8',
     ).replaceAll('--> statement-breakpoint', '');
     try {
@@ -884,6 +884,7 @@ async function seedDeleteScope(): Promise<void> {
     callbackUrl: 'https://console.example/v1/sources/git/providers/github/callback',
     createdByPrincipalId: 'prn_git_sources',
     id: 'gpr_git_sources',
+    organizationId: 'org_git_sources',
     pendingExpiresAt: null,
     privateKeyPemCiphertext: null,
     privateKeyPemEncryptionKeyId: null,

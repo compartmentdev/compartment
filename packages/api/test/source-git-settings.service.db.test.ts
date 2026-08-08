@@ -758,6 +758,7 @@ async function createSettingsScope(): Promise<void> {
     callbackUrl: 'https://console.example/v1/sources/git/providers/github/callback',
     createdByPrincipalId: 'prn_git_settings',
     id: 'gpr_git_settings',
+    organizationId: 'org_git_settings',
     pendingExpiresAt: null,
     privateKeyPemCiphertext: null,
     privateKeyPemEncryptionKeyId: null,

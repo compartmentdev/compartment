@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { operations } from '../db/schema';
 import { createId } from '../lib/tokens';
@@ -14,6 +14,10 @@ export async function insertOperationRecord(input: InsertOperationInput): Promis
   return await insertOperationRecordWithExecutor(getApiDatabase(), input);
 }
 
+/**
+ * Installation-wide lookup for singleton operations such as `compartment.install`.
+ * Deliberately not tenant-scoped: the install operation predates any tenant context.
+ */
 export async function findOperationRecordByType(type: string): Promise<OperationRecord | undefined> {
   const [operation] = await getApiDatabase().select().from(operations).where(eq(operations.type, type)).limit(1);
   return operation as OperationRecord | undefined;
@@ -21,12 +25,13 @@ export async function findOperationRecordByType(type: string): Promise<Operation
 
 export async function insertOperationRecordWithExecutor(
   executor: Pick<Database, 'insert'>,
-  { actorPrincipalId, completedAt, status, summary, targetId, targetType, type }: InsertOperationInput,
+  { actorPrincipalId, completedAt, organizationId, status, summary, targetId, targetType, type }: InsertOperationInput,
 ): Promise<OperationRecord> {
   const operationRecord: NewOperationRecord = {
     actorPrincipalId,
     completedAt: completedAt ?? null,
     id: createId('op'),
+    organizationId,
     status,
     summary,
     targetId,
@@ -48,7 +53,7 @@ export async function updateOperationRecord(input: UpdateOperationInput): Promis
 
 export async function updateOperationRecordWithExecutor(
   executor: Pick<Database, 'update'>,
-  { completedAt, operationId, status, summary }: UpdateOperationInput,
+  { completedAt, operationId, organizationId, status, summary }: UpdateOperationInput,
 ): Promise<OperationRecord> {
   const [updatedOperation] = await executor
     .update(operations)
@@ -57,7 +62,7 @@ export async function updateOperationRecordWithExecutor(
       status,
       ...(summary !== undefined ? { summary } : {}),
     })
-    .where(eq(operations.id, operationId))
+    .where(and(eq(operations.id, operationId), eq(operations.organizationId, organizationId)))
     .returning();
 
   if (updatedOperation === undefined) {

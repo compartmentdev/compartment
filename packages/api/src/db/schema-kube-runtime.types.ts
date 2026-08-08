@@ -141,6 +141,7 @@ export type JobUsageCheckpointsExtraConfigColumns = PgExtraConfigColumnsOf<
 interface DeploymentProductLogsColumnBuilders {
   deploymentId: OptionalTextBuilder<'deployment_id'>;
   resourceId: OptionalTextBuilder<'resource_id'>;
+  appKey: RequiredTextBuilder<'app_key'>;
   podUid: RequiredTextBuilder<'pod_uid'>;
   podName: RequiredTextBuilder<'pod_name'>;
   namespace: RequiredTextBuilder<'namespace'>;
@@ -151,7 +152,6 @@ interface DeploymentProductLogsColumnBuilders {
   stream: RequiredEnumTextBuilder<'stream', ['stdout', 'stderr']>;
   message: RequiredTextBuilder<'message'>;
   occurredAt: RequiredTimestampBuilder<'occurred_at'>;
-  capturedAt: DefaultTimestampBuilder<'captured_at'>;
 }
 
 export type DeploymentProductLogsTable = PgTableOf<'deployment_product_logs', DeploymentProductLogsColumnBuilders>;
@@ -159,13 +159,6 @@ export type DeploymentProductLogsExtraConfigColumns = PgExtraConfigColumnsOf<
   'deployment_product_logs',
   DeploymentProductLogsColumnBuilders
 >;
-
-interface ProductLogStoreQuotaColumnBuilders {
-  id: PrimaryTextBuilder<'id'>;
-  usedBytes: DefaultIntegerBuilder<'used_bytes'>;
-}
-
-export type ProductLogStoreQuotaTable = PgTableOf<'product_log_store_quota', ProductLogStoreQuotaColumnBuilders>;
 
 interface ProjectKubeProvisioningColumnBuilders {
   projectId: PrimaryTextBuilder<'project_id'>;

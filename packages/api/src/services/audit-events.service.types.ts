@@ -30,15 +30,31 @@ export interface AuditEventActorInput {
   userAgent?: string | null | undefined;
 }
 
-export interface RecordAuditEventInput {
+export interface AuditEventRecordBase {
   actor: AuditEventActorInput;
   eventType: AuditEventType;
   executor?: AuditEventWriteExecutor | undefined;
   metadata: AuditEventMetadata;
-  organizationId: string;
   status?: AuditEventStatus | undefined;
   target: AuditEventTargetInput;
 }
+
+export interface RecordOrganizationAuditEventInput extends AuditEventRecordBase {
+  organizationId: string;
+  scopeType?: 'organization' | undefined;
+}
+
+/**
+ * Installation-scoped events describe actions that span organizations. The
+ * `audit_events` scope check requires `organization_id` to be NULL for them, so
+ * the affected organization belongs in `target` instead.
+ */
+export interface RecordInstallationAuditEventInput extends AuditEventRecordBase {
+  organizationId?: never;
+  scopeType: 'installation';
+}
+
+export type RecordAuditEventInput = RecordInstallationAuditEventInput | RecordOrganizationAuditEventInput;
 
 export interface ListOrganizationAuditEventsInput extends AuditEventListQuery {
   organizationId: string;

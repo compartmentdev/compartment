@@ -1,11 +1,9 @@
 import { and, eq, or, sql, type SQL } from 'drizzle-orm';
 import { gitProviderRegistrations } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
-import { buildGitProviderRegistrationOrganizationFilter } from './git-provider-registration-scope.query.helpers';
 import type {
   FindActiveGitProviderRegistrationsByRepositoryOwnersInput,
   GitProviderRegistrationRow,
-  PersistedGitProviderRegistrationRow,
 } from './git-provider-registration.query.types';
 
 export async function findActiveGitProviderRegistrationsByRepositoryOwners(
@@ -16,24 +14,19 @@ export async function findActiveGitProviderRegistrationsByRepositoryOwners(
     return [];
   }
 
-  const rows: PersistedGitProviderRegistrationRow[] = await getApiDatabase()
+  const rows: GitProviderRegistrationRow[] = await getApiDatabase()
     .select()
     .from(gitProviderRegistrations)
     .where(
       and(
         eq(sql`lower(${gitProviderRegistrations.providerHost})`, input.providerHost.toLowerCase()),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId),
+        eq(gitProviderRegistrations.organizationId, input.organizationId),
         eq(gitProviderRegistrations.status, 'active'),
         or(...repositoryOwners.map(buildGitProviderRepositoryOwnerFilter)),
       ),
     );
 
-  return rows.map(
-    (row: PersistedGitProviderRegistrationRow): GitProviderRegistrationRow => ({
-      ...row,
-      organizationId: input.organizationId,
-    }),
-  );
+  return rows;
 }
 
 function readNormalizedRepositoryOwners(repositoryOwners: string[]): string[] {

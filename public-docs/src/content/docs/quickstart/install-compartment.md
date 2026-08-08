@@ -80,7 +80,8 @@ modify node host/runtime configuration. Public ACME issuers cannot issue this pr
 Optional Helm values can assign platform, build, and tenant workloads to separately labeled and tainted nodes through
 `nodePools.system`, `nodePools.build`, and `nodePools.tenant`. Leave all three pools empty for single-node clusters.
 When pools are enabled, a pending platform Pod can preempt lower-priority tenant Pods that are eligible for the same
-node. Priority does not guarantee availability during node failure or kubelet node-pressure eviction.
+node. Build Pods run at tenant priority, so a build never preempts a running application. Priority does not guarantee
+availability during node failure or kubelet node-pressure eviction.
 
 Hosted application traffic is limited per application to 300 requests per second with a burst of 600, per client IP
 within an application to 60 requests per second with a burst of 120, and to 512 simultaneous in-flight requests per

@@ -1,12 +1,15 @@
 import { sql } from 'drizzle-orm';
 import { pgTable, text, timestamp, type PgTableExtraConfig, uniqueIndex } from 'drizzle-orm/pg-core';
-import { principals } from './schema-core';
+import { organizations, principals } from './schema-core';
 import type * as GitSchemaTypes from './schema-git.types';
 
 export const gitProviderRegistrations: GitSchemaTypes.GitProviderRegistrationsTable = pgTable(
   'git_provider_registrations',
   {
     id: text('id').primaryKey(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references((): typeof organizations.id => organizations.id, { onDelete: 'cascade' }),
     providerType: text('provider_type').notNull(),
     providerHost: text('provider_host').notNull(),
     repositoryOwner: text('repository_owner').notNull(),
@@ -34,10 +37,10 @@ export const gitProviderRegistrations: GitSchemaTypes.GitProviderRegistrationsTa
   },
   (table: GitSchemaTypes.GitProviderRegistrationsExtraConfigColumns): PgTableExtraConfig => ({
     activeOwnerUnique: uniqueIndex('git_provider_registrations_active_owner_unique')
-      .on(table.providerType, table.providerHost, table.repositoryOwner)
+      .on(table.organizationId, table.providerType, table.providerHost, table.repositoryOwner)
       .where(sql`${table.status} = 'active'`),
     pendingOwnerUnique: uniqueIndex('git_provider_registrations_pending_owner_unique')
-      .on(table.providerType, table.providerHost, table.repositoryOwner)
+      .on(table.organizationId, table.providerType, table.providerHost, table.repositoryOwner)
       .where(sql`${table.status} = 'pending'`),
   }),
 );

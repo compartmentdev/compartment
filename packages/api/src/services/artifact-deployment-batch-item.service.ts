@@ -62,6 +62,7 @@ function buildArtifactDeploymentOperationInput(
 ): InsertOperationInput {
   return {
     actorPrincipalId,
+    organizationId: sourceDeployment.project.organizationId,
     status: 'queued',
     summary: buildArtifactDeploymentOperationSummary(sourceDeployment, targetEnvironment, operationType),
     targetId: targetEnvironment.id,

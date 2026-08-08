@@ -16,6 +16,7 @@ import { markDeploymentStopped } from '../queries/deployment-lifecycle.query';
 import { findDeploymentKubeState } from '../queries/deployment-kube-membership.query';
 import type { DeploymentKubeState } from '../queries/deployment-kube-state.types';
 import type { DeploymentJoinedRow, DeploymentRow, EnvironmentRow } from '../queries/deployments.query.types';
+import type { ProjectRow } from '../queries/projects.query.types';
 import { getApiConfig } from '../runtime/runtime-access';
 import { resolveActiveProjectScope } from './project-scope.service';
 import type { ResolvedProjectScope } from './project-scope.service.types';
@@ -86,7 +87,7 @@ export async function stopProjectForPrincipal(input: ProjectLifecycleInput): Pro
   const stoppedDeployments: DeploymentJoinedRow[] = await stopActiveProjectDeployments(
     context.activeDeployments,
     input.principalId,
-    context.projectScope.project.name,
+    context.projectScope.project,
     context.environment,
   );
 
@@ -164,11 +165,11 @@ async function requireProjectLifecycleEnvironment(
 async function stopActiveProjectDeployments(
   deployments: DeploymentJoinedRow[],
   actorPrincipalId: string,
-  projectName: string,
+  project: ProjectRow,
   environment: EnvironmentRow,
 ): Promise<DeploymentJoinedRow[]> {
   const updatedAt: Date = new Date();
-  const operationId: string = await createProjectStopOperation(actorPrincipalId, projectName, environment);
+  const operationId: string = await createProjectStopOperation(actorPrincipalId, project, environment);
   const stopResults: PromiseSettledResult<DeploymentJoinedRow>[] = await Promise.allSettled(
     deployments.map(
       async (deployment: DeploymentJoinedRow): Promise<DeploymentJoinedRow> =>
@@ -177,11 +178,11 @@ async function stopActiveProjectDeployments(
   );
 
   if (hasRejectedStopResult(stopResults)) {
-    await recordProjectStopOperationFailure(operationId, projectName, environment, updatedAt);
+    await recordProjectStopOperationFailure(operationId, project, environment, updatedAt);
     throw createProjectLifecycleRuntimeStopFailedError();
   }
 
-  await recordProjectStopOperationSuccess(operationId, projectName, environment, updatedAt);
+  await recordProjectStopOperationSuccess(operationId, project, environment, updatedAt);
 
   return readFulfilledStopDeployments(stopResults);
 }

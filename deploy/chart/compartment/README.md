@@ -63,9 +63,10 @@ nodePools:
       - { key: compartment.dev/node-pool, operator: Equal, value: tenant, effect: NoSchedule }
 ```
 
-Platform and ephemeral BuildKit Pods use the higher `compartment-platform` PriorityClass. Configured tenant workloads use
-`compartment-tenant`, allowing a pending platform Pod to preempt lower-priority tenant Pods when both are eligible for
-the same node. Priority does not guarantee availability during node failure or kubelet node-pressure eviction.
+Platform Pods use the higher `compartment-platform` PriorityClass. Ephemeral BuildKit Pods run tenant-authored code, so
+they share `compartment-tenant` with configured tenant workloads and never preempt them. That lets a pending platform
+Pod preempt lower-priority tenant Pods when both are eligible for the same node. Priority does not guarantee
+availability during node failure or kubelet node-pressure eviction.
 
 ## Public ingress
 

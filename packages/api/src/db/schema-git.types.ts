@@ -15,6 +15,7 @@ import type {
 
 interface GitProviderRegistrationsColumnBuilders {
   id: PrimaryTextBuilder<'id'>;
+  organizationId: RequiredTextBuilder<'organization_id'>;
   providerType: RequiredTextBuilder<'provider_type'>;
   providerHost: RequiredTextBuilder<'provider_host'>;
   repositoryOwner: RequiredTextBuilder<'repository_owner'>;

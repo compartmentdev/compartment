@@ -751,9 +751,10 @@ fix-forward procedure. Product rollback compatibility is not required for this u
 ### Phase 5: complete project and organization isolation
 
 - Audit every organization-owned API query and command for explicit context.
-- Complete project namespace, ServiceAccount, Secret, PVC, quota, and NetworkPolicy projections.
+- Project namespaces, ServiceAccounts, Secrets, PVCs, and NetworkPolicies are projected. Project quotas retain
+  object-count limits, while one shared admission quota enforces fixed compute and storage capacity per organization.
 - Enforce restricted application Pod specifications.
-- Add cross-organization negative integration coverage.
+- Cross-organization quota isolation has negative integration coverage.
 - Keep NetworkPolicy enforcement tests in CI, but add no install-time CNI check.
 
 ### Phase 6: move dynamic domains to durable Kubernetes reconciliation

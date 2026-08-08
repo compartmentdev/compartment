@@ -36,6 +36,7 @@ export async function updateOrganizationAuthSettings(
   await insertOperationRecord({
     actorPrincipalId: input.actorPrincipalId,
     completedAt: new Date(),
+    organizationId: input.organizationId,
     status: 'succeeded',
     summary: `Updated auth settings for ${input.organizationSlug}`,
     targetId: input.organizationId,

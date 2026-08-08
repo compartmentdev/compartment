@@ -311,6 +311,7 @@ async function createSyncScope(): Promise<void> {
     callbackUrl: 'https://console.example/v1/sources/git/providers/github/callback',
     createdByPrincipalId: 'prn_git_sync',
     id: 'gpr_git_sync',
+    organizationId: 'org_git_sync',
     pendingExpiresAt: null,
     privateKeyPemCiphertext: null,
     privateKeyPemEncryptionKeyId: null,

@@ -261,6 +261,7 @@ describe('Phase 0 API integration project lifecycle', (): void => {
       callbackUrl: 'https://console.example/v1/sources/git/providers/github/callback',
       createdByPrincipalId: principalId,
       id: 'gpr_archive_unarchive_remote_state',
+      organizationId,
       pendingExpiresAt: null,
       privateKeyPemCiphertext: null,
       privateKeyPemEncryptionKeyId: null,

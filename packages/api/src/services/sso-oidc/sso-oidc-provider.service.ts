@@ -233,6 +233,7 @@ async function recordSsoOidcProviderOperation(
   await insertOperationRecord({
     actorPrincipalId: input.actorPrincipalId,
     completedAt: new Date(),
+    organizationId: input.organizationId,
     status: 'succeeded',
     summary: buildSsoOidcProviderOperationSummary(input.organizationSlug, type),
     targetId: input.organizationId,

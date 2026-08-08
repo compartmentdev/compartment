@@ -2,7 +2,6 @@ import { and, eq, gt, sql } from 'drizzle-orm';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { gitProviderRegistrations } from '../db/schema';
 import { requirePersistedRow } from './persisted-row.query.shared';
-import { buildGitProviderRegistrationOrganizationFilter } from './git-provider-registration-scope.query.helpers';
 import type {
   ActivateGitProviderRegistrationInput,
   CreatePendingGitProviderRegistrationInput,
@@ -13,7 +12,6 @@ import type {
   GitProviderRegistrationRow,
   GitProviderWriteExecutor,
   PersistGitProviderRegistrationManifestExchangeInput,
-  PersistedGitProviderRegistrationRow,
 } from './git-provider-registration.query.types';
 
 interface GitProviderRegistrationManifestExchangeUpdate {
@@ -55,31 +53,32 @@ export async function findGitProviderRegistrationByIdWithExecutor(
   executor: GitProviderReadExecutor,
   input: FindGitProviderRegistrationByIdInput,
 ): Promise<GitProviderRegistrationRow | undefined> {
-  const rows: PersistedGitProviderRegistrationRow[] = await executor
+  const rows: GitProviderRegistrationRow[] = await executor
     .select()
     .from(gitProviderRegistrations)
     .where(
       and(
         eq(gitProviderRegistrations.id, input.registrationId),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId, input.registrationId),
+        eq(gitProviderRegistrations.organizationId, input.organizationId),
       ),
     )
     .limit(1);
 
-  return mapGitProviderRegistrationRow(rows[0], input.organizationId);
+  return rows[0];
 }
 
 export async function createPendingGitProviderRegistration(
   executor: GitProviderWriteExecutor,
   input: CreatePendingGitProviderRegistrationInput,
 ): Promise<GitProviderRegistrationRow> {
-  const [registration]: PersistedGitProviderRegistrationRow[] = await executor
+  const [registration]: GitProviderRegistrationRow[] = await executor
     .insert(gitProviderRegistrations)
     .values({
       bootstrapStateId: null,
       callbackUrl: input.callbackUrl,
       createdByPrincipalId: input.createdByPrincipalId,
       id: input.id,
+      organizationId: input.organizationId,
       pendingExpiresAt: input.pendingExpiresAt,
       providerHost: input.providerHost,
       providerType: input.providerType,
@@ -90,10 +89,7 @@ export async function createPendingGitProviderRegistration(
     })
     .returning();
 
-  return mapRequiredGitProviderRegistrationRow(
-    requirePersistedRow(registration, 'git provider registration'),
-    input.organizationId,
-  );
+  return requirePersistedRow(registration, 'git provider registration');
 }
 
 export async function setGitProviderRegistrationBootstrapState(
@@ -111,10 +107,7 @@ export async function setGitProviderRegistrationBootstrapState(
       updatedAt: new Date(),
     })
     .where(
-      and(
-        eq(gitProviderRegistrations.id, registrationId),
-        buildGitProviderRegistrationOrganizationFilter(organizationId, registrationId),
-      ),
+      and(eq(gitProviderRegistrations.id, registrationId), eq(gitProviderRegistrations.organizationId, organizationId)),
     );
 }
 
@@ -122,7 +115,7 @@ export async function activateGitProviderRegistration(
   executor: GitProviderWriteExecutor,
   input: ActivateGitProviderRegistrationInput,
 ): Promise<GitProviderRegistrationRow | undefined> {
-  const [registration]: PersistedGitProviderRegistrationRow[] = await executor
+  const [registration]: GitProviderRegistrationRow[] = await executor
     .update(gitProviderRegistrations)
     .set({
       bootstrapStateId: null,
@@ -136,34 +129,28 @@ export async function activateGitProviderRegistration(
     .where(
       and(
         eq(gitProviderRegistrations.id, input.id),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId, input.id),
+        eq(gitProviderRegistrations.organizationId, input.organizationId),
         eq(gitProviderRegistrations.status, 'pending'),
       ),
     )
     .returning();
 
-  return mapGitProviderRegistrationRow(registration, input.organizationId);
+  return registration;
 }
 
 export async function persistGitProviderRegistrationManifestExchange(
   executor: GitProviderWriteExecutor,
   input: PersistGitProviderRegistrationManifestExchangeInput,
 ): Promise<GitProviderRegistrationRow> {
-  const [registration]: PersistedGitProviderRegistrationRow[] = await executor
+  const [registration]: GitProviderRegistrationRow[] = await executor
     .update(gitProviderRegistrations)
     .set(buildGitProviderRegistrationManifestExchangeUpdate(input))
     .where(
-      and(
-        eq(gitProviderRegistrations.id, input.id),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId, input.id),
-      ),
+      and(eq(gitProviderRegistrations.id, input.id), eq(gitProviderRegistrations.organizationId, input.organizationId)),
     )
     .returning();
 
-  return mapRequiredGitProviderRegistrationRow(
-    requirePersistedRow(registration, 'git provider registration'),
-    input.organizationId,
-  );
+  return requirePersistedRow(registration, 'git provider registration');
 }
 
 export async function failGitProviderRegistration(
@@ -189,7 +176,7 @@ export async function failGitProviderRegistrationWithCurrentStatus(
     .where(
       and(
         eq(gitProviderRegistrations.id, input.id),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId, input.id),
+        eq(gitProviderRegistrations.organizationId, input.organizationId),
         eq(gitProviderRegistrations.status, currentStatus),
       ),
     );
@@ -199,13 +186,13 @@ export async function findGitProviderRegistrationByStatusWithExecutor(
   executor: GitProviderReadExecutor,
   input: FindGitProviderRegistrationByStatusInput,
 ): Promise<GitProviderRegistrationRow | undefined> {
-  const rows: PersistedGitProviderRegistrationRow[] = await executor
+  const rows: GitProviderRegistrationRow[] = await executor
     .select()
     .from(gitProviderRegistrations)
     .where(
       and(
         eq(sql`lower(${gitProviderRegistrations.providerHost})`, input.providerHost.toLowerCase()),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId),
+        eq(gitProviderRegistrations.organizationId, input.organizationId),
         eq(sql`lower(${gitProviderRegistrations.repositoryOwner})`, input.repositoryOwner.toLowerCase()),
         eq(gitProviderRegistrations.status, input.status),
         ...(input.expiresAfter === undefined
@@ -215,21 +202,7 @@ export async function findGitProviderRegistrationByStatusWithExecutor(
     )
     .limit(1);
 
-  return mapGitProviderRegistrationRow(rows[0], input.organizationId);
-}
-
-export function mapGitProviderRegistrationRow(
-  row: PersistedGitProviderRegistrationRow | undefined,
-  organizationId: string,
-): GitProviderRegistrationRow | undefined {
-  return row === undefined ? undefined : mapRequiredGitProviderRegistrationRow(row, organizationId);
-}
-
-function mapRequiredGitProviderRegistrationRow(
-  row: PersistedGitProviderRegistrationRow,
-  organizationId: string,
-): GitProviderRegistrationRow {
-  return { ...row, organizationId };
+  return rows[0];
 }
 
 function buildGitProviderRegistrationManifestExchangeUpdate(

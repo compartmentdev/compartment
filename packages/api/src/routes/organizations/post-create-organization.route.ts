@@ -12,8 +12,10 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiApp } from '../../app.types';
 import { parseRequestValue } from '../../http/validation';
 import { requireAnySessionVisibleOrganizationAdminAccess } from '../../services/access-scope.service';
+import { recordAuditEvent } from '../../services/audit-events.service';
 import { createOrganization } from '../../services/create-organization.service';
 import type { CreateOrganizationResult } from '../../services/create-organization.service.types';
+import { buildInstallationAuditEventForRequest } from '../audit/audit-event-route-context';
 import { buildOrganizationSummaries } from '../presenters/organization.presenter';
 import { buildOperationSummary } from '../presenters/operation.presenter';
 
@@ -47,6 +49,7 @@ async function handlePostCreateOrganization(request: FastifyRequest, reply: Fast
     principalId: request.actor.principalId,
     slug: input.slug,
   });
+  await recordOrganizationCreatedAudit(request, result);
   const organization: OrganizationSummary | undefined = buildOrganizationSummaries([result.organization])[0];
   const response: CreateOrganizationResponse = createOrganizationResponseSchema.parse({
     operation: buildOperationSummary(result.operation),
@@ -54,4 +57,21 @@ async function handlePostCreateOrganization(request: FastifyRequest, reply: Fast
   });
 
   return await reply.send(response);
+}
+
+async function recordOrganizationCreatedAudit(
+  request: FastifyRequest,
+  result: CreateOrganizationResult,
+): Promise<void> {
+  await recordAuditEvent(
+    buildInstallationAuditEventForRequest(request, {
+      eventType: 'installation.organization.created',
+      metadata: { organizationSlug: result.organization.slug },
+      target: {
+        displayName: result.organization.name,
+        id: result.organization.id,
+        type: 'organization',
+      },
+    }),
+  );
 }

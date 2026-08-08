@@ -1,6 +1,6 @@
 {
-  "id": "e4d7f130-b212-4a7f-a32a-9391fb16a1eb",
-  "prevId": "9208e119-fee6-4565-a3aa-9c1d49e04aa4",
+  "id": "5e7b307c-d676-4c8b-9485-00b3cd6dacf4",
+  "prevId": "21bf4005-9354-4432-9bbe-a82ddcc45219",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1997,6 +1997,12 @@
           "primaryKey": true,
           "notNull": true
         },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "type": {
           "name": "type",
           "type": "text",
@@ -2049,6 +2055,15 @@
       },
       "indexes": {},
       "foreignKeys": {
+        "operations_organization_id_organizations_id_fk": {
+          "name": "operations_organization_id_organizations_id_fk",
+          "tableFrom": "operations",
+          "tableTo": "organizations",
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
         "operations_actor_principal_id_principals_id_fk": {
           "name": "operations_actor_principal_id_principals_id_fk",
           "tableFrom": "operations",
@@ -4789,6 +4804,103 @@
       },
       "isRLSEnabled": false
     },
+    "public.organization_quota_reconciliation": {
+      "name": "organization_quota_reconciliation",
+      "schema": "",
+      "columns": {
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "lease_id": {
+          "name": "lease_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_expires_at": {
+          "name": "lease_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_message": {
+          "name": "failure_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "organization_quota_reconciliation_state_lease_idx": {
+          "name": "organization_quota_reconciliation_state_lease_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lease_expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "organization_quota_reconciliation_organization_id_organizations_id_fk": {
+          "name": "organization_quota_reconciliation_organization_id_organizations_id_fk",
+          "tableFrom": "organization_quota_reconciliation",
+          "tableTo": "organizations",
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.edge_traffic_usage_receipts": {
       "name": "edge_traffic_usage_receipts",
       "schema": "",
@@ -5422,6 +5534,12 @@
           "primaryKey": true,
           "notNull": true
         },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "provider_type": {
           "name": "provider_type",
           "type": "text",
@@ -5562,6 +5680,12 @@
           "name": "git_provider_registrations_active_owner_unique",
           "columns": [
             {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
               "expression": "provider_type",
               "isExpression": false,
               "asc": true,
@@ -5590,6 +5714,12 @@
           "name": "git_provider_registrations_pending_owner_unique",
           "columns": [
             {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
               "expression": "provider_type",
               "isExpression": false,
               "asc": true,
@@ -5616,6 +5746,15 @@
         }
       },
       "foreignKeys": {
+        "git_provider_registrations_organization_id_organizations_id_fk": {
+          "name": "git_provider_registrations_organization_id_organizations_id_fk",
+          "tableFrom": "git_provider_registrations",
+          "tableTo": "organizations",
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
         "git_provider_registrations_created_by_principal_id_principals_id_fk": {
           "name": "git_provider_registrations_created_by_principal_id_principals_id_fk",
           "tableFrom": "git_provider_registrations",

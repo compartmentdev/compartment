@@ -14,7 +14,11 @@ import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import type { AuditEventWriteExecutor } from '../src/queries/audit-events.query.types';
 import { closeAuditEventFileSink, initializeAuditEventFileSink } from '../src/services/audit-event-file-sink.service';
 import { recordAuditEvent, writeCommittedAuditEventsToLocalFileSink } from '../src/services/audit-events.service';
-import type { AuditEventResult, RecordAuditEventInput } from '../src/services/audit-events.service.types';
+import type {
+  AuditEventActorInput,
+  AuditEventResult,
+  RecordAuditEventInput,
+} from '../src/services/audit-events.service.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
@@ -61,6 +65,11 @@ let cleanupDirectories: string[] = [];
 
 interface AuditEventIdRow {
   id: string;
+}
+
+interface AuditEventScopeRow {
+  organizationId: string | null;
+  scopeType: string;
 }
 
 describe('audit events service', (): void => {
@@ -119,6 +128,26 @@ describe('audit events service', (): void => {
     expect(await readdir(directory)).toEqual(['audit.ndjson']);
     await expect(readFile(join(directory, 'audit.ndjson'), 'utf8')).resolves.toBe('');
   });
+
+  it('records an installation-scoped event without an owning organization', async (): Promise<void> => {
+    const event: AuditEventResult = await recordAuditEvent({
+      actor: buildAuditEventActor(),
+      eventType: 'installation.organization.created',
+      metadata: { organizationSlug: 'acme' },
+      scopeType: 'installation',
+      target: {
+        displayName: 'Acme',
+        id: 'org_123',
+        type: 'organization',
+      },
+    });
+
+    expect(event).toMatchObject({
+      organizationId: null,
+      scopeType: 'installation',
+    });
+    expect(await readStoredAuditEventScopes()).toEqual([{ organizationId: null, scopeType: 'installation' }]);
+  });
 });
 
 async function seedOrganization(): Promise<void> {
@@ -136,6 +165,13 @@ async function listAuditEventIds(): Promise<string[]> {
     .orderBy(asc(auditEvents.id));
 
   return rows.map((row: AuditEventIdRow): string => row.id);
+}
+
+async function readStoredAuditEventScopes(): Promise<AuditEventScopeRow[]> {
+  return await db
+    .select({ organizationId: auditEvents.organizationId, scopeType: auditEvents.scopeType })
+    .from(auditEvents)
+    .orderBy(asc(auditEvents.id));
 }
 
 async function createTemporaryDirectory(): Promise<string> {
@@ -169,15 +205,19 @@ function buildApiConfigWithFileSink(directory: string): ApiConfig {
   };
 }
 
+function buildAuditEventActor(): AuditEventActorInput {
+  return {
+    email: 'admin@example.com',
+    sourceIp: '127.0.0.1',
+    transport: 'bearer',
+    type: 'user',
+    userAgent: 'vitest',
+  };
+}
+
 function buildRecordAuditEventInput(): RecordAuditEventInput {
   return {
-    actor: {
-      email: 'admin@example.com',
-      sourceIp: '127.0.0.1',
-      transport: 'bearer',
-      type: 'user',
-      userAgent: 'vitest',
-    },
+    actor: buildAuditEventActor(),
     eventType: 'organization.settings.updated',
     metadata: {
       auditRetentionUpdated: true,

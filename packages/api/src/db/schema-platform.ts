@@ -36,6 +36,11 @@ export const systemDomainIdempotencyKeys: CoreSchemaTypes.SystemDomainIdempotenc
 
 export const operations: CoreSchemaTypes.OperationsTable = pgTable('operations', {
   id: text('id').primaryKey(),
+  // Operations are a ledger: keep completed rows when an organization is removed
+  // rather than cascading history away.
+  organizationId: text('organization_id').references((): typeof organizations.id => organizations.id, {
+    onDelete: 'set null',
+  }),
   type: text('type').notNull(),
   status: text('status').notNull(),
   actorPrincipalId: text('actor_principal_id').references((): typeof principals.id => principals.id),

@@ -1203,6 +1203,7 @@ async function createRuntimeScope(): Promise<void> {
     callbackUrl: 'https://console.example/v1/sources/git/providers/github/callback',
     createdByPrincipalId: 'prn_git_runtime',
     id: 'gpr_git_runtime',
+    organizationId: 'org_git_runtime',
     pendingExpiresAt: null,
     privateKeyPemCiphertext: null,
     privateKeyPemEncryptionKeyId: null,
