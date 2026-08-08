@@ -73,11 +73,13 @@ interface ConsoleE2eDeploymentFixture {
 }
 
 interface ConsoleE2eProxyRouteFixture {
+  readonly projectName: string;
   readonly proxyPath: string;
   readonly routeUrl: string;
 }
 
 interface ConsoleE2ePreparedFixture {
+  readonly admin: SelfHostedUserSetupCli;
   readonly account: ConsoleE2eAccountFixture;
   readonly deployment: ConsoleE2eDeploymentFixture;
   readonly proxyRoute: ConsoleE2eProxyRouteFixture;
@@ -147,6 +149,8 @@ export async function expectConsoleE2e(runtime: SelfHostedUserSetupRuntime): Pro
     );
 
     expectSuccessfulCommand(result, 'console e2e');
+    await fixture.admin.run(`project stop --project ${fixture.deployment.projectName}`);
+    await fixture.admin.run(`project stop --project ${fixture.proxyRoute.projectName}`);
   } finally {
     await ingressProxy?.close();
     await cleanupConsoleE2eTempDirectories(tempDirectories);
@@ -166,7 +170,7 @@ async function prepareConsoleE2eFixture(
   const deployment: ConsoleE2eDeploymentFixture = await deployConsoleE2eFixture(admin, app);
   const proxyRoute: ConsoleE2eProxyRouteFixture = await deployConsoleE2eProxyRouteFixture(admin, tempDirectories);
   const account: ConsoleE2eAccountFixture = await provisionConsoleE2eLoginPrincipal(admin, viewer, runtime);
-  return { account, deployment, proxyRoute };
+  return { account, admin, deployment, proxyRoute };
 }
 
 async function createConsoleE2eAppFixture(tempDirectories: string[]): Promise<SelfHostedUserSetupAppFixture> {
@@ -252,6 +256,7 @@ async function deployConsoleE2eProxyRouteFixture(
   });
 
   return {
+    projectName: deployPayload.project.name,
     proxyPath: consoleE2eProxyPath,
     routeUrl: requireRouteUrl(deployPayload, 'web'),
   };

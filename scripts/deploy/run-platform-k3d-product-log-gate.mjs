@@ -15,7 +15,7 @@ const configuredBufferMaxBytes = 268_435_488;
 const bufferMinBytes = 104_857_600;
 const bufferMaxBytes = 150_994_944;
 const bufferHoldAttempts = 10;
-const loadPodCount = 7;
+const loadPodCount = 1;
 const loadPodImage = 'public.ecr.aws/docker/library/node:24.15.0-bookworm';
 const kubernetesReadinessTimeout = '4m';
 const productDeploymentHealthAttempts = 6;
@@ -25,13 +25,14 @@ const loadProgram = `
 const line = "p7-bounded-buffer-" + "x".repeat(3400);
 let index = 0;
 (async () => {
-  while (index < 6000) {
-    for (let count = 0; count < 250 && index < 6000; count += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+  while (index < 42000) {
+    for (let count = 0; count < 250 && index < 42000; count += 1) {
       if (!process.stdout.write(line + "-" + index++ + "\\n")) {
         await new Promise((resolve) => process.stdout.once("drain", resolve));
       }
     }
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
   setInterval(() => {}, 60000);
 })();
@@ -80,6 +81,10 @@ export function createLoadPodOverrides(containerName) {
           command: ['node', '-e', loadProgram],
           image: loadPodImage,
           name: containerName,
+          resources: {
+            limits: { cpu: '250m', memory: '128Mi' },
+            requests: { cpu: '100m', memory: '64Mi' },
+          },
           securityContext: {
             allowPrivilegeEscalation: false,
             capabilities: { drop: ['ALL'] },
