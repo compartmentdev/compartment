@@ -3,7 +3,7 @@ import { kubeJobManifest } from '../src/kube-job-projection';
 import type { KubeJobManifest, KubeJobSpec } from '../src/kube-runtime.types';
 
 describe('sandboxed build Job projection', (): void => {
-  it('projects bounded tmpfs BuildKit state and fail-closed security inside the gVisor Job pod', (): void => {
+  it('projects bounded tmpfs BuildKit state, tenant priority, and fail-closed security inside the gVisor Job pod', (): void => {
     const manifest: KubeJobManifest = kubeJobManifest(buildJobSpec(), 'job-art-123', {
       'compartment.dev/job-class': 'build',
     });
@@ -60,7 +60,7 @@ describe('sandboxed build Job projection', (): void => {
           },
         },
       ],
-      priorityClassName: 'compartment-platform',
+      priorityClassName: 'compartment-tenant',
       runtimeClassName: 'gvisor',
       securityContext: {
         seccompProfile: { type: 'RuntimeDefault' },
@@ -101,7 +101,6 @@ function buildJobSpec(): KubeJobSpec {
     jobClass: 'build',
     labels: { 'compartment.dev/job-class': 'build' },
     namespace: 'compartment-build',
-    priorityClassName: 'compartment-platform',
     scheduling: { nodeSelector: {}, runtimeClassName: 'gvisor', tolerations: [] },
     securityProfile: 'restricted',
     sidecars: [

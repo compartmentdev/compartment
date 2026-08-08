@@ -20,7 +20,6 @@ export interface KubeJobSpec {
   jobClass: 'build' | 'release' | 'operation';
   labels: Readonly<Record<string, string>>;
   namespace: string;
-  priorityClassName?: string | undefined;
   resources?: object | undefined;
   scheduling?: KubeWorkloadScheduling | undefined;
   securityProfile?: 'project-restricted' | 'resource-restricted' | 'restricted' | undefined;
