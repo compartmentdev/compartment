@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
-import { captureCommand, captureCommandResult, runCommandAsync } from '../lib/command.mjs';
+import { captureCommandAsync, runCommandAsync } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 
@@ -15,22 +15,37 @@ const context = process.env.COMPARTMENT_E2E_KUBE_CONTEXT;
 const namespaces = ['quota-a-1', 'quota-a-2', 'quota-b'];
 const platformNamespace = process.env.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? 'compartment';
 const buildNamespace = `${platformNamespace}-build`;
+const kubectlTimeoutMs = 130_000;
+
+async function kubectlResult(args) {
+  const command = ['--context', context, ...args];
+  const result = await captureCommandAsync('kubectl', command, repositoryRoot, process.env, {
+    timeoutMs: kubectlTimeoutMs,
+  });
+  return { command, ...result };
+}
 
 async function kubectl(args) {
-  const command = ['--context', context, ...args];
-  const result = captureCommandResult('kubectl', command, repositoryRoot, process.env);
+  const result = await kubectlResult(args);
   process.stdout.write(result.stdout);
   process.stderr.write(result.stderr);
-  if (result.error !== undefined) {
-    throw result.error;
+  if (result.timedOut) {
+    throw new Error(`Command timed out: kubectl ${result.command.join(' ')}\n${result.stderr}`);
   }
   if (result.status !== 0) {
-    throw new Error(`Command failed: kubectl ${command.join(' ')}\n${result.stderr}`);
+    throw new Error(`Command failed: kubectl ${result.command.join(' ')}\n${result.stdout}\n${result.stderr}`);
   }
 }
 
-function captureKubectl(args) {
-  return captureCommand('kubectl', ['--context', context, ...args], repositoryRoot, process.env);
+async function captureKubectl(args) {
+  const result = await kubectlResult(args);
+  if (result.timedOut) {
+    throw new Error(`Command timed out: kubectl ${result.command.join(' ')}\n${result.stderr}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(`Command failed: kubectl ${result.command.join(' ')}\n${result.stdout}\n${result.stderr}`);
+  }
+  return result.stdout.trim();
 }
 
 async function createNamespace(name, organizationId) {
@@ -119,7 +134,7 @@ async function waitForQuotaMaterialized(name, usage) {
 
 async function waitForLedgerSettled(name) {
   for (let attempt = 1; attempt <= 240; attempt += 1) {
-    const reserved = captureKubectl([
+    const reserved = await captureKubectl([
       'get',
       'quantityledger',
       '--all-namespaces',
@@ -180,7 +195,7 @@ async function admitExactlyOneConcurrentPod() {
 async function readInstalledOrganizationQuota() {
   for (let attempt = 1; attempt <= 120; attempt += 1) {
     const payload = JSON.parse(
-      captureKubectl([
+      await captureKubectl([
         'get',
         'globalcustomquota',
         '--selector',

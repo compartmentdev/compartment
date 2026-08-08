@@ -1,4 +1,31 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { execFile, spawn, spawnSync } from 'node:child_process';
+
+export async function captureCommandAsync(file, args, cwd, env, options) {
+  return await new Promise((resolveCommand, rejectCommand) => {
+    execFile(
+      file,
+      args,
+      {
+        cwd,
+        env,
+        killSignal: 'SIGKILL',
+        timeout: options.timeoutMs,
+      },
+      (error, stdout, stderr) => {
+        if (error !== null && typeof error.code !== 'number' && error.killed !== true) {
+          rejectCommand(error);
+          return;
+        }
+        resolveCommand({
+          status: error === null ? 0 : typeof error.code === 'number' ? error.code : null,
+          stderr,
+          stdout,
+          timedOut: error?.killed === true,
+        });
+      },
+    );
+  });
+}
 
 export async function runCommandAsync(file, args, cwd, env, options = {}) {
   await new Promise((resolveCommand, rejectCommand) => {
