@@ -149,7 +149,7 @@ describe('platform k3d e2e shard runner', () => {
     ]);
     expect(readPlatformK3dShardSuites('pr-console')).toEqual(['install', 'console']);
     expect(readPlatformK3dShardSuites('user-flow')).toEqual(['install', 'system-user']);
-    expect(readPlatformK3dShardSuites('console')).toEqual(['install', 'console', 'g1', 'product-log']);
+    expect(readPlatformK3dShardSuites('console')).toEqual(['install', 'console', 'product-log', 'g1']);
     expect(readPlatformK3dShardSuites('managed-install')).toEqual([
       'public-operator-install',
       'managed-install',
