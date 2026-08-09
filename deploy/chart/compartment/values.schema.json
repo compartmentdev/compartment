@@ -381,6 +381,13 @@
         "serviceCidr": { "type": "string", "minLength": 1 }
       }
     },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "buildkit": { "$ref": "#/definitions/buildContainerResources" },
+        "buildRunner": { "$ref": "#/definitions/buildContainerResources" }
+      }
+    },
     "edge": {
       "type": "object",
       "properties": {
@@ -428,6 +435,27 @@
     "kubernetesQuantity": {
       "type": "string",
       "pattern": "^(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[numkMGTPE]|[KMGTPE]i|[eE][+-]?[0-9]+)?$"
+    },
+    "buildContainerResources": {
+      "type": "object",
+      "required": ["limits"],
+      "properties": {
+        "limits": {
+          "type": "object",
+          "required": ["cpu", "memory"],
+          "properties": {
+            "cpu": { "$ref": "#/definitions/kubernetesQuantity" },
+            "memory": { "$ref": "#/definitions/kubernetesQuantity" }
+          }
+        },
+        "requests": {
+          "type": "object",
+          "properties": {
+            "cpu": { "$ref": "#/definitions/kubernetesQuantity" },
+            "memory": { "$ref": "#/definitions/kubernetesQuantity" }
+          }
+        }
+      }
     },
     "haComponent": {
       "type": "object",

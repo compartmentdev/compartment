@@ -228,3 +228,24 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: buildkit.resourceQuota.limits.memory.*pattern
+
+  - it: rejects a malformed build container memory limit through the values schema
+    set:
+      resources:
+        buildkit:
+          limits:
+            cpu: 1750m
+            memory: three-gibibytes
+    asserts:
+      - failedTemplate:
+          errorPattern: resources.buildkit.limits.memory.*pattern
+
+  - it: rejects a malformed build runner memory limit through the values schema
+    set:
+      resources:
+        buildRunner:
+          limits:
+            memory: 1-gibibyte
+    asserts:
+      - failedTemplate:
+          errorPattern: resources.buildRunner.limits.memory.*pattern

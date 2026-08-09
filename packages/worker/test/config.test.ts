@@ -13,11 +13,11 @@ describe('readWorkerConfig', (): void => {
       internalUrl: 'https://registry.apps.example.com',
     });
     expect(config.buildSandbox).toEqual({
-      buildKitResources: { limits: { cpu: '2' } },
-      gcKeepStorageMb: 2000,
+      buildKitResources: { limits: { cpu: '2', memory: '3Gi' }, requests: { cpu: '250m', memory: '512Mi' } },
+      gcKeepStorageMb: 1024,
       namespace: 'compartment-build',
       runnerImage: 'compartment-worker@sha256:runner',
-      runnerResources: { limits: { cpu: '1' } },
+      runnerResources: { limits: { cpu: '1', memory: '1Gi' }, requests: { cpu: '100m', memory: '256Mi' } },
       scheduling: {
         nodeSelector: { 'compartment.dev/node-pool': 'build' },
         runtimeClassName: 'gvisor',
@@ -76,6 +76,16 @@ describe('readWorkerConfig', (): void => {
           COMPARTMENT_KUBE_BUILD_SCHEDULING: '{"nodeSelector":{"compartment.dev/node-pool":"build"},"tolerations":[]}',
         }),
     ).toThrow('Build scheduling must configure a gVisor RuntimeClass.');
+  });
+
+  it('fails closed when build resources omit the memory limit that funds the sandbox workspace', (): void => {
+    expect(
+      (): WorkerBuildConfig =>
+        readWorkerBuildConfig({
+          ...validEnvironment(),
+          COMPARTMENT_BUILDKIT_RESOURCES: '{"limits":{"cpu":"2"}}',
+        }),
+    ).toThrow('COMPARTMENT_BUILDKIT_RESOURCES must be a JSON object declaring limits.memory.');
   });
 
   it('rejects unsafe worker trusted outbound host entries', (): void => {
@@ -158,11 +168,12 @@ const tenantSchedulingJson: string = JSON.stringify({
 
 function validEnvironment(): NodeJS.ProcessEnv {
   return {
-    COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: '2000',
-    COMPARTMENT_BUILDKIT_RESOURCES: '{"limits":{"cpu":"2"}}',
+    COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: '1024',
+    COMPARTMENT_BUILDKIT_RESOURCES: '{"limits":{"cpu":"2","memory":"3Gi"},"requests":{"cpu":"250m","memory":"512Mi"}}',
     COMPARTMENT_BUILD_NAMESPACE: 'compartment-build',
     COMPARTMENT_BUILD_RUNNER_IMAGE: 'compartment-worker@sha256:runner',
-    COMPARTMENT_BUILD_RUNNER_RESOURCES: '{"limits":{"cpu":"1"}}',
+    COMPARTMENT_BUILD_RUNNER_RESOURCES:
+      '{"limits":{"cpu":"1","memory":"1Gi"},"requests":{"cpu":"100m","memory":"256Mi"}}',
     COMPARTMENT_BUILD_TIMEOUT_MS: '900000',
     COMPARTMENT_KUBE_BUILD_SCHEDULING:
       '{"nodeSelector":{"compartment.dev/node-pool":"build"},"runtimeClassName":"gvisor","tolerations":[]}',

@@ -221,11 +221,11 @@ describe('runWorkerBuildJob', (): void => {
 
 function buildConfig(): WorkerBuildSandboxConfig {
   return {
-    buildKitResources: {},
-    gcKeepStorageMb: 2000,
+    buildKitResources: { limits: { memory: '3Gi' } },
+    gcKeepStorageMb: 1024,
     namespace: 'compartment-build',
     runnerImage: 'compartment-worker@sha256:runner',
-    runnerResources: {},
+    runnerResources: { limits: { memory: '1Gi' } },
     scheduling: { nodeSelector: {}, runtimeClassName: 'gvisor', tolerations: [] },
     timeoutMs: 900000,
   };
