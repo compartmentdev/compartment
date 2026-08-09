@@ -41,8 +41,19 @@ export interface ResourceOperationProductJobIntent extends ProductJobSpec {
 
 export type ProductJobIntent = ReleaseProductJobIntent | ResourceOperationProductJobIntent;
 
+/**
+ * Connected resource the claimed Job dials, with the instant its declared readiness budget runs out.
+ * Resolved at claim time, so it reflects the resource rows as they exist now, not as they existed when
+ * the Job was queued. Resources that declare no readiness are absent: there is no signal to consult.
+ */
+export interface ProductJobResourceReadiness {
+  deadlineAt: string;
+  resourceId: string;
+}
+
 export interface WorkerClaimProductJobResponse {
   job: ProductJobIntent | null;
+  resourceReadiness: ProductJobResourceReadiness[];
   result: WorkerPersistProductJobResultRequest | null;
 }
 
@@ -133,9 +144,14 @@ export const productJobIntentSchema: ContractSchema<ProductJobIntent> = z.discri
     .strict(),
 ]);
 
+const productJobResourceReadinessSchema: ContractSchema<ProductJobResourceReadiness> = z
+  .object({ deadlineAt: z.string().datetime(), resourceId: z.string().min(1) })
+  .strict();
+
 export const workerClaimProductJobResponseSchema: ContractSchema<WorkerClaimProductJobResponse> = z
   .object({
     job: productJobIntentSchema.nullable(),
+    resourceReadiness: z.array(productJobResourceReadinessSchema),
     result: z
       .lazy((): ContractSchema<WorkerPersistProductJobResultRequest> => workerPersistProductJobResultRequestSchema)
       .nullable(),

@@ -47,6 +47,29 @@ function validStartedAt(container: KubeObservedContainerStatus): number[] {
   );
 }
 
+/**
+ * Live availability of an observed Deployment: the current generation is observed and every desired
+ * replica belongs to that generation and passed its readiness probe. Replicas left over from a previous
+ * generation do not count, so a Recreate rollout is unavailable until its replacement Pod is ready.
+ * A Deployment scaled to zero is never available.
+ */
+export function kubeDeploymentAvailable(observed: KubeObservedManifest | null): boolean {
+  if (observed?.kind !== 'Deployment') {
+    return false;
+  }
+  const status: KubeObservedDeploymentStatus = observed.status ?? {};
+  const desiredReplicas: number = observed.spec?.replicas ?? 0;
+  const generation: number | undefined = observed.metadata?.generation;
+  if (generation === undefined || desiredReplicas < 1 || status.observedGeneration !== generation) {
+    return false;
+  }
+  return (
+    status.updatedReplicas === desiredReplicas &&
+    status.replicas === desiredReplicas &&
+    (status.availableReplicas ?? 0) >= desiredReplicas
+  );
+}
+
 export function readKubeRolloutObservation(
   observed: KubeObservedManifest | null,
   deployment: KubeDeploymentManifest,

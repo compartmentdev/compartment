@@ -18,7 +18,11 @@ export async function createProductJobIntent(
 
 export async function claimNextProductJob(jobClass: ProductJobClass): Promise<ClaimedProductJobResult> {
   const claimed: ClaimedProductJobQueryResult = await claimProductJob(jobClass);
-  return { intent: claimed.intent, persistedResult: claimed.persistedResult };
+  return {
+    intent: claimed.intent,
+    persistedResult: claimed.persistedResult,
+    resourceReadiness: claimed.resourceReadiness,
+  };
 }
 
 export async function completeProductJob(input: WorkerPersistProductJobResultRequest): Promise<void> {
