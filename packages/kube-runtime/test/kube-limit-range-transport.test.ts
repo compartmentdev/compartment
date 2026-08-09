@@ -7,7 +7,7 @@ import {
 } from '../src';
 import type { ProjectProvisioningServiceAccount } from '../src/kube-provisioning.types';
 import { applyObject } from '../src/kube-runtime-operations';
-import { CapturingKubernetesObjectApi } from './kube-transport-capture';
+import { CapturingKubernetesObjectApi } from './kube-transport-capture.harness';
 
 interface SerializedLimitRange {
   spec: {

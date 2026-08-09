@@ -38,8 +38,8 @@ export interface KubeNetworkPolicyPort {
 /**
  * `_from` carries the ingress peers. `@kubernetes/client-node` generates `V1NetworkPolicyIngressRule` with the model
  * property `_from` mapped to the wire field `from`, and its `ObjectSerializer` reads manifests by model property name.
- * A rule written as `from` therefore serializes to an empty request body field and reaches the API server as an
- * unrestricted ingress rule. `KubeLimitRangeItem._default` exists for the same reason.
+ * A rule written as `from` is therefore absent from the request body and reaches the API server as an unrestricted
+ * ingress rule. `KubeLimitRangeItem._default` exists for the same reason.
  */
 export interface KubeNetworkPolicyIngressRule {
   _from: KubeNetworkPolicyPeer[];
