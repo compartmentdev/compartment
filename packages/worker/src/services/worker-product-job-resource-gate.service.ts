@@ -13,8 +13,11 @@ import { persistProductJobFailure } from './worker-product-job-failure.service';
  * Decides whether a claimed Job may be handed to Kubernetes now. A Job that dials a resource which is
  * not accepting connections is left claimable so the controller can move on and reconcile that resource;
  * it only becomes a durable failure once the resource has missed the readiness deadline it declared.
+ *
+ * This is a gate, not admission: `docs/specs/live-state-authority.md` reserves admission for the
+ * Kubernetes control that can still refuse the Pod after this returns true.
  */
-export async function admitProductJobResources(
+export async function passesProductJobResourceGate(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   intent: ProductJobIntent,
