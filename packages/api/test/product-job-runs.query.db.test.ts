@@ -301,11 +301,14 @@ describe('product Job persistence', (): void => {
 
     const claimedAt: number = Date.now();
     const claimed: ClaimedProductJobQueryResult = await claimProductJob('release');
+    const settledAt: number = Date.now();
 
     expect(
       claimed.resourceReadiness.map((resource: ProductJobResourceReadiness): string => resource.resourceId),
     ).toEqual(['res-db']);
-    expect(Date.parse(claimed.resourceReadiness[0]!.deadlineAt) - claimedAt).toBeGreaterThan(170_000);
+    const deadlineAt: number = Date.parse(claimed.resourceReadiness[0]!.deadlineAt);
+    expect(deadlineAt).toBeGreaterThanOrEqual(claimedAt + 180_000);
+    expect(deadlineAt).toBeLessThanOrEqual(settledAt + 180_000);
   });
 
   it('gates a resource operation that runs against the resource itself', async (): Promise<void> => {
