@@ -7,12 +7,9 @@ interface PersistedPortList {
   portsJson: string;
 }
 
-export async function readProjectNetworkPolicyPorts(
-  projectId: string,
-  excludedDeploymentId: string | null,
-): Promise<ProjectNetworkPolicyPorts> {
+export async function readProjectNetworkPolicyPorts(projectId: string): Promise<ProjectNetworkPolicyPorts> {
   const [applicationRows, resourceRows]: [PersistedPortList[], PersistedPortList[]] = await Promise.all([
-    readApplicationPorts(projectId, excludedDeploymentId),
+    readApplicationPorts(projectId),
     readResourcePorts(projectId),
   ]);
   return {
@@ -21,10 +18,7 @@ export async function readProjectNetworkPolicyPorts(
   };
 }
 
-async function readApplicationPorts(
-  projectId: string,
-  excludedDeploymentId: string | null,
-): Promise<PersistedPortList[]> {
+async function readApplicationPorts(projectId: string): Promise<PersistedPortList[]> {
   return await getApiDatabase()
     .select({ portsJson: deployments.resolvedPortsJson })
     .from(deploymentKubeReferences)
@@ -34,7 +28,6 @@ async function readApplicationPorts(
       and(
         eq(environments.projectId, projectId),
         inArray(deploymentKubeReferences.state, ['active', 'desired', 'pending']),
-        excludedDeploymentId === null ? undefined : ne(deployments.id, excludedDeploymentId),
       ),
     );
 }

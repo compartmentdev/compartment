@@ -21,7 +21,7 @@ import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
 import type { WorkerArtifactRegistryConfig } from '../worker-artifact-registry.types';
 import { retargetWorkerDeploymentArtifactImages } from '../worker-artifact-registry';
 import type { DeploymentRolloutStartTracker } from './worker-deployment-rollout-start-tracker.service';
-import { applyApplication, deleteApplication, deploymentNetworkPolicy } from './worker-deployment-application.service';
+import { applyApplication, deleteApplication } from './worker-deployment-application.service';
 import { reconcilePendingDeployment } from './worker-deployment-pending.service';
 
 const releaseTimeoutMs: number = 600_000;
@@ -155,7 +155,7 @@ async function reconcileDesiredDeployment(
 ): Promise<void> {
   const release: ProductJobIntent | null = releaseIntent(target.candidate, releaseTimeoutMs);
   if (release !== null) {
-    await applyProjectNetworkPolicies(runtime, target.candidate.projectId, deploymentNetworkPolicy(target));
+    await applyProjectNetworkPolicies(runtime, target.candidate.projectId, target.networkPolicy);
     const persisted: WorkerPersistProductJobIntentResponse = await persistProductJobIntent(request, release);
     if (persisted.result === null) {
       return;

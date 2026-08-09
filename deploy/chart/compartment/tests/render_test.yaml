@@ -196,11 +196,15 @@ tests:
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BUILDKIT_RESOURCES
-          value: '{"limits":{"cpu":"1750m","memory":"1536Mi"},"requests":{"cpu":"250m","memory":"512Mi"}}'
+          value: '{"limits":{"cpu":"1750m","memory":"3Gi"},"requests":{"cpu":"250m","memory":"512Mi"}}'
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BUILD_RUNNER_RESOURCES
-          value: '{"limits":{"cpu":"250m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"256Mi"}}'
+          value: '{"limits":{"cpu":"250m","memory":"1Gi"},"requests":{"cpu":"100m","memory":"256Mi"}}'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB
+          value: '1024'
         template: configmap.yaml
       - hasDocuments:
           count: 2
@@ -592,6 +596,26 @@ tests:
       - matchRegex:
           path: spec.validations[1].expression
           pattern: "all\\(key, key == 'compartment.dev/secret-checksum' \\|\\| key in"
+        template: buildkit.yaml
+        documentIndex: 4
+      - matchRegex:
+          path: spec.validations[6].expression
+          pattern: "volume.name == 'buildkit-data' && quantity\\(volume.emptyDir.sizeLimit\\).compareTo\\(quantity\\('2Gi'\\)\\) == 0"
+        template: buildkit.yaml
+        documentIndex: 4
+      - matchRegex:
+          path: spec.validations[7].expression
+          pattern: "volume.name == 'buildkit-run' && quantity\\(volume.emptyDir.sizeLimit\\).compareTo\\(quantity\\('128Mi'\\)\\) == 0"
+        template: buildkit.yaml
+        documentIndex: 4
+      - matchRegex:
+          path: spec.validations[8].expression
+          pattern: "volume.name == 'buildkit-tmp' && quantity\\(volume.emptyDir.sizeLimit\\).compareTo\\(quantity\\('512Mi'\\)\\) == 0"
+        template: buildkit.yaml
+        documentIndex: 4
+      - matchRegex:
+          path: spec.validations[9].expression
+          pattern: "volume.name == 'tmp' && quantity\\(volume.emptyDir.sizeLimit\\).compareTo\\(quantity\\('384Mi'\\)\\) == 0"
         template: buildkit.yaml
         documentIndex: 4
       - matchRegex:

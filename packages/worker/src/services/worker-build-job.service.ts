@@ -1,7 +1,6 @@
 import type { DockerBuildImageResult, DockerProgressLine } from '@compartment/docker';
 import {
   KubeJobLogAttachmentError,
-  type KubeJobEmptyDirVolume,
   type KubeJobResult,
   type KubeRunJobOptions,
   type KubeJobSidecar,
@@ -9,6 +8,7 @@ import {
   type KubeRuntime,
 } from '@compartment/kube-runtime';
 import type { WorkerBuildSandboxConfig } from '../config';
+import { assertBuildSandboxMemoryBudget, buildSandboxVolumes } from './build-sandbox-workspace';
 import type { RunWorkerBuildJobInput, WorkerBuildJobInput, WorkerBuildJobLogRecord } from './worker-build-job.types';
 import { readBuildLogRecord, readBuildLogRecords } from './worker-build-log-record';
 
@@ -21,6 +21,7 @@ export async function runWorkerBuildJob(
   config: WorkerBuildSandboxConfig,
   input: RunWorkerBuildJobInput,
 ): Promise<DockerBuildImageResult> {
+  assertBuildSandboxMemoryBudget(config);
   const progress: BuildProgressStream | undefined =
     input.onProgressLine === undefined ? undefined : new BuildProgressStream(input.onProgressLine);
   const options: KubeRunJobOptions | undefined =
@@ -79,7 +80,7 @@ function buildKubeJobSpec(config: WorkerBuildSandboxConfig, input: RunWorkerBuil
   return {
     cleanupPolicy: 'delete',
     command: ['node', 'dist/build-job.js'],
-    emptyDirVolumes: buildJobVolumes(),
+    emptyDirVolumes: buildSandboxVolumes(),
     env: buildJobEnvironment(input),
     id: input.id,
     image: config.runnerImage,
@@ -101,15 +102,6 @@ function buildJobEnvironment(input: RunWorkerBuildJobInput): Record<string, stri
     BUILDKIT_ADDR: buildKitAddress,
     TMPDIR: '/tmp',
   };
-}
-
-function buildJobVolumes(): KubeJobEmptyDirVolume[] {
-  return [
-    { gvisorTmpfs: true, name: 'buildkit-data', sizeLimit: '3Gi' },
-    { gvisorTmpfs: true, name: 'buildkit-run', sizeLimit: '128Mi' },
-    { gvisorTmpfs: true, name: 'buildkit-tmp', sizeLimit: '1Gi' },
-    { containerMountPath: '/tmp', gvisorTmpfs: true, name: 'tmp', sizeLimit: '1Gi' },
-  ];
 }
 
 function buildKitSidecar(config: WorkerBuildSandboxConfig): KubeJobSidecar {

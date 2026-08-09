@@ -22,7 +22,8 @@
     "lint": "eslint . --max-warnings 0 --cache --cache-location .eslintcache",
     "typecheck": "tsc -p tsconfig.json --noEmit --rootDir ../.. && tsc -p tsconfig.test.json --noEmit --rootDir ../..",
     "test": "vitest run --config ../../vitest.config.mts",
-    "test:e2e": "vitest run --config ../../vitest.deploy-e2e.config.mts"
+    "test:e2e": "vitest run --config ../../vitest.deploy-e2e.config.mts",
+    "test:network-policy:render": "tsx --tsconfig tsconfig.test.json test/network-policy-enforcement-render.ts"
   },
   "dependencies": {
     "@compartment/contracts": "workspace:*",

@@ -14,10 +14,7 @@ import {
 import { decryptTenantProjection } from '../tenant-workload-projections';
 import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
 import { deploymentFromObjects } from './worker-deployment-reconcile.helpers';
-import {
-  includeApplicationNetworkPolicyPorts,
-  projectProjectNetworkPolicyManifests,
-} from './worker-network-policy.service';
+import { projectProjectNetworkPolicyManifests } from './worker-network-policy.service';
 
 const recoveryRestartedAnnotation: string = 'compartment.dev/recovery-restarted';
 
@@ -36,7 +33,7 @@ export async function applyApplication(
   return deploymentFromObjects(
     await runtime.apply({
       objects: [
-        ...projectProjectNetworkPolicyManifests(target.candidate.projectId, deploymentNetworkPolicy(target)),
+        ...projectProjectNetworkPolicyManifests(target.candidate.projectId, target.networkPolicy),
         ...projectApplicationManifests(
           decryptTenantProjection(target.candidate, scheduling, tenantSecretsKek),
           infrastructureTimeoutMs,
@@ -64,7 +61,7 @@ export async function applyPendingApplication(
   const deployment: KubeDeploymentManifest = deploymentFromObjects(
     await runtime.apply({
       objects: [
-        ...projectProjectNetworkPolicyManifests(target.candidate.projectId, deploymentNetworkPolicy(target)),
+        ...projectProjectNetworkPolicyManifests(target.candidate.projectId, target.networkPolicy),
         ...pendingObjects,
       ],
     }),
@@ -110,10 +107,6 @@ export async function recoverFailedRollout(
   });
 }
 
-export function deploymentNetworkPolicy(target: DeploymentReconcileTarget): ProjectNetworkPolicyPorts {
-  return includeApplicationNetworkPolicyPorts(target.networkPolicy, target.candidate.containerPorts);
-}
-
 async function readRecoveryRestarted(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
@@ -138,10 +131,7 @@ function recoveryObjects(
   scheduling: KubeWorkloadScheduling | undefined,
 ): KubeManifest[] {
   return [
-    ...projectProjectNetworkPolicyManifests(
-      active.projectId,
-      includeApplicationNetworkPolicyPorts(networkPolicy, active.containerPorts),
-    ),
+    ...projectProjectNetworkPolicyManifests(active.projectId, networkPolicy),
     ...activeRecoveryObjects(active, candidate, tenantSecretsKek, infrastructureTimeoutMs, scheduling),
   ];
 }

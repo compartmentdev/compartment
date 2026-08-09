@@ -40,6 +40,7 @@ state = "/run/k3s/containerd"
 
 [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc]
   runtime_type = "io.containerd.runsc.v1"
+  pod_annotations = ["dev.gvisor.spec.mount.*"]
 
 [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc.options]
   TypeUrl = "io.containerd.runsc.v1.options"
