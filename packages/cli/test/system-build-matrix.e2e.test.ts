@@ -670,9 +670,57 @@ async function expectEphemeralGVisorBuildPod(deployment: Promise<SelfHostedDeplo
   });
   expectSuccessfulCommand(version, 'kubectl exec dmesg in ephemeral BuildKit sidecar');
   expect(version.stdout.toLowerCase()).toContain('gvisor');
+  try {
+    await expectMemoryBackedBuildWorkspace(seed.kubeContext, buildNamespace, podName);
+  } finally {
+    await deployment.catch((): undefined => undefined);
+    await waitForNoBuildPods(seed.kubeContext, buildNamespace);
+    await expectNoLongLivedBuildKitDeployment(seed.kubeContext, buildNamespace);
+  }
   await deployment;
-  await waitForNoBuildPods(seed.kubeContext, buildNamespace);
-  await expectNoLongLivedBuildKitDeployment(seed.kubeContext, buildNamespace);
+}
+
+/**
+ * The build workspace only behaves like an installation when containerd forwards the
+ * `dev.gvisor.spec.mount.*` hints to runsc. Without that forwarding the volumes stay gofer-backed,
+ * builds never charge the Pod memory cgroup, and the memory budget the chart sizes is untested.
+ */
+async function expectMemoryBackedBuildWorkspace(
+  kubeContext: string,
+  namespace: string,
+  podName: string,
+): Promise<void> {
+  const mounts: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      kubeContext,
+      'exec',
+      '--namespace',
+      namespace,
+      podName,
+      '--container',
+      'buildkit',
+      '--',
+      'cat',
+      '/proc/mounts',
+    ],
+    timeoutMs: selfHostedBuildMatrixRuntimeCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(mounts, 'read the build workspace mount table');
+  for (const mountPath of ['/var/lib/buildkit', '/buildkit-tmp']) {
+    expect(readMountFilesystemType(mounts.stdout, mountPath)).toBe('tmpfs');
+  }
+}
+
+function readMountFilesystemType(mountTable: string, mountPath: string): string {
+  const entry: string | undefined = mountTable
+    .split('\n')
+    .find((line: string): boolean => line.split(' ')[1] === mountPath);
+  if (entry === undefined) {
+    throw new Error(`Expected the build sandbox to mount ${mountPath}.`);
+  }
+  return entry.split(' ')[2] ?? '';
 }
 
 async function expectNoLongLivedBuildKitDeployment(kubeContext: string, namespace: string): Promise<void> {

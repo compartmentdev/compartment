@@ -24,12 +24,25 @@ export interface WorkerBuildConfig extends WorkerProcessConfig {
 
 export interface WorkerBuildSandboxConfig {
   gcKeepStorageMb: number;
-  buildKitResources: object;
+  buildKitResources: WorkerBuildResourceRequirements;
   namespace: string;
   runnerImage: string;
-  runnerResources: object;
+  runnerResources: WorkerBuildResourceRequirements;
   scheduling: WorkerBuildScheduling;
   timeoutMs: number;
+}
+
+/**
+ * The build namespace ResourceQuota already requires every build container to declare limits, and
+ * the memory limit is what funds the memory-backed build workspace, so the worker requires it and
+ * projects the rest of the operator-configured requirements unchanged.
+ */
+export interface WorkerBuildResourceRequirements {
+  limits: WorkerBuildResourceLimits;
+}
+
+export interface WorkerBuildResourceLimits {
+  memory: string;
 }
 
 export interface WorkerBuildScheduling extends KubeWorkloadScheduling {
