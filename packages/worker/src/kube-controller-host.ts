@@ -24,7 +24,7 @@ import type { WorkerArtifactRegistryConfig } from './worker-artifact-registry.ty
 import type { TenantSecretsKeyring } from './tenant-secret-environment.types';
 import { cleanupWorkerArtifacts } from './services/worker-artifact-cleanup.service';
 import { executeProductJob, finalizeRecoveredProductJob } from './services/worker-product-job.service';
-import { admitProductJobResources } from './services/worker-product-job-fencing.service';
+import { admitProductJobResources } from './services/worker-product-job-admission.service';
 import { reconcileDeploymentTarget } from './services/worker-deployment-reconcile.service';
 import { DeploymentRolloutStartTracker } from './services/worker-deployment-rollout-start-tracker.service';
 import { executeResourceReconcile } from './services/worker-resource-reconcile.service';

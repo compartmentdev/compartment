@@ -1,4 +1,5 @@
 import {
+  productJobIdentityId,
   productJobRuntimeId,
   type ProductJobIntent,
   type ProductJobClass,
@@ -20,7 +21,7 @@ import {
   submitProductJob,
   type CompartmentRequester,
 } from '@compartment/sdk';
-import { fenceProductJobClaims, readProductJobIdentity } from './worker-product-job-fencing.service';
+import { fenceProductJobClaims } from './worker-product-job-fencing.service';
 import { tenantJobSpec } from '../tenant-workload-projections';
 import { decryptTenantSecretEnvironment, redactTenantSecretValues } from '../tenant-secret-environment';
 import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
@@ -43,7 +44,7 @@ export async function executeProductJob(
   scheduling?: KubeWorkloadScheduling,
 ): Promise<WorkerPersistProductJobResultRequest | null> {
   const persisted: WorkerPersistProductJobIntentResponse = await persistProductJobIntent(request, intent);
-  const identityId: string = readProductJobIdentity(intent);
+  const identityId: string = productJobIdentityId(intent);
   requirePendingProductJob(persisted);
   const jobResult: KubeJobResult | null = await runFencedProductJob(
     request,
