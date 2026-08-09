@@ -1,4 +1,4 @@
-import { KubeRuntime, kubeNamespaceName } from '@compartment/kube-runtime';
+import { KubeRuntime, kubeNamespaceName, type KubeManifest } from '@compartment/kube-runtime';
 import { completeOrganizationQuotaReconcile, type CompartmentRequester } from '@compartment/sdk';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { executeOrganizationQuotaReconcile } from '../src/services/worker-organization-quota-reconcile.service';
@@ -63,28 +63,24 @@ describe('organization quota reconciliation', (): void => {
 
   it('labels every existing project namespace before completing reconciliation', async (): Promise<void> => {
     const methods: RuntimeMethods = runtimeMethods(
-      vi
-        .fn()
-        .mockImplementation(
-          async (manifest: { kind?: string; metadata?: { name?: string } }): Promise<object | null> => {
-            await Promise.resolve();
-            if (manifest.kind === 'GlobalCustomQuota') {
-              return { status: { conditions: [{ status: 'True', type: 'Ready' }] } };
-            }
-            if (manifest.metadata?.name === kubeNamespaceName('prj-missing')) {
-              return null;
-            }
-            return {
-              metadata: {
-                labels: {
-                  'app.kubernetes.io/managed-by': 'compartment',
-                  'compartment.dev/namespace-id': 'prj-existing',
-                  'compartment.dev/project-id': 'prj-existing',
-                },
-              },
-            };
+      vi.fn().mockImplementation(async (manifest: KubeManifest): Promise<object | null> => {
+        await Promise.resolve();
+        if (manifest.kind === 'GlobalCustomQuota') {
+          return { status: { conditions: [{ status: 'True', type: 'Ready' }] } };
+        }
+        if (manifest.metadata?.name === kubeNamespaceName('prj-missing')) {
+          return null;
+        }
+        return {
+          metadata: {
+            labels: {
+              'app.kubernetes.io/managed-by': 'compartment',
+              'compartment.dev/namespace-id': 'prj-existing',
+              'compartment.dev/project-id': 'prj-existing',
+            },
           },
-        ),
+        };
+      }),
     );
     await executeOrganizationQuotaReconcile({} as CompartmentRequester, runtimeFixture(methods), {
       leaseId: 'oql_1',
@@ -119,7 +115,7 @@ describe('organization quota reconciliation', (): void => {
     let active: number = 0;
     let maximumActive: number = 0;
     const methods: RuntimeMethods = runtimeMethods(
-      vi.fn().mockImplementation(async (manifest: { kind?: string; metadata?: { name?: string } }): Promise<object> => {
+      vi.fn().mockImplementation(async (manifest: KubeManifest): Promise<object> => {
         await Promise.resolve();
         if (manifest.kind === 'GlobalCustomQuota') {
           return { status: { conditions: [{ status: 'True', type: 'Ready' }] } };

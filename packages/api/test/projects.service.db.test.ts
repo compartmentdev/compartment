@@ -154,6 +154,18 @@ describe('projects service', (): void => {
       .set({ state: 'pending' })
       .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
     await expect(claimPendingProjectProvisioning('provision')).resolves.toBeNull();
+    await db
+      .update(projectKubeProvisioning)
+      .set({ state: 'teardown_pending' })
+      .where(eq(projectKubeProvisioning.projectId, 'prj_ops'));
+    await expect(claimPendingProjectProvisioning()).resolves.toMatchObject({
+      action: 'teardown',
+      projectId: 'prj_ops',
+    });
+    await db
+      .update(projectKubeProvisioning)
+      .set({ attempts: 0, leaseExpiresAt: null, leaseId: null, state: 'succeeded' })
+      .where(eq(projectKubeProvisioning.projectId, 'prj_ops'));
 
     const claims: (OrganizationQuotaReconcileClaimRow | null)[] = await Promise.all([
       claimOrganizationQuotaReconciliation(),

@@ -97,7 +97,7 @@ export async function completeOrganizationQuotaReconciliation(
   input: CompleteOrganizationQuotaReconcileInput,
 ): Promise<boolean> {
   const now: Date = new Date();
-  const rows: { organizationId: string }[] = await getApiDatabase()
+  const rows = await getApiDatabase()
     .update(organizationQuotaReconciliation)
     .set({
       failureMessage: input.failureMessage,

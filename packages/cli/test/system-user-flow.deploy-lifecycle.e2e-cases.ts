@@ -617,11 +617,11 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
       let productionEnvironmentStopped = false;
       let resourceReleaseDeploySucceeded = false;
       try {
+        productionEnvironmentStopped = true;
         const stoppedProject: ProjectLifecycleResponse = await admin.runJson(
           `project stop --project ${app.projectName} --env ${app.environmentName}`,
           projectLifecycleResponseSchema,
         );
-        productionEnvironmentStopped = true;
         expect(stoppedProject.state).toBe('stopped');
         const runningResource: ResourceResponse = await admin.runJson(
           `resource inspect --project ${app.projectName} --resource ${app.resourceName}`,

@@ -11,9 +11,6 @@ service that should run next to the deployed app.
 Resources are not app services. They do not create public app routes or high availability. When a resource declares
 outputs, Compartment derives those values at read or runtime resolution time.
 
-Persistent volume claims consume the organization-wide storage pool described in
-[Deployment Lifecycle](/deploy-apps/deployment-lifecycle/#organization-resource-limits).
-
 ## Declare a resource
 
 Add a top-level `resources` map to `compartment.yml`:

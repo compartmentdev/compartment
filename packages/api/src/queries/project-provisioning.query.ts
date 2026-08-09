@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 import type { ProjectProvisioningAction } from '@compartment/contracts';
 import { organizationQuotaReconciliation, projectKubeProvisioning, projects } from '../db/schema';
 import { createId } from '../lib/tokens';
@@ -116,7 +116,17 @@ function organizationQuotaJoinCondition(): SQL {
 }
 
 function organizationQuotaReadinessCondition(action: ProjectProvisioningAction | 'any'): SQL | undefined {
-  return action === 'teardown' ? undefined : eq(organizationQuotaReconciliation.state, 'succeeded');
+  if (action === 'teardown') {
+    return undefined;
+  }
+  const quotaReady: SQL = eq(organizationQuotaReconciliation.state, 'succeeded');
+  if (action === 'provision') {
+    return quotaReady;
+  }
+  return or(
+    quotaReady,
+    inArray(projectKubeProvisioning.state, ['teardown_pending', 'teardown_failed', 'teardown_running']),
+  );
 }
 
 function provisioningClaimableCondition(now: Date, action: ProjectProvisioningAction | 'any'): SQL | undefined {

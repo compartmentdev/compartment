@@ -676,10 +676,9 @@ describe('KubeRuntime Job primitive', (): void => {
     createObservationMock.mockResolvedValue(terminalObservation(jobName, false, 23, stop));
     const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
 
-    const result: KubeJobResult = await runtime.runJob(spec);
-
+    expect((await runtime.runJob(spec)).exitCode).toBe(23);
     expect(objectApi.patches.at(-1)![0].spec).toMatchObject({ backoffLimit: 1 });
-    expect([result.exitCode, stop.mock.calls.length]).toEqual([23, 1]);
+    expect(stop).toHaveBeenCalledOnce();
   });
 
   it('removes bootstrap authority after applying the namespace-local controller binding', async (): Promise<void> => {

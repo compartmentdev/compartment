@@ -2,6 +2,7 @@ import { kubeOrganizationQuotaName } from './kube-naming';
 import type {
   GlobalCustomQuotaSource,
   GlobalCustomQuotaSpec,
+  OrganizationQuotaCapacity,
   OrganizationQuotaProjection,
 } from './kube-organization-quota-projection.types';
 import type { KubeManifest } from './kube-runtime.types';
@@ -17,13 +18,21 @@ interface OrganizationQuotaDefinition {
 
 type PodQuotaResource = 'limits-cpu' | 'limits-memory' | 'requests-cpu' | 'requests-memory';
 
+export const organizationQuotaCapacity: OrganizationQuotaCapacity = {
+  limitsCpu: '4',
+  limitsMemory: '4Gi',
+  requestsCpu: '2',
+  requestsMemory: '2Gi',
+  requestsStorage: '20Gi',
+};
+
 const definitions: OrganizationQuotaDefinition[] = [
-  podDefinition('requests-cpu', '2'),
-  podDefinition('limits-cpu', '4'),
-  podDefinition('requests-memory', '2Gi'),
-  podDefinition('limits-memory', '4Gi'),
+  podDefinition('requests-cpu', organizationQuotaCapacity.requestsCpu),
+  podDefinition('limits-cpu', organizationQuotaCapacity.limitsCpu),
+  podDefinition('requests-memory', organizationQuotaCapacity.requestsMemory),
+  podDefinition('limits-memory', organizationQuotaCapacity.limitsMemory),
   {
-    limit: '20Gi',
+    limit: organizationQuotaCapacity.requestsStorage,
     resource: 'pvc-storage',
     sources: [{ apiVersion: 'v1', kind: 'PersistentVolumeClaim', path: '.spec.resources.requests.storage' }],
   },

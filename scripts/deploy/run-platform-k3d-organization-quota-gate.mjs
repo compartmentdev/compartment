@@ -1,9 +1,10 @@
+import { execFile } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
-import { captureCommandAsync, runCommandAsync } from '../lib/command.mjs';
+import { runCommandAsync } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 
@@ -19,8 +20,24 @@ const kubectlTimeoutMs = 130_000;
 
 async function kubectlResult(args) {
   const command = ['--context', context, ...args];
-  const result = await captureCommandAsync('kubectl', command, repositoryRoot, process.env, {
-    timeoutMs: kubectlTimeoutMs,
+  const result = await new Promise((resolveCommand, rejectCommand) => {
+    execFile(
+      'kubectl',
+      command,
+      { cwd: repositoryRoot, env: process.env, killSignal: 'SIGKILL', timeout: kubectlTimeoutMs },
+      (error, stdout, stderr) => {
+        if (error !== null && typeof error.code !== 'number' && error.killed !== true) {
+          rejectCommand(error);
+          return;
+        }
+        resolveCommand({
+          status: error === null ? 0 : typeof error.code === 'number' ? error.code : null,
+          stderr,
+          stdout,
+          timedOut: error?.killed === true,
+        });
+      },
+    );
   });
   return { command, ...result };
 }
@@ -218,7 +235,7 @@ async function readInstalledOrganizationQuota() {
         item.status?.conditions?.some((condition) => condition.type === 'Ready' && condition.status === 'True'),
       )
     ) {
-      return { manifests: installed[1], organizationId: installed[0] };
+      return installed[0];
     }
     await delay(500);
   }
@@ -239,13 +256,17 @@ async function runGate() {
   }
   const secondaryManifests = organizationGlobalCustomQuotaManifests({ organizationId: 'quota-org-b' });
   const secondaryQuotaNames = secondaryManifests.map((manifest) => manifest.metadata.name);
+  let gateError;
+  let cleanupErrors = [];
   try {
-    const installedQuota = await readInstalledOrganizationQuota();
-    const organizationId = installedQuota.organizationId;
-    const requestsCpuQuota = installedQuota.manifests.find(
-      (manifest) => manifest.spec.limit === '2' && manifest.spec.sources[0]?.path?.endsWith('requests.cpu'),
+    const organizationId = await readInstalledOrganizationQuota();
+    const installedManifests = organizationGlobalCustomQuotaManifests({ organizationId });
+    const requestsCpuQuota = installedManifests.find((manifest) =>
+      manifest.spec.sources[0]?.path?.endsWith('requests.cpu'),
     );
-    const storageQuota = installedQuota.manifests.find((manifest) => manifest.spec.limit === '20Gi');
+    const storageQuota = installedManifests.find((manifest) =>
+      manifest.spec.sources.some((source) => source.kind === 'PersistentVolumeClaim'),
+    );
     if (requestsCpuQuota === undefined || storageQuota === undefined) {
       throw new Error('Worker-reconciled quota pool does not contain the fixed CPU and storage projections.');
     }
@@ -281,9 +302,56 @@ async function runGate() {
     );
     await createPvc(platformNamespace, 'platform-storage-unaffected', '25Gi');
     await createPvc(buildNamespace, 'build-storage-unaffected', '25Gi');
+  } catch (error) {
+    gateError = error;
   } finally {
-    await kubectl(['delete', 'globalcustomquota', ...secondaryQuotaNames, '--ignore-not-found']);
-    await kubectl(['delete', 'namespace', ...namespaces, '--ignore-not-found', '--wait=false']);
+    const cleanupResults = await Promise.allSettled([
+      kubectl([
+        'delete',
+        'pod',
+        'platform-unaffected',
+        '--namespace',
+        platformNamespace,
+        '--ignore-not-found',
+        '--timeout=120s',
+      ]),
+      kubectl([
+        'delete',
+        'pod',
+        'build-unaffected',
+        '--namespace',
+        buildNamespace,
+        '--ignore-not-found',
+        '--timeout=120s',
+      ]),
+      kubectl([
+        'delete',
+        'pvc',
+        'platform-storage-unaffected',
+        '--namespace',
+        platformNamespace,
+        '--ignore-not-found',
+        '--timeout=120s',
+      ]),
+      kubectl([
+        'delete',
+        'pvc',
+        'build-storage-unaffected',
+        '--namespace',
+        buildNamespace,
+        '--ignore-not-found',
+        '--timeout=120s',
+      ]),
+      kubectl(['delete', 'globalcustomquota', ...secondaryQuotaNames, '--ignore-not-found', '--timeout=120s']),
+      kubectl(['delete', 'namespace', ...namespaces, '--ignore-not-found', '--timeout=120s']),
+    ]);
+    cleanupErrors = cleanupResults.filter((result) => result.status === 'rejected').map((result) => result.reason);
+  }
+  if (gateError !== undefined) {
+    throw gateError;
+  }
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(cleanupErrors, 'Organization quota gate cleanup failed.');
   }
 }
 

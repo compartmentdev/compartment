@@ -2,6 +2,14 @@ export interface OrganizationQuotaProjection {
   organizationId: string;
 }
 
+export interface OrganizationQuotaCapacity {
+  limitsCpu: string;
+  limitsMemory: string;
+  requestsCpu: string;
+  requestsMemory: string;
+  requestsStorage: string;
+}
+
 export interface GlobalCustomQuotaSpec {
   limit: string;
   namespaceSelectors: GlobalCustomQuotaLabelSelector[];

@@ -1,4 +1,5 @@
 import { kubeResourceQuotaName } from './kube-naming';
+import { organizationQuotaCapacity } from './kube-organization-quota-projection';
 import type { KubeResourceQuotaSpec } from './kube-resource-quota-projection.types';
 import type { KubeManifest } from './kube-runtime.types';
 
@@ -11,12 +12,12 @@ const projectQuota: Readonly<Record<string, string>> = {
   'count/secrets': '100',
   'count/serviceaccounts': '10',
   'count/services': '50',
-  'limits.cpu': '4',
-  'limits.memory': '4Gi',
+  'limits.cpu': organizationQuotaCapacity.limitsCpu,
+  'limits.memory': organizationQuotaCapacity.limitsMemory,
   pods: '50',
-  'requests.cpu': '2',
-  'requests.memory': '2Gi',
-  'requests.storage': '20Gi',
+  'requests.cpu': organizationQuotaCapacity.requestsCpu,
+  'requests.memory': organizationQuotaCapacity.requestsMemory,
+  'requests.storage': organizationQuotaCapacity.requestsStorage,
 };
 
 export function projectResourceQuotaManifest(namespace: string, namespaceId: string, projectId: string): KubeManifest {

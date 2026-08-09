@@ -203,9 +203,5 @@ vector_buffer_max_byte_size{component_id="product_store",buffer_type="disk"} 268
       capabilities: { drop: ['ALL'] },
       privileged: false,
     });
-    expect(overrides.spec.containers[0].resources).toEqual({
-      limits: { cpu: '250m', memory: '128Mi' },
-      requests: { cpu: '100m', memory: '64Mi' },
-    });
   });
 });

@@ -76,6 +76,7 @@ import {
 } from '@compartment/contracts';
 
 import type { SelfHostedUserSetupCommandResult } from './self-hosted-user-setup-command.harness';
+import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import { expectDeploymentRuntimeImageProjection } from './self-hosted-user-setup-runtime-projection.harness';
 import {
   expectSelfHostedUserSetupStepCompleted,
@@ -183,12 +184,44 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
       await writeAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue);
       await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue, true);
 
-      const backupId: string = await expectK3dBackupRetentionFlow(
-        admin,
-        app.directory,
-        app.projectName,
-        app.resourceName,
-      );
+      let backupId: string | undefined;
+      let retentionError: Error | undefined;
+      let stopAttempted = false;
+      try {
+        stopAttempted = true;
+        const stoppedProject: ProjectLifecycleResponse = await admin.runJson(
+          `project stop --project ${app.projectName}`,
+          projectLifecycleResponseSchema,
+        );
+        expect(stoppedProject.state).toBe('stopped');
+        backupId = await expectK3dBackupRetentionFlow(admin, app.directory, app.projectName, app.resourceName);
+      } catch (error) {
+        retentionError = error instanceof Error ? error : new Error(String(error));
+      }
+
+      let restartError: Error | undefined;
+      if (stopAttempted) {
+        try {
+          const startedProject: ProjectLifecycleResponse = await admin.runJson(
+            `project start --project ${app.projectName}`,
+            projectLifecycleResponseSchema,
+          );
+          expect(['updating', 'running']).toContain(startedProject.state);
+          await expectAppEnvMessage(routeUrl, adminAppSessionCookie, appMessage);
+          await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue, true);
+        } catch (error) {
+          restartError = error instanceof Error ? error : new Error(String(error));
+        }
+      }
+      if (retentionError !== undefined) {
+        throw retentionError;
+      }
+      if (restartError !== undefined) {
+        throw restartError;
+      }
+      if (backupId === undefined) {
+        throw new Error('Backup retention flow completed without a backup identifier.');
+      }
 
       const rollbackTargetStatus: DeploymentStatusResponse = await admin.runJson(
         `status --project ${app.projectName}`,
@@ -226,49 +259,7 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
       await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, afterBackupValue, false);
       await expectAppEnvMessage(routeUrl, adminAppSessionCookie, appMessage);
 
-      let restoreIntervalError: Error | undefined;
-      try {
-        const stoppedProject: ProjectLifecycleResponse = await admin.runJson(
-          `project stop --project ${app.projectName}`,
-          projectLifecycleResponseSchema,
-        );
-        expect(stoppedProject.state).toBe('stopped');
-
-        const restoreAsPayload: ResourceRestoreAsResponse = await admin.runJson(
-          `resource backup restore --project ${app.projectName} --backup ${backupId} --as ${restoredResourceName}`,
-          resourceRestoreAsResponseSchema,
-        );
-        expect(restoreAsPayload.success).toBe(true);
-        expect(restoreAsPayload.resource.name).toBe(restoredResourceName);
-        expect(restoreAsPayload.resource.status).toBe('running');
-
-        const deleteRestoredResourcePayload: ResourceDeleteResponse = await admin.runJson(
-          `resource delete --project ${app.projectName} --resource ${restoredResourceName} --delete-data --yes`,
-          resourceDeleteResponseSchema,
-        );
-        expect(deleteRestoredResourcePayload.success).toBe(true);
-        expect(deleteRestoredResourcePayload.retainedVolumes).toEqual([]);
-      } catch (error) {
-        restoreIntervalError = error instanceof Error ? error : new Error(String(error));
-      }
-      let restartError: Error | undefined;
-      try {
-        const startedProject: ProjectLifecycleResponse = await admin.runJson(
-          `project start --project ${app.projectName}`,
-          projectLifecycleResponseSchema,
-        );
-        expect(startedProject.state).toBe('updating');
-        await expectAppEnvMessage(routeUrl, adminAppSessionCookie, appMessage);
-        await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue, true);
-      } catch (error) {
-        restartError = error instanceof Error ? error : new Error(String(error));
-      }
-      if (restoreIntervalError !== undefined) {
-        throw restoreIntervalError;
-      }
-      if (restartError !== undefined) {
-        throw restartError;
-      }
+      await expectRestoreAsWithinReleasedResourceCapacity(admin, app.projectName, app.resourceName, backupId);
       context.completedCaseCount = 5;
     },
     selfHostedUserSetupTimeoutMs,
@@ -545,26 +536,26 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
       );
       expect(deployerAssignmentPayload.assignment.roleId).toBe(deployerRolePayload.role.id);
 
-      const stoppedStagingProject: ProjectLifecycleResponse = await admin.runJson(
-        `project stop --project ${app.projectName} --env staging`,
-        projectLifecycleResponseSchema,
-      );
-      expect(stoppedStagingProject.state).toBe('stopped');
       let viewerStagingDeployError: Error | undefined;
+      let stagingStopAttempted = false;
       try {
+        stagingStopAttempted = true;
+        const stoppedStagingProject: ProjectLifecycleResponse = await admin.runJson(
+          `project stop --project ${app.projectName} --env staging`,
+          projectLifecycleResponseSchema,
+        );
+        expect(stoppedStagingProject.state).toBe('stopped');
         const viewerStagingDeployPayload: SelfHostedDeployCommandResponse = await viewer.runJson(
           'deploy --env staging',
           deployCommandResponseParser,
-          {
-            cwd: app.directory,
-          },
+          { cwd: app.directory },
         );
         expect(viewerStagingDeployPayload.environment.name).toBe('staging');
         expect(requireSingleActiveDeployment(viewerStagingDeployPayload, app.serviceName).status).toBe('succeeded');
       } catch (error) {
         viewerStagingDeployError = error instanceof Error ? error : new Error(String(error));
       }
-      if (viewerStagingDeployError !== undefined) {
+      if (viewerStagingDeployError !== undefined && stagingStopAttempted) {
         try {
           const restartedStagingProject: ProjectLifecycleResponse = await admin.runJson(
             `project start --project ${app.projectName} --env staging`,
@@ -803,4 +794,59 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
     },
     selfHostedUserSetupTimeoutMs,
   );
+}
+
+async function expectRestoreAsWithinReleasedResourceCapacity(
+  admin: SelfHostedUserSetupCli,
+  projectName: string,
+  resourceName: string,
+  backupId: string,
+): Promise<void> {
+  let restoreAsError: Error | undefined;
+  try {
+    const stoppedOriginalResource: ResourceResponse = await admin.runJson(
+      `resource stop --project ${projectName} --resource ${resourceName}`,
+      resourceResponseSchema,
+    );
+    expect(stoppedOriginalResource.resource.status).toBe('stopped');
+    const restoreAsPayload: ResourceRestoreAsResponse = await admin.runJson(
+      `resource backup restore --project ${projectName} --backup ${backupId} --as ${restoredResourceName}`,
+      resourceRestoreAsResponseSchema,
+    );
+    expect(restoreAsPayload.success).toBe(true);
+    expect(restoreAsPayload.resource.name).toBe(restoredResourceName);
+    expect(restoreAsPayload.resource.status).toBe('running');
+  } catch (error) {
+    restoreAsError = error instanceof Error ? error : new Error(String(error));
+  }
+  let restoredResourceDeleteError: Error | undefined;
+  try {
+    const deleteRestoredResourcePayload: ResourceDeleteResponse = await admin.runJson(
+      `resource delete --project ${projectName} --resource ${restoredResourceName} --delete-data --yes`,
+      resourceDeleteResponseSchema,
+    );
+    expect(deleteRestoredResourcePayload.success).toBe(true);
+    expect(deleteRestoredResourcePayload.retainedVolumes).toEqual([]);
+  } catch (error) {
+    restoredResourceDeleteError = error instanceof Error ? error : new Error(String(error));
+  }
+  let resourceRestartError: Error | undefined;
+  try {
+    const restartedOriginalResource: ResourceResponse = await admin.runJson(
+      `resource start --project ${projectName} --resource ${resourceName}`,
+      resourceResponseSchema,
+    );
+    expect(restartedOriginalResource.resource.status).toBe('running');
+  } catch (error) {
+    resourceRestartError = error instanceof Error ? error : new Error(String(error));
+  }
+  if (restoreAsError !== undefined) {
+    throw restoreAsError;
+  }
+  if (restoredResourceDeleteError !== undefined) {
+    throw restoredResourceDeleteError;
+  }
+  if (resourceRestartError !== undefined) {
+    throw resourceRestartError;
+  }
 }

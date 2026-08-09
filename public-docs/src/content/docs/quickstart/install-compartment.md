@@ -66,11 +66,6 @@ Before installation, also provide:
 - gVisor installed on every Ready schedulable node, with a working RuntimeClass;
 - credentials permitted to install the Helm release and its cluster-scoped policy resources.
 
-The release installs Capsule 0.13.11, including cluster-scoped quota resources and a calculation admission webhook.
-The webhook fails closed for Pod and persistent volume claim admission only in Compartment-managed project namespaces;
-if it is unavailable, those creates, updates, and deletes are rejected until it recovers. Platform and build namespaces
-are outside its selector.
-
 The installer does not install or disable an ingress controller, reserve node ports, or change node container-runtime
 configuration.
 
