@@ -36,5 +36,6 @@ The repo keeps three internal doc families:
 - [specs/stateful-resources.md](./specs/stateful-resources.md): resource lifecycle, safety, and non-goals.
 - [specs/variables.md](./specs/variables.md): runtime-variable scope, precedence, security model, and non-goals.
 - [specs/git-sources.md](./specs/git-sources.md): Git-source coexistence, ownership split, and adoption rules.
+- [specs/live-state-authority.md](./specs/live-state-authority.md): database, cluster, and cached authority split, and the gating contract over it.
 
 If a behavior is not covered by these files and is not present in contracts or runtime code, treat it as not part of the documented current surface.
