@@ -625,7 +625,12 @@ tests:
         documentIndex: 4
       - matchRegex:
           path: spec.validations[11].expression
-          pattern: "container.image == 'ghcr.io/compartmentdev/compartment-worker:latest'.*buildkit-runc-gvisor.*!has\\(container.ports\\).*!has\\(container.securityContext.procMount\\).*!has\\(container.securityContext.appArmorProfile\\)"
+          pattern: "!has\\(container.envFrom\\).*container.env.all\\(env, env.name in \\['BUILDKIT_ADDR', 'COMPARTMENT_BUILD_JOB_INPUT', 'COMPARTMENT_BUILD_JOB_SOURCE_ARCHIVE_CREDENTIAL', 'TMPDIR'\\] && !has\\(env.value\\) && has\\(env.valueFrom\\) && has\\(env.valueFrom.secretKeyRef\\)\\)"
+        template: buildkit.yaml
+        documentIndex: 4
+      - matchRegex:
+          path: spec.validations[12].expression
+          pattern: "container.image == 'ghcr.io/compartmentdev/compartment-worker:latest'.*buildkit-runc-gvisor.*!has\\(container.ports\\).*!has\\(container.envFrom\\).*!has\\(container.securityContext.procMount\\).*!has\\(container.securityContext.appArmorProfile\\)"
         template: buildkit.yaml
         documentIndex: 4
       - isKind:

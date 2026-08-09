@@ -66,6 +66,7 @@ import { buildRuntimePublicSettings } from '../src/services/public-hosts.service
 import {
   acknowledgeKubeDeploymentStopped,
   claimNextQueuedDeployment,
+  fetchArtifactSourceArchive,
   createUploadedSourceArchive,
   completeClaimedDeployment,
   completeQueuedDeployment,
@@ -798,25 +799,19 @@ describe('Phase 0 API integration projects', (): void => {
     expect(failedResponse.statusCode).toBe(200);
     expect(await db.select().from(sourceUploads)).toHaveLength(1);
 
-    const remainingArchiveResponse: LightMyRequestResponse = await app.inject({
-      headers: {
-        authorization: 'Bearer test-runtime-control-token',
-      },
-      method: 'GET',
-      url: `/internal/artifacts/${claimedBackofficeDeployment.artifact.id}/source-archive`,
-    });
+    const remainingArchiveResponse: LightMyRequestResponse = await fetchArtifactSourceArchive(
+      app,
+      claimedBackofficeDeployment.artifact.id,
+    );
     expect(remainingArchiveResponse.statusCode).toBe(200);
 
     await completeClaimedDeployment(app, backofficeDeployment.id, claimedBackofficeDeployment.routeHost);
     expect(await db.select().from(sourceUploads)).toHaveLength(1);
 
-    const retainedArchiveResponse: LightMyRequestResponse = await app.inject({
-      headers: {
-        authorization: 'Bearer test-runtime-control-token',
-      },
-      method: 'GET',
-      url: `/internal/artifacts/${claimedBackofficeDeployment.artifact.id}/source-archive`,
-    });
+    const retainedArchiveResponse: LightMyRequestResponse = await fetchArtifactSourceArchive(
+      app,
+      claimedBackofficeDeployment.artifact.id,
+    );
     expect(retainedArchiveResponse.statusCode).toBe(200);
   });
   it('lists, renames, archives, and unarchives projects inside the current organization', async (): Promise<void> => {

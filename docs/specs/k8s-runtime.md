@@ -216,6 +216,17 @@ and Sentry process memory that writes into it, and unless `buildkit.gcKeepStorag
 memory-backed BuildKit data volume. The defaults give each build Pod a 4Gi memory limit covering a 3Gi workspace and
 1Gi of process memory, which fits the 8 GiB single-node host documented for application builds.
 
+The build Pod runs tenant-authored code, so it never carries the installation runtime control token. The worker mints
+one HMAC-signed credential per build, pinned to that build's artifact id and outliving the Job's own
+`activeDeadlineSeconds` by a fixed grace that covers the gap between minting and Job creation plus worker/API clock
+skew. The API accepts that credential only on the source archive route and only for the artifact the credential names,
+which is the source build Job's single API call; registry verification builds call nothing and carry no credential.
+The signing key is derived from the runtime control token both processes already hold, so the scheme adds no
+installation secret and no chart value. Verification is one HMAC with no database read on a route that is never
+publicly routable, so the route takes no throttle. Admission limits the runner container to a fixed set of environment
+variable names, requires each value to be projected from a Secret key, and refuses bulk `envFrom` import on both the
+runner and the BuildKit sidecar, so no other credential can be named into a build Pod.
+
 `sandboxRuntime.runtimeClassName` selects the verified gVisor RuntimeClass shared by builds and tenant workloads.
 Installation fails before Helm when a real canary does not prove the gVisor userspace kernel boundary.
 Fresh installs bind only the existing platform worker ServiceAccount to the namespaced Job, Secret, Pod, and Pod-log

@@ -48,3 +48,7 @@ export {
   rewrapAes256GcmEnvelope,
 } from './aes-gcm-envelope';
 export type { Aes256GcmEnvelopeCiphertext } from './aes-gcm-envelope.types';
+export {
+  issueBuildSourceArchiveCredential,
+  verifyBuildSourceArchiveCredential,
+} from './build-source-archive-credential';
