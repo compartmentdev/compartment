@@ -64,6 +64,10 @@ export const productJobRuns: KubeRuntimeSchemaTypes.ProductJobRunsTable = pgTabl
     logs: text('logs'),
     completedAt: timestamp('completed_at', { withTimezone: true }),
     startedAt: timestamp('started_at', { withTimezone: true }),
+    // Set as the worker starts handing the manifest to the API server, before the call, so a worker that dies
+    // mid-submission over-fences rather than leaving a live Pod invisible. `started_at` only records that the row
+    // was claimed, which the readiness gate may then decline.
+    kubeJobSubmittedAt: timestamp('kube_job_submitted_at', { withTimezone: true }),
     finalizedAt: timestamp('finalized_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

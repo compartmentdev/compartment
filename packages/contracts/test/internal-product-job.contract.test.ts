@@ -6,6 +6,7 @@ import {
   workerClaimProductJobResponseSchema,
   workerPersistProductJobIntentResponseSchema,
   workerPersistProductJobResultRequestSchema,
+  workerSubmitProductJobRequestSchema,
 } from '../src';
 
 const timedOutResult: object = {
@@ -93,5 +94,18 @@ describe('internal product Job mounts', (): void => {
 
   it('derives one canonical runtime identity for execution and cleanup', (): void => {
     expect(productJobRuntimeId('release', 'dep-1')).toBe('release-dep-1');
+  });
+});
+
+describe('internal product Job submission contract', (): void => {
+  it('reports only which Job reached the API server, never how it is faring', (): void => {
+    expect(workerSubmitProductJobRequestSchema.safeParse({ identityId: 'dep-job', jobClass: 'release' }).success).toBe(
+      true,
+    );
+    expect(
+      workerSubmitProductJobRequestSchema.safeParse({ identityId: 'dep-job', jobClass: 'release', podName: 'pod-1' })
+        .success,
+    ).toBe(false);
+    expect(workerSubmitProductJobRequestSchema.safeParse({ jobClass: 'release' }).success).toBe(false);
   });
 });
