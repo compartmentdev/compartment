@@ -5,11 +5,8 @@ import type {
   WorkerPersistProductJobResultRequest,
   WorkerSubmitProductJobRequest,
 } from '@compartment/contracts';
-import {
-  claimProductJob,
-  persistProductJobFinalized,
-  persistProductJobKubeSubmission,
-} from '../queries/product-job-runs.query';
+import { claimProductJob, persistProductJobFinalized } from '../queries/product-job-runs.query';
+import { persistProductJobKubeSubmission } from '../queries/product-job-kube-submission.query';
 import { persistProductJobResult } from '../queries/product-job-result.query';
 import { persistProductJobIntent } from '../queries/product-job-intent.query';
 import type { ClaimedProductJobQueryResult } from '../queries/product-job-runs.query.types';
@@ -38,8 +35,9 @@ export async function finalizeProductJob(input: WorkerFinalizeProductJobRequest)
   await persistProductJobFinalized(input.jobClass, input.identityId);
 }
 
-export async function submitProductJob(input: WorkerSubmitProductJobRequest): Promise<void> {
-  await persistProductJobKubeSubmission(input.jobClass, input.identityId);
+/** True when the worker may hand the manifest to the API server; false when a reconcile owns one of its resources. */
+export async function submitProductJob(input: WorkerSubmitProductJobRequest): Promise<boolean> {
+  return await persistProductJobKubeSubmission(input.jobClass, input.identityId);
 }
 
 function readProductJobIdentity(input: ProductJobIntent): string {

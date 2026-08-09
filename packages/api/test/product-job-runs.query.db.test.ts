@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
-import type { Pool } from 'pg';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { Pool, type PoolClient } from 'pg';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import type {
   ProductJobIntent,
@@ -33,9 +33,9 @@ import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import {
   claimProductJob,
   persistProductJobFinalized,
-  persistProductJobKubeSubmission,
   readProductJobResult,
 } from '../src/queries/product-job-runs.query';
+import { persistProductJobKubeSubmission } from '../src/queries/product-job-kube-submission.query';
 import { persistProductJobResult } from '../src/queries/product-job-result.query';
 import { persistProductJobIntent } from '../src/queries/product-job-intent.query';
 import { expireProductJobWait, readProductJobQueueWaitState } from '../src/queries/product-job-wait.query';
@@ -52,6 +52,7 @@ const { testDatabaseUrl } = readDatabaseTestMode();
 const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'product_job_runs');
 const apiConfig: ApiConfig = buildApiConfig(databaseUrl);
 const pool: Pool = createDatabasePool(databaseUrl);
+const lockPool: Pool = new Pool({ connectionString: databaseUrl, max: 2 });
 const db: Database = createDatabase(pool);
 
 interface TerminalReleaseResourceTestCase {
@@ -61,6 +62,10 @@ interface TerminalReleaseResourceTestCase {
 
 describe('product Job persistence', (): void => {
   useApiRuntimeDatabaseTestHarness({ apiConfig, databaseUrl, db, pool });
+
+  afterAll(async (): Promise<void> => {
+    await lockPool.end();
+  });
 
   beforeEach(async (): Promise<void> => {
     await db.insert(organizations).values({ id: 'org_job', name: 'Product Jobs', slug: 'product-jobs' });
@@ -676,6 +681,79 @@ describe('product Job persistence', (): void => {
     expect(unblocked?.predecessorToken).not.toBe(blocked?.predecessorToken);
   });
 
+  it('refuses the submission while a reconcile owns the resource and records it once that reconcile settles', async (): Promise<void> => {
+    await insertDescriptorResourceBinding();
+    await claimReleaseJobAgainstReadyResource();
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceReconcileIntent(),
+      operationId: 'rr_wins_the_race',
+      type: 'reconcile',
+    });
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({ operationId: 'rr_wins_the_race' });
+
+    await expect(persistProductJobKubeSubmission('release', 'dep_job')).resolves.toBe(false);
+
+    const [refused] = await db
+      .select({ kubeJobSubmittedAt: productJobRuns.kubeJobSubmittedAt })
+      .from(productJobRuns)
+      .where(eq(productJobRuns.identityId, 'dep_job'));
+    expect(refused?.kubeJobSubmittedAt).toBeNull();
+
+    await db
+      .update(resourceReconcileRuns)
+      .set({ phase: 'succeeded' })
+      .where(eq(resourceReconcileRuns.id, 'rr_wins_the_race'));
+
+    await expect(persistProductJobKubeSubmission('release', 'dep_job')).resolves.toBe(true);
+  });
+
+  it('lets a reconcile through while a release Job sits unsubmitted on an unready resource', async (): Promise<void> => {
+    await insertDescriptorResourceBinding();
+    await claimReleaseJobAgainstReadyResource();
+    await db.update(projectResources).set({ status: 'stopped' }).where(eq(projectResources.id, 'res-db'));
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceReconcileIntent(),
+      operationId: 'rr_readies_parked_release',
+      type: 'reconcile',
+    });
+
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({ operationId: 'rr_readies_parked_release' });
+
+    await db
+      .update(resourceReconcileRuns)
+      .set({ phase: 'succeeded' })
+      .where(eq(resourceReconcileRuns.id, 'rr_readies_parked_release'));
+    await db.update(projectResources).set({ status: 'running' }).where(eq(projectResources.id, 'res-db'));
+    await expect(persistProductJobKubeSubmission('release', 'dep_job')).resolves.toBe(true);
+  });
+
+  it('waits for the per-resource claim lock before recording a submission', async (): Promise<void> => {
+    await insertDescriptorResourceBinding();
+    await claimReleaseJobAgainstReadyResource();
+    const holder: PoolClient = await lockPool.connect();
+    try {
+      await holder.query('begin');
+      await holder.query('select pg_advisory_xact_lock(hashtextextended($1, 83017))', ['res-db']);
+      let settled: boolean = false;
+      const submission: Promise<boolean> = persistProductJobKubeSubmission('release', 'dep_job').then(
+        (recorded: boolean): boolean => {
+          settled = true;
+          return recorded;
+        },
+      );
+      await waitForAdvisoryLockContention(holder);
+      expect(settled).toBe(false);
+
+      await holder.query('commit');
+
+      await expect(submission).resolves.toBe(true);
+    } finally {
+      holder.release();
+    }
+  });
+
   it('fences a resource reconcile while a submitted release Job dials that resource', async (): Promise<void> => {
     await insertDescriptorResourceBinding();
     await claimReleaseJobAgainstReadyResource();
@@ -1075,4 +1153,24 @@ function buildApiConfig(url: string): ApiConfig {
     tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
     variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
   };
+}
+
+/** Proves the code under test is parked on the per-resource advisory lock rather than merely slow. */
+async function waitForAdvisoryLockContention(client: PoolClient): Promise<void> {
+  for (let attempt: number = 0; attempt < 200; attempt += 1) {
+    const result: { rows: { waiting: boolean }[] } = await client.query(
+      `select exists (
+        select 1
+        from pg_stat_activity
+        where datname = current_database()
+          and pid <> pg_backend_pid()
+          and wait_event = 'advisory'
+      ) as waiting`,
+    );
+    if (result.rows[0]?.waiting === true) {
+      return;
+    }
+    await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, 10));
+  }
+  throw new Error('Timed out waiting for advisory lock contention.');
 }

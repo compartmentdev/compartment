@@ -4,6 +4,7 @@ import {
   type ProductJobClass,
   type WorkerPersistProductJobResultRequest,
   type WorkerPersistProductJobIntentResponse,
+  type WorkerSubmitProductJobResponse,
 } from '@compartment/contracts';
 import {
   type KubeJobResult,
@@ -40,11 +41,11 @@ export async function executeProductJob(
   intent: ProductJobIntent,
   tenantSecretsKek: TenantSecretsKeyring,
   scheduling?: KubeWorkloadScheduling,
-): Promise<WorkerPersistProductJobResultRequest> {
+): Promise<WorkerPersistProductJobResultRequest | null> {
   const persisted: WorkerPersistProductJobIntentResponse = await persistProductJobIntent(request, intent);
   const identityId: string = readProductJobIdentity(intent);
   requirePendingProductJob(persisted);
-  const jobResult: KubeJobResult = await runFencedProductJob(
+  const jobResult: KubeJobResult | null = await runFencedProductJob(
     request,
     runtime,
     intent,
@@ -52,6 +53,9 @@ export async function executeProductJob(
     tenantSecretsKek,
     scheduling,
   );
+  if (jobResult === null) {
+    return null;
+  }
   const result: WorkerPersistProductJobResultRequest = createJobResult(intent, identityId, jobResult, tenantSecretsKek);
   await settleProductJob(request, intent, result, jobResult);
   return result;
@@ -91,11 +95,17 @@ async function runFencedProductJob(
   identityId: string,
   tenantSecretsKek: TenantSecretsKeyring,
   scheduling?: KubeWorkloadScheduling,
-): Promise<KubeJobResult> {
+): Promise<KubeJobResult | null> {
   await fenceProductJobClaims(request, runtime, intent);
-  // Recorded before the manifest goes out, so a worker that dies mid-submission leaves the Job fenced rather than
-  // leaving a live Pod invisible to the resource reconcile lane.
-  await submitProductJob(request, { identityId, jobClass: intent.jobClass });
+  // The control plane records the submission under the same per-resource claim locks the reconcile lane takes, so
+  // exactly one of the two proceeds. A refusal means a reconcile owns the resource; create nothing and try later.
+  const submission: WorkerSubmitProductJobResponse = await submitProductJob(request, {
+    identityId,
+    jobClass: intent.jobClass,
+  });
+  if (!submission.recorded) {
+    return null;
+  }
   return await runtime.runJob(tenantJobSpec(buildKubeJobSpec(intent, identityId, tenantSecretsKek), scheduling));
 }
 

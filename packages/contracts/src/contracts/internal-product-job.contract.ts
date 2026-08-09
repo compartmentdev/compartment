@@ -90,6 +90,14 @@ export interface WorkerSubmitProductJobRequest {
   jobClass: ProductJobClass;
 }
 
+/**
+ * Whether the control plane recorded the submission. `false` means a resource reconcile already owns a resource this
+ * Job dials, so the Job must not be created; the row stays claimable and is offered again on a later claim.
+ */
+export interface WorkerSubmitProductJobResponse {
+  recorded: boolean;
+}
+
 interface ProductJobSpecSchemaShape {
   command: z.ZodArray<z.ZodString>;
   env: typeof tenantSecretEnvironmentSchema;
@@ -195,4 +203,8 @@ export const workerFinalizeProductJobRequestSchema: ContractSchema<WorkerFinaliz
 
 export const workerSubmitProductJobRequestSchema: ContractSchema<WorkerSubmitProductJobRequest> = z
   .object({ identityId: z.string().min(1), jobClass: z.enum(['release', 'resource-operation']) })
+  .strict();
+
+export const workerSubmitProductJobResponseSchema: ContractSchema<WorkerSubmitProductJobResponse> = z
+  .object({ recorded: z.boolean() })
   .strict();
