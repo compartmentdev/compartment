@@ -4,12 +4,7 @@ import {
   type DeploymentReconcileTarget,
   type ProjectNetworkPolicyPorts,
 } from '@compartment/contracts';
-import {
-  projectApplicationManifests,
-  type ApplyBundle,
-  type KubeManifest,
-  type KubeRuntime,
-} from '@compartment/kube-runtime';
+import { projectApplicationManifests, type ApplyBundle, type KubeManifest } from '@compartment/kube-runtime';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { applyApplication } from '../src/services/worker-deployment-application.service';
 import {
@@ -18,55 +13,16 @@ import {
 } from '../src/services/worker-network-policy.service';
 import { decryptTenantProjection } from '../src/tenant-workload-projections';
 import { encryptTestTenantEnvironment, testTenantSecretsKek } from './tenant-secret-test.fixtures';
-
-interface NetworkPolicyRule {
-  from?: NetworkPolicyPeer[] | undefined;
-  ports?: NetworkPolicyRulePort[] | undefined;
-}
-
-interface NetworkPolicyPeer {
-  namespaceSelector?: NetworkPolicySelector | undefined;
-  podSelector?: NetworkPolicySelector | undefined;
-}
-
-interface NetworkPolicySelector {
-  matchLabels?: Record<string, string> | undefined;
-}
-
-interface NetworkPolicyRulePort {
-  port: number;
-}
-
-interface NetworkPolicySpec {
-  egress?: NetworkPolicyRule[] | undefined;
-  ingress?: NetworkPolicyRule[] | undefined;
-}
-
-interface ApplicationDeploymentContainer {
-  ports: ApplicationDeploymentContainerPort[];
-}
-
-interface ApplicationDeploymentContainerPort {
-  containerPort: number;
-  name: string;
-}
-
-interface ApplicationDeploymentSpec {
-  template: {
-    spec: {
-      containers: ApplicationDeploymentContainer[];
-    };
-  };
-}
-
-interface ApplicationServicePort {
-  name: string;
-  targetPort: number;
-}
-
-interface ApplicationServiceSpec {
-  ports: ApplicationServicePort[];
-}
+import type {
+  ApplicationDeploymentContainerPort,
+  ApplicationDeploymentSpec,
+  ApplicationServicePort,
+  ApplicationServiceSpec,
+  IdentityApplyRuntime,
+  NetworkPolicyRule,
+  NetworkPolicyRulePort,
+  NetworkPolicySpec,
+} from './worker-network-policy.service.test.types';
 
 describe('worker NetworkPolicy desired state', (): void => {
   beforeEach((): void => {
@@ -116,7 +72,7 @@ describe('worker NetworkPolicy desired state', (): void => {
   });
 
   it('applies the current resource port for both ingress and application egress', async (): Promise<void> => {
-    const { apply, runtime }: { apply: Mock; runtime: KubeRuntime } = identityApplyRuntime();
+    const { apply, runtime }: IdentityApplyRuntime = identityApplyRuntime();
 
     await applyProjectNetworkPolicies(runtime, 'project', { applicationPorts: [8080], resourcePorts: [5432] });
 
@@ -128,10 +84,8 @@ describe('worker NetworkPolicy desired state', (): void => {
 
   it('keeps the projected spec identical across interleaved resource and deployment applies', async (): Promise<void> => {
     const ports: ProjectNetworkPolicyPorts = { applicationPorts: [8080], resourcePorts: [5432] };
-    const { apply: resourceApply, runtime: resourceRuntime }: { apply: Mock; runtime: KubeRuntime } =
-      identityApplyRuntime();
-    const { apply: deploymentApply, runtime: deploymentRuntime }: { apply: Mock; runtime: KubeRuntime } =
-      identityApplyRuntime();
+    const { apply: resourceApply, runtime: resourceRuntime }: IdentityApplyRuntime = identityApplyRuntime();
+    const { apply: deploymentApply, runtime: deploymentRuntime }: IdentityApplyRuntime = identityApplyRuntime();
 
     await applyProjectNetworkPolicies(resourceRuntime, 'project', ports);
     await applyApplication(deploymentRuntime, deploymentTarget(ports), testTenantSecretsKek, 600_000, undefined);
@@ -187,7 +141,7 @@ function applicationPolicyManifests(applicationPorts: number[]): KubeManifest[] 
   return projectProjectNetworkPolicyManifests('project', { applicationPorts, resourcePorts: [] });
 }
 
-function identityApplyRuntime(): { apply: Mock; runtime: KubeRuntime } {
+function identityApplyRuntime(): IdentityApplyRuntime {
   const apply: Mock = vi.fn(
     async (bundle: ApplyBundle): Promise<KubeManifest[]> => await Promise.resolve(bundle.objects),
   );

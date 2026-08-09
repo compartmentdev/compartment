@@ -23,6 +23,13 @@ import { reconcileDeploymentTarget as reconcileDeploymentTargetWithKek } from '.
 import { DeploymentRolloutStartTracker } from '../src/services/worker-deployment-rollout-start-tracker.service';
 import { encryptTestTenantEnvironment, testTenantSecretsKek } from './tenant-secret-test.fixtures';
 import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
+import type {
+  ApplyMockCall,
+  ApplyReadRuntime,
+  DeleteRuntime,
+  ReconcileMocks,
+  RecoveryRuntime,
+} from './worker-deployment-reconcile.service.test.types';
 
 const artifactRegistry: WorkerArtifactRegistryConfig = {
   address: '10.43.199.7:443',
@@ -32,23 +39,6 @@ const artifactRegistry: WorkerArtifactRegistryConfig = {
 };
 const infrastructureTimeoutMs: number = 600_000;
 let rolloutStarts: DeploymentRolloutStartTracker;
-
-interface ReconcileMocks {
-  applyNetworkPolicy: Mock;
-  delay: Mock;
-  observeDeploymentReconcile: Mock;
-  persistProductJobIntent: Mock;
-  projectNetworkPolicyManifests: Mock;
-}
-
-interface RecoveryRuntime extends KubeRuntime {
-  apply: Mock;
-  delete: Mock;
-  observe: Mock;
-  read: Mock;
-}
-
-type ApplyMockCall = [ApplyBundle];
 
 async function reconcileDeploymentTarget(
   request: CompartmentRequester,
@@ -159,7 +149,7 @@ describe('deployment reconciliation', (): void => {
   });
 
   it('applies the claimed port policy before the Deployment in the same bundle', async (): Promise<void> => {
-    const runtime: KubeRuntime & { apply: Mock; read: Mock } = pendingRuntimeStub(true);
+    const runtime: ApplyReadRuntime = pendingRuntimeStub(true);
     const claimedTarget: DeploymentReconcileTarget = {
       ...target(projection(null)),
       networkPolicy: { applicationPorts: [8080], resourcePorts: [5432] },
@@ -224,7 +214,7 @@ describe('deployment reconciliation', (): void => {
   });
 
   it('demotes an active Deployment when its rollout observation times out', async (): Promise<void> => {
-    const runtime: KubeRuntime & { apply: Mock; read: Mock } = activeRuntimeStub(false);
+    const runtime: ApplyReadRuntime = activeRuntimeStub(false);
     const activeTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'active' };
 
     await reconcileDeploymentTarget(requester(), runtime, activeTarget);
@@ -237,7 +227,7 @@ describe('deployment reconciliation', (): void => {
   });
 
   it('demotes a persistently deadline-exceeded active Deployment only after the grace reads', async (): Promise<void> => {
-    const runtime: KubeRuntime & { apply: Mock; read: Mock } = activeRuntimeStub(false, true);
+    const runtime: ApplyReadRuntime = activeRuntimeStub(false, true);
     const activeTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'active' };
 
     await reconcileDeploymentTarget(requester(), runtime, activeTarget);
@@ -274,7 +264,7 @@ describe('deployment reconciliation', (): void => {
   });
 
   it('does not restart an unhealthy active Deployment at the absolute rollout deadline', async (): Promise<void> => {
-    const runtime: KubeRuntime & { delete: Mock } = activeRuntimeStub(false, true) as never;
+    const runtime: DeleteRuntime = activeRuntimeStub(false, true) as never;
     runtime.delete = vi.fn(async (): Promise<void> => await Promise.resolve());
     const candidate: DeploymentReconcileProjection = projection(null);
     const pendingTarget: DeploymentReconcileTarget = {
@@ -633,7 +623,7 @@ describe('deployment reconciliation', (): void => {
     const namespace: string = kubeNamespaceName('prj_1');
     const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
     const applied: KubeManifest = readyDeployment(namespace, name, 'applied-uid', 2);
-    const runtime: KubeRuntime & { apply: Mock; read: Mock } = {
+    const runtime: ApplyReadRuntime = {
       apply: vi.fn(async (): Promise<KubeManifest[]> => await Promise.resolve([applied])),
       read: vi.fn(
         async (): Promise<KubeManifest> => await Promise.resolve(readyDeployment(namespace, name, 'foreign-uid', 2)),
@@ -653,7 +643,7 @@ describe('deployment reconciliation', (): void => {
     const namespace: string = kubeNamespaceName('prj_1');
     const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
     const applied: KubeManifest = readyDeployment(namespace, name, 'applied-uid', 2);
-    const runtime: KubeRuntime & { apply: Mock; read: Mock } = {
+    const runtime: ApplyReadRuntime = {
       apply: vi.fn(async (): Promise<KubeManifest[]> => await Promise.resolve([applied])),
       read: vi.fn(
         async (): Promise<KubeManifest> => await Promise.resolve(readyDeployment(namespace, name, 'applied-uid', 3)),
@@ -670,7 +660,7 @@ describe('deployment reconciliation', (): void => {
   });
 
   it('deletes the projected application before acknowledging a Kubernetes stop', async (): Promise<void> => {
-    const runtime: KubeRuntime & { delete: Mock } = {
+    const runtime: DeleteRuntime = {
       ...runtimeStub(),
       delete: vi.fn(async (): Promise<void> => await Promise.resolve()),
     } as never;
