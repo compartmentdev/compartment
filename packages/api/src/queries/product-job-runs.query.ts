@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, type SQL } from 'drizzle-orm';
+import { and, asc, eq, type SQL } from 'drizzle-orm';
 import type {
   ProductJobClass,
   ProductJobIntent,
@@ -195,26 +195,6 @@ function buildPersistedProductJobResult(row: ProductJobResultRow): WorkerPersist
     podName: row.podName,
     status: row.status,
   };
-}
-
-/**
- * Records the instant the worker started handing this Job's manifest to the API server. Write-once: a `running` row
- * is re-claimed after a worker restart, and `updated_at` anchors the execution deadline in `productJobTimeoutMs`, so
- * re-stamping would hand every retry a fresh budget and a stuck Job would never reach a terminal status.
- */
-export async function persistProductJobKubeSubmission(jobClass: ProductJobClass, identityId: string): Promise<void> {
-  const submittedAt: Date = new Date();
-  await getApiDatabase()
-    .update(productJobRuns)
-    .set({ kubeJobSubmittedAt: submittedAt, updatedAt: submittedAt })
-    .where(
-      and(
-        eq(productJobRuns.jobClass, jobClass),
-        eq(productJobRuns.identityId, identityId),
-        eq(productJobRuns.status, 'running'),
-        isNull(productJobRuns.kubeJobSubmittedAt),
-      ),
-    );
 }
 
 export async function persistProductJobFinalized(jobClass: ProductJobClass, identityId: string): Promise<void> {

@@ -212,8 +212,7 @@ async function reconcileProductJob(
   if (!(await admitProductJobResources(request, runtime, claimed.job, claimed.resourceReadiness))) {
     return false;
   }
-  await executeProductJob(request, runtime, claimed.job, tenantSecretsKek, scheduling);
-  return true;
+  return (await executeProductJob(request, runtime, claimed.job, tenantSecretsKek, scheduling)) !== null;
 }
 
 function throwCombinedControllerErrors(deploymentError: Error | null, releaseError: Error): never {

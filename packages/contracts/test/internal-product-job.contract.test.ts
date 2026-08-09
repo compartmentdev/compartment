@@ -7,6 +7,7 @@ import {
   workerPersistProductJobIntentResponseSchema,
   workerPersistProductJobResultRequestSchema,
   workerSubmitProductJobRequestSchema,
+  workerSubmitProductJobResponseSchema,
 } from '../src';
 
 const timedOutResult: object = {
@@ -107,5 +108,12 @@ describe('internal product Job submission contract', (): void => {
         .success,
     ).toBe(false);
     expect(workerSubmitProductJobRequestSchema.safeParse({ jobClass: 'release' }).success).toBe(false);
+  });
+
+  it('answers whether the Job may be created, with no room for a partial yes', (): void => {
+    expect(workerSubmitProductJobResponseSchema.safeParse({ recorded: true }).success).toBe(true);
+    expect(workerSubmitProductJobResponseSchema.safeParse({ recorded: false }).success).toBe(true);
+    expect(workerSubmitProductJobResponseSchema.safeParse({}).success).toBe(false);
+    expect(workerSubmitProductJobResponseSchema.safeParse({ recorded: true, retryAfterMs: 5 }).success).toBe(false);
   });
 });

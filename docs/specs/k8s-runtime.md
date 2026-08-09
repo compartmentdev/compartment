@@ -170,6 +170,14 @@ claimed, which is before the gate above decides, and a gate that declines leaves
 that never reached the cluster. The record is written once; `updated_at` anchors the execution
 deadline, so re-stamping it on a re-claim would keep a stuck Job from ever reaching a terminal status.
 
+Recording that manifest is itself a claim on the resource, and it takes the same per-resource claim
+locks the reconcile lane takes. The claim transaction cannot make this decision: it drops those locks
+when it commits, and the gate that follows is a live Kubernetes read the control plane is not allowed
+to make, so a reconcile can be claimed in between. Both sides therefore re-read their fence while
+holding the locks, and exactly one proceeds: a record that lands first fences the reconcile, and a
+reconcile that lands first refuses the record. A refused record creates no Job and leaves the row
+claimable with nothing written, which is the same outcome as a resource that is not yet ready.
+
 Age never fences a release: a queued release already yields to every pending reconcile, so ordering it
 by age would let one block the reconcile that readies it. A resource operation keeps the age
 tie-break, which is the matching half of its own claim rule, and keeps `status` as its in-flight test:
