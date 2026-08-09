@@ -17,7 +17,7 @@ export function fencingProductJobCondition(): SQL {
 
 /**
  * A resource operation carries its own resource ids and arbitrates with a reconcile by age, so a queued operation
- * fences only the reconciles queued after it. `resourceOperationReconcileFence` is the matching half of that rule.
+ * fences only the reconciles queued after it. `fencingResourceReconcileAbsent` is the matching half of that rule.
  */
 function fencingResourceOperationJob(): SQL {
   return sql`${productJobRuns.jobClass} = 'resource-operation'
