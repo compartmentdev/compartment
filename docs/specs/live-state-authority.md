@@ -31,9 +31,9 @@ were durable database facts which survive the live Pod being killed and replaced
   `job_usage_hourly`, and a Job's terminal status, exit code, and logs, captured before the object is collected.
   These record the past and are never read as a claim about the present, which is why D30 permits them.
 
-The test, applicable to any predicate in a diff: **if the Pod were deleted and replaced one second ago, must this
-expression change its answer?** If it must, no database column may serve it. If it must not, no Kubernetes read may
-serve it.
+The test, applicable to any predicate in a diff: **had the cluster changed under it one second ago — a Pod replaced,
+a claim rebound, capacity consumed — must this expression change its answer?** If it must, no database column may
+serve it. If it must not, no Kubernetes read may serve it.
 
 ## Column names
 
@@ -129,6 +129,7 @@ No call site moves, and one clause changes meaning.
 
 ## Non-goals
 
-- a live-state cache, a status mirror, or a capacity predictor in PostgreSQL;
+- any cached observation, status mirror, or capacity prediction in PostgreSQL used as an authority or a gating
+  input; a diagnostic cache carrying the bound described above stays permitted under D30;
 - a generic readiness service, registry, or framework wrapping the `kube-runtime` primitives;
 - closing the window between a gate and the action it guards.
