@@ -49,6 +49,7 @@ import { readResourceReconcileRunWaitState } from '../src/queries/resource-recon
 import { finalizeProjectResourceDeletion } from '../src/queries/resource-reconcile-deletion.query';
 import { cancelResourceReconcileRunsForProjectArchive } from '../src/queries/resource-reconcile-project.query';
 import { claimProductJob, persistProductJobFinalized } from '../src/queries/product-job-runs.query';
+import type { ClaimedProductJobQueryResult } from '../src/queries/product-job-runs.query.types';
 import { persistProductJobResult } from '../src/queries/product-job-result.query';
 import { persistProductJobIntent } from '../src/queries/product-job-intent.query';
 import { completeProjectProvisioning } from '../src/queries/project-provisioning-completion.query';
@@ -105,6 +106,8 @@ const apiConfig: ApiConfig = {
 const pool: Pool = createDatabasePool(databaseUrl);
 const resourceOperationPool: Pool = new Pool({ connectionString: databaseUrl, max: 2 });
 const db: Database = createDatabase(pool, resourceOperationPool);
+
+const unclaimedJob: ClaimedProductJobQueryResult = { intent: null, persistedResult: null, resourceReadiness: [] };
 
 describe('resource backup queries', (): void => {
   useApiRuntimeDatabaseTestHarness({
@@ -837,7 +840,7 @@ describe('resource backup queries', (): void => {
       },
     });
 
-    await expect(claimProductJob('resource-operation')).resolves.toEqual({ intent: null, persistedResult: null });
+    await expect(claimProductJob('resource-operation')).resolves.toEqual(unclaimedJob);
     await expect(db.select().from(productJobRuns)).resolves.toHaveLength(1);
   });
 
@@ -872,7 +875,7 @@ describe('resource backup queries', (): void => {
     });
 
     await expect(claimResourceReconcileRun()).resolves.toMatchObject({ operationId: 'rr_before_product_job' });
-    await expect(claimProductJob('resource-operation')).resolves.toEqual({ intent: null, persistedResult: null });
+    await expect(claimProductJob('resource-operation')).resolves.toEqual(unclaimedJob);
   });
 
   it('keeps a running resource operation ahead of later reconcile work', async (): Promise<void> => {

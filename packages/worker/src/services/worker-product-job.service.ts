@@ -2,21 +2,15 @@ import {
   productJobRuntimeId,
   type ProductJobIntent,
   type ProductJobClass,
-  type ProductJobVolumeMount,
-  type ResourceClaimIdentity,
   type WorkerPersistProductJobResultRequest,
   type WorkerPersistProductJobIntentResponse,
 } from '@compartment/contracts';
 import {
-  assertResourceClaimOwnership,
   type KubeJobResult,
   type KubeJobSpec,
-  type KubeManifest,
-  type KubeObservedManifest,
   type KubePersistedJobResult,
   type KubeRuntime,
   type KubeWorkloadScheduling,
-  type ObservedResourceClaim,
 } from '@compartment/kube-runtime';
 import {
   finalizeProductJob,
@@ -24,6 +18,7 @@ import {
   persistProductJobResult,
   type CompartmentRequester,
 } from '@compartment/sdk';
+import { fenceProductJobClaims, readProductJobIdentity } from './worker-product-job-fencing.service';
 import { tenantJobSpec } from '../tenant-workload-projections';
 import { decryptTenantSecretEnvironment, redactTenantSecretValues } from '../tenant-secret-environment';
 import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
@@ -37,25 +32,6 @@ class ProductJobFailedError extends Error {
     super(`Product ${jobClass} job ${identityId} ${status === 'failed' ? 'failed' : 'timed out'}.`);
   }
 }
-
-enum SyntheticProductJobFailureReason {
-  FencingViolation = 'fencing-violation',
-}
-
-interface SyntheticProductJobFailureClassification {
-  jobNamePrefix: string;
-  status: 'timed-out';
-}
-
-const syntheticProductJobFailureByReason: Record<
-  SyntheticProductJobFailureReason,
-  SyntheticProductJobFailureClassification
-> = {
-  [SyntheticProductJobFailureReason.FencingViolation]: {
-    jobNamePrefix: 'failed-before-result',
-    status: 'timed-out',
-  },
-};
 
 export async function executeProductJob(
   request: CompartmentRequester,
@@ -115,79 +91,8 @@ async function runFencedProductJob(
   tenantSecretsKek: TenantSecretsKeyring,
   scheduling?: KubeWorkloadScheduling,
 ): Promise<KubeJobResult> {
-  if (intent.volumeMounts !== undefined && intent.volumeMounts.length > 0) {
-    const observedClaims: ObservedResourceClaim[] = await readMountedClaims(runtime, intent);
-    try {
-      assertProductJobClaims(intent, observedClaims);
-    } catch (error) {
-      const failure: Error = error instanceof Error ? error : new Error('Product Job fencing failed.');
-      await persistProductJobFencingFailure(request, intent, identityId, failure);
-    }
-  }
+  await fenceProductJobClaims(request, runtime, intent);
   return await runtime.runJob(tenantJobSpec(buildKubeJobSpec(intent, identityId, tenantSecretsKek), scheduling));
-}
-
-async function persistProductJobFencingFailure(
-  request: CompartmentRequester,
-  intent: ProductJobIntent,
-  identityId: string,
-  failure: Error,
-): Promise<never> {
-  await persistProductJobResult(
-    request,
-    buildSyntheticProductJobFailure(intent, identityId, SyntheticProductJobFailureReason.FencingViolation, failure),
-  );
-  throw failure;
-}
-
-function assertProductJobClaims(intent: ProductJobIntent, observedClaims: ObservedResourceClaim[]): void {
-  assertResourceClaimOwnership(
-    (intent.volumeMounts ?? []).map(
-      (mount: ProductJobVolumeMount): ResourceClaimIdentity => ({
-        claimName: mount.claimName,
-        uid: mount.expectedClaimUid,
-      }),
-    ),
-    observedClaims,
-  );
-}
-
-function buildSyntheticProductJobFailure(
-  intent: ProductJobIntent,
-  identityId: string,
-  reason: SyntheticProductJobFailureReason,
-  failure: Error,
-): WorkerPersistProductJobResultRequest {
-  const classification: SyntheticProductJobFailureClassification = syntheticProductJobFailureByReason[reason];
-  return {
-    completedAt: new Date().toISOString(),
-    exitCode: null,
-    identityId,
-    jobClass: intent.jobClass,
-    jobName: `${classification.jobNamePrefix}/${identityId}`,
-    logs: failure.message,
-    podName: null,
-    status: classification.status,
-  };
-}
-
-async function readMountedClaims(runtime: KubeRuntime, intent: ProductJobIntent): Promise<ObservedResourceClaim[]> {
-  return await Promise.all(
-    (intent.volumeMounts ?? []).map(async (mount: ProductJobVolumeMount): Promise<ObservedResourceClaim> => {
-      const claim: KubeManifest = {
-        apiVersion: 'v1',
-        kind: 'PersistentVolumeClaim',
-        metadata: { name: mount.claimName, namespace: intent.namespace },
-      };
-      const observed: KubeObservedManifest | null = await runtime.read(claim);
-      return {
-        bound: (observed?.status as { phase?: string | undefined } | undefined)?.phase === 'Bound',
-        claimName: mount.claimName,
-        resourceVersion: observed?.metadata?.resourceVersion ?? null,
-        uid: observed?.metadata?.uid ?? null,
-      };
-    }),
-  );
 }
 
 export async function finalizeRecoveredProductJob(
@@ -253,8 +158,4 @@ function buildKubeJobSpec(
     timeoutMs: intent.timeoutMs,
     volumeMounts: intent.volumeMounts,
   };
-}
-
-function readProductJobIdentity(intent: ProductJobIntent): string {
-  return intent.jobClass === 'release' ? intent.deploymentId : intent.operationId;
 }

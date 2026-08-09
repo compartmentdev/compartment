@@ -92,7 +92,8 @@ Resource fields:
 - `ports`: optional internal TCP ports.
 - `outputs`: optional derived values such as hostnames or connection strings.
 - `volumes`: optional named volume handles mapped to absolute container mount paths.
-- `readiness`: optional TCP readiness check.
+- `readiness`: optional TCP readiness check. Declaring it also holds release, backup, and restore Jobs until the
+  resource accepts connections; `readiness.timeoutMs` is how long each Job waits before it fails.
 - `operations`: optional `backup` and `restore` commands, backup schedule, and backup retention.
 
 Use the generated schema reference for the exact current contract.
@@ -282,7 +283,9 @@ Restore-to-new-resource with `--as` uses the operation configuration saved with 
 list` and `resource backup show` read existing backup records and do not require operation commands.
 
 Resources run durable Kubernetes Jobs and store artifacts on a per-resource artifact volume created by the
-explicit bootstrap command. Compartment records and checks that volume's identity before every Job. It verifies the
+explicit bootstrap command. Compartment records and checks that volume's identity before every Job. When the resource
+declares `readiness`, backup and restore also wait for the resource to accept connections before they start, and fail
+without running the command if the resource stays unready for `readiness.timeoutMs`. It verifies the
 artifact checksum and size after backup and again before restore; missing or changed metadata stops restore before the
 restore command starts. Backup commands receive a writable artifact directory, while restore commands receive it
 read-only, so use another writable path such as `/tmp` for restore scratch files.
