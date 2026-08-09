@@ -44,7 +44,9 @@ describe('worker product Job service', (): void => {
   });
 
   it('scopes claims to one execution lane', async (): Promise<void> => {
-    const fetchState: FetchMockState = mockFetchSequence([createJsonResponse({ job: null, result: null })]);
+    const fetchState: FetchMockState = mockFetchSequence([
+      createJsonResponse({ job: null, resourceReadiness: [], result: null }),
+    ]);
     const request: CompartmentRequester = createCompartmentRequester({
       apiUrl: 'https://console.example/',
       internalToken: 'worker-token',

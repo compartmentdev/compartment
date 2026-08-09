@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import type {
   ProductJobIntent,
+  ProductJobResourceReadiness,
   ResourceOperationProductJobIntent,
   ResourceReconcileIntent,
   WorkerPersistProductJobResultRequest,
@@ -163,7 +164,7 @@ describe('product Job persistence', (): void => {
     expect(cleanupClaim.intent).toMatchObject({ deploymentId: 'dep_job', jobClass: 'release' });
     expect(cleanupClaim.persistedResult).toEqual(terminalResult);
     await persistProductJobFinalized('release', 'dep_job');
-    expect(await claimProductJob('release')).toEqual({ intent: null, persistedResult: null });
+    expect(await claimProductJob('release')).toEqual({ intent: null, persistedResult: null, resourceReadiness: [] });
   });
 
   it('keeps a claimed Job running and reclaimable until terminal evidence is persisted', async (): Promise<void> => {
@@ -232,7 +233,11 @@ describe('product Job persistence', (): void => {
     });
     await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
 
-    await expect(claimProductJob('release')).resolves.toEqual({ intent: null, persistedResult: null });
+    await expect(claimProductJob('release')).resolves.toEqual({
+      intent: null,
+      persistedResult: null,
+      resourceReadiness: [],
+    });
   });
 
   it('keeps a cold-start release queued until its descriptor resource bootstrap succeeds', async (): Promise<void> => {
@@ -256,13 +261,104 @@ describe('product Job persistence', (): void => {
     });
     await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
 
-    await expect(claimProductJob('release')).resolves.toEqual({ intent: null, persistedResult: null });
+    await expect(claimProductJob('release')).resolves.toEqual({
+      intent: null,
+      persistedResult: null,
+      resourceReadiness: [],
+    });
 
     await db.update(projectResources).set({ status: 'running' }).where(eq(projectResources.id, 'res-db'));
     await db.update(resourceReconcileRuns).set({ phase: 'succeeded' }).where(eq(resourceReconcileRuns.id, 'rrun-db'));
     await expect(claimProductJob('release')).resolves.toMatchObject({
       intent: { deploymentId: 'dep_job', jobClass: 'release' },
       persistedResult: null,
+    });
+  });
+
+  it('hands the claiming worker the readiness declared by each connected resource', async (): Promise<void> => {
+    await db.insert(environmentResourceOutputVariableBindings).values({
+      environmentId: 'env-job',
+      id: 'binding-db',
+      keyName: 'DATABASE_URL',
+      outputName: 'connection-url',
+      resourceName: 'postgres',
+      source: 'descriptor',
+      targetServiceName: 'web',
+    });
+    await db.insert(resourceReconcileRuns).values({
+      expectedClaimsJson: '[]',
+      id: 'rrun-db',
+      intentJson: '{}',
+      operationType: 'reconcile',
+      phase: 'succeeded',
+      projectResourceId: 'res-db',
+    });
+    await db
+      .update(projectResources)
+      .set({ readinessJson: JSON.stringify({ port: 5432, timeoutMs: 180_000, type: 'tcp' }) })
+      .where(eq(projectResources.id, 'res-db'));
+    await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
+
+    const claimedAt: number = Date.now();
+    const claimed: ClaimedProductJobQueryResult = await claimProductJob('release');
+    const settledAt: number = Date.now();
+
+    expect(
+      claimed.resourceReadiness.map((resource: ProductJobResourceReadiness): string => resource.resourceId),
+    ).toEqual(['res-db']);
+    const deadlineAt: number = Date.parse(claimed.resourceReadiness[0]!.deadlineAt);
+    expect(deadlineAt).toBeGreaterThanOrEqual(claimedAt + 180_000);
+    expect(deadlineAt).toBeLessThanOrEqual(settledAt + 180_000);
+  });
+
+  it('gates a resource operation that runs against the resource itself', async (): Promise<void> => {
+    await db
+      .update(projectResources)
+      .set({ readinessJson: JSON.stringify({ port: 5432, timeoutMs: 30_000, type: 'tcp' }) })
+      .where(eq(projectResources.id, 'res-db'));
+    await persistProductJobIntent({ identityId: 'op_backup', intent: resourceOperationIntent() });
+
+    await expect(claimProductJob('resource-operation')).resolves.toMatchObject({
+      intent: { jobClass: 'resource-operation', operationId: 'op_backup' },
+      resourceReadiness: [{ resourceId: 'res-db' }],
+    });
+  });
+
+  it('does not gate a platform operation that only touches the artifact volume', async (): Promise<void> => {
+    await db
+      .update(projectResources)
+      .set({ readinessJson: JSON.stringify({ port: 5432, timeoutMs: 30_000, type: 'tcp' }) })
+      .where(eq(projectResources.id, 'res-db'));
+    await persistProductJobIntent({
+      identityId: 'op_verify',
+      intent: { ...resourceOperationIntent('op_verify'), runtimeIdentity: 'project' },
+    });
+
+    await expect(claimProductJob('resource-operation')).resolves.toMatchObject({
+      intent: { operationId: 'op_verify', runtimeIdentity: 'project' },
+      resourceReadiness: [],
+    });
+  });
+
+  it('does not gate an operation on a resource the operator stopped', async (): Promise<void> => {
+    await db
+      .update(projectResources)
+      .set({ readinessJson: JSON.stringify({ port: 5432, timeoutMs: 30_000, type: 'tcp' }), status: 'stopped' })
+      .where(eq(projectResources.id, 'res-db'));
+    await persistProductJobIntent({ identityId: 'op_backup', intent: resourceOperationIntent() });
+
+    await expect(claimProductJob('resource-operation')).resolves.toMatchObject({
+      intent: { operationId: 'op_backup' },
+      resourceReadiness: [],
+    });
+  });
+
+  it('omits resources that declare no readiness from the claimed gate', async (): Promise<void> => {
+    await persistProductJobIntent({ identityId: 'op_backup', intent: resourceOperationIntent() });
+
+    await expect(claimProductJob('resource-operation')).resolves.toMatchObject({
+      intent: { jobClass: 'resource-operation', operationId: 'op_backup' },
+      resourceReadiness: [],
     });
   });
 
@@ -298,8 +394,16 @@ describe('product Job persistence', (): void => {
     ]);
     await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
 
-    await expect(claimProductJob('release')).resolves.toEqual({ intent: null, persistedResult: null });
-    await expect(claimProductJob('release')).resolves.toEqual({ intent: null, persistedResult: null });
+    await expect(claimProductJob('release')).resolves.toEqual({
+      intent: null,
+      persistedResult: null,
+      resourceReadiness: [],
+    });
+    await expect(claimProductJob('release')).resolves.toEqual({
+      intent: null,
+      persistedResult: null,
+      resourceReadiness: [],
+    });
 
     await db.update(resourceReconcileRuns).set({ phase: 'succeeded' }).where(eq(resourceReconcileRuns.id, 'rrun-db'));
     await expect(claimProductJob('release')).resolves.toMatchObject({
@@ -471,7 +575,11 @@ describe('product Job persistence', (): void => {
       .where(eq(productJobRuns.identityId, 'op_running'));
     await persistProductJobIntent({ identityId: 'op_waiting', intent: resourceOperationIntent('op_waiting') });
 
-    await expect(claimProductJob('resource-operation')).resolves.toEqual({ intent: null, persistedResult: null });
+    await expect(claimProductJob('resource-operation')).resolves.toEqual({
+      intent: null,
+      persistedResult: null,
+      resourceReadiness: [],
+    });
   });
 
   it('bounds queued resource work by predecessor execution budgets and persists queue expiry', async (): Promise<void> => {

@@ -2,6 +2,7 @@ import { and, asc, eq, type SQL } from 'drizzle-orm';
 import type {
   ProductJobClass,
   ProductJobIntent,
+  ProductJobResourceReadiness,
   ProductJobVolumeMount,
   TenantSecretEnvironment,
   ResourceOperationProductJobIntent,
@@ -20,6 +21,7 @@ import type {
   ProductJobResultRow,
 } from './product-job-runs.query.types';
 import { lockProductJobResourceFence, prepareProductJobClaim } from './product-job-claim.query';
+import { readProductJobResourceReadiness } from './product-job-resource-readiness.query';
 
 type ProductJobRunSelection = Pick<typeof productJobRuns, keyof ProductJobRunRow>;
 
@@ -46,8 +48,12 @@ async function claimProductJobWithTransaction(
     async (tx: ApiDatabaseTransaction): Promise<ProductJobRunRow | undefined> =>
       await readClaimableProductJobRow(tx, jobClass),
     claimLockedProductJob,
-    { intent: null, persistedResult: null },
+    emptyProductJobClaim(),
   );
+}
+
+function emptyProductJobClaim(): ClaimedProductJobQueryResult {
+  return { intent: null, persistedResult: null, resourceReadiness: [] };
 }
 
 async function claimLockedProductJob(
@@ -56,21 +62,35 @@ async function claimLockedProductJob(
 ): Promise<ClaimedProductJobQueryResult> {
   const fenceResult: ProductJobResourceFenceResult = await lockProductJobResourceFence(transaction, row);
   if (fenceResult === 'blocked') {
-    return { intent: null, persistedResult: null };
+    return emptyProductJobClaim();
   }
   if (fenceResult === 'terminalized') {
     return await buildTerminalizedProductJobClaim(transaction, row);
   }
+  const claimedAt: Date = new Date();
+  const resourceReadiness: ProductJobResourceReadiness[] = await readProductJobResourceReadiness(
+    transaction,
+    row,
+    claimedAt,
+  );
   if (row.status === 'queued') {
-    await markProductJobRunning(transaction, row);
+    await markProductJobRunning(transaction, row, claimedAt);
   }
-  return { intent: buildProductJobIntent(row), persistedResult: buildPersistedProductJobResult(row) };
+  return {
+    intent: buildProductJobIntent(row),
+    persistedResult: buildPersistedProductJobResult(row),
+    resourceReadiness,
+  };
 }
 
-async function markProductJobRunning(transaction: ApiDatabaseTransaction, row: ProductJobRunRow): Promise<void> {
+async function markProductJobRunning(
+  transaction: ApiDatabaseTransaction,
+  row: ProductJobRunRow,
+  claimedAt: Date,
+): Promise<void> {
   await transaction
     .update(productJobRuns)
-    .set({ startedAt: new Date(), status: 'running', updatedAt: new Date() })
+    .set({ startedAt: claimedAt, status: 'running', updatedAt: claimedAt })
     .where(
       and(
         eq(productJobRuns.jobClass, row.jobClass),
@@ -92,7 +112,7 @@ async function buildTerminalizedProductJobClaim(
   if (persistedResult === null) {
     throw new Error(`Terminalized Product Job ${row.jobClass}/${row.identityId} has no persisted result.`);
   }
-  return { intent: buildProductJobIntent(row), persistedResult };
+  return { intent: buildProductJobIntent(row), persistedResult, resourceReadiness: [] };
 }
 
 async function readProductJobResultWithExecutor(
