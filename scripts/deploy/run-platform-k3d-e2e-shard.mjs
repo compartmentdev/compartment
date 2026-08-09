@@ -21,7 +21,7 @@ const diagnosticsScript = join(repositoryRoot, 'scripts/deploy/collect-platform-
 const networkPolicyGateScript = join(repositoryRoot, 'packages/kube-runtime/test/network-policy-enforcement-check.sh');
 const productLogGateScript = join(repositoryRoot, 'scripts/deploy/run-platform-k3d-product-log-gate.mjs');
 const retainedStateGateScript = join(repositoryRoot, 'scripts/deploy/run-platform-k3d-retained-state-gate.mjs');
-const networkPolicySamplerScript = join(repositoryRoot, 'scripts/deploy/sample-platform-k3d-network-policies.mjs');
+const tenantStateSamplerScript = join(repositoryRoot, 'scripts/deploy/sample-platform-k3d-tenant-state.mjs');
 async function runShard(shardName) {
   const env = buildPlatformK3dShardEnvironment(shardName);
   const platformEnvironment = readPlatformK3dEnvironment(env);
@@ -54,9 +54,9 @@ async function runShard(shardName) {
         if (suites.includes('system-update')) {
           await prepareSystemUpdateBaseline(env, commandAbortController.signal);
         }
-        // An end-state dump cannot tell a policy that was wrong at the failing dial from one that
-        // was only wrong afterwards, so the series runs alongside the suites.
-        const sampler = startNetworkPolicySampler(env, diagnosticsPath);
+        // An end-state dump cannot tell a policy or workload that was wrong at the failing dial from
+        // one that was only wrong afterwards, so the series runs alongside the suites.
+        const sampler = startTenantStateSampler(env, diagnosticsPath);
         try {
           await runShardSuites(
             suites,
@@ -97,8 +97,8 @@ async function startPlatform(env, signal) {
   await runInterruptibleCommand(process.execPath, args, env, signal);
 }
 
-function startNetworkPolicySampler(env, diagnosticsPath) {
-  return spawn(process.execPath, [networkPolicySamplerScript, join(diagnosticsPath, 'network-policy-series.log')], {
+function startTenantStateSampler(env, diagnosticsPath) {
+  return spawn(process.execPath, [tenantStateSamplerScript, join(diagnosticsPath, 'tenant-state-series.log')], {
     cwd: repositoryRoot,
     env,
     stdio: 'ignore',
