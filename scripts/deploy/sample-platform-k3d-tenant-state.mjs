@@ -56,7 +56,8 @@ function sampleResource(tracked, previous, outputPath) {
   const current = readObjectStates(
     captureCommand(
       'kubectl',
-      ['--context', context, 'get', tracked.resource, '--all-namespaces', '-o', 'json'],
+      // A stalled API request would block both sampling and SIGTERM shutdown, since the capture is synchronous.
+      ['--context', context, 'get', tracked.resource, '--all-namespaces', '-o', 'json', '--request-timeout=5s'],
       repositoryRoot,
     ),
     tracked.describe,

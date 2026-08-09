@@ -116,9 +116,12 @@ describe('platform k3d diagnostics and product-log gates', () => {
     const first = deployments(3, 'postgres:16');
 
     expect(diffObjectStates(first, deployments(3, 'postgres:16'))).toEqual([]);
-    const [moved] = diffObjectStates(first, deployments(4, 'postgres:16-alpine'));
-    expect(moved).toContain('cpt-project/resource-res-x generation=4 replicas=1 strategy=Recreate template=');
-    expect(moved).not.toEqual([...diffObjectStates(new Map(), first)][0]);
+    const [retemplated] = diffObjectStates(first, deployments(3, 'postgres:16-alpine'));
+    expect(retemplated).toContain('cpt-project/resource-res-x generation=3 replicas=1 strategy=Recreate template=');
+    expect(retemplated).not.toEqual([...diffObjectStates(new Map(), first)][0]);
+    expect(diffObjectStates(first, deployments(4, 'postgres:16'))).toEqual([
+      [...diffObjectStates(new Map(), first)][0].replace('generation=3', 'generation=4'),
+    ]);
   });
 
   it('parses namespaced deployment references', () => {
