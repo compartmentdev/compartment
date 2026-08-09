@@ -149,9 +149,9 @@ Claim eligibility is reconcile history, so it cannot see a resource Pod replaced
 Every claim therefore also carries the resources that Job dials and that declare readiness, resolved
 inside the claim transaction: descriptor output bindings for a release, the operation's own resource
 ids for a Job that runs against the resource itself. A Job that only mounts a resource's artifact
-volume dials nothing and is not gated, and a resource that declares no readiness publishes no signal
-to consult. Each carried resource has a deadline of its declared readiness timeout from the first
-claim.
+volume dials nothing, a stopped resource is never expected to accept connections, and a resource that
+declares no readiness publishes no signal to consult; none of the three is gated. Each carried
+resource has a deadline of its declared readiness timeout from the first claim.
 
 Before creating the Job the worker performs one direct read per carried resource and requires the
 current generation of that Deployment to be available. It never waits: an unready resource leaves the

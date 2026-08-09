@@ -284,8 +284,8 @@ list` and `resource backup show` read existing backup records and do not require
 
 Resources run durable Kubernetes Jobs and store artifacts on a per-resource artifact volume created by the
 explicit bootstrap command. Compartment records and checks that volume's identity before every Job. When the resource
-declares `readiness`, backup and restore also wait for the resource to accept connections before they start, and fail
-without running the command if the resource stays unready for `readiness.timeoutMs`. It verifies the
+declares `readiness` and is running, backup and restore also wait for the resource to accept connections before they
+start, and fail without running the command if the resource stays unready for `readiness.timeoutMs`. It verifies the
 artifact checksum and size after backup and again before restore; missing or changed metadata stops restore before the
 restore command starts. Backup commands receive a writable artifact directory, while restore commands receive it
 read-only, so use another writable path such as `/tmp` for restore scratch files.

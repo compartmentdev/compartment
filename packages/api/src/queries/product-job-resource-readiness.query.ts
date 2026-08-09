@@ -1,5 +1,5 @@
 import type { ProductJobResourceReadiness, ResourceReadinessSummary } from '@compartment/contracts';
-import { asc, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { ApiDatabaseTransaction } from '../db/client.types';
 import { projectResources } from '../db/schema';
 import { readReleaseResourceIds } from './product-job-release-readiness.query';
@@ -10,8 +10,9 @@ import type { DeclaredResourceReadinessRow } from './product-job-resource-readin
 /**
  * Resources the claimed Job dials, with the instant each one must be accepting connections by.
  * Resolved inside the claim transaction, so a resource created, replaced, or reconfigured after the Job
- * was queued is still covered. Jobs that only touch a resource's artifact volume dial nothing and are
- * not gated; the readiness budget runs from the first claim, not from every re-claim.
+ * was queued is still covered. A Job that only touches a resource's artifact volume dials nothing, and a
+ * resource the operator stopped is never expected to accept connections, so neither is gated. The
+ * readiness budget runs from the first claim, not from every re-claim.
  */
 export async function readProductJobResourceReadiness(
   transaction: ApiDatabaseTransaction,
@@ -26,7 +27,7 @@ export async function readProductJobResourceReadiness(
   const rows: DeclaredResourceReadinessRow[] = await transaction
     .select({ readinessJson: projectResources.readinessJson, resourceId: projectResources.id })
     .from(projectResources)
-    .where(inArray(projectResources.id, resourceIds))
+    .where(and(inArray(projectResources.id, resourceIds), eq(projectResources.status, 'running')))
     .orderBy(asc(projectResources.id));
   return rows.flatMap((declared: DeclaredResourceReadinessRow): ProductJobResourceReadiness[] => {
     const readiness: ResourceReadinessSummary | null = JSON.parse(

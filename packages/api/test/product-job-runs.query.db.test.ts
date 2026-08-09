@@ -337,6 +337,19 @@ describe('product Job persistence', (): void => {
     });
   });
 
+  it('does not gate an operation on a resource the operator stopped', async (): Promise<void> => {
+    await db
+      .update(projectResources)
+      .set({ readinessJson: JSON.stringify({ port: 5432, timeoutMs: 30_000, type: 'tcp' }), status: 'stopped' })
+      .where(eq(projectResources.id, 'res-db'));
+    await persistProductJobIntent({ identityId: 'op_backup', intent: resourceOperationIntent() });
+
+    await expect(claimProductJob('resource-operation')).resolves.toMatchObject({
+      intent: { operationId: 'op_backup' },
+      resourceReadiness: [],
+    });
+  });
+
   it('omits resources that declare no readiness from the claimed gate', async (): Promise<void> => {
     await persistProductJobIntent({ identityId: 'op_backup', intent: resourceOperationIntent() });
 
