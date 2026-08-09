@@ -3,7 +3,7 @@ import type { HookHandlerDoneFunction, FastifyReply, FastifyRequest } from 'fast
 import { ApiBoundaryError } from '../../errors/api-boundary-error';
 import { requireBearerToken } from '../../http/headers';
 import { getApiConfig } from '../../runtime/runtime-access';
-import type { BuildArtifactSourceArchiveParams } from './get-artifact-source-archive.route';
+import type { BuildArtifactSourceArchiveParams } from './get-artifact-source-archive.route.types';
 
 const unauthorizedCode: string = 'build_source_archive_unauthorized';
 const unauthorizedMessage: string = 'A valid build source archive credential is required.';

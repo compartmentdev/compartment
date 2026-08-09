@@ -224,8 +224,8 @@ which is the source build Job's single API call; registry verification builds ca
 The signing key is derived from the runtime control token both processes already hold, so the scheme adds no
 installation secret and no chart value. Verification is one HMAC with no database read on a route that is never
 publicly routable, so the route takes no throttle. Admission limits the runner container to a fixed set of environment
-variable names, requires each value to be projected from a Secret key, and refuses bulk `envFrom` import, so no other
-credential can be named into a build Pod.
+variable names, requires each value to be projected from a Secret key, and refuses bulk `envFrom` import on both the
+runner and the BuildKit sidecar, so no other credential can be named into a build Pod.
 
 `sandboxRuntime.runtimeClassName` selects the verified gVisor RuntimeClass shared by builds and tenant workloads.
 Installation fails before Helm when a real canary does not prove the gVisor userspace kernel boundary.
