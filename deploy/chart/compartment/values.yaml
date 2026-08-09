@@ -175,7 +175,9 @@ sandboxRuntime:
 buildkit:
   enabled: true
   namespace: compartment-build
-  gcKeepStorageMb: 2000
+  # BuildKit keeps this much cache in its memory-backed data volume. Every build Job is deleted
+  # after its result is captured, so retention above the live working set only consumes Pod memory.
+  gcKeepStorageMb: 1024
   maximumConcurrentBuilds: 100
   maximumConcurrentBuildsPerOrganization: 2
   resourceQuota:
@@ -265,12 +267,15 @@ resources:
   registryAuth:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { cpu: 500m, memory: 256Mi }
+  # gVisor serves the build Job's emptyDir volumes from Sentry memory, so these two limits also fund
+  # the 3Gi tmpfs build workspace. The worker refuses to start when they no longer cover that
+  # workspace plus 1Gi of BuildKit, runner, and Sentry process memory.
   buildkit:
     requests: { cpu: 250m, memory: 512Mi }
-    limits: { cpu: 1750m, memory: 1536Mi }
+    limits: { cpu: 1750m, memory: 3Gi }
   buildRunner:
     requests: { cpu: 100m, memory: 256Mi }
-    limits: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: 250m, memory: 1Gi }
   productLogAgent:
     requests: { cpu: 50m, memory: 64Mi, ephemeral-storage: 320Mi }
     limits: { cpu: '1', memory: 256Mi, ephemeral-storage: 384Mi }

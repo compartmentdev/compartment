@@ -10,6 +10,7 @@ import type { TenantSecretsKeyring } from './tenant-secret-environment.types';
 import type {
   WorkerBuildConfig,
   WorkerBuildQueueConfig,
+  WorkerBuildResourceRequirements,
   WorkerConfig,
   WorkerCustomDomainConfig,
   WorkerProcessConfig,
@@ -89,6 +90,10 @@ const workerProcessConfigSchema: z.ZodType<WorkerProcessConfigEnvironment> = z.o
   COMPARTMENT_RUNTIME_CONTROL_TOKEN: z.string().min(1),
   COMPARTMENT_TRUSTED_OUTBOUND_HOSTS: z.string().optional(),
 });
+
+const buildResourceRequirementsSchema = z
+  .object({ limits: z.object({ memory: z.string().trim().min(1) }).passthrough() })
+  .passthrough();
 
 const workerBuildConfigSchema: z.ZodType<WorkerBuildConfigEnvironment> = workerProcessConfigSchema.and(
   z.object({
@@ -187,23 +192,29 @@ function buildWorkerBuildConfig(parsed: WorkerBuildConfigEnvironment): WorkerBui
   return {
     ...buildWorkerProcessConfig(parsed),
     buildSandbox: {
-      buildKitResources: readResourceRequirements(parsed.COMPARTMENT_BUILDKIT_RESOURCES),
+      buildKitResources: readResourceRequirements(
+        parsed.COMPARTMENT_BUILDKIT_RESOURCES,
+        'COMPARTMENT_BUILDKIT_RESOURCES',
+      ),
       gcKeepStorageMb: parsed.COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB,
       namespace: parsed.COMPARTMENT_BUILD_NAMESPACE,
       runnerImage: parsed.COMPARTMENT_BUILD_RUNNER_IMAGE,
-      runnerResources: readResourceRequirements(parsed.COMPARTMENT_BUILD_RUNNER_RESOURCES),
+      runnerResources: readResourceRequirements(
+        parsed.COMPARTMENT_BUILD_RUNNER_RESOURCES,
+        'COMPARTMENT_BUILD_RUNNER_RESOURCES',
+      ),
       scheduling: readBuildWorkloadScheduling(parsed.COMPARTMENT_KUBE_BUILD_SCHEDULING),
       timeoutMs: parsed.COMPARTMENT_BUILD_TIMEOUT_MS,
     },
   };
 }
 
-function readResourceRequirements(value: string): object {
-  const parsed: object | null = JSON.parse(value) as object | null;
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error('Build resource requirements must be a JSON object.');
+function readResourceRequirements(value: string, name: string): WorkerBuildResourceRequirements {
+  try {
+    return buildResourceRequirementsSchema.parse(JSON.parse(value));
+  } catch {
+    throw new Error(`${name} must be a JSON object declaring limits.memory.`);
   }
-  return parsed;
 }
 
 export function readWorkerTrustedOutboundHosts(env: WorkerTrustedOutboundHostsEnvironment = process.env): string[] {

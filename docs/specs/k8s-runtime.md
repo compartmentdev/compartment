@@ -161,11 +161,21 @@ and a BuildKit sidecar, joins an existing Job after worker recovery, and is dele
 captured. The worker image owns the compatible BuildKit, Railpack, and runc binaries. The chart owns resources,
 scheduling, namespace RBAC, admission, and network isolation; no long-lived BuildKit Deployment or Service exists.
 BuildKit runs as root with the exact required capabilities inside the installation-selected gVisor Sentry and uses
-overlayfs over bounded, per-Job gVisor tmpfs mounts. The default build timeout is 30 minutes. The build namespace uses
+overlayfs over per-Job gVisor tmpfs mounts. The default build timeout is 30 minutes. The build namespace uses
 Pod Security `enforce=privileged` with
 `audit=baseline` and `warn=baseline` because the BuildKit sidecar's Sentry-confined capabilities are outside baseline
-Pod Security. Per-build ephemerality gives every build a fresh Pod and bounded `emptyDir` workspace, then deletes that
+Pod Security. Per-build ephemerality gives every build a fresh Pod and a fresh `emptyDir` workspace, then deletes that
 Pod after result capture; it does not create a separate kernel boundary.
+
+The Sentry serves those mounts from its own memory, so the build workspace is charged to the build Pod memory cgroup
+and the Pod memory limit is the only bound that exists: the Sentry never reads the Kubernetes `sizeLimit`, and kubelet
+cannot measure a mount it does not own. The declared volume sizes state what the Pod memory limit must fund, so the
+build resource limits and the declared workspace are one contract. A build fails before it starts unless
+`resources.buildkit` and `resources.buildRunner` together fund the whole declared workspace plus the BuildKit, runner,
+and Sentry process memory that writes into it, and unless `buildkit.gcKeepStorageMb` reserves no more than the
+memory-backed BuildKit data volume. The defaults give each build Pod a 4Gi memory limit covering a 3Gi workspace and
+1Gi of process memory, which fits the 8 GiB single-node host documented for application builds.
+
 `sandboxRuntime.runtimeClassName` selects the verified gVisor RuntimeClass shared by builds and tenant workloads.
 Installation fails before Helm when a real canary does not prove the gVisor userspace kernel boundary.
 Fresh installs bind only the existing platform worker ServiceAccount to the namespaced Job, Secret, Pod, and Pod-log
@@ -173,8 +183,11 @@ permissions required by `runJob`; no tenant or seeded product principal receives
 
 ### Sandbox E2E coverage
 
-Every k3d shard installs the pinned gVisor package, configures runsc, and uses the real `gvisor` RuntimeClass. The
-dedicated `gvisor-build` shard remains the focused build-workload partition.
+Every k3d shard installs the pinned gVisor package, configures runsc, and uses the real `gvisor` RuntimeClass. Each
+shard also registers the runsc handler with `pod_annotations = ["dev.gvisor.spec.mount.*"]`, the same allow-list the
+managed-VM installer requires; without it containerd drops the mount hints and builds run over gofer-backed volumes
+that no installation uses. The build-matrix partitions remain the focused build-workload shards, and one of them
+proves the build workspace is memory-backed by reading the sandbox mount table.
 The fresh managed-VM workflow starts with no K3s or gVisor files and verifies runtime download, containerd
 registration, RuntimeClass creation, and a real gVisor canary.
 The fresh-VM workflow is dispatched only onto a disposable `compartment-fresh-vm` runner. The runner must have no

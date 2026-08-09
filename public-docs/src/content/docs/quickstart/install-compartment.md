@@ -25,8 +25,10 @@ Add `--verbose` to show Cosign, ORAS, and checksum diagnostics during installati
 ## Prepare a clean VM
 
 Use a fresh x86_64 VM with systemd, cgroup v2, sudo access, a public IPv4 address, and at least 20 GiB free storage.
-Ubuntu 24.04 LTS is tested; 2 vCPU, 4 GiB memory, and 50 GiB free storage are recommended. For normal application builds,
-use 4 vCPU, 8 GiB memory, and 80 GiB storage.
+Ubuntu 24.04 LTS is tested; 2 vCPU, 4 GiB memory, and 50 GiB free storage are recommended for a host that only runs
+the platform and already-built applications. Source builds need their own headroom: a build Pod is limited to 2 CPU and
+4 GiB, and gVisor holds its whole workspace in memory, so use 4 vCPU, 8 GiB memory, and 80 GiB storage for one build at
+a time and add 4 GiB per additional concurrent build.
 Ports 80 and 443 must be available and reachable. Compartment never changes port 22 or cloud security-group rules.
 
 The installer blocks Kubernetes API, etcd, kubelet, and overlay ports on the public interface with persistent,
@@ -107,27 +109,39 @@ compartment-values.yaml`.
 
 Build concurrency has separate logical and physical limits. By default, Compartment admits up to 100 in-flight build
 claims, allows two active builds per organization, and applies a build-namespace quota of 48 CPU and 64 GiB. Each
-default build Pod is limited to 2 CPU and 2 GiB, so CPU limits the namespace to 24 concurrently admitted build Pods.
+default build Pod is limited to 2 CPU and 4 GiB, so memory limits the namespace to 16 concurrently admitted build Pods.
 Set the queue limits, namespace quota, and per-container resources together when sizing a cluster:
 
 ```yaml
 buildkit:
   maximumConcurrentBuilds: 100
   maximumConcurrentBuildsPerOrganization: 2
+  gcKeepStorageMb: 1024
   resourceQuota:
     limits: { cpu: '48', memory: 64Gi }
 resources:
   buildkit:
     requests: { cpu: 250m, memory: 512Mi }
-    limits: { cpu: 1750m, memory: 1536Mi }
+    limits: { cpu: 1750m, memory: 3Gi }
   buildRunner:
     requests: { cpu: 100m, memory: 256Mi }
-    limits: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: 250m, memory: 1Gi }
 ```
+
+Builds run inside gVisor, which serves the build workspace from sandbox memory. A build Pod's memory limit therefore
+covers its whole scratch space, not just the BuildKit and runner processes: the default 4 GiB is a 3 GiB workspace plus
+1 GiB of process memory. If the two memory limits no longer add up to that total, the build fails immediately with a
+message naming both values instead of being killed later by the kernel. `buildkit.gcKeepStorageMb` reserves BuildKit
+cache in the same memory and cannot exceed 2147, the size of the memory-backed BuildKit data volume. Raise both memory
+limits together for source builds that pull large base images or install large system packages, and size the host for
+one build Pod per concurrent build you allow.
 
 The namespace quota requires every build container to declare CPU and memory limits. During an upgrade, replace the
 removed `buildkit.maximumConcurrentBuildsPerProject` value with
-`buildkit.maximumConcurrentBuildsPerOrganization`; the chart rejects the old key.
+`buildkit.maximumConcurrentBuildsPerOrganization`; the chart rejects the old key. A values file that pins the earlier
+build defaults — `resources.buildkit.limits.memory: 1536Mi` with `resources.buildRunner.limits.memory: 512Mi`, or
+`buildkit.gcKeepStorageMb` above 2147 — no longer covers the build workspace. Remove those pins to take the new
+defaults, or raise them to at least 4 GiB in total, before upgrading.
 
 The namespace quota does not return a claimed build to Compartment's fair queue. If the quota blocks its Pod, the
 Kubernetes Job continues consuming the configured build timeout while it waits for capacity. Sustained quota
