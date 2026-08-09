@@ -12,6 +12,7 @@ import {
   workerPersistProductJobResultRequestSchema,
   workerSubmitProductJobPathname,
   workerSubmitProductJobRequestSchema,
+  workerSubmitProductJobResponseSchema,
   type ProductJobIntent,
   type WorkerClaimProductJobRequest,
   type WorkerClaimProductJobResponse,
@@ -19,6 +20,7 @@ import {
   type WorkerPersistProductJobResultRequest,
   type WorkerPersistProductJobIntentResponse,
   type WorkerSubmitProductJobRequest,
+  type WorkerSubmitProductJobResponse,
 } from '@compartment/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiApp } from '../../app.types';
@@ -71,7 +73,11 @@ function registerFinalizeProductJobRoute(app: ApiApp): void {
 }
 
 function registerSubmitProductJobRoute(app: ApiApp): void {
-  app.post(workerSubmitProductJobPathname, handleSubmitProductJob);
+  app.post(
+    workerSubmitProductJobPathname,
+    { schema: { response: buildFastifyResponseSchemas({ 200: workerSubmitProductJobResponseSchema }) } },
+    handleSubmitProductJob,
+  );
 }
 
 async function handlePersistProductJobIntent(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
@@ -121,6 +127,6 @@ async function handleSubmitProductJob(request: FastifyRequest, reply: FastifyRep
     request.body,
     'invalid_product_job_submission',
   );
-  await submitProductJob(input);
-  return await reply.send(workerSubmitProductJobRequestSchema.parse(input));
+  const response: WorkerSubmitProductJobResponse = { recorded: await submitProductJob(input) };
+  return await reply.send(workerSubmitProductJobResponseSchema.parse(response));
 }
