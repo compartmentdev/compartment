@@ -160,6 +160,22 @@ admitted on a later claim. Once a carried resource is past its deadline and stil
 durably failed without being created. The Kubernetes Job is created only after that admission, so the
 mounted-claim identity fence stays the last check before creation.
 
+Exclusion runs both ways. A resource reconcile is refused while any product Job that holds that
+resource is in flight, so a managed update cannot scale a resource Deployment to zero under a Job that
+is dialing it, and the wait that reconcile serves is budgeted from the same set. A release counts as
+in flight from the moment the worker records that it is handing the manifest to the API server, which
+it does before the call so that dying mid-submission over-fences instead of leaving a live Pod
+invisible, until its Job is finalized. `status` cannot serve, because a row turns `running` when it is
+claimed, which is before the gate above decides, and a gate that declines leaves a claimed release
+that never reached the cluster. The record is written once; `updated_at` anchors the execution
+deadline, so re-stamping it on a re-claim would keep a stuck Job from ever reaching a terminal status.
+
+Age never fences a release: a queued release already yields to every pending reconcile, so ordering it
+by age would let one block the reconcile that readies it. A resource operation keeps the age
+tie-break, which is the matching half of its own claim rule, and keeps `status` as its in-flight test:
+a second operation against the same resource is already refused by that same rule, so the claimed-but-
+not-submitted window it admits cannot widen into the deadlock a release would hit.
+
 PVC creation is a separate explicit bootstrap operation. Stateful updates stop
 the old pod, prove absence, verify persisted claim UIDs, start the new manifest,
 and restore the saved executable manifest on failure. A live workload without

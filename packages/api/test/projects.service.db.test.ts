@@ -232,7 +232,7 @@ describe('projects service', (): void => {
   it('backfills exactly one durable quota row for an existing organization', async (): Promise<void> => {
     const client: PoolClient = await pool.connect();
     const migration: string = readFileSync(
-      join(process.cwd(), 'packages/api/drizzle/0007_fixed_lord_hawal.sql'),
+      join(process.cwd(), 'packages/api/drizzle/0008_talented_blur.sql'),
       'utf8',
     ).replaceAll('--> statement-breakpoint', '');
     try {

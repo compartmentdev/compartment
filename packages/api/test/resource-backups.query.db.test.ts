@@ -7,8 +7,6 @@ import { createDatabase, createDatabasePool, type Database } from '../src/db/cli
 import {
   environments,
   operations,
-  organizationQuotaReconciliation,
-  organizations,
   principals,
   projectResources,
   projectKubeProvisioning,
@@ -50,6 +48,7 @@ import { readResourceReconcileRunWaitState } from '../src/queries/resource-recon
 import { finalizeProjectResourceDeletion } from '../src/queries/resource-reconcile-deletion.query';
 import { cancelResourceReconcileRunsForProjectArchive } from '../src/queries/resource-reconcile-project.query';
 import { claimProductJob, persistProductJobFinalized } from '../src/queries/product-job-runs.query';
+import type { ClaimedProductJobQueryResult } from '../src/queries/product-job-runs.query.types';
 import { persistProductJobResult } from '../src/queries/product-job-result.query';
 import { persistProductJobIntent } from '../src/queries/product-job-intent.query';
 import { completeProjectProvisioning } from '../src/queries/project-provisioning-completion.query';
@@ -67,8 +66,10 @@ import { parseStoredResourceOperations } from '../src/services/resources.service
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
+import { seedOrganizationWithReadyQuota } from './organization-quota-test.fixture';
 
-const databaseUrl = deriveProcessScopedDatabaseUrl(readDatabaseTestMode().testDatabaseUrl, 'resource_backups_query_db');
+const { testDatabaseUrl } = readDatabaseTestMode();
+const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'resource_backups_query_db');
 const apiConfig: ApiConfig = {
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
@@ -105,7 +106,8 @@ const apiConfig: ApiConfig = {
 const pool: Pool = createDatabasePool(databaseUrl);
 const resourceOperationPool: Pool = new Pool({ connectionString: databaseUrl, max: 2 });
 const db: Database = createDatabase(pool, resourceOperationPool);
-const unclaimedProductJob = { intent: null, persistedResult: null, resourceReadiness: [] };
+
+const unclaimedJob: ClaimedProductJobQueryResult = { intent: null, persistedResult: null, resourceReadiness: [] };
 
 describe('resource backup queries', (): void => {
   useApiRuntimeDatabaseTestHarness({
@@ -838,7 +840,7 @@ describe('resource backup queries', (): void => {
       },
     });
 
-    await expect(claimProductJob('resource-operation')).resolves.toEqual(unclaimedProductJob);
+    await expect(claimProductJob('resource-operation')).resolves.toEqual(unclaimedJob);
     await expect(db.select().from(productJobRuns)).resolves.toHaveLength(1);
   });
 
@@ -873,7 +875,7 @@ describe('resource backup queries', (): void => {
     });
 
     await expect(claimResourceReconcileRun()).resolves.toMatchObject({ operationId: 'rr_before_product_job' });
-    await expect(claimProductJob('resource-operation')).resolves.toEqual(unclaimedProductJob);
+    await expect(claimProductJob('resource-operation')).resolves.toEqual(unclaimedJob);
   });
 
   it('keeps a running resource operation ahead of later reconcile work', async (): Promise<void> => {
@@ -1440,8 +1442,7 @@ function resourceOperationProductJobIntent(operationId: string): ProductJobInten
 
 async function seedResourceBackupScope(): Promise<void> {
   const organizationId: string = 'org_resource_backups';
-  await db.insert(organizations).values({ id: organizationId, name: 'Acme Dev', slug: 'acme-dev' });
-  await db.insert(organizationQuotaReconciliation).values({ organizationId, state: 'succeeded' });
+  await seedOrganizationWithReadyQuota(db, organizationId, 'Acme Dev', 'acme-dev');
   await db.insert(principals).values({
     email: 'admin@example.com',
     id: 'prn_resource_backups',

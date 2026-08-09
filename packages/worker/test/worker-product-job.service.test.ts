@@ -3,6 +3,7 @@ import type {
   WorkerFinalizeProductJobRequest,
   WorkerPersistProductJobIntentResponse,
   WorkerPersistProductJobResultRequest,
+  WorkerSubmitProductJobRequest,
 } from '@compartment/contracts';
 import type {
   KubeJobResult,
@@ -29,6 +30,9 @@ interface ProductJobSdkMocks {
       result: WorkerPersistProductJobResultRequest,
     ) => Promise<WorkerPersistProductJobResultRequest>
   >;
+  submit: Mock<
+    (request: CompartmentRequester, input: WorkerSubmitProductJobRequest) => Promise<WorkerSubmitProductJobRequest>
+  >;
 }
 
 async function executeProductJob(
@@ -41,13 +45,19 @@ async function executeProductJob(
 }
 
 const mocks: ProductJobSdkMocks = vi.hoisted(
-  (): ProductJobSdkMocks => ({ finalize: vi.fn(), persistIntent: vi.fn(), persistResult: vi.fn() }),
+  (): ProductJobSdkMocks => ({
+    finalize: vi.fn(),
+    persistIntent: vi.fn(),
+    persistResult: vi.fn(),
+    submit: vi.fn(),
+  }),
 );
 
 vi.mock('@compartment/sdk', (): object => ({
   finalizeProductJob: mocks.finalize,
   persistProductJobIntent: mocks.persistIntent,
   persistProductJobResult: mocks.persistResult,
+  submitProductJob: mocks.submit,
 }));
 
 describe('executeProductJob', (): void => {
@@ -68,6 +78,53 @@ describe('executeProductJob', (): void => {
         result: WorkerPersistProductJobResultRequest,
       ): Promise<WorkerPersistProductJobResultRequest> => await Promise.resolve(result),
     );
+    mocks.submit.mockImplementation(
+      async (
+        _request: CompartmentRequester,
+        input: WorkerSubmitProductJobRequest,
+      ): Promise<WorkerSubmitProductJobRequest> => await Promise.resolve(input),
+    );
+  });
+
+  it('records the Kubernetes submission before the manifest reaches the API server', async (): Promise<void> => {
+    const submissionOrder: string[] = [];
+    const runtime: KubeRuntime & { runJob: Mock } = runtimeWithResult(successResult());
+    mocks.submit.mockImplementation(
+      async (
+        _request: CompartmentRequester,
+        input: WorkerSubmitProductJobRequest,
+      ): Promise<WorkerSubmitProductJobRequest> => {
+        submissionOrder.push('marker');
+        return await Promise.resolve(input);
+      },
+    );
+    runtime.runJob.mockImplementation(async (): Promise<KubeJobResult> => {
+      submissionOrder.push('job');
+      return await Promise.resolve(successResult());
+    });
+
+    await executeProductJob(requester(), runtime, releaseIntent());
+
+    expect(submissionOrder).toEqual(['marker', 'job']);
+    expect(mocks.submit.mock.calls[0]?.[1]).toEqual({ identityId: 'dep-01jz', jobClass: 'release' });
+  });
+
+  it('leaves the Kubernetes submission unrecorded when the claim fence refuses the Job', async (): Promise<void> => {
+    const runtime: KubeRuntime & { runJob: Mock } = runtimeWithResult(successResult());
+    runtime.read = vi.fn(
+      async (): Promise<KubeObservedManifest> =>
+        await Promise.resolve({
+          apiVersion: 'v1',
+          kind: 'PersistentVolumeClaim',
+          metadata: { name: 'backup-artifacts', uid: 'replacement-uid' },
+          status: { phase: 'Bound' },
+        }),
+    );
+
+    await expect(executeProductJob(requester(), runtime, resourceOperationIntent())).rejects.toThrow();
+
+    expect(mocks.submit.mock.calls).toHaveLength(0);
+    expect(runtime.runJob.mock.calls).toHaveLength(0);
   });
 
   it('persists intent before Kubernetes creation and stops when intent persistence fails', async (): Promise<void> => {

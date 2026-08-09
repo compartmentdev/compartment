@@ -10,12 +10,15 @@ import {
   workerPersistProductJobIntentResponseSchema,
   workerPersistProductJobResultPathname,
   workerPersistProductJobResultRequestSchema,
+  workerSubmitProductJobPathname,
+  workerSubmitProductJobRequestSchema,
   type ProductJobIntent,
   type WorkerClaimProductJobRequest,
   type WorkerClaimProductJobResponse,
   type WorkerFinalizeProductJobRequest,
   type WorkerPersistProductJobResultRequest,
   type WorkerPersistProductJobIntentResponse,
+  type WorkerSubmitProductJobRequest,
 } from '@compartment/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiApp } from '../../app.types';
@@ -25,6 +28,7 @@ import {
   completeProductJob,
   createProductJobIntent,
   finalizeProductJob,
+  submitProductJob,
 } from '../../services/product-job.service';
 import type { ClaimedProductJobResult } from '../../services/product-job.service.types';
 
@@ -35,6 +39,7 @@ export function registerProductJobRoutes(app: ApiApp): void {
   registerClaimProductJobRoute(app);
   registerPersistProductJobResultRoute(app);
   registerFinalizeProductJobRoute(app);
+  registerSubmitProductJobRoute(app);
 }
 
 function registerPersistProductJobIntentRoute(app: ApiApp): void {
@@ -63,6 +68,10 @@ function registerPersistProductJobResultRoute(app: ApiApp): void {
 
 function registerFinalizeProductJobRoute(app: ApiApp): void {
   app.post(workerFinalizeProductJobPathname, handleFinalizeProductJob);
+}
+
+function registerSubmitProductJobRoute(app: ApiApp): void {
+  app.post(workerSubmitProductJobPathname, handleSubmitProductJob);
 }
 
 async function handlePersistProductJobIntent(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
@@ -104,4 +113,14 @@ async function handleFinalizeProductJob(request: FastifyRequest, reply: FastifyR
   );
   await finalizeProductJob(input);
   return await reply.send(workerFinalizeProductJobRequestSchema.parse(input));
+}
+
+async function handleSubmitProductJob(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
+  const input: WorkerSubmitProductJobRequest = parseRequestValue(
+    workerSubmitProductJobRequestSchema,
+    request.body,
+    'invalid_product_job_submission',
+  );
+  await submitProductJob(input);
+  return await reply.send(workerSubmitProductJobRequestSchema.parse(input));
 }

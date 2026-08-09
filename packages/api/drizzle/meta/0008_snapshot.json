@@ -1,6 +1,6 @@
 {
-  "id": "6847b71d-e899-4ff8-9a10-d3d41448df19",
-  "prevId": "21bf4005-9354-4432-9bbe-a82ddcc45219",
+  "id": "168b7a72-dd20-4a39-95d3-48cce43eac1f",
+  "prevId": "6847b71d-e899-4ff8-9a10-d3d41448df19",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4808,6 +4808,103 @@
           "value": "num_nonnulls(\"workload_usage_hourly\".\"service_id\", \"workload_usage_hourly\".\"resource_id\") = 1"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.organization_quota_reconciliation": {
+      "name": "organization_quota_reconciliation",
+      "schema": "",
+      "columns": {
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "lease_id": {
+          "name": "lease_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_expires_at": {
+          "name": "lease_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_message": {
+          "name": "failure_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "organization_quota_reconciliation_state_lease_idx": {
+          "name": "organization_quota_reconciliation_state_lease_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lease_expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "organization_quota_reconciliation_organization_id_organizations_id_fk": {
+          "name": "organization_quota_reconciliation_organization_id_organizations_id_fk",
+          "tableFrom": "organization_quota_reconciliation",
+          "tableTo": "organizations",
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.edge_traffic_usage_receipts": {

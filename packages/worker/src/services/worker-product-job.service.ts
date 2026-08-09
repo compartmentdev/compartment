@@ -16,6 +16,7 @@ import {
   finalizeProductJob,
   persistProductJobIntent,
   persistProductJobResult,
+  submitProductJob,
   type CompartmentRequester,
 } from '@compartment/sdk';
 import { fenceProductJobClaims, readProductJobIdentity } from './worker-product-job-fencing.service';
@@ -92,6 +93,9 @@ async function runFencedProductJob(
   scheduling?: KubeWorkloadScheduling,
 ): Promise<KubeJobResult> {
   await fenceProductJobClaims(request, runtime, intent);
+  // Recorded before the manifest goes out, so a worker that dies mid-submission leaves the Job fenced rather than
+  // leaving a live Pod invisible to the resource reconcile lane.
+  await submitProductJob(request, { identityId, jobClass: intent.jobClass });
   return await runtime.runJob(tenantJobSpec(buildKubeJobSpec(intent, identityId, tenantSecretsKek), scheduling));
 }
 

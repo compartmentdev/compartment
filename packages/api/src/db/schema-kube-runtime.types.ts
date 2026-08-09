@@ -63,6 +63,7 @@ interface ProductJobRunsColumnBuilders {
   logs: OptionalTextBuilder<'logs'>;
   completedAt: OptionalTimestampBuilder<'completed_at'>;
   startedAt: OptionalTimestampBuilder<'started_at'>;
+  kubeJobSubmittedAt: OptionalTimestampBuilder<'kube_job_submitted_at'>;
   finalizedAt: OptionalTimestampBuilder<'finalized_at'>;
   createdAt: DefaultTimestampBuilder<'created_at'>;
   updatedAt: DefaultTimestampBuilder<'updated_at'>;
