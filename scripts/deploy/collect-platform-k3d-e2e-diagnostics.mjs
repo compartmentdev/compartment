@@ -89,6 +89,25 @@ function collectPlatformK3dDiagnostics(outputDirectory) {
     '-o',
     'wide',
   ]);
+  // Enforcement failures read as ordinary connection errors, so the applied policy specs and the Pod labels the
+  // peers select on are the only way to tell a denied connection from an unready one.
+  capture(outputDirectory, 'network-policies', 'kubectl', [
+    '--context',
+    context,
+    'get',
+    'networkpolicies',
+    '--all-namespaces',
+    '-o',
+    'yaml',
+  ]);
+  capture(outputDirectory, 'pod-labels', 'kubectl', [
+    '--context',
+    context,
+    'get',
+    'pods',
+    '--all-namespaces',
+    '--show-labels',
+  ]);
   capture(outputDirectory, 'helm-status', 'helm', [
     'status',
     'compartment',
