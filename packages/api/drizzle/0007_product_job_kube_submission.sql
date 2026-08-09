@@ -1,0 +1,1 @@
+ALTER TABLE "product_job_runs" ADD COLUMN "kube_job_submitted_at" timestamp with time zone;

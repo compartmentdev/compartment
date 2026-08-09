@@ -14,6 +14,7 @@ import {
   resourceDeletionBindingOutcomeTargetType,
   resourceDeletionBindingTargetSeparator,
 } from './resource-reconcile-deletion.query';
+import { releaseProjectResourceCondition, releaseResourceBindingCondition } from './product-job-release-bindings.query';
 import { lockResourceRuntimeClaims } from './resource-runtime-claim-lock.query';
 import { lockProjectResourceIdentity } from './resources.query';
 import type {
@@ -198,17 +199,6 @@ export function releaseResourceReadinessFence(): SQL {
     where ${deployments.id} = ${productJobRuns.identityId}
       and ${blockingReleaseResourceCondition()}
   )`;
-}
-
-function releaseResourceBindingCondition(): SQL {
-  return sql`${environmentResourceOutputVariableBindings.environmentId} = ${deployments.environmentId}
-    and ${environmentResourceOutputVariableBindings.targetServiceName} = ${projectServices.name}
-    and ${environmentResourceOutputVariableBindings.source} = 'descriptor'`;
-}
-
-function releaseProjectResourceCondition(): SQL {
-  return sql`${projectResources.environmentId} = ${deployments.environmentId}
-    and ${projectResources.name} = ${environmentResourceOutputVariableBindings.resourceName}`;
 }
 
 function blockingReleaseResourceCondition(): SQL {
