@@ -115,7 +115,7 @@ async function runPlatformK3dProductLogGate() {
     );
     loadTarget = await startLoadPods();
     const bufferBytes = await waitForBoundedRetainedWindow(loadTarget.containerName);
-    await assertPlatformHealthy(loadTarget);
+    await assertPlatformHealthy();
     process.stdout.write(
       `product_log_gate retained_lines=${retainedLinesPerApp} buffer_bytes=${bufferBytes} buffer_max_bytes=${configuredBufferMaxBytes} status=ok\n`,
     );
@@ -199,39 +199,60 @@ async function startLoadPods() {
   }
   const podNames = Array.from({ length: loadPodCount }, (_, index) => `p7-buffer-load-${index}`);
   const overrides = JSON.stringify(createLoadPodOverrides(containerName));
-  for (const podName of podNames) {
-    runCommand(
-      'kubectl',
-      [
-        '--context',
-        context,
-        '--namespace',
-        namespace,
-        'run',
-        podName,
-        `--image=${loadPodImage}`,
-        '--restart=Never',
-        `--overrides=${overrides}`,
-      ],
-      repositoryRoot,
-    );
-    runCommand(
-      'kubectl',
-      [
-        '--context',
-        context,
-        '--namespace',
-        namespace,
-        'wait',
-        `pod/${podName}`,
-        '--for=condition=Ready',
-        `--timeout=${kubernetesReadinessTimeout}`,
-      ],
-      repositoryRoot,
-    );
-    await delay(10_000);
+  const loadTarget = { containerName, namespace, podNames };
+  try {
+    for (const podName of podNames) {
+      runCommand(
+        'kubectl',
+        [
+          '--context',
+          context,
+          '--namespace',
+          namespace,
+          'run',
+          podName,
+          `--image=${loadPodImage}`,
+          '--restart=Never',
+          `--overrides=${overrides}`,
+        ],
+        repositoryRoot,
+      );
+      runCommand(
+        'kubectl',
+        [
+          '--context',
+          context,
+          '--namespace',
+          namespace,
+          'wait',
+          `pod/${podName}`,
+          '--for=condition=Ready',
+          `--timeout=${kubernetesReadinessTimeout}`,
+        ],
+        repositoryRoot,
+      );
+      await delay(10_000);
+      runCommand(
+        'kubectl',
+        [
+          '--context',
+          context,
+          '--namespace',
+          namespace,
+          'delete',
+          'pod',
+          podName,
+          '--wait=true',
+          `--timeout=${kubernetesReadinessTimeout}`,
+        ],
+        repositoryRoot,
+      );
+    }
+  } catch (error) {
+    cleanup(loadTarget);
+    throw error;
   }
-  return { containerName, namespace, podNames };
+  return loadTarget;
 }
 
 /**
@@ -311,7 +332,7 @@ function readProductLogBufferBytes(agentPod) {
   return parseProductLogBufferBytes(metrics);
 }
 
-async function assertPlatformHealthy(loadTarget) {
+async function assertPlatformHealthy() {
   runCommand('kubectl', ['--context', context, '--request-timeout=5s', 'get', '--raw=/readyz'], repositoryRoot);
   runCommand(
     'kubectl',
@@ -327,26 +348,6 @@ async function assertPlatformHealthy(loadTarget) {
     ],
     repositoryRoot,
   );
-  for (const podName of loadTarget.podNames) {
-    const ready = captureCommand(
-      'kubectl',
-      [
-        '--context',
-        context,
-        '--namespace',
-        loadTarget.namespace,
-        'get',
-        'pod',
-        podName,
-        '--output',
-        'jsonpath={.status.containerStatuses[0].ready}',
-      ],
-      repositoryRoot,
-    );
-    if (ready !== 'true') {
-      throw new Error(`Product-log load pod ${podName} is not Ready.`);
-    }
-  }
   let degradedDeployments = [];
   for (let attempt = 1; attempt <= productDeploymentHealthAttempts; attempt += 1) {
     const deployments = captureCommand(

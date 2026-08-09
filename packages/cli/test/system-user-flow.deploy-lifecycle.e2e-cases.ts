@@ -614,10 +614,8 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
       await waitForRunningResource(admin, app.projectName, app.resourceName);
       let restoreResourceReleaseDescriptor = async (): Promise<void> => await Promise.resolve();
       let resourceReleaseDeployError: Error | undefined;
-      let productionEnvironmentStopped = false;
       let resourceReleaseDeploySucceeded = false;
       try {
-        productionEnvironmentStopped = true;
         const stoppedProject: ProjectLifecycleResponse = await admin.runJson(
           `project stop --project ${app.projectName} --env ${app.environmentName}`,
           projectLifecycleResponseSchema,
@@ -647,7 +645,7 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
       } catch (error) {
         descriptorRestoreError = error instanceof Error ? error : new Error(String(error));
       }
-      if (productionEnvironmentStopped && !resourceReleaseDeploySucceeded) {
+      if (!resourceReleaseDeploySucceeded) {
         try {
           const restartedProject: ProjectLifecycleResponse = await admin.runJson(
             `project start --project ${app.projectName} --env ${app.environmentName}`,

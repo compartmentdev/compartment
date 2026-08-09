@@ -186,9 +186,7 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
 
       let backupId: string | undefined;
       let retentionError: Error | undefined;
-      let stopAttempted = false;
       try {
-        stopAttempted = true;
         const stoppedProject: ProjectLifecycleResponse = await admin.runJson(
           `project stop --project ${app.projectName}`,
           projectLifecycleResponseSchema,
@@ -200,18 +198,16 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
       }
 
       let restartError: Error | undefined;
-      if (stopAttempted) {
-        try {
-          const startedProject: ProjectLifecycleResponse = await admin.runJson(
-            `project start --project ${app.projectName}`,
-            projectLifecycleResponseSchema,
-          );
-          expect(['updating', 'running']).toContain(startedProject.state);
-          await expectAppEnvMessage(routeUrl, adminAppSessionCookie, appMessage);
-          await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue, true);
-        } catch (error) {
-          restartError = error instanceof Error ? error : new Error(String(error));
-        }
+      try {
+        const startedProject: ProjectLifecycleResponse = await admin.runJson(
+          `project start --project ${app.projectName}`,
+          projectLifecycleResponseSchema,
+        );
+        expect(['updating', 'running']).toContain(startedProject.state);
+        await expectAppEnvMessage(routeUrl, adminAppSessionCookie, appMessage);
+        await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue, true);
+      } catch (error) {
+        restartError = error instanceof Error ? error : new Error(String(error));
       }
       if (retentionError !== undefined) {
         throw retentionError;
@@ -537,9 +533,7 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
       expect(deployerAssignmentPayload.assignment.roleId).toBe(deployerRolePayload.role.id);
 
       let viewerStagingDeployError: Error | undefined;
-      let stagingStopAttempted = false;
       try {
-        stagingStopAttempted = true;
         const stoppedStagingProject: ProjectLifecycleResponse = await admin.runJson(
           `project stop --project ${app.projectName} --env staging`,
           projectLifecycleResponseSchema,
@@ -555,7 +549,7 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
       } catch (error) {
         viewerStagingDeployError = error instanceof Error ? error : new Error(String(error));
       }
-      if (viewerStagingDeployError !== undefined && stagingStopAttempted) {
+      if (viewerStagingDeployError !== undefined) {
         try {
           const restartedStagingProject: ProjectLifecycleResponse = await admin.runJson(
             `project start --project ${app.projectName} --env staging`,
