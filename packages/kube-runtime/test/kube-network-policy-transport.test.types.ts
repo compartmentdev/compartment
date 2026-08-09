@@ -1,6 +1,26 @@
+export interface SerializedSelectorRequirement {
+  key: string;
+  operator: string;
+}
+
+export interface SerializedSelector {
+  matchExpressions?: SerializedSelectorRequirement[] | undefined;
+  matchLabels?: Record<string, string> | undefined;
+}
+
+export interface SerializedPeer {
+  namespaceSelector?: SerializedSelector | undefined;
+  podSelector?: SerializedSelector | undefined;
+}
+
+export interface SerializedPort {
+  port: number;
+  protocol: string;
+}
+
 export interface SerializedIngressRule {
-  from?: object[] | undefined;
-  ports?: object[] | undefined;
+  from?: SerializedPeer[] | undefined;
+  ports?: SerializedPort[] | undefined;
 }
 
 export interface SerializedNetworkPolicyMetadata {
