@@ -670,10 +670,14 @@ async function expectEphemeralGVisorBuildPod(deployment: Promise<SelfHostedDeplo
   });
   expectSuccessfulCommand(version, 'kubectl exec dmesg in ephemeral BuildKit sidecar');
   expect(version.stdout.toLowerCase()).toContain('gvisor');
-  await expectMemoryBackedBuildWorkspace(seed.kubeContext, buildNamespace, podName);
+  try {
+    await expectMemoryBackedBuildWorkspace(seed.kubeContext, buildNamespace, podName);
+  } finally {
+    await deployment.catch((): undefined => undefined);
+    await waitForNoBuildPods(seed.kubeContext, buildNamespace);
+    await expectNoLongLivedBuildKitDeployment(seed.kubeContext, buildNamespace);
+  }
   await deployment;
-  await waitForNoBuildPods(seed.kubeContext, buildNamespace);
-  await expectNoLongLivedBuildKitDeployment(seed.kubeContext, buildNamespace);
 }
 
 /**

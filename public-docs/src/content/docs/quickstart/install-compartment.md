@@ -130,18 +130,18 @@ resources:
 
 Builds run inside gVisor, which serves the build workspace from sandbox memory. A build Pod's memory limit therefore
 covers its whole scratch space, not just the BuildKit and runner processes: the default 4 GiB is a 3 GiB workspace plus
-1 GiB of process memory. If the two memory limits no longer add up to that total, the build fails immediately with a
+1 GiB of process memory. If the two memory limits together fall below that total, the build fails immediately with a
 message naming both values instead of being killed later by the kernel. `buildkit.gcKeepStorageMb` reserves BuildKit
-cache in the same memory and cannot exceed 2147, the size of the memory-backed BuildKit data volume. Raise both memory
-limits together for source builds that pull large base images or install large system packages, and size the host for
-one build Pod per concurrent build you allow.
+cache in the same memory and is checked separately: it cannot exceed 2147, the size of the memory-backed BuildKit data
+volume. Raise both memory limits together for source builds that pull large base images or install large system
+packages, and size the host for one build Pod per concurrent build you allow.
 
 The namespace quota requires every build container to declare CPU and memory limits. During an upgrade, replace the
 removed `buildkit.maximumConcurrentBuildsPerProject` value with
 `buildkit.maximumConcurrentBuildsPerOrganization`; the chart rejects the old key. A values file that pins the earlier
-build defaults — `resources.buildkit.limits.memory: 1536Mi` with `resources.buildRunner.limits.memory: 512Mi`, or
-`buildkit.gcKeepStorageMb` above 2147 — no longer covers the build workspace. Remove those pins to take the new
-defaults, or raise them to at least 4 GiB in total, before upgrading.
+build defaults is incompatible with the build workspace. Remove those pins to take the new defaults before upgrading.
+To keep the overrides instead, raise `resources.buildkit.limits.memory` and `resources.buildRunner.limits.memory` to at
+least 4 GiB in total, and separately lower `buildkit.gcKeepStorageMb` to 2147 or less.
 
 The namespace quota does not return a claimed build to Compartment's fair queue. If the quota blocks its Pod, the
 Kubernetes Job continues consuming the configured build timeout while it waits for capacity. Sustained quota

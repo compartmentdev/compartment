@@ -30,6 +30,11 @@ describe('Kubernetes resource quantities', (): void => {
     expect(parseKubernetesQuantity('1e3', 'memory')).toBe(1_000);
   });
 
+  it('accepts the leading and trailing decimal forms the chart values schema admits', (): void => {
+    expect(parseKubernetesQuantity('.5Gi', 'memory')).toBe(536_870_912);
+    expect(parseKubernetesQuantity('1.Gi', 'memory')).toBe(1_073_741_824);
+  });
+
   it('rejects unknown quantity suffixes', (): void => {
     expect((): number => parseKubernetesQuantity('2Zi', 'memory')).toThrow(
       'Unsupported Kubernetes memory quantity suffix: Zi.',
