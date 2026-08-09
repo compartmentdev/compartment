@@ -14,15 +14,6 @@ const networkPolicyEnvironmentSchema: z.ZodType<ProjectNetworkPolicyEnvironment>
   COMPARTMENT_KUBE_SERVICE_CIDR: z.string().min(1),
 });
 
-export async function applyResourceNetworkPolicy(
-  runtime: KubeRuntime,
-  projectId: string,
-  ports: ProjectNetworkPolicyPorts,
-  resourcePorts: number[],
-): Promise<void> {
-  await applyProjectNetworkPolicies(runtime, projectId, includeResourceNetworkPolicyPorts(ports, resourcePorts));
-}
-
 export async function applyProjectNetworkPolicies(
   runtime: KubeRuntime,
   projectId: string,
@@ -42,22 +33,4 @@ export function projectProjectNetworkPolicyManifests(
     projectId,
     projectNetworkPolicy(environment, ports),
   );
-}
-
-export function includeApplicationNetworkPolicyPorts(
-  ports: ProjectNetworkPolicyPorts,
-  applicationPorts: number[],
-): ProjectNetworkPolicyPorts {
-  return { ...ports, applicationPorts: unionPorts(ports.applicationPorts, applicationPorts) };
-}
-
-function includeResourceNetworkPolicyPorts(
-  ports: ProjectNetworkPolicyPorts,
-  resourcePorts: number[],
-): ProjectNetworkPolicyPorts {
-  return { ...ports, resourcePorts: unionPorts(ports.resourcePorts, resourcePorts) };
-}
-
-function unionPorts(current: number[], required: number[]): number[] {
-  return [...new Set([...current, ...required])].sort((left: number, right: number): number => left - right);
 }

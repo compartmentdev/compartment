@@ -55,7 +55,6 @@ interface TestKubeObservationHealth {
 interface ResourceSdkMocks {
   acknowledge: Mock;
   applyNetworkPolicy: Mock;
-  applyResourceNetworkPolicy: Mock;
 }
 
 async function executeResourceReconcile(
@@ -71,12 +70,10 @@ const mocks: ResourceSdkMocks = vi.hoisted(
   (): ResourceSdkMocks => ({
     acknowledge: vi.fn(),
     applyNetworkPolicy: vi.fn(),
-    applyResourceNetworkPolicy: vi.fn(),
   }),
 );
 vi.mock('../src/services/worker-network-policy.service', (): object => ({
   applyProjectNetworkPolicies: mocks.applyNetworkPolicy,
-  applyResourceNetworkPolicy: mocks.applyResourceNetworkPolicy,
 }));
 vi.mock(
   '@compartment/sdk',
@@ -91,8 +88,6 @@ describe('worker resource reconcile lifecycle', (): void => {
     mocks.acknowledge.mockReset();
     mocks.applyNetworkPolicy.mockReset();
     mocks.applyNetworkPolicy.mockResolvedValue(undefined);
-    mocks.applyResourceNetworkPolicy.mockReset();
-    mocks.applyResourceNetworkPolicy.mockResolvedValue(undefined);
   });
 
   it('rejects substituted PVC UID before mutating a Deployment', async (): Promise<void> => {
@@ -166,22 +161,18 @@ describe('worker resource reconcile lifecycle', (): void => {
       }
       return await Promise.resolve(applied);
     });
-    const staleClaim: WorkerClaimResourceReconcileResponse = {
+    const claimed: WorkerClaimResourceReconcileResponse = {
       ...claim(null),
-      networkPolicy: { applicationPorts: [8080], resourcePorts: [] },
+      networkPolicy: { applicationPorts: [8080], resourcePorts: [6379] },
     };
 
-    await executeResourceReconcile(requester(), runtime(apply, observation), staleClaim);
+    await executeResourceReconcile(requester(), runtime(apply, observation), claimed);
 
-    expect(mocks.applyResourceNetworkPolicy).toHaveBeenCalledWith(
-      expect.anything(),
-      'project',
-      { applicationPorts: [8080], resourcePorts: [] },
-      [5432],
-    );
-    expect(mocks.applyResourceNetworkPolicy.mock.invocationCallOrder[0]).toBeLessThan(
-      apply.mock.invocationCallOrder[0]!,
-    );
+    expect(mocks.applyNetworkPolicy).toHaveBeenCalledWith(expect.anything(), 'project', {
+      applicationPorts: [8080],
+      resourcePorts: [6379],
+    });
+    expect(mocks.applyNetworkPolicy.mock.invocationCallOrder[0]).toBeLessThan(apply.mock.invocationCallOrder[0]!);
     expect(mocks.acknowledge).toHaveBeenLastCalledWith(
       expect.anything(),
       expect.objectContaining({ status: 'succeeded' }),
@@ -557,8 +548,18 @@ describe('worker resource reconcile lifecycle', (): void => {
       await Promise.resolve();
     });
 
-    await executeResourceReconcile(requester(), runtime(apply, observation, undefined, remove), deleteClaim());
+    const deleted: WorkerClaimResourceReconcileResponse = {
+      ...deleteClaim(),
+      networkPolicy: { applicationPorts: [8080], resourcePorts: [] },
+    };
 
+    await executeResourceReconcile(requester(), runtime(apply, observation, undefined, remove), deleted);
+
+    expect(mocks.applyNetworkPolicy).toHaveBeenCalledExactlyOnceWith(expect.anything(), 'project', {
+      applicationPorts: [8080],
+      resourcePorts: [],
+    });
+    expect(mocks.applyNetworkPolicy.mock.invocationCallOrder[0]).toBeGreaterThan(remove.mock.invocationCallOrder[0]!);
     expect(remove).toHaveBeenCalledTimes(2);
     expect(removed[0]?.map((object: KubeManifest): string => object.kind)).toEqual(['Secret', 'Deployment', 'Service']);
     expect(removed[1]).toHaveLength(2);

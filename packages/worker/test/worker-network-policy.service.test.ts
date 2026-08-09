@@ -1,6 +1,7 @@
 import {
   defaultApplicationPorts,
   type DeploymentReconcileProjection,
+  type DeploymentReconcileTarget,
   type ProjectNetworkPolicyPorts,
 } from '@compartment/contracts';
 import {
@@ -10,9 +11,9 @@ import {
   type KubeRuntime,
 } from '@compartment/kube-runtime';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { applyApplication } from '../src/services/worker-deployment-application.service';
 import {
-  applyResourceNetworkPolicy,
-  includeApplicationNetworkPolicyPorts,
+  applyProjectNetworkPolicies,
   projectProjectNetworkPolicyManifests,
 } from '../src/services/worker-network-policy.service';
 import { decryptTenantProjection } from '../src/tenant-workload-projections';
@@ -74,7 +75,7 @@ describe('worker NetworkPolicy desired state', (): void => {
     process.env.COMPARTMENT_KUBE_SERVICE_CIDR = ['10', '43', '0', '0/16'].join('.');
   });
 
-  it('projects the current deployment port even when the aggregate payload is stale', (): void => {
+  it('projects the claimed application port set', (): void => {
     expect(readPolicyPorts(applicationPolicyManifests([8080]), 'application-ingress', 'ingress')).toEqual([8080]);
   });
 
@@ -115,18 +116,34 @@ describe('worker NetworkPolicy desired state', (): void => {
   });
 
   it('applies the current resource port for both ingress and application egress', async (): Promise<void> => {
-    const apply: Mock = vi.fn(
-      async (bundle: ApplyBundle): Promise<KubeManifest[]> => await Promise.resolve(bundle.objects),
-    );
-    const runtime: KubeRuntime = { apply } as never;
+    const { apply, runtime }: { apply: Mock; runtime: KubeRuntime } = identityApplyRuntime();
 
-    await applyResourceNetworkPolicy(runtime, 'project', { applicationPorts: [8080], resourcePorts: [] }, [5432]);
+    await applyProjectNetworkPolicies(runtime, 'project', { applicationPorts: [8080], resourcePorts: [5432] });
 
-    const bundle: ApplyBundle = apply.mock.calls[0]?.[0] as ApplyBundle;
-    const manifests: KubeManifest[] = bundle.objects;
+    const manifests: KubeManifest[] = appliedManifests(apply, 0);
 
     expect(readPolicyPorts(manifests, 'resource-ingress', 'ingress')).toEqual([5432]);
     expect(readPolicyPorts(manifests, 'application-egress', 'egress')).toContain(5432);
+  });
+
+  it('keeps the projected spec identical across interleaved resource and deployment applies', async (): Promise<void> => {
+    const ports: ProjectNetworkPolicyPorts = { applicationPorts: [8080], resourcePorts: [5432] };
+    const { apply: resourceApply, runtime: resourceRuntime }: { apply: Mock; runtime: KubeRuntime } =
+      identityApplyRuntime();
+    const { apply: deploymentApply, runtime: deploymentRuntime }: { apply: Mock; runtime: KubeRuntime } =
+      identityApplyRuntime();
+
+    await applyProjectNetworkPolicies(resourceRuntime, 'project', ports);
+    await applyApplication(deploymentRuntime, deploymentTarget(ports), testTenantSecretsKek, 600_000, undefined);
+    await applyProjectNetworkPolicies(resourceRuntime, 'project', ports);
+
+    const resourcePolicies: KubeManifest[] = policyManifests(appliedManifests(resourceApply, 0));
+    const deploymentPolicies: KubeManifest[] = policyManifests(appliedManifests(deploymentApply, 0));
+
+    expect(readPolicyPorts(deploymentPolicies, 'resource-ingress', 'ingress')).toEqual([5432]);
+    expect(readPolicyPorts(deploymentPolicies, 'application-ingress', 'ingress')).toEqual([8080]);
+    expect(deploymentPolicies).toEqual(resourcePolicies);
+    expect(policyManifests(appliedManifests(resourceApply, 1))).toEqual(resourcePolicies);
   });
 });
 
@@ -167,11 +184,33 @@ function requiredManifest(manifests: KubeManifest[], kind: string): KubeManifest
 }
 
 function applicationPolicyManifests(applicationPorts: number[]): KubeManifest[] {
-  const ports: ProjectNetworkPolicyPorts = includeApplicationNetworkPolicyPorts(
-    { applicationPorts: [], resourcePorts: [] },
-    applicationPorts,
+  return projectProjectNetworkPolicyManifests('project', { applicationPorts, resourcePorts: [] });
+}
+
+function identityApplyRuntime(): { apply: Mock; runtime: KubeRuntime } {
+  const apply: Mock = vi.fn(
+    async (bundle: ApplyBundle): Promise<KubeManifest[]> => await Promise.resolve(bundle.objects),
   );
-  return projectProjectNetworkPolicyManifests('project', ports);
+  return { apply, runtime: { apply, read: async (): Promise<null> => await Promise.resolve(null) } as never };
+}
+
+function appliedManifests(apply: Mock, call: number): KubeManifest[] {
+  return (apply.mock.calls[call]?.[0] as ApplyBundle).objects;
+}
+
+function policyManifests(manifests: KubeManifest[]): KubeManifest[] {
+  return manifests.filter((manifest: KubeManifest): boolean => manifest.kind === 'NetworkPolicy');
+}
+
+function deploymentTarget(networkPolicy: ProjectNetworkPolicyPorts): DeploymentReconcileTarget {
+  return {
+    active: null,
+    candidate: defaultApplicationProjection(),
+    networkPolicy,
+    revision: 1,
+    rolloutStartedAt: new Date(0).toISOString(),
+    state: 'desired',
+  };
 }
 
 function requiredPolicySpec(manifests: KubeManifest[], policyNameSuffix: string): NetworkPolicySpec {

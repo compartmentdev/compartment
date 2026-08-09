@@ -26,7 +26,7 @@ import type {
   CompleteResourceReconcileClaim,
   ManagedResourceUpdatePlan,
 } from './worker-resource-reconcile.service.types';
-import { applyProjectNetworkPolicies, applyResourceNetworkPolicy } from './worker-network-policy.service';
+import { applyProjectNetworkPolicies } from './worker-network-policy.service';
 import { decryptTenantProjection } from '../tenant-workload-projections';
 import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
 
@@ -42,7 +42,7 @@ export async function executeResourceReconcile(
   const observation: KubeObservation = await observeResource(runtime, row);
   try {
     if (row.operation !== 'delete') {
-      await applyResourceNetworkPolicy(runtime, row.namespaceId, complete.networkPolicy, row.ports);
+      await applyProjectNetworkPolicies(runtime, row.namespaceId, complete.networkPolicy);
     }
     await executeClaimedResource(request, runtime, observation, complete, row);
     if (row.operation === 'delete') {
