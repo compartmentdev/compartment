@@ -14,6 +14,7 @@ import {
   parseProductLogBufferMaxBytes,
 } from './run-platform-k3d-product-log-gate.mjs';
 import { findReadyNonTerminatingPodName, isDeploymentConverged } from './run-platform-k3d-retained-state-gate.mjs';
+import { diffNetworkPolicyStates, readNetworkPolicyStates } from './sample-platform-k3d-network-policies.mjs';
 
 describe('platform k3d diagnostics and product-log gates', () => {
   it('waits for the current deployment generation and selects only its stable pod', () => {
@@ -63,6 +64,26 @@ describe('platform k3d diagnostics and product-log gates', () => {
         }),
       ),
     ).toBe('postgres-current');
+  });
+
+  it('records a network policy sample only when its rule or generation moves', () => {
+    const policies = (generation, ingress) =>
+      readNetworkPolicyStates(
+        JSON.stringify({
+          items: [
+            { metadata: { generation, name: 'np-resource-ingress-x', namespace: 'cpt-project' }, spec: { ingress } },
+          ],
+        }),
+      );
+    const withPort = policies(2, [{ from: [{ podSelector: {} }], ports: [{ port: 5432, protocol: 'TCP' }] }]);
+
+    expect(diffNetworkPolicyStates(new Map(), withPort)).toEqual([
+      'cpt-project/np-resource-ingress-x generation=2 ingress=[{"from":[{"podSelector":{}}],"ports":[{"port":5432,"protocol":"TCP"}]}]',
+    ]);
+    expect(diffNetworkPolicyStates(withPort, withPort)).toEqual([]);
+    expect(diffNetworkPolicyStates(withPort, policies(3, []))).toEqual([
+      'cpt-project/np-resource-ingress-x generation=3 ingress=[]',
+    ]);
   });
 
   it('parses namespaced deployment references', () => {

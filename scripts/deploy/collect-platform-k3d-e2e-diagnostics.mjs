@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 import { captureCommand, captureCommandResult } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
@@ -181,6 +181,7 @@ function collectPlatformK3dDiagnostics(outputDirectory) {
       ],
     );
   }
+  emitCollectedSeries(outputDirectory, 'network-policy-series');
 }
 
 function readUnreadyDeploymentReferences() {
@@ -223,6 +224,14 @@ function readRestartedContainerReferences() {
   } catch {
     return [];
   }
+}
+
+function emitCollectedSeries(outputDirectory, name) {
+  const path = `${outputDirectory}/${name}.log`;
+  if (!existsSync(path)) {
+    return;
+  }
+  process.stderr.write(`\n===== k3d e2e diagnostic: ${name} =====\n${readFileSync(path, 'utf8')}`);
 }
 
 function capture(outputDirectory, name, file, args) {
