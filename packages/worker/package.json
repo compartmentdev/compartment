@@ -38,6 +38,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@compartment/eslint-config": "workspace:*"
+    "@compartment/eslint-config": "workspace:*",
+    "@kubernetes/client-node": "^1.4.0"
   }
 }

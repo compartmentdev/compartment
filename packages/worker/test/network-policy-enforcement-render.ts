@@ -1,5 +1,5 @@
 import { projectNetworkPolicyManifests, type KubeManifest } from '@compartment/kube-runtime';
-import { stringify } from 'yaml';
+import { dumpYaml } from '@kubernetes/client-node';
 import { projectNetworkPolicy } from '../src/project-network-policy';
 
 const podCidr: string = process.argv[2] ?? '';
@@ -10,6 +10,8 @@ if (podCidr.length === 0 || serviceCidr.length === 0) {
 
 // The enforcement gate must probe the peers production ships. Restating the Pod labels here let a
 // wrong peer agree with the fixtures and pass, so the projection comes from the production mapper.
+// `dumpYaml` is the client serializer `apply` uses, so the gate applies the bytes production sends
+// instead of the in-memory manifest shape.
 const manifests: KubeManifest[] = projectNetworkPolicyManifests(
   'ns-a',
   't2-namespace',
@@ -25,5 +27,5 @@ const manifests: KubeManifest[] = projectNetworkPolicyManifests(
 );
 
 process.stdout.write(
-  `${manifests.map((manifest: KubeManifest): string => stringify(manifest).trim()).join('\n---\n')}\n`,
+  `${manifests.map((manifest: KubeManifest): string => dumpYaml(manifest).trim()).join('\n---\n')}\n`,
 );

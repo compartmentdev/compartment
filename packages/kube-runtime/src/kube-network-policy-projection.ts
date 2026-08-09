@@ -1,6 +1,12 @@
 import { kubeNetworkPolicyName } from './kube-naming';
 import type { KubeNetworkPolicyKind } from './kube-naming.types';
-import type { ProjectNetworkPolicyProjection } from './kube-network-policy-projection.types';
+import type {
+  KubeNetworkPolicyEgressRule,
+  KubeNetworkPolicyPort,
+  KubeNetworkPolicySelectorRequirement,
+  KubeNetworkPolicySpec,
+  ProjectNetworkPolicyProjection,
+} from './kube-network-policy-projection.types';
 import type { KubeManifest } from './kube-runtime.types';
 
 const dnsNamespaceLabels: Readonly<Record<string, string>> = { 'kubernetes.io/metadata.name': 'kube-system' };
@@ -60,7 +66,7 @@ function productJobEgressManifest(
   });
 }
 
-function applicationEgressRules(projection: ProjectNetworkPolicyProjection): object[] {
+function applicationEgressRules(projection: ProjectNetworkPolicyProjection): KubeNetworkPolicyEgressRule[] {
   return [
     ...(projection.resourcePorts.length === 0 ? [] : [resourceEgressRule(projection)]),
     dnsEgressRule(),
@@ -68,14 +74,14 @@ function applicationEgressRules(projection: ProjectNetworkPolicyProjection): obj
   ];
 }
 
-function resourceEgressRule(projection: ProjectNetworkPolicyProjection): object {
+function resourceEgressRule(projection: ProjectNetworkPolicyProjection): KubeNetworkPolicyEgressRule {
   return {
     ports: tcpPorts(projection.resourcePorts),
     to: [{ podSelector: { matchLabels: projection.resourcePodLabels } }],
   };
 }
 
-function dnsEgressRule(): object {
+function dnsEgressRule(): KubeNetworkPolicyEgressRule {
   return {
     ports: [
       { port: 53, protocol: 'UDP' },
@@ -90,7 +96,7 @@ function dnsEgressRule(): object {
   };
 }
 
-function internetEgressRule(projection: ProjectNetworkPolicyProjection): object {
+function internetEgressRule(projection: ProjectNetworkPolicyProjection): KubeNetworkPolicyEgressRule {
   const except: string[] = [
     metadataServiceCidr,
     linkLocalCidr,
@@ -113,7 +119,7 @@ function applicationIngressManifest(
         ? []
         : [
             {
-              from: [
+              _from: [
                 {
                   namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': projection.edgeNamespaceName } },
                   podSelector: { matchLabels: projection.edgePodLabels },
@@ -139,7 +145,7 @@ function resourceIngressManifest(
         ? []
         : [
             {
-              from: [
+              _from: [
                 { podSelector: { matchLabels: projection.applicationPodLabels } },
                 { podSelector: { matchExpressions: [productJobSelectorExpression()] } },
               ],
@@ -151,13 +157,13 @@ function resourceIngressManifest(
   });
 }
 
-function tcpPorts(ports: number[]): object[] {
+function tcpPorts(ports: number[]): KubeNetworkPolicyPort[] {
   return [...new Set(ports)]
     .sort((left: number, right: number): number => left - right)
-    .map((port: number): object => ({ port, protocol: 'TCP' }));
+    .map((port: number): KubeNetworkPolicyPort => ({ port, protocol: 'TCP' }));
 }
 
-function productJobSelectorExpression(): object {
+function productJobSelectorExpression(): KubeNetworkPolicySelectorRequirement {
   return { key: 'compartment.dev/job-class', operator: 'Exists' };
 }
 
@@ -166,7 +172,7 @@ function networkPolicyManifest(
   namespaceId: string,
   projectId: string,
   policy: KubeNetworkPolicyKind,
-  spec: object,
+  spec: KubeNetworkPolicySpec,
 ): KubeManifest {
   return {
     apiVersion: 'networking.k8s.io/v1',
