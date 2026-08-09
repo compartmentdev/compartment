@@ -181,7 +181,7 @@ function collectPlatformK3dDiagnostics(outputDirectory) {
       ],
     );
   }
-  emitCollectedSeries(outputDirectory, 'network-policy-series');
+  emitCollectedSeries(outputDirectory, 'tenant-state-series');
 }
 
 function readUnreadyDeploymentReferences() {
