@@ -1,6 +1,7 @@
 import type {
   ProductJobClass,
   ProductJobIntent,
+  ProductJobResourceReadiness,
   ProductJobRuntimeIdentity,
   ProductJobStatus,
   ProductJobVolumeMount,
@@ -59,6 +60,7 @@ export type PersistProductJobResultInput = WorkerPersistProductJobResultRequest;
 export interface ClaimedProductJobQueryResult {
   intent: ProductJobIntent | null;
   persistedResult: WorkerPersistProductJobResultRequest | null;
+  resourceReadiness: ProductJobResourceReadiness[];
 }
 
 export type ProductJobResourceFenceResult = 'blocked' | 'claimable' | 'terminalized';

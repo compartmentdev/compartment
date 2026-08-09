@@ -30,7 +30,10 @@ evicted if the organization is already over a limit. New or updated Pods and vol
 or reduce workloads enough to release capacity. Platform and build workloads do not consume this pool.
 
 If a service declares `release.command`, it runs once before the candidate starts and routes switch. A non-zero exit or
-10-minute timeout fails that deploy attempt and leaves the previous active deployment serving traffic.
+10-minute timeout fails that deploy attempt and leaves the previous active deployment serving traffic. When the service
+reads outputs from a resource that declares `readiness`, the release also waits for that resource to accept connections
+first, and fails the deploy attempt without running the command if the resource stays unready for its declared
+`readiness.timeoutMs`.
 
 For `kind: static`, the deploy still ends as an immutable image-backed rollout, but the service contract is narrower:
 

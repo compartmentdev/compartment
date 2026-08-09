@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
   calculateKubeRolloutStatus,
+  kubeDeploymentAvailable,
   readKubeApplicationRunningStartedAt,
   type KubeObservedManifest,
   type KubeRolloutObservation,
 } from '../src';
 import { kubeApplicationName } from '../src/kube-naming';
+
+interface ResourceDeploymentTestStatus {
+  availableReplicas: number;
+  desiredReplicas?: number;
+  observedGeneration?: number;
+  replicas?: number;
+  updatedReplicas?: number;
+}
 
 const now: Date = new Date('2026-07-11T12:00:00.000Z');
 
@@ -53,6 +62,22 @@ describe('rollout observation decisions', (): void => {
     ).toBe('progressing');
   });
 
+  it('treats a resource Deployment as available only while this generation serves a ready replica', (): void => {
+    expect(kubeDeploymentAvailable(resourceDeployment({ availableReplicas: 1 }))).toBe(true);
+    expect(kubeDeploymentAvailable(resourceDeployment({ availableReplicas: 0 }))).toBe(false);
+    expect(kubeDeploymentAvailable(resourceDeployment({ availableReplicas: 1, desiredReplicas: 0 }))).toBe(false);
+    expect(kubeDeploymentAvailable(resourceDeployment({ availableReplicas: 1, observedGeneration: 3 }))).toBe(false);
+    expect(kubeDeploymentAvailable({ ...resourceDeployment({ availableReplicas: 1 }), metadata: {}, status: {} })).toBe(
+      false,
+    );
+    expect(kubeDeploymentAvailable(null)).toBe(false);
+  });
+
+  it('refuses a Recreate rollout whose replica still belongs to the previous generation', (): void => {
+    expect(kubeDeploymentAvailable(resourceDeployment({ availableReplicas: 1, updatedReplicas: 0 }))).toBe(false);
+    expect(kubeDeploymentAvailable(resourceDeployment({ availableReplicas: 1, replicas: 2 }))).toBe(false);
+  });
+
   it('reads the earliest Running evidence only from the candidate application container', (): void => {
     const observed: KubeObservedManifest[] = [
       applicationPod('dep_old', '2026-07-11T12:00:01.000Z'),
@@ -75,6 +100,28 @@ describe('rollout observation decisions', (): void => {
     expect(readKubeApplicationRunningStartedAt([pod], 'dep_candidate')).toEqual(new Date('2026-07-11T12:00:08.000Z'));
   });
 });
+
+function resourceDeployment(status: ResourceDeploymentTestStatus): KubeObservedManifest {
+  const desiredReplicas: number = status.desiredReplicas ?? 1;
+  return {
+    apiVersion: 'apps/v1',
+    kind: 'Deployment',
+    metadata: { generation: 4, name: 'resource-billing', namespace: 'cpt-billing' },
+    spec: {
+      progressDeadlineSeconds: 90,
+      replicas: desiredReplicas,
+      selector: { matchLabels: {} },
+      strategy: { type: 'Recreate' },
+      template: { metadata: { labels: {} }, spec: { automountServiceAccountToken: false, containers: [] } },
+    },
+    status: {
+      availableReplicas: status.availableReplicas,
+      observedGeneration: status.observedGeneration ?? 4,
+      replicas: status.replicas ?? desiredReplicas,
+      updatedReplicas: status.updatedReplicas ?? desiredReplicas,
+    },
+  };
+}
 
 function applicationPod(deploymentId: string, startedAt: string, previousStartedAt?: string): KubeObservedManifest {
   return {

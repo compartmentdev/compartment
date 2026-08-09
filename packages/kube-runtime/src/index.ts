@@ -6,7 +6,12 @@ export {
 export type { KubeLeaderElectionConfig, KubeLeaderElector } from './kube-leader-election.types';
 export { KubeRuntime } from './kube-runtime';
 export { KubeJobLogAttachmentError } from './kube-job-log-stream';
-export { kubeApplicationIdentityName, kubeNamespaceName, kubeResourceVolumeName } from './kube-naming';
+export {
+  kubeApplicationIdentityName,
+  kubeNamespaceName,
+  kubeResourceName,
+  kubeResourceVolumeName,
+} from './kube-naming';
 export { organizationGlobalCustomQuotaManifests } from './kube-organization-quota-projection';
 export { observeCustomDomainProjection, projectCustomDomainManifests } from './kube-custom-domain-projection';
 export type {
@@ -38,6 +43,7 @@ export type { ProjectProvisioningAuthorityInput } from './kube-project-provision
 export type { ProjectNamespaceProvisioningRow } from './kube-provisioning.types';
 export {
   calculateKubeRolloutStatus,
+  kubeDeploymentAvailable,
   readKubeApplicationRunningStartedAt,
   readKubeRolloutObservation,
 } from './kube-rollout';

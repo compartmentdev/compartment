@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, lt, or, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gt, lt, or, sql, type SQL } from 'drizzle-orm';
 import { organizationQuotaReconciliation, projects } from '../db/schema';
 import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -22,58 +22,61 @@ export async function createOrganizationQuotaReconciliationWithExecutor(
 export async function claimOrganizationQuotaReconciliation(): Promise<OrganizationQuotaReconcileClaimRow | null> {
   return await getApiDatabase().transaction(
     async (transaction: OrganizationQuotaTransaction): Promise<OrganizationQuotaReconcileClaimRow | null> =>
-      await claimOrganizationQuotaWithTransaction(transaction, new Date()),
+      await claimOrganizationQuotaWithTransaction(transaction),
   );
 }
 
 async function claimOrganizationQuotaWithTransaction(
   transaction: OrganizationQuotaTransaction,
-  now: Date,
 ): Promise<OrganizationQuotaReconcileClaimRow | null> {
   return await claimSelectedRow(
     transaction,
     async (
       tx: OrganizationQuotaTransaction,
     ): Promise<typeof organizationQuotaReconciliation.$inferSelect | undefined> =>
-      await selectClaimableOrganizationQuota(tx, now),
+      await selectClaimableOrganizationQuota(tx),
     async (
       tx: OrganizationQuotaTransaction,
       row: typeof organizationQuotaReconciliation.$inferSelect,
-    ): Promise<OrganizationQuotaReconcileClaimRow> => await leaseOrganizationQuota(tx, row, now),
+    ): Promise<OrganizationQuotaReconcileClaimRow> => await leaseOrganizationQuota(tx, row),
     null,
   );
 }
 
 async function selectClaimableOrganizationQuota(
   transaction: OrganizationQuotaTransaction,
-  now: Date,
 ): Promise<typeof organizationQuotaReconciliation.$inferSelect | undefined> {
   return (
     await transaction
       .select()
       .from(organizationQuotaReconciliation)
-      .where(organizationQuotaClaimableCondition(now))
+      .where(organizationQuotaClaimableCondition())
       .orderBy(asc(organizationQuotaReconciliation.createdAt))
       .limit(1)
       .for('update', { skipLocked: true })
   )[0];
 }
 
-function organizationQuotaClaimableCondition(now: Date): SQL | undefined {
+function organizationQuotaClaimableCondition(): SQL | undefined {
   return or(
     eq(organizationQuotaReconciliation.state, 'pending'),
     and(
       eq(organizationQuotaReconciliation.state, 'failed'),
-      lt(organizationQuotaReconciliation.updatedAt, new Date(now.getTime() - organizationQuotaRetryDelayMs)),
+      lt(
+        organizationQuotaReconciliation.updatedAt,
+        sql`now() - (${organizationQuotaRetryDelayMs} * interval '1 millisecond')`,
+      ),
     ),
-    and(eq(organizationQuotaReconciliation.state, 'running'), lt(organizationQuotaReconciliation.leaseExpiresAt, now)),
+    and(
+      eq(organizationQuotaReconciliation.state, 'running'),
+      lt(organizationQuotaReconciliation.leaseExpiresAt, sql`now()`),
+    ),
   );
 }
 
 async function leaseOrganizationQuota(
   transaction: OrganizationQuotaTransaction,
   row: typeof organizationQuotaReconciliation.$inferSelect,
-  now: Date,
 ): Promise<OrganizationQuotaReconcileClaimRow> {
   const leaseId: string = createId('oql');
   await transaction
@@ -81,10 +84,10 @@ async function leaseOrganizationQuota(
     .set({
       attempts: row.state === 'running' ? row.attempts : row.attempts + 1,
       failureMessage: null,
-      leaseExpiresAt: new Date(now.getTime() + organizationQuotaLeaseDurationMs),
+      leaseExpiresAt: sql`now() + (${organizationQuotaLeaseDurationMs} * interval '1 millisecond')`,
       leaseId,
       state: 'running',
-      updatedAt: now,
+      updatedAt: sql`now()`,
     })
     .where(eq(organizationQuotaReconciliation.organizationId, row.organizationId));
   const namespaceIds: string[] = (
@@ -96,7 +99,6 @@ async function leaseOrganizationQuota(
 export async function completeOrganizationQuotaReconciliation(
   input: CompleteOrganizationQuotaReconcileInput,
 ): Promise<boolean> {
-  const now: Date = new Date();
   const rows = await getApiDatabase()
     .update(organizationQuotaReconciliation)
     .set({
@@ -104,14 +106,14 @@ export async function completeOrganizationQuotaReconciliation(
       leaseExpiresAt: null,
       leaseId: null,
       state: input.status,
-      updatedAt: now,
+      updatedAt: sql`now()`,
     })
     .where(
       and(
         eq(organizationQuotaReconciliation.organizationId, input.organizationId),
         eq(organizationQuotaReconciliation.leaseId, input.leaseId),
         eq(organizationQuotaReconciliation.state, 'running'),
-        gt(organizationQuotaReconciliation.leaseExpiresAt, now),
+        gt(organizationQuotaReconciliation.leaseExpiresAt, sql`now()`),
       ),
     )
     .returning({ organizationId: organizationQuotaReconciliation.organizationId });

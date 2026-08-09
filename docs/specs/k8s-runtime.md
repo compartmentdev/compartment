@@ -144,6 +144,22 @@ Release Jobs with descriptor-owned resource output bindings remain queued until
 the latest reconcile for each connected resource succeeds, bounded by the
 release timeout. A failed latest reconcile or a deleting/deleted connected
 resource fails the release immediately. Releases without those bindings remain immediately claimable.
+
+Claim eligibility is reconcile history, so it cannot see a resource Pod replaced after the claim.
+Every claim therefore also carries the resources that Job dials and that declare readiness, resolved
+inside the claim transaction: descriptor output bindings for a release, the operation's own resource
+ids for a Job that runs against the resource itself. A Job that only mounts a resource's artifact
+volume dials nothing, a stopped resource is never expected to accept connections, and a resource that
+declares no readiness publishes no signal to consult; none of the three is gated. Each carried
+resource has a deadline of its declared readiness timeout from the first claim.
+
+Before creating the Job the worker performs one direct read per carried resource and requires the
+current generation of that Deployment to be available. It never waits: an unready resource leaves the
+Job claimable so the same controller lane can go on to reconcile that resource, and the Job is
+admitted on a later claim. Once a carried resource is past its deadline and still unready, the Job is
+durably failed without being created. The Kubernetes Job is created only after that admission, so the
+mounted-claim identity fence stays the last check before creation.
+
 PVC creation is a separate explicit bootstrap operation. Stateful updates stop
 the old pod, prove absence, verify persisted claim UIDs, start the new manifest,
 and restore the saved executable manifest on failure. A live workload without

@@ -68,8 +68,7 @@ import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 
-const { testDatabaseUrl } = readDatabaseTestMode();
-const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'resource_backups_query_db');
+const databaseUrl = deriveProcessScopedDatabaseUrl(readDatabaseTestMode().testDatabaseUrl, 'resource_backups_query_db');
 const apiConfig: ApiConfig = {
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
@@ -106,6 +105,7 @@ const apiConfig: ApiConfig = {
 const pool: Pool = createDatabasePool(databaseUrl);
 const resourceOperationPool: Pool = new Pool({ connectionString: databaseUrl, max: 2 });
 const db: Database = createDatabase(pool, resourceOperationPool);
+const unclaimedProductJob = { intent: null, persistedResult: null, resourceReadiness: [] };
 
 describe('resource backup queries', (): void => {
   useApiRuntimeDatabaseTestHarness({
@@ -838,7 +838,7 @@ describe('resource backup queries', (): void => {
       },
     });
 
-    await expect(claimProductJob('resource-operation')).resolves.toEqual({ intent: null, persistedResult: null });
+    await expect(claimProductJob('resource-operation')).resolves.toEqual(unclaimedProductJob);
     await expect(db.select().from(productJobRuns)).resolves.toHaveLength(1);
   });
 
@@ -873,7 +873,7 @@ describe('resource backup queries', (): void => {
     });
 
     await expect(claimResourceReconcileRun()).resolves.toMatchObject({ operationId: 'rr_before_product_job' });
-    await expect(claimProductJob('resource-operation')).resolves.toEqual({ intent: null, persistedResult: null });
+    await expect(claimProductJob('resource-operation')).resolves.toEqual(unclaimedProductJob);
   });
 
   it('keeps a running resource operation ahead of later reconcile work', async (): Promise<void> => {

@@ -96,7 +96,8 @@ function releaseResourceBindingLockKey(binding: ReleaseResourceBindingRow): stri
   return `${binding.environmentId}:${binding.resourceName}`;
 }
 
-async function readReleaseResourceIds(
+/** Descriptor-bound resources of a release, in the canonical lock order. */
+export async function readReleaseResourceIds(
   transaction: ApiDatabaseTransaction,
   deploymentId: string,
 ): Promise<ReleaseResourceIdRow[]> {

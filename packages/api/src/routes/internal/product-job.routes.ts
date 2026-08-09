@@ -78,7 +78,11 @@ async function handleClaimProductJob(request: FastifyRequest, reply: FastifyRepl
     'invalid_product_job_claim',
   );
   const claimed: ClaimedProductJobResult = await claimNextProductJob(input.jobClass);
-  const response: WorkerClaimProductJobResponse = { job: claimed.intent, result: claimed.persistedResult };
+  const response: WorkerClaimProductJobResponse = {
+    job: claimed.intent,
+    resourceReadiness: claimed.resourceReadiness,
+    result: claimed.persistedResult,
+  };
   return await reply.send(workerClaimProductJobResponseSchema.parse(response));
 }
 

@@ -1,7 +1,10 @@
+import { kubeResourceName } from '@compartment/kube-runtime';
 import pino, { type Logger } from 'pino';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createKubeControllerHosts, type KubeControllerHost } from '../src/kube-controller-host';
 import type { WorkerConfig } from '../src/config';
+
+const unreadyDeadline: string = new Date(Date.now() + 300_000).toISOString();
 
 const claimDeployment: Mock = vi.hoisted((): Mock => vi.fn());
 const claimCustomDomain: Mock = vi.hoisted((): Mock => vi.fn());
@@ -9,11 +12,15 @@ const claimProductJob: Mock = vi.hoisted((): Mock => vi.fn());
 const claimOrganizationQuota: Mock = vi.hoisted((): Mock => vi.fn());
 const claimResource: Mock = vi.hoisted((): Mock => vi.fn());
 const executeResource: Mock = vi.hoisted((): Mock => vi.fn());
+const executeProductJob: Mock = vi.hoisted((): Mock => vi.fn());
+const persistProductJobResult: Mock = vi.hoisted((): Mock => vi.fn());
+const readKubeObject: Mock = vi.hoisted((): Mock => vi.fn());
 const reconcileDeployment: Mock = vi.hoisted((): Mock => vi.fn());
 
-vi.mock('@compartment/kube-runtime', (): object => ({
-  createKubeRuntimeFromEnvironment: vi.fn((): object => ({})),
-}));
+vi.mock('@compartment/kube-runtime', async (importActual: () => Promise<object>): Promise<object> => {
+  const actual: object = await importActual();
+  return { ...actual, createKubeRuntimeFromEnvironment: vi.fn((): object => ({ read: readKubeObject })) };
+});
 vi.mock('@compartment/sdk', (): object => ({
   claimCustomDomainReconcile: claimCustomDomain,
   claimDeploymentReconcile: claimDeployment,
@@ -21,13 +28,14 @@ vi.mock('@compartment/sdk', (): object => ({
   claimOrganizationQuotaReconcile: claimOrganizationQuota,
   claimResourceReconcile: claimResource,
   createCompartmentRequester: vi.fn((): object => ({})),
+  persistProductJobResult,
 }));
 vi.mock('../src/services/worker-artifact-cleanup.service', (): object => ({ cleanupWorkerArtifacts: vi.fn() }));
 vi.mock('../src/services/worker-deployment-reconcile.service', (): object => ({
   reconcileDeploymentTarget: reconcileDeployment,
 }));
 vi.mock('../src/services/worker-product-job.service', (): object => ({
-  executeProductJob: vi.fn(),
+  executeProductJob,
   finalizeRecoveredProductJob: vi.fn(),
 }));
 vi.mock('../src/services/worker-resource-reconcile.service', (): object => ({
@@ -50,7 +58,7 @@ describe('createKubeControllerHosts', (): void => {
     vi.clearAllMocks();
     claimDeployment.mockResolvedValue({ target: null });
     claimCustomDomain.mockResolvedValue({ leaseId: null, target: null });
-    claimProductJob.mockResolvedValue({ job: null, result: null });
+    claimProductJob.mockResolvedValue({ job: null, resourceReadiness: [], result: null });
     claimOrganizationQuota.mockResolvedValue({ target: null });
     claimResource.mockResolvedValue({ intent: null });
     reconcileDeployment.mockResolvedValue([]);
@@ -125,6 +133,49 @@ describe('createKubeControllerHosts', (): void => {
     expect(claimProductJob).toHaveBeenCalledWith(expect.anything(), { jobClass: 'release' });
   });
 
+  it('leaves a claimed Job unstarted while a connected resource is not accepting connections', async (): Promise<void> => {
+    process.env.KUBECONFIG = '/tmp/kubeconfig';
+    claimProductJob.mockResolvedValue(claimedRelease(unreadyDeadline));
+    readKubeObject.mockResolvedValue(resourceDeployment(0));
+    const hosts: KubeControllerHost[] = createKubeControllerHosts({ artifactRegistry: {} } as WorkerConfig, logger);
+
+    await expect(hosts[1]!.reconcile()).resolves.toBe(false);
+
+    expect(readKubeObject).toHaveBeenCalledWith({
+      apiVersion: 'apps/v1',
+      kind: 'Deployment',
+      metadata: { name: kubeResourceName('res-db'), namespace: 'cpt-prj-01jz' },
+    });
+    expect(executeProductJob).not.toHaveBeenCalled();
+    expect(persistProductJobResult).not.toHaveBeenCalled();
+  });
+
+  it('starts a claimed Job once every connected resource accepts connections', async (): Promise<void> => {
+    process.env.KUBECONFIG = '/tmp/kubeconfig';
+    claimProductJob.mockResolvedValue(claimedRelease(unreadyDeadline));
+    readKubeObject.mockResolvedValue(resourceDeployment(1));
+    const hosts: KubeControllerHost[] = createKubeControllerHosts({ artifactRegistry: {} } as WorkerConfig, logger);
+
+    await expect(hosts[1]!.reconcile()).resolves.toBe(true);
+
+    expect(executeProductJob).toHaveBeenCalledOnce();
+  });
+
+  it('durably fails a claimed Job once a connected resource misses its readiness deadline', async (): Promise<void> => {
+    process.env.KUBECONFIG = '/tmp/kubeconfig';
+    claimProductJob.mockResolvedValue(claimedRelease('2020-01-01T00:00:00.000Z'));
+    readKubeObject.mockResolvedValue(resourceDeployment(0));
+    const hosts: KubeControllerHost[] = createKubeControllerHosts({ artifactRegistry: {} } as WorkerConfig, logger);
+
+    await expect(hosts[1]!.reconcile()).resolves.toBe(false);
+
+    expect(executeProductJob).not.toHaveBeenCalled();
+    expect(persistProductJobResult).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ identityId: 'dep-01jz', jobName: 'resource-not-ready/dep-01jz', status: 'timed-out' }),
+    );
+  });
+
   it('serializes resource operations behind an in-flight resource reconcile', async (): Promise<void> => {
     process.env.KUBECONFIG = '/tmp/kubeconfig';
     claimResource.mockResolvedValue({ intent: { operation: 'reconcile' } });
@@ -145,6 +196,24 @@ describe('createKubeControllerHosts', (): void => {
     expect(claimProductJob).toHaveBeenCalledWith(expect.anything(), { jobClass: 'resource-operation' });
   });
 });
+
+function claimedRelease(deadlineAt: string): object {
+  return {
+    job: { deploymentId: 'dep-01jz', jobClass: 'release', namespace: 'cpt-prj-01jz', projectId: 'prj-01jz' },
+    resourceReadiness: [{ deadlineAt, resourceId: 'res-db' }],
+    result: null,
+  };
+}
+
+function resourceDeployment(availableReplicas: number): object {
+  return {
+    apiVersion: 'apps/v1',
+    kind: 'Deployment',
+    metadata: { generation: 7, name: kubeResourceName('res-db'), namespace: 'cpt-prj-01jz' },
+    spec: { replicas: 1 },
+    status: { availableReplicas, observedGeneration: 7, replicas: 1, updatedReplicas: 1 },
+  };
+}
 
 function restoreEnvironmentValue(name: string, value: string | undefined): void {
   if (value === undefined) {

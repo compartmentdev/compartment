@@ -5,6 +5,7 @@ import {
   workerCompleteOrganizationQuotaReconcilePathname,
   workerCompleteOrganizationQuotaReconcileRequestSchema,
   workerCompleteOrganizationQuotaReconcileResponseSchema,
+  type OrganizationQuotaReconcileTarget,
   type WorkerClaimOrganizationQuotaReconcileResponse,
   type WorkerCompleteOrganizationQuotaReconcileRequest,
   type WorkerCompleteOrganizationQuotaReconcileResponse,
@@ -16,7 +17,6 @@ import {
   acknowledgeOrganizationQuotaReconciliation,
   claimNextOrganizationQuotaReconciliation,
 } from '../../services/organization-quota-reconciliation.service';
-import type { OrganizationQuotaReconciliationClaim } from '../../services/organization-quota-reconciliation.service.types';
 import {
   buildWorkerClaimOrganizationQuotaReconcileResponse,
   buildWorkerCompleteOrganizationQuotaReconcileResponse,
@@ -43,7 +43,7 @@ async function handleClaimOrganizationQuotaReconciliation(
   _request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<FastifyReply> {
-  const target: OrganizationQuotaReconciliationClaim | null = await claimNextOrganizationQuotaReconciliation();
+  const target: OrganizationQuotaReconcileTarget | null = await claimNextOrganizationQuotaReconciliation();
   const response: WorkerClaimOrganizationQuotaReconcileResponse =
     buildWorkerClaimOrganizationQuotaReconcileResponse(target);
   return await reply.send(workerClaimOrganizationQuotaReconcileResponseSchema.parse(response));

@@ -3,6 +3,7 @@ import {
   productJobIntentSchema,
   productJobRuntimeId,
   workerClaimProductJobRequestSchema,
+  workerClaimProductJobResponseSchema,
   workerPersistProductJobIntentResponseSchema,
   workerPersistProductJobResultRequestSchema,
 } from '../src';
@@ -34,6 +35,24 @@ describe('internal product Job result contract', (): void => {
     expect(workerPersistProductJobResultRequestSchema.safeParse({ ...timedOutResult, podName: '' }).success).toBe(
       false,
     );
+  });
+
+  it('carries the resources a claimed Job must find ready before it runs', (): void => {
+    const readiness: object = { deadlineAt: '2026-07-12T12:00:00.000Z', resourceId: 'res-1' };
+    const claim: object = { job: null, resourceReadiness: [readiness], result: null };
+
+    expect(workerClaimProductJobResponseSchema.safeParse(claim).success).toBe(true);
+    expect(workerClaimProductJobResponseSchema.safeParse({ ...claim, resourceReadiness: [] }).success).toBe(true);
+    expect(workerClaimProductJobResponseSchema.safeParse({ job: null, result: null }).success).toBe(false);
+    expect(
+      workerClaimProductJobResponseSchema.safeParse({ ...claim, resourceReadiness: [{ resourceId: 'res-1' }] }).success,
+    ).toBe(false);
+    expect(
+      workerClaimProductJobResponseSchema.safeParse({
+        ...claim,
+        resourceReadiness: [{ ...readiness, deadlineAt: 'soon' }],
+      }).success,
+    ).toBe(false);
   });
 
   it('returns current durable evidence when intent persistence is terminal', (): void => {
