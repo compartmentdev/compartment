@@ -4,7 +4,7 @@ import { releaseJobDialsReconciledResource } from './product-job-release-binding
 
 /**
  * Whether the Product Job row in scope holds the resource of the reconcile run row in scope. This is the only site
- * that decides it: the reconcile claim uses it to refuse admission, and the reconcile wait uses it to size the
+ * that decides it: the reconcile claim uses it to refuse the claim, and the reconcile wait uses it to size the
  * budget it must wait out. Both must read the same set or a reconcile waits on work it was never blocked by.
  */
 export function fencingProductJobCondition(): SQL {
@@ -17,7 +17,7 @@ export function fencingProductJobCondition(): SQL {
 
 /**
  * A resource operation carries its own resource ids and arbitrates with a reconcile by age, so a queued operation
- * fences only the reconciles queued after it. `resourceOperationReconcileFence` is the matching half of that rule.
+ * fences only the reconciles queued after it. `fencingResourceReconcileAbsent` is the matching half of that rule.
  */
 function fencingResourceOperationJob(): SQL {
   return sql`${productJobRuns.jobClass} = 'resource-operation'

@@ -118,6 +118,14 @@ export function productJobRuntimeId(jobClass: ProductJobClass, identityId: strin
   return `${jobClass}-${identityId}`;
 }
 
+/**
+ * The row identity an intent addresses. Which member of the union carries it is a property of the
+ * contract, so control plane and worker must not each decide it.
+ */
+export function productJobIdentityId(intent: ProductJobIntent): string {
+  return intent.jobClass === 'release' ? intent.deploymentId : intent.operationId;
+}
+
 const productJobSpecShape: ProductJobSpecSchemaShape = {
   command: z.array(z.string()),
   env: tenantSecretEnvironmentSchema,

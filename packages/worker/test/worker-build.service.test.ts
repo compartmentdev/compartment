@@ -6,7 +6,7 @@ import { verifyBuildSourceArchiveCredential } from '@compartment/utils';
 import type { WorkerConfig } from '../src/config';
 import { buildReleaseImageFromSource } from '../src/services/worker-build.service';
 import type { RunWorkerBuildJobInput } from '../src/services/worker-build-job.types';
-import { testTenantSecretsKek } from './tenant-secret-test.fixtures';
+import { createWorkerTestConfig } from './worker-config-test.fixtures';
 
 type RunWorkerBuildJob = (
   runtime: KubeRuntime,
@@ -105,43 +105,7 @@ function requireCredential(jobInput: RunWorkerBuildJobInput): string {
 }
 
 function createWorkerConfig(): WorkerConfig {
-  return {
-    apiUrl: 'http://api:39444',
-    artifactRegistry: {
-      address: '127.0.0.1:5517',
-      credentialSigningKey: 'registry-signing-key-with-at-least-32-characters',
-      internalAddress: 'registry:5000',
-      internalUrl: 'http://registry:5000',
-    },
-    buildSandbox: {
-      buildKitResources: { limits: { memory: '3Gi' } },
-      gcKeepStorageMb: 1024,
-      namespace: 'compartment-build',
-      runnerImage: 'compartment-worker@sha256:runner',
-      runnerResources: { limits: { memory: '1Gi' } },
-      scheduling: { nodeSelector: {}, runtimeClassName: 'gvisor', tolerations: [] },
-      timeoutMs: 900000,
-    },
-    buildQueue: { maximumConcurrentBuilds: 2, maximumConcurrentBuildsPerOrganization: 1 },
-    customDomains: {
-      caddyServiceName: 'compartment-caddy',
-      ingressClassName: 'traefik',
-      issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
-      namespace: 'compartment',
-    },
-    deploymentInfrastructureTimeoutMs: 600_000,
-    logLevel: 'silent',
-    leaderElection: {
-      identity: 'worker-1',
-      leaseDurationMs: 15_000,
-      renewDeadlineMs: 10_000,
-      retryPeriodMs: 2_000,
-    },
-    pollIntervalMs: 1000,
-    runtimeControlToken: 'runtime-control-token',
-    tenantSecretsKek: testTenantSecretsKek,
-    usageMeteringIntervalMs: 60000,
-  };
+  return createWorkerTestConfig({ apiUrl: 'http://api:39444', runtimeControlToken: 'runtime-control-token' });
 }
 
 function createClaimedDeployment(input: Partial<WorkerClaimedDeployment> = {}): WorkerClaimedDeployment {

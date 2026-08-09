@@ -24,7 +24,7 @@ import type { WorkerArtifactRegistryConfig } from './worker-artifact-registry.ty
 import type { TenantSecretsKeyring } from './tenant-secret-environment.types';
 import { cleanupWorkerArtifacts } from './services/worker-artifact-cleanup.service';
 import { executeProductJob, finalizeRecoveredProductJob } from './services/worker-product-job.service';
-import { admitProductJobResources } from './services/worker-product-job-fencing.service';
+import { passesProductJobResourceGate } from './services/worker-product-job-resource-gate.service';
 import { reconcileDeploymentTarget } from './services/worker-deployment-reconcile.service';
 import { DeploymentRolloutStartTracker } from './services/worker-deployment-rollout-start-tracker.service';
 import { executeResourceReconcile } from './services/worker-resource-reconcile.service';
@@ -209,7 +209,7 @@ async function reconcileProductJob(
     await finalizeRecoveredProductJob(request, runtime, claimed.job, claimed.result, tenantSecretsKek, scheduling);
     return true;
   }
-  if (!(await admitProductJobResources(request, runtime, claimed.job, claimed.resourceReadiness))) {
+  if (!(await passesProductJobResourceGate(request, runtime, claimed.job, claimed.resourceReadiness))) {
     return false;
   }
   return (await executeProductJob(request, runtime, claimed.job, tenantSecretsKek, scheduling)) !== null;
