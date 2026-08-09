@@ -8,16 +8,7 @@ import {
 import type { ProjectProvisioningServiceAccount } from '../src/kube-provisioning.types';
 import { applyObject } from '../src/kube-runtime-operations';
 import { CapturingKubernetesObjectApi } from './kube-transport-capture.harness';
-
-interface SerializedLimitRange {
-  spec: {
-    limits: {
-      default: Record<string, string>;
-      defaultRequest: Record<string, string>;
-      _default?: Record<string, string> | undefined;
-    }[];
-  };
-}
+import type { SerializedLimitRange } from './kube-limit-range-transport.test.types';
 
 const podCidr: string = ['10', '42', '0', '0/16'].join('.');
 const serviceCidr: string = ['10', '43', '0', '0/16'].join('.');

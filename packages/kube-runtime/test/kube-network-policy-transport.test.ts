@@ -4,16 +4,7 @@ import type { ProjectNetworkPolicyProjection } from '../src/kube-network-policy-
 import { applyObject } from '../src/kube-runtime-operations';
 import type { KubeManifest } from '../src/kube-runtime.types';
 import { CapturingKubernetesObjectApi } from './kube-transport-capture.harness';
-
-interface SerializedNetworkPolicy {
-  metadata: { name: string };
-  spec: { ingress?: SerializedIngressRule[] | undefined };
-}
-
-interface SerializedIngressRule {
-  from?: object[] | undefined;
-  ports?: object[] | undefined;
-}
+import type { SerializedIngressRule, SerializedNetworkPolicy } from './kube-network-policy-transport.test.types';
 
 const podCidr: string = ['10', '42', '0', '0/16'].join('.');
 const serviceCidr: string = ['10', '43', '0', '0/16'].join('.');
