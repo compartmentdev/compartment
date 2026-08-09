@@ -53,7 +53,7 @@ export async function claimDeploymentReconcileTarget(): Promise<DeploymentReconc
   return {
     active: pair.active === null ? null : await projectDeployment(pair.active),
     candidate: await projectDeployment(pair.candidate),
-    networkPolicy: await readProjectNetworkPolicyPorts(pair.candidate.projectId, pair.candidate.deploymentId),
+    networkPolicy: await readProjectNetworkPolicyPorts(pair.candidate.projectId),
     revision: pair.candidate.revision,
     rolloutStartedAt: pair.candidate.transitionedAt.toISOString(),
     state: pair.candidate.state,

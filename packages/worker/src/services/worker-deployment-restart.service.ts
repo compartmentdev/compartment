@@ -12,10 +12,7 @@ import { deploymentFromObjects, persistDeploymentObservation } from './worker-de
 import { maximumRolloutDeadlineAt } from './worker-deployment-rollout-observation.service';
 import type { DeploymentRolloutStartTracker } from './worker-deployment-rollout-start-tracker.service';
 import { includeRecoveryRestartedAnnotation } from './worker-deployment-application.service';
-import {
-  includeApplicationNetworkPolicyPorts,
-  projectProjectNetworkPolicyManifests,
-} from './worker-network-policy.service';
+import { projectProjectNetworkPolicyManifests } from './worker-network-policy.service';
 
 export async function restartActiveCandidate(
   request: CompartmentRequester,
@@ -71,10 +68,7 @@ function buildRestartObjects(
   scheduling: KubeWorkloadScheduling | undefined,
 ): KubeManifest[] {
   return [
-    ...projectProjectNetworkPolicyManifests(
-      target.candidate.projectId,
-      includeApplicationNetworkPolicyPorts(target.networkPolicy, target.candidate.containerPorts),
-    ),
+    ...projectProjectNetworkPolicyManifests(target.candidate.projectId, target.networkPolicy),
     ...projectApplicationManifests(
       decryptTenantProjection(target.candidate, scheduling, tenantSecretsKek),
       infrastructureTimeoutMs,
