@@ -42,7 +42,6 @@ async function buildVerificationImage(
       kind: 'registry-verification',
     },
     id: artifactId,
-    internalToken: config.runtimeControlToken,
   });
   if (!result.pushed) {
     throw new Error('Registry acceptance image was not pushed.');

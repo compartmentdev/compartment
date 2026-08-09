@@ -7,8 +7,12 @@ import {
   type KubeRunJobOptions,
 } from '@compartment/kube-runtime';
 import type { WorkerBuildSandboxConfig } from '../src/config';
-import { runWorkerBuildJob } from '../src/services/worker-build-job.service';
-import type { RunWorkerBuildJobInput } from '../src/services/worker-build-job.types';
+import { readWorkerBuildJobInputEnvironment, runWorkerBuildJob } from '../src/services/worker-build-job.service';
+import type {
+  RunWorkerRegistryVerificationBuildJobInput,
+  WorkerBuildJobEnvironment,
+  WorkerSourceBuildJobInput,
+} from '../src/services/worker-build-job.types';
 
 describe('runWorkerBuildJob', (): void => {
   it('publishes streamed progress before the Kubernetes Job completes without replaying it', async (): Promise<void> => {
@@ -207,7 +211,6 @@ describe('runWorkerBuildJob', (): void => {
           kind: 'registry-verification',
         },
         id: 'art_123',
-        internalToken: 'runtime-control-token',
       }),
     ).rejects.toThrow(
       'Sandboxed build Job job-art-123 failed: buildctl failed\n' +
@@ -218,6 +221,97 @@ describe('runWorkerBuildJob', (): void => {
     expect(finalize).toHaveBeenCalledOnce();
   });
 });
+
+describe('build Job credential environment', (): void => {
+  it('gives a source build Pod its scoped credential and nothing else to authenticate with', async (): Promise<void> => {
+    const runJob: Mock<(spec: KubeJobSpec) => Promise<KubeJobResult>> = vi.fn(
+      async (): Promise<KubeJobResult> => await Promise.resolve(successfulResult(vi.fn(), 'done')),
+    );
+
+    await runWorkerBuildJob({ runJob }, buildConfig(), {
+      build: sourceBuild(),
+      id: 'art_123',
+      sourceArchiveCredential: 'scoped-credential',
+    });
+
+    const env: Record<string, string> = runJob.mock.calls[0]?.[0].env ?? {};
+    expect(env.COMPARTMENT_BUILD_JOB_SOURCE_ARCHIVE_CREDENTIAL).toBe('scoped-credential');
+    expect(Object.keys(env)).not.toContain('COMPARTMENT_BUILD_JOB_INTERNAL_TOKEN');
+  });
+
+  it('gives a registry verification build Pod no API credential at all', async (): Promise<void> => {
+    const runJob: Mock<(spec: KubeJobSpec) => Promise<KubeJobResult>> = vi.fn(
+      async (): Promise<KubeJobResult> => await Promise.resolve(successfulResult(vi.fn(), 'done')),
+    );
+
+    await runWorkerBuildJob({ runJob }, buildConfig(), { build: buildInput().build, id: 'art_123' });
+
+    const env: Record<string, string> = runJob.mock.calls[0]?.[0].env ?? {};
+    expect(Object.keys(env).sort((left: string, right: string): number => left.localeCompare(right))).toEqual([
+      'BUILDKIT_ADDR',
+      'COMPARTMENT_BUILD_JOB_INPUT',
+      'TMPDIR',
+    ]);
+  });
+
+  it('starts a registry verification runner that was given no credential', (): void => {
+    expect(
+      readWorkerBuildJobInputEnvironment({
+        COMPARTMENT_BUILD_JOB_INPUT: JSON.stringify(buildInput().build),
+      }),
+    ).toMatchObject({ kind: 'registry-verification' });
+  });
+
+  it('refuses to start a runner whose build input names no known kind', (): void => {
+    expect(
+      (): WorkerBuildJobEnvironment => readWorkerBuildJobInputEnvironment({ COMPARTMENT_BUILD_JOB_INPUT: 'null' }),
+    ).toThrow('COMPARTMENT_BUILD_JOB_INPUT must describe a known build kind.');
+    expect(
+      (): WorkerBuildJobEnvironment =>
+        readWorkerBuildJobInputEnvironment({ COMPARTMENT_BUILD_JOB_INPUT: JSON.stringify({ kind: 'invented' }) }),
+    ).toThrow('COMPARTMENT_BUILD_JOB_INPUT must describe a known build kind.');
+  });
+
+  it('refuses to start a source build runner that was given no credential', (): void => {
+    expect(
+      (): WorkerBuildJobEnvironment =>
+        readWorkerBuildJobInputEnvironment({ COMPARTMENT_BUILD_JOB_INPUT: JSON.stringify(sourceBuild()) }),
+    ).toThrow('COMPARTMENT_BUILD_JOB_SOURCE_ARCHIVE_CREDENTIAL is required for source builds.');
+    expect(
+      (): WorkerBuildJobEnvironment =>
+        readWorkerBuildJobInputEnvironment({
+          COMPARTMENT_BUILD_JOB_INPUT: JSON.stringify(sourceBuild()),
+          COMPARTMENT_BUILD_JOB_SOURCE_ARCHIVE_CREDENTIAL: '',
+        }),
+    ).toThrow('COMPARTMENT_BUILD_JOB_SOURCE_ARCHIVE_CREDENTIAL is required for source builds.');
+  });
+
+  it('reads the scoped credential a source build runner was given', (): void => {
+    expect(
+      readWorkerBuildJobInputEnvironment({
+        COMPARTMENT_BUILD_JOB_INPUT: JSON.stringify(sourceBuild()),
+        COMPARTMENT_BUILD_JOB_SOURCE_ARCHIVE_CREDENTIAL: 'scoped-credential',
+      }),
+    ).toMatchObject({ kind: 'source', sourceArchiveCredential: 'scoped-credential' });
+  });
+});
+
+function sourceBuild(): WorkerSourceBuildJobInput {
+  return {
+    apiUrl: 'http://api:39444',
+    artifactId: 'art_123',
+    docker: buildInput().build.docker,
+    kind: 'source',
+    service: {
+      build: { env: [], include: [], packages: { build: [], runtime: [] }, strategy: 'auto' },
+      kind: 'web',
+      name: 'web',
+      path: '.',
+      requiresRoutesFile: false,
+      run: {},
+    },
+  };
+}
 
 function buildConfig(): WorkerBuildSandboxConfig {
   return {
@@ -231,7 +325,9 @@ function buildConfig(): WorkerBuildSandboxConfig {
   };
 }
 
-function buildInput(onProgressLine?: (line: DockerProgressLine) => void | Promise<void>): RunWorkerBuildJobInput {
+function buildInput(
+  onProgressLine?: (line: DockerProgressLine) => void | Promise<void>,
+): RunWorkerRegistryVerificationBuildJobInput {
   return {
     build: {
       docker: {
@@ -245,7 +341,6 @@ function buildInput(onProgressLine?: (line: DockerProgressLine) => void | Promis
       kind: 'registry-verification',
     },
     id: 'art_123',
-    internalToken: 'runtime-control-token',
     onProgressLine,
   };
 }

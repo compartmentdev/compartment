@@ -8,7 +8,7 @@ import {
 } from '../../services/artifact-source-archive.service';
 import { SourceUploadArchiveNotFoundError } from '../../services/source-upload-storage.service';
 
-interface BuildArtifactSourceArchiveParams {
+export interface BuildArtifactSourceArchiveParams {
   artifactId: string;
 }
 

@@ -48,6 +48,7 @@ import { publishPodMetricsSnapshot } from '../src/services/pod-metrics-snapshot.
 import {
   buildOrganizationAuthorizationHeaders,
   claimNextQueuedDeployment,
+  fetchArtifactSourceArchive,
   completeClaimedDeployment,
   createSourceArchive,
   injectDeployRequest,
@@ -394,13 +395,10 @@ describe('Phase 0 API integration deployment status', (): void => {
     const claimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(claimedPayload);
     expect(claimedDeployment.deploymentId).toBe(deployment.id);
     expect(claimedDeployment.artifact.sourceDigest).toBeTruthy();
-    const sourceArchiveResponse: LightMyRequestResponse = await app.inject({
-      headers: {
-        authorization: 'Bearer test-runtime-control-token',
-      },
-      method: 'GET',
-      url: `/internal/artifacts/${claimedDeployment.artifact.id}/source-archive`,
-    });
+    const sourceArchiveResponse: LightMyRequestResponse = await fetchArtifactSourceArchive(
+      app,
+      claimedDeployment.artifact.id,
+    );
     expect(sourceArchiveResponse.statusCode).toBe(200);
     expect(sourceArchiveResponse.headers['content-type']).toContain('application/gzip');
     expect(sourceArchiveResponse.body.length).toBeGreaterThan(0);
@@ -441,13 +439,10 @@ describe('Phase 0 API integration deployment status', (): void => {
       stream: 'stdout',
       timestamp: new Date(eventTime + 2_000).toISOString(),
     });
-    const retainedArchiveResponse: LightMyRequestResponse = await app.inject({
-      headers: {
-        authorization: 'Bearer test-runtime-control-token',
-      },
-      method: 'GET',
-      url: `/internal/artifacts/${claimedDeployment.artifact.id}/source-archive`,
-    });
+    const retainedArchiveResponse: LightMyRequestResponse = await fetchArtifactSourceArchive(
+      app,
+      claimedDeployment.artifact.id,
+    );
     expect(retainedArchiveResponse.statusCode).toBe(200);
     const statusResponse: LightMyRequestResponse = await app.inject({
       method: 'GET',
@@ -799,13 +794,10 @@ describe('Phase 0 API integration deployment status', (): void => {
     await writeFile(legacyArchivePath, sourceArchive);
 
     try {
-      const sourceArchiveResponse: LightMyRequestResponse = await app.inject({
-        headers: {
-          authorization: 'Bearer test-runtime-control-token',
-        },
-        method: 'GET',
-        url: `/internal/artifacts/${claimedDeployment.artifact.id}/source-archive`,
-      });
+      const sourceArchiveResponse: LightMyRequestResponse = await fetchArtifactSourceArchive(
+        app,
+        claimedDeployment.artifact.id,
+      );
 
       expect(sourceArchiveResponse.statusCode).toBe(404);
       expect(sourceArchiveResponse.json()).toMatchObject({
