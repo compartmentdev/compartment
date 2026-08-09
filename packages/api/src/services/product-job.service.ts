@@ -3,8 +3,13 @@ import type {
   ProductJobClass,
   WorkerFinalizeProductJobRequest,
   WorkerPersistProductJobResultRequest,
+  WorkerSubmitProductJobRequest,
 } from '@compartment/contracts';
-import { claimProductJob, persistProductJobFinalized } from '../queries/product-job-runs.query';
+import {
+  claimProductJob,
+  persistProductJobFinalized,
+  persistProductJobKubeSubmission,
+} from '../queries/product-job-runs.query';
 import { persistProductJobResult } from '../queries/product-job-result.query';
 import { persistProductJobIntent } from '../queries/product-job-intent.query';
 import type { ClaimedProductJobQueryResult } from '../queries/product-job-runs.query.types';
@@ -31,6 +36,10 @@ export async function completeProductJob(input: WorkerPersistProductJobResultReq
 
 export async function finalizeProductJob(input: WorkerFinalizeProductJobRequest): Promise<void> {
   await persistProductJobFinalized(input.jobClass, input.identityId);
+}
+
+export async function submitProductJob(input: WorkerSubmitProductJobRequest): Promise<void> {
+  await persistProductJobKubeSubmission(input.jobClass, input.identityId);
 }
 
 function readProductJobIdentity(input: ProductJobIntent): string {

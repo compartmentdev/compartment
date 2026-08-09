@@ -33,6 +33,7 @@ import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import {
   claimProductJob,
   persistProductJobFinalized,
+  persistProductJobKubeSubmission,
   readProductJobResult,
 } from '../src/queries/product-job-runs.query';
 import { persistProductJobResult } from '../src/queries/product-job-result.query';
@@ -41,6 +42,7 @@ import { expireProductJobWait, readProductJobQueueWaitState } from '../src/queri
 import type { ProductJobQueueWaitState } from '../src/queries/product-job-wait.query.types';
 import type { ClaimedProductJobQueryResult } from '../src/queries/product-job-runs.query.types';
 import { createResourceReconcileRun } from '../src/queries/resource-reconcile-create.query';
+import { claimResourceReconcileRun } from '../src/queries/resource-reconcile-runs.query';
 import { finalizeProjectResourceDeletion } from '../src/queries/resource-reconcile-deletion.query';
 import { readResourceReconcileRunWaitState } from '../src/queries/resource-reconcile-wait.query';
 import type { ResourceReconcileRunWaitState } from '../src/queries/resource-reconcile-runs.query.types';
@@ -674,6 +676,258 @@ describe('product Job persistence', (): void => {
     expect(unblocked?.predecessorToken).not.toBe(blocked?.predecessorToken);
   });
 
+  it('fences a resource reconcile while a submitted release Job dials that resource', async (): Promise<void> => {
+    await insertDescriptorResourceBinding();
+    await claimReleaseJobAgainstReadyResource();
+    await persistProductJobKubeSubmission('release', 'dep_job');
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceReconcileIntent(),
+      operationId: 'rr_fenced_by_release',
+      type: 'reconcile',
+    });
+
+    await expect(claimResourceReconcileRun()).resolves.toBeNull();
+
+    await persistProductJobResult({
+      completedAt: '2026-07-16T05:00:00.000Z',
+      exitCode: 0,
+      identityId: 'dep_job',
+      jobClass: 'release',
+      jobName: 'release-dep-job',
+      logs: 'done',
+      podName: 'pod-release',
+      status: 'succeeded',
+    });
+    await expect(claimResourceReconcileRun()).resolves.toBeNull();
+
+    await persistProductJobFinalized('release', 'dep_job');
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({ operationId: 'rr_fenced_by_release' });
+  });
+
+  it('leaves a reconcile claimable while a claimed release Job has not reached Kubernetes', async (): Promise<void> => {
+    await insertDescriptorResourceBinding();
+    await claimReleaseJobAgainstReadyResource();
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceReconcileIntent(),
+      operationId: 'rr_beside_unsubmitted_release',
+      type: 'reconcile',
+    });
+
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({
+      operationId: 'rr_beside_unsubmitted_release',
+    });
+  });
+
+  it('keeps fencing a release that reached Kubernetes and then failed before cleanup', async (): Promise<void> => {
+    await insertDescriptorResourceBinding();
+    await claimReleaseJobAgainstReadyResource();
+    await persistProductJobKubeSubmission('release', 'dep_job');
+    await db.update(productJobRuns).set({ status: 'timed-out' }).where(eq(productJobRuns.identityId, 'dep_job'));
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceReconcileIntent(),
+      operationId: 'rr_after_release_failure',
+      type: 'reconcile',
+    });
+
+    await expect(claimResourceReconcileRun()).resolves.toBeNull();
+  });
+
+  it('does not fence a reconcile for a same-named resource in another environment', async (): Promise<void> => {
+    await insertDescriptorResourceBinding();
+    await claimReleaseJobAgainstReadyResource();
+    await persistProductJobKubeSubmission('release', 'dep_job');
+    await db.insert(environments).values({ id: 'env-other', name: 'staging', projectId: 'prj-job' });
+    await db.insert(projectResources).values({
+      commandJson: '[]',
+      envJson: '[]',
+      environmentId: 'env-other',
+      id: 'res-db-staging',
+      image: 'postgres:17',
+      name: 'postgres',
+      portsJson: '[5432]',
+      readinessJson: 'null',
+      runtimeDefinitionHash: 'runtime-hash',
+      status: 'running',
+      volumesJson: '[]',
+    });
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: { ...resourceReconcileIntent(), environmentId: 'env-other', resourceId: 'res-db-staging' },
+      operationId: 'rr_other_environment',
+      type: 'reconcile',
+    });
+
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({ operationId: 'rr_other_environment' });
+  });
+
+  it('ignores a submission reported after the release already reached a terminal status', async (): Promise<void> => {
+    await insertDescriptorResourceBinding();
+    await claimReleaseJobAgainstReadyResource();
+    await db.update(productJobRuns).set({ status: 'timed-out' }).where(eq(productJobRuns.identityId, 'dep_job'));
+
+    await persistProductJobKubeSubmission('release', 'dep_job');
+
+    const [row] = await db
+      .select({ kubeJobSubmittedAt: productJobRuns.kubeJobSubmittedAt })
+      .from(productJobRuns)
+      .where(eq(productJobRuns.identityId, 'dep_job'));
+    expect(row?.kubeJobSubmittedAt).toBeNull();
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceReconcileIntent(),
+      operationId: 'rr_after_stale_submission',
+      type: 'reconcile',
+    });
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({ operationId: 'rr_after_stale_submission' });
+  });
+
+  it('records the Kubernetes submission once so a re-claimed release still runs out of budget', async (): Promise<void> => {
+    await insertDescriptorResourceBinding();
+    await claimReleaseJobAgainstReadyResource();
+    await persistProductJobKubeSubmission('release', 'dep_job');
+    const [firstSubmission] = await db
+      .select({ kubeJobSubmittedAt: productJobRuns.kubeJobSubmittedAt, updatedAt: productJobRuns.updatedAt })
+      .from(productJobRuns)
+      .where(eq(productJobRuns.identityId, 'dep_job'));
+    const anchoredAt: Date = new Date(Date.now() - 20_000);
+    await db.update(productJobRuns).set({ updatedAt: anchoredAt }).where(eq(productJobRuns.identityId, 'dep_job'));
+
+    await persistProductJobKubeSubmission('release', 'dep_job');
+
+    const [reSubmission] = await db
+      .select({ kubeJobSubmittedAt: productJobRuns.kubeJobSubmittedAt, updatedAt: productJobRuns.updatedAt })
+      .from(productJobRuns)
+      .where(eq(productJobRuns.identityId, 'dep_job'));
+    expect(reSubmission?.kubeJobSubmittedAt).toEqual(firstSubmission?.kubeJobSubmittedAt);
+    expect(reSubmission?.updatedAt).toEqual(anchoredAt);
+    const reclaimed: ClaimedProductJobQueryResult = await claimProductJob('release');
+    expect(reclaimed.intent?.timeoutMs).toBeLessThan(30_000);
+  });
+
+  it('leaves a reconcile for a resource the release Job does not dial claimable', async (): Promise<void> => {
+    await db.insert(projectResources).values({
+      commandJson: '[]',
+      envJson: '[]',
+      environmentId: 'env-job',
+      id: 'res-cache',
+      image: 'redis:8',
+      name: 'cache',
+      portsJson: '[6379]',
+      readinessJson: 'null',
+      runtimeDefinitionHash: 'runtime-hash-cache',
+      status: 'running',
+      volumesJson: '[]',
+    });
+    await insertDescriptorResourceBinding();
+    await claimReleaseJobAgainstReadyResource();
+    await persistProductJobKubeSubmission('release', 'dep_job');
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: { ...resourceReconcileIntent(), resourceId: 'res-cache' },
+      operationId: 'rr_unrelated_resource',
+      type: 'reconcile',
+    });
+
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({ operationId: 'rr_unrelated_resource' });
+  });
+
+  it('does not fence a reconcile for a release timed out before it reached Kubernetes', async (): Promise<void> => {
+    await insertDescriptorResourceBinding();
+    await db.update(projectResources).set({ status: 'stopped' }).where(eq(projectResources.id, 'res-db'));
+    await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
+    await db
+      .update(productJobRuns)
+      .set({ createdAt: new Date(Date.now() - 31_000) })
+      .where(eq(productJobRuns.identityId, 'dep_job'));
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      persistedResult: { status: 'timed-out' },
+    });
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceReconcileIntent(),
+      operationId: 'rr_after_release_timeout',
+      type: 'reconcile',
+    });
+
+    const [timedOut] = await db
+      .select({ finalizedAt: productJobRuns.finalizedAt, kubeJobSubmittedAt: productJobRuns.kubeJobSubmittedAt })
+      .from(productJobRuns)
+      .where(eq(productJobRuns.identityId, 'dep_job'));
+    expect(timedOut).toMatchObject({ finalizedAt: null, kubeJobSubmittedAt: null });
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({ operationId: 'rr_after_release_timeout' });
+  });
+
+  it('admits the later reconcile that readies an older queued release Job', async (): Promise<void> => {
+    await insertDescriptorResourceBinding();
+    await db.update(projectResources).set({ status: 'stopped' }).where(eq(projectResources.id, 'res-db'));
+    await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
+    await expect(claimProductJob('release')).resolves.toEqual({
+      intent: null,
+      persistedResult: null,
+      resourceReadiness: [],
+    });
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceReconcileIntent(),
+      operationId: 'rr_readies_queued_release',
+      type: 'reconcile',
+    });
+
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({ operationId: 'rr_readies_queued_release' });
+
+    await db
+      .update(resourceReconcileRuns)
+      .set({ phase: 'succeeded' })
+      .where(eq(resourceReconcileRuns.id, 'rr_readies_queued_release'));
+    await db.update(projectResources).set({ status: 'running' }).where(eq(projectResources.id, 'res-db'));
+    await expect(claimProductJob('release')).resolves.toMatchObject({ intent: { deploymentId: 'dep_job' } });
+  });
+
+  it('admits a reconcile queued before the release Job that waits on it', async (): Promise<void> => {
+    await insertDescriptorResourceBinding();
+    await db.update(projectResources).set({ status: 'stopped' }).where(eq(projectResources.id, 'res-db'));
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceReconcileIntent(),
+      operationId: 'rr_before_queued_release',
+      type: 'reconcile',
+    });
+    await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
+
+    await expect(claimProductJob('release')).resolves.toEqual({
+      intent: null,
+      persistedResult: null,
+      resourceReadiness: [],
+    });
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({ operationId: 'rr_before_queued_release' });
+  });
+
+  it('budgets the reconcile wait for the release Jobs that fence it', async (): Promise<void> => {
+    await insertDescriptorResourceBinding();
+    await claimReleaseJobAgainstReadyResource();
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceReconcileIntent(),
+      operationId: 'rr_budgets_release',
+      type: 'reconcile',
+    });
+
+    await expect(readResourceReconcileRunWaitState('rr_budgets_release')).resolves.toMatchObject({
+      predecessorProductJobCount: 0,
+      predecessorProductJobTimeoutMs: 0,
+    });
+
+    await persistProductJobKubeSubmission('release', 'dep_job');
+
+    await expect(readResourceReconcileRunWaitState('rr_budgets_release')).resolves.toMatchObject({
+      predecessorProductJobCount: 1,
+      predecessorProductJobTimeoutMs: 30_000,
+    });
+  });
+
   it('claims equal-timestamp product Jobs in the same id order used by queue budgets', async (): Promise<void> => {
     await persistProductJobIntent({
       identityId: 'op_inserted_first',
@@ -712,6 +966,31 @@ describe('product Job persistence', (): void => {
     expect(canceled.persistedResult?.status).toBe('timed-out');
   });
 });
+
+async function insertDescriptorResourceBinding(): Promise<void> {
+  await db.insert(environmentResourceOutputVariableBindings).values({
+    environmentId: 'env-job',
+    id: 'binding-db',
+    keyName: 'DATABASE_URL',
+    outputName: 'connection-url',
+    resourceName: 'postgres',
+    source: 'descriptor',
+    targetServiceName: 'web',
+  });
+}
+
+async function claimReleaseJobAgainstReadyResource(): Promise<void> {
+  await db.insert(resourceReconcileRuns).values({
+    expectedClaimsJson: '[]',
+    id: 'rrun-ready',
+    intentJson: '{}',
+    operationType: 'reconcile',
+    phase: 'succeeded',
+    projectResourceId: 'res-db',
+  });
+  await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
+  await expect(claimProductJob('release')).resolves.toMatchObject({ intent: { deploymentId: 'dep_job' } });
+}
 
 function releaseIntent(): ProductJobIntent {
   return {

@@ -25,6 +25,7 @@ import { lockProjectResourceForReconcile } from './resource-reconcile-lock.query
 import { resourceReconcileLeaseDurationMs } from './resource-reconcile-policy';
 import { toProjectResourceRow } from './resources.query';
 import { lockResourceRuntimeClaims } from './resource-runtime-claim-lock.query';
+import { fencingProductJobCondition } from './resource-reconcile-job-fence.query';
 import { projectIsolationVersion } from './project-provisioning-policy';
 
 export { acknowledgeResourceReconcileRun } from './resource-reconcile-acknowledgement.query';
@@ -174,15 +175,7 @@ function resourceReconcileProductJobFence(): SQL {
   return sql`not exists (
     select 1
     from ${productJobRuns}
-    inner join jsonb_array_elements_text(${productJobRuns.resourceIdsJson}::jsonb) resource_ids(resource_id) on true
-    where ${productJobRuns.jobClass} = 'resource-operation'
-      and ${productJobRuns.finalizedAt} is null
-      and resource_id = ${resourceReconcileRuns.projectResourceId}
-      and (
-        ${productJobRuns.status} <> 'queued'
-        or (${productJobRuns.createdAt}, ${productJobRuns.id})
-          < (${resourceReconcileRuns.createdAt}, ${resourceReconcileRuns.id})
-      )
+    where ${fencingProductJobCondition()}
   )`;
 }
 

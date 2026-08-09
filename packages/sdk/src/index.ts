@@ -147,6 +147,7 @@ export {
   finalizeProductJob,
   persistProductJobIntent,
   persistProductJobResult,
+  submitProductJob,
 } from './services/worker-product-job.service';
 export {
   claimDeploymentReconcile,

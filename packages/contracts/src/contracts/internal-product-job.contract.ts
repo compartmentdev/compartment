@@ -81,6 +81,15 @@ export interface WorkerFinalizeProductJobRequest {
   jobClass: ProductJobClass;
 }
 
+/**
+ * Reports that the worker is handing this Job's manifest to the API server. It states what the control plane told
+ * the cluster, never that the Job is running: the Pod may still be pending, already finished, or never admitted.
+ */
+export interface WorkerSubmitProductJobRequest {
+  identityId: string;
+  jobClass: ProductJobClass;
+}
+
 interface ProductJobSpecSchemaShape {
   command: z.ZodArray<z.ZodString>;
   env: typeof tenantSecretEnvironmentSchema;
@@ -95,6 +104,7 @@ export const workerClaimProductJobPathname: string = '/internal/kube-jobs/claim-
 export const workerPersistProductJobIntentPathname: string = '/internal/kube-jobs/intent';
 export const workerPersistProductJobResultPathname: string = '/internal/kube-jobs/result';
 export const workerFinalizeProductJobPathname: string = '/internal/kube-jobs/finalized';
+export const workerSubmitProductJobPathname: string = '/internal/kube-jobs/submitted';
 
 export function productJobRuntimeId(jobClass: ProductJobClass, identityId: string): string {
   return `${jobClass}-${identityId}`;
@@ -180,5 +190,9 @@ export const workerPersistProductJobIntentResponseSchema: ContractSchema<WorkerP
   .strict();
 
 export const workerFinalizeProductJobRequestSchema: ContractSchema<WorkerFinalizeProductJobRequest> = z
+  .object({ identityId: z.string().min(1), jobClass: z.enum(['release', 'resource-operation']) })
+  .strict();
+
+export const workerSubmitProductJobRequestSchema: ContractSchema<WorkerSubmitProductJobRequest> = z
   .object({ identityId: z.string().min(1), jobClass: z.enum(['release', 'resource-operation']) })
   .strict();
