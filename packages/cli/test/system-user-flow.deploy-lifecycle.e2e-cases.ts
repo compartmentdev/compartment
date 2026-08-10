@@ -610,11 +610,10 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
       );
       expect(bootstrapPayload.resource.name).toBe(app.resourceName);
       await waitForRunningResource(admin, app.projectName, app.resourceName);
-      let restoreResourceReleaseDescriptor = async (): Promise<void> => await Promise.resolve();
+      const restoreResourceReleaseDescriptor = async (): Promise<void> =>
+        await disableSelfHostedUserSetupResourceRelease(app);
       let resourceReleaseDeployError: Error | undefined;
       try {
-        restoreResourceReleaseDescriptor = async (): Promise<void> =>
-          await disableSelfHostedUserSetupResourceRelease(app);
         await enableSelfHostedUserSetupResourceRelease(app);
         const resourceReleaseDeployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
           'deploy',
