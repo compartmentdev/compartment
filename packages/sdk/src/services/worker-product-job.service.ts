@@ -8,7 +8,7 @@ import {
   workerPersistProductJobResultPathname,
   workerPersistProductJobResultRequestSchema,
   workerSubmitProductJobPathname,
-  workerSubmitProductJobRequestSchema,
+  workerSubmitProductJobResponseSchema,
   type ProductJobIntent,
   type WorkerClaimProductJobRequest,
   type WorkerFinalizeProductJobRequest,
@@ -16,6 +16,7 @@ import {
   type WorkerPersistProductJobResultRequest,
   type WorkerPersistProductJobIntentResponse,
   type WorkerSubmitProductJobRequest,
+  type WorkerSubmitProductJobResponse,
 } from '@compartment/contracts';
 import type { CompartmentRequester } from '../http/request.types';
 
@@ -70,11 +71,11 @@ export async function finalizeProductJob(
 export async function submitProductJob(
   request: CompartmentRequester,
   body: WorkerSubmitProductJobRequest,
-): Promise<WorkerSubmitProductJobRequest> {
-  return await request<WorkerSubmitProductJobRequest, WorkerSubmitProductJobRequest>({
+): Promise<WorkerSubmitProductJobResponse> {
+  return await request<WorkerSubmitProductJobResponse, WorkerSubmitProductJobRequest>({
     body,
     method: 'POST',
     path: workerSubmitProductJobPathname,
-    schema: workerSubmitProductJobRequestSchema,
+    schema: workerSubmitProductJobResponseSchema,
   });
 }

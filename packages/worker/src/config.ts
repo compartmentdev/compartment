@@ -17,13 +17,7 @@ import type {
 } from './config.types';
 import { readBuildWorkloadScheduling, readTenantWorkloadScheduling } from './tenant-workload-scheduling';
 
-export type {
-  WorkerBuildConfig,
-  WorkerBuildSandboxConfig,
-  WorkerConfig,
-  WorkerCustomDomainConfig,
-  WorkerProcessConfig,
-} from './config.types';
+export type { WorkerBuildConfig, WorkerConfig, WorkerCustomDomainConfig, WorkerProcessConfig } from './config.types';
 
 interface WorkerProcessConfigEnvironment {
   COMPARTMENT_API_INTERNAL_HOST: string;
@@ -48,8 +42,8 @@ interface WorkerBuildConfigEnvironment extends WorkerProcessConfigEnvironment {
   COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: number;
   COMPARTMENT_BUILDKIT_RESOURCES: string;
   COMPARTMENT_BUILD_NAMESPACE: string;
-  COMPARTMENT_BUILD_RUNNER_IMAGE: string;
   COMPARTMENT_BUILD_RUNNER_RESOURCES: string;
+  COMPARTMENT_WORKER_IMAGE: string;
   COMPARTMENT_BUILD_TIMEOUT_MS: number;
   COMPARTMENT_KUBE_BUILD_SCHEDULING: string;
 }
@@ -100,10 +94,10 @@ const workerBuildConfigSchema: z.ZodType<WorkerBuildConfigEnvironment> = workerP
     COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: z.coerce.number().int().positive(),
     COMPARTMENT_BUILDKIT_RESOURCES: z.string().trim().min(1),
     COMPARTMENT_BUILD_NAMESPACE: z.string().trim().min(1),
-    COMPARTMENT_BUILD_RUNNER_IMAGE: z.string().trim().min(1),
     COMPARTMENT_BUILD_RUNNER_RESOURCES: z.string().trim().min(1),
     COMPARTMENT_BUILD_TIMEOUT_MS: z.coerce.number().int().positive(),
     COMPARTMENT_KUBE_BUILD_SCHEDULING: z.string().trim().min(1),
+    COMPARTMENT_WORKER_IMAGE: z.string().trim().min(1),
   }),
 );
 
@@ -191,6 +185,7 @@ function readTenantSecretsKeyring(parsed: WorkerConfigEnvironment): TenantSecret
 function buildWorkerBuildConfig(parsed: WorkerBuildConfigEnvironment): WorkerBuildConfig {
   return {
     ...buildWorkerProcessConfig(parsed),
+    workerImage: parsed.COMPARTMENT_WORKER_IMAGE,
     buildSandbox: {
       buildKitResources: readResourceRequirements(
         parsed.COMPARTMENT_BUILDKIT_RESOURCES,
@@ -198,7 +193,6 @@ function buildWorkerBuildConfig(parsed: WorkerBuildConfigEnvironment): WorkerBui
       ),
       gcKeepStorageMb: parsed.COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB,
       namespace: parsed.COMPARTMENT_BUILD_NAMESPACE,
-      runnerImage: parsed.COMPARTMENT_BUILD_RUNNER_IMAGE,
       runnerResources: readResourceRequirements(
         parsed.COMPARTMENT_BUILD_RUNNER_RESOURCES,
         'COMPARTMENT_BUILD_RUNNER_RESOURCES',

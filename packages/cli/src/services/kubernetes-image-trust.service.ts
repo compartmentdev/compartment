@@ -1,12 +1,10 @@
-import {
-  selfHostedRuntimeImageSignaturePolicy,
-  type SelfHostedRuntimeImageSignaturePolicy,
-} from '@compartment/contracts';
+import { selfHostedRuntimeImageSignaturePolicy } from '@compartment/contracts';
 import type { JsonValue } from '@compartment/utils';
 import { readCosignCommand } from '../bundled-cosign';
 import { readNonCompartmentEnvironment } from '../command-environment';
 import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
+import { capsuleImageSignaturePolicy, resolveEffectiveCapsuleImageTrust } from './kubernetes-capsule-image-trust';
 import { createImageTrustCommandError } from './kubernetes-image-trust-error';
 import { readKubernetesChartValues } from './kubernetes-chart-values.service';
 import { readYamlFile } from './yaml-file';
@@ -15,14 +13,17 @@ import type { KubernetesPlatformImageName } from './kubernetes-platform-image.ty
 import { writeKubernetesInstallValues } from './kubernetes-install-helm.service';
 import type {
   KubernetesInstallImageTrustInput,
+  KubernetesImageSignaturePolicy,
   KubernetesImageTrustJsonObject,
   KubernetesPlatformImageValueFields,
   KubernetesPlatformImageValues,
   KubernetesReleaseImageTrustInput,
+  KubernetesVerifiedCapsuleImageValues,
   KubernetesVerifiedImageValue,
   KubernetesVerifiedPlatformImageValues,
   ResolvedKubernetesPlatformImage,
 } from './kubernetes-image-trust.service.types';
+import { readImageTrustObject, readOptionalImageStringField } from './kubernetes-image-trust-values';
 import { readKubernetesReleaseValues } from './kubernetes-release-values.service';
 
 const imageDigestPattern: RegExp = /^sha256:[a-f0-9]{64}$/u;
@@ -58,15 +59,25 @@ async function writeVerifiedPlatformImageValues(
     const resolvedImage: ResolvedKubernetesPlatformImage = resolvePlatformImage(effectiveImages[imageName], imageName);
     let digest: string | undefined = verifiedDigests.get(resolvedImage.imageRef);
     if (digest === undefined) {
-      digest = await verifyPlatformImage(resolvedImage);
+      digest = await verifyPlatformImage(resolvedImage, selfHostedRuntimeImageSignaturePolicy);
       verifiedDigests.set(resolvedImage.imageRef, digest);
     }
     verifiedImages[imageName] = { digest };
   }
-  const values: KubernetesVerifiedPlatformImageValues = { images: verifiedImages };
+  const values: KubernetesVerifiedPlatformImageValues = {
+    capsule: await verifyCapsuleImageValues(baseValues, overrideValues),
+    images: verifiedImages,
+  };
   await writeKubernetesInstallValues(outputPath, values);
 }
-
+async function verifyCapsuleImageValues(
+  baseValues: JsonValue,
+  overrideValues: readonly JsonValue[],
+): Promise<KubernetesVerifiedCapsuleImageValues> {
+  const resolved = resolveEffectiveCapsuleImageTrust(baseValues, overrideValues);
+  const digest: string = await verifyPlatformImage(resolved.image, capsuleImageSignaturePolicy);
+  return { manager: { image: { tag: `${resolved.tag}@${digest}` } } };
+}
 function createEmptyVerifiedImages(): Record<KubernetesPlatformImageName, KubernetesVerifiedImageValue> {
   return {
     api: { digest: '' },
@@ -120,24 +131,10 @@ function readImageValueFields(
   }
   const image: KubernetesImageTrustJsonObject = readImageTrustObject(imageValue, `Helm images.${imageName} values`);
   return {
-    ...readOptionalStringField(image, 'digest'),
-    ...readOptionalStringField(image, 'repository'),
-    ...readOptionalStringField(image, 'tag'),
+    ...readOptionalImageStringField(image, 'digest'),
+    ...readOptionalImageStringField(image, 'repository'),
+    ...readOptionalImageStringField(image, 'tag'),
   };
-}
-
-function readOptionalStringField(
-  value: KubernetesImageTrustJsonObject,
-  field: keyof KubernetesPlatformImageValueFields,
-): KubernetesPlatformImageValueFields {
-  if (!Object.hasOwn(value, field)) {
-    return {};
-  }
-  const fieldValue: JsonValue | undefined = value[field];
-  if (typeof fieldValue !== 'string') {
-    throw new Error(`Expected Helm image ${field} to be a string.`);
-  }
-  return { [field]: fieldValue };
 }
 
 function resolvePlatformImage(
@@ -158,7 +155,7 @@ function resolvePlatformImage(
 
 function requireNonEmptyImageField(
   value: string | undefined,
-  imageName: KubernetesPlatformImageName,
+  imageName: KubernetesPlatformImageName | 'capsule',
   field: 'repository' | 'tag',
 ): string {
   if (value === undefined || value.trim() === '') {
@@ -167,10 +164,13 @@ function requireNonEmptyImageField(
   return value;
 }
 
-async function verifyPlatformImage(image: ResolvedKubernetesPlatformImage): Promise<string> {
+async function verifyPlatformImage(
+  image: ResolvedKubernetesPlatformImage,
+  policy: KubernetesImageSignaturePolicy,
+): Promise<string> {
   const cosignCommand: readonly string[] = await readCosignCommand();
   const result: CommandResult = await runCommandWithTimeout(
-    buildCosignVerifyCommand(cosignCommand, image.imageRef),
+    buildCosignVerifyCommand(cosignCommand, image.imageRef, policy),
     120_000,
     readNonCompartmentEnvironment(process.env),
   );
@@ -184,8 +184,11 @@ async function verifyPlatformImage(image: ResolvedKubernetesPlatformImage): Prom
   return digest;
 }
 
-function buildCosignVerifyCommand(cosignCommand: readonly string[], imageRef: string): string[] {
-  const policy: SelfHostedRuntimeImageSignaturePolicy = selfHostedRuntimeImageSignaturePolicy;
+function buildCosignVerifyCommand(
+  cosignCommand: readonly string[],
+  imageRef: string,
+  policy: KubernetesImageSignaturePolicy,
+): string[] {
   return [
     ...cosignCommand,
     'verify',
@@ -237,11 +240,4 @@ function readImageTrustJson(value: string, message: string): JsonValue {
   } catch {
     throw new Error(message);
   }
-}
-
-function readImageTrustObject(value: JsonValue | undefined, label: string): KubernetesImageTrustJsonObject {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`Expected ${label} to be an object.`);
-  }
-  return value;
 }

@@ -1,5 +1,6 @@
 import type { FastifyPluginOptions } from 'fastify';
 import type { ApiApp } from '../../app.types';
+import { authenticateBuildSourceArchiveRequest } from './authenticate-build-source-archive-request';
 import { authenticateInternalEdgeRequest } from './authenticate-internal-edge-request';
 import { authenticateInternalWorkerRequest } from './authenticate-internal-worker-request';
 import { authenticateProductLogIngestRequest } from './authenticate-product-log-ingest-request';
@@ -42,9 +43,20 @@ export function registerInternalApiRoutes(
   options: InternalApiRoutesOptions,
   done: RegisterInternalRoutesDone,
 ): void {
+  app.register(registerBuildSourceArchiveInternalRoutes);
   app.register(registerEdgeInternalRoutes);
   app.register(registerProductLogInternalRoutes);
   app.register(registerWorkerInternalRoutes, options);
+  done();
+}
+
+function registerBuildSourceArchiveInternalRoutes(
+  app: ApiApp,
+  _options: FastifyPluginOptions,
+  done: RegisterInternalRoutesDone,
+): void {
+  app.addHook('preHandler', authenticateBuildSourceArchiveRequest);
+  registerGetArtifactSourceArchiveRoute(app);
   done();
 }
 
@@ -78,7 +90,6 @@ function registerWorkerInternalRoutes(
   done: RegisterInternalRoutesDone,
 ): void {
   app.addHook('preHandler', authenticateInternalWorkerRequest);
-  registerGetArtifactSourceArchiveRoute(app);
   registerGetPodMetricNamespacesRoute(app);
   registerPostClaimDeploymentRoute(app);
   registerPostRecoverOrphanedBuildClaimsRoute(app);

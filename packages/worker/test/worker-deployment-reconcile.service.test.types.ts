@@ -26,3 +26,13 @@ export interface DeleteRuntime extends KubeRuntime {
 }
 
 export type ApplyMockCall = [ApplyBundle];
+
+export interface AppliedGateEnvironmentVariable {
+  name: string;
+  value: string;
+}
+
+export interface AppliedGateContainer {
+  env: AppliedGateEnvironmentVariable[];
+  image: string;
+}

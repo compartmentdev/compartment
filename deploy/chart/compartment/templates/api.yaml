@@ -99,8 +99,6 @@ spec:
             - name: COMPARTMENT_VARIABLES_MASTER_KEY
               valueFrom:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: variables-master-key}
-            - name: COMPARTMENT_WORKER_IMAGE
-              value: {{ include "compartment.image" .Values.images.worker | quote }}
           ports:
             - name: http
               containerPort: {{ .Values.ports.api }}

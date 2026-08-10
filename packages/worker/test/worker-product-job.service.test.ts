@@ -4,6 +4,7 @@ import type {
   WorkerPersistProductJobIntentResponse,
   WorkerPersistProductJobResultRequest,
   WorkerSubmitProductJobRequest,
+  WorkerSubmitProductJobResponse,
 } from '@compartment/contracts';
 import type {
   KubeJobResult,
@@ -31,7 +32,7 @@ interface ProductJobSdkMocks {
     ) => Promise<WorkerPersistProductJobResultRequest>
   >;
   submit: Mock<
-    (request: CompartmentRequester, input: WorkerSubmitProductJobRequest) => Promise<WorkerSubmitProductJobRequest>
+    (request: CompartmentRequester, input: WorkerSubmitProductJobRequest) => Promise<WorkerSubmitProductJobResponse>
   >;
 }
 
@@ -40,8 +41,8 @@ async function executeProductJob(
   runtime: KubeRuntime,
   intent: ProductJobIntent,
   scheduling?: KubeWorkloadScheduling,
-): Promise<WorkerPersistProductJobResultRequest> {
-  return await executeProductJobWithKek(request, runtime, intent, testTenantSecretsKek, scheduling);
+): Promise<WorkerPersistProductJobResultRequest | null> {
+  return await executeProductJobWithKek(request, runtime, intent, testTenantSecretsKek, undefined, scheduling);
 }
 
 const mocks: ProductJobSdkMocks = vi.hoisted(
@@ -79,25 +80,28 @@ describe('executeProductJob', (): void => {
       ): Promise<WorkerPersistProductJobResultRequest> => await Promise.resolve(result),
     );
     mocks.submit.mockImplementation(
-      async (
-        _request: CompartmentRequester,
-        input: WorkerSubmitProductJobRequest,
-      ): Promise<WorkerSubmitProductJobRequest> => await Promise.resolve(input),
+      async (): Promise<WorkerSubmitProductJobResponse> => await Promise.resolve({ recorded: true }),
     );
+  });
+
+  it('creates nothing when the control plane refuses the submission to a reconciling resource', async (): Promise<void> => {
+    const runtime: KubeRuntime & { runJob: Mock } = runtimeWithResult(successResult());
+    mocks.submit.mockResolvedValue({ recorded: false });
+
+    await expect(executeProductJob(requester(), runtime, releaseIntent())).resolves.toBeNull();
+
+    expect(runtime.runJob.mock.calls).toHaveLength(0);
+    expect(mocks.persistResult.mock.calls).toHaveLength(0);
+    expect(mocks.finalize.mock.calls).toHaveLength(0);
   });
 
   it('records the Kubernetes submission before the manifest reaches the API server', async (): Promise<void> => {
     const submissionOrder: string[] = [];
     const runtime: KubeRuntime & { runJob: Mock } = runtimeWithResult(successResult());
-    mocks.submit.mockImplementation(
-      async (
-        _request: CompartmentRequester,
-        input: WorkerSubmitProductJobRequest,
-      ): Promise<WorkerSubmitProductJobRequest> => {
-        submissionOrder.push('marker');
-        return await Promise.resolve(input);
-      },
-    );
+    mocks.submit.mockImplementation(async (): Promise<WorkerSubmitProductJobResponse> => {
+      submissionOrder.push('marker');
+      return await Promise.resolve({ recorded: true });
+    });
     runtime.runJob.mockImplementation(async (): Promise<KubeJobResult> => {
       submissionOrder.push('job');
       return await Promise.resolve(successResult());
@@ -196,7 +200,7 @@ describe('executeProductJob', (): void => {
       logs: 'dockerfile connecting to postgres://internal on port 8080\n',
     });
 
-    const result: WorkerPersistProductJobResultRequest = await executeProductJob(
+    const result: WorkerPersistProductJobResultRequest | null = await executeProductJob(
       requester(),
       runtime,
       releaseIntent({
@@ -206,7 +210,7 @@ describe('executeProductJob', (): void => {
       }),
     );
 
-    expect(result.logs).toBe('dockerfile connecting to [REDACTED] on port 8080\n');
+    expect(result?.logs).toBe('dockerfile connecting to [REDACTED] on port 8080\n');
     expect(mocks.persistResult).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ logs: 'dockerfile connecting to [REDACTED] on port 8080\n' }),

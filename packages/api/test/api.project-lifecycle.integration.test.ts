@@ -58,6 +58,7 @@ import {
   acknowledgeKubeDeploymentStopped,
   buildOrganizationAuthorizationHeaders,
   claimNextQueuedDeployment,
+  fetchArtifactSourceArchive,
   completeQueuedDeployment,
   injectDeployRequest,
   installCompartment as installCompartmentHarness,
@@ -877,11 +878,10 @@ describe('Phase 0 API integration project lifecycle', (): void => {
       imageRef: 'registry.example.test/smoke-web@sha256:late',
       imageRetentionState: 'available',
     });
-    const sourceArchiveResponse: LightMyRequestResponse = await app.inject({
-      headers: { authorization: 'Bearer test-runtime-control-token' },
-      method: 'GET',
-      url: `/internal/artifacts/${storedDeployment?.buildArtifactId ?? ''}/source-archive`,
-    });
+    const sourceArchiveResponse: LightMyRequestResponse = await fetchArtifactSourceArchive(
+      app,
+      storedDeployment?.buildArtifactId ?? '',
+    );
     expect(sourceArchiveResponse.statusCode).toBe(404);
   });
 
@@ -925,13 +925,10 @@ describe('Phase 0 API integration project lifecycle', (): void => {
     const statusPayload: DeploymentStatusResponse = deploymentStatusResponseSchema.parse(statusResponse.json());
     expect(requireSingleDeployment(statusPayload.deployments).status).toBe('failed');
 
-    const sourceArchiveResponse: LightMyRequestResponse = await app.inject({
-      headers: {
-        authorization: 'Bearer test-runtime-control-token',
-      },
-      method: 'GET',
-      url: `/internal/artifacts/${claimedDeployment.artifact.id}/source-archive`,
-    });
+    const sourceArchiveResponse: LightMyRequestResponse = await fetchArtifactSourceArchive(
+      app,
+      claimedDeployment.artifact.id,
+    );
     expect(sourceArchiveResponse.statusCode).toBe(404);
   });
   it('keeps a project archived and retries runtime teardown after a failed archive stop', async (): Promise<void> => {

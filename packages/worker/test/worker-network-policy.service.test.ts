@@ -39,7 +39,7 @@ describe('worker NetworkPolicy desired state', (): void => {
     const ingress: NetworkPolicyRule[] = readPolicyIngress(applicationPolicyManifests([8080]), 'application-ingress');
 
     expect(ingress).toHaveLength(1);
-    expect(ingress[0]?.from).toEqual([
+    expect(ingress[0]?._from).toEqual([
       {
         namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': 'platform' } },
         podSelector: { matchLabels: { 'app.kubernetes.io/component': 'caddy' } },
@@ -88,7 +88,14 @@ describe('worker NetworkPolicy desired state', (): void => {
     const { apply: deploymentApply, runtime: deploymentRuntime }: IdentityApplyRuntime = identityApplyRuntime();
 
     await applyProjectNetworkPolicies(resourceRuntime, 'project', ports);
-    await applyApplication(deploymentRuntime, deploymentTarget(ports), testTenantSecretsKek, 600_000, undefined);
+    await applyApplication(
+      deploymentRuntime,
+      deploymentTarget(ports),
+      testTenantSecretsKek,
+      600_000,
+      undefined,
+      'compartment-worker@sha256:worker',
+    );
     await applyProjectNetworkPolicies(resourceRuntime, 'project', ports);
 
     const resourcePolicies: KubeManifest[] = policyManifests(appliedManifests(resourceApply, 0));
@@ -119,6 +126,7 @@ function defaultApplicationProjection(): DeploymentReconcileProjection {
     readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
     releaseCommand: null,
     replicas: 1,
+    resourceEndpoints: [],
     runCommand: null,
     secretId: 'deployment',
     serviceId: 'service',

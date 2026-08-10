@@ -5,7 +5,8 @@ import { observeJob } from './kube-job-log-observation';
 import { createKubeObservation } from './kube-observation';
 import { readKubePodMetrics } from './kube-pod-metrics';
 import type { KubePodMetricCollection, ObservePodMetrics } from './kube-pod-metrics.types';
-import { waitForTerminalJob, type TerminalJob } from './kube-job';
+import { waitForTerminalJob } from './kube-job';
+import type { TerminalJob } from './kube-job.types';
 import { createOrJoinKubeJob } from './kube-job-reconciliation';
 import {
   kubeFinalizedJobManifest,
@@ -222,7 +223,7 @@ export class KubeRuntime {
       completedAt: new Date(),
       exitCode: terminal.succeeded ? 0 : terminal.exitCode,
       jobName,
-      logs: output,
+      logs: `${output}${terminal.initFailureMessage ?? ''}`,
       podName: terminal.podName,
       status: terminal.succeeded ? 'succeeded' : 'failed',
     };

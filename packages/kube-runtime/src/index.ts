@@ -20,6 +20,7 @@ export type {
   KubeIssuerReference,
 } from './kube-custom-domain-projection.types';
 export { projectApplicationManifests } from './kube-projections';
+export type { KubeResourceReachabilityProbe } from './kube-resource-reachability-projection.types';
 export { projectNetworkPolicyManifests } from './kube-network-policy-projection';
 export {
   assertResourceClaimIdentity,

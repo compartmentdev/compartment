@@ -5,7 +5,8 @@ import type { WorkerConfig } from '../src/config';
 import type { KubeControllerHost } from '../src/kube-controller-host';
 import type { WorkerBuildTask } from '../src/services/worker-iteration.types';
 import { runWorker } from '../src/app';
-import { createWorkerAppTestConfig, DeferredValue } from './worker-app-test.fixtures';
+import { DeferredValue } from './worker-app-test.fixtures';
+import { createWorkerTestConfig } from './worker-config-test.fixtures';
 
 type RunAuxiliaryWorkerIteration = (config: WorkerConfig) => Promise<boolean>;
 type StartNextBuild = (config: WorkerConfig, runtime: KubeRuntime) => Promise<WorkerBuildTask | null>;
@@ -102,7 +103,7 @@ describe('runWorker', (): void => {
   });
 
   it('keeps auxiliary concurrency bounded when maximum build concurrency is high', async (): Promise<void> => {
-    const config: WorkerConfig = createWorkerAppTestConfig(100);
+    const config: WorkerConfig = workerConfig(100);
     const auxiliaryCompletions: DeferredValue<boolean>[] = createAuxiliaryCompletions();
     mocks.runAuxiliaryWorkerIteration
       .mockReturnValueOnce(auxiliaryCompletions[0]?.promise ?? Promise.resolve(false))
@@ -122,7 +123,7 @@ describe('runWorker', (): void => {
   });
 
   it('fills the configured build capacity without multiplying auxiliary polling', async (): Promise<void> => {
-    const config: WorkerConfig = createWorkerAppTestConfig(3);
+    const config: WorkerConfig = workerConfig(3);
     const completions: DeferredValue<void>[] = Array.from(
       { length: 3 },
       (): DeferredValue<void> => new DeferredValue<void>(),
@@ -164,7 +165,7 @@ describe('runWorker', (): void => {
       return await Promise.resolve(null);
     });
 
-    const workerPromise: Promise<void> = runWorker(createWorkerAppTestConfig(100));
+    const workerPromise: Promise<void> = runWorker(workerConfig(100));
     await vi.advanceTimersByTimeAsync(0);
     expect(mocks.startNextBuild).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(9);
@@ -184,7 +185,7 @@ describe('runWorker', (): void => {
         return await Promise.resolve(null);
       });
 
-    const workerPromise: Promise<void> = runWorker(createWorkerAppTestConfig(1));
+    const workerPromise: Promise<void> = runWorker(workerConfig(1));
     await vi.waitFor((): void => expect(mocks.startNextBuild).toHaveBeenCalledTimes(1));
     failedCompletion.reject(new Error('completion failed'));
     await expect(workerPromise).resolves.toBeUndefined();
@@ -194,7 +195,7 @@ describe('runWorker', (): void => {
   it('drains active builds before shutdown completes', async (): Promise<void> => {
     const completion: DeferredValue<void> = new DeferredValue<void>();
     mocks.startNextBuild.mockResolvedValueOnce({ completion: completion.promise });
-    const workerPromise: Promise<void> = runWorker(createWorkerAppTestConfig(1));
+    const workerPromise: Promise<void> = runWorker(workerConfig(1));
     let workerSettled: boolean = false;
     void workerPromise.finally((): void => {
       workerSettled = true;
@@ -213,4 +214,11 @@ describe('runWorker', (): void => {
 
 function createAuxiliaryCompletions(): DeferredValue<boolean>[] {
   return [new DeferredValue<boolean>(), new DeferredValue<boolean>()];
+}
+
+function workerConfig(maximumConcurrentBuilds: number): WorkerConfig {
+  return createWorkerTestConfig({
+    buildQueue: { maximumConcurrentBuilds, maximumConcurrentBuildsPerOrganization: 1 },
+    pollIntervalMs: 10,
+  });
 }

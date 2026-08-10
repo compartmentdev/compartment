@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import type { KubeJobEmptyDirVolume } from '@compartment/kube-runtime';
 import { assertBuildSandboxMemoryBudget, buildSandboxVolumes } from '../src/services/build-sandbox-workspace';
-import type { WorkerBuildSandboxConfig } from '../src/config';
+import type { WorkerBuildSandboxConfig } from '../src/config.types';
 
 interface ChartBuildValues {
   buildkit: { gcKeepStorageMb: number };
@@ -70,7 +70,6 @@ function buildSandboxConfig(overrides: {
     buildKitResources: { limits: { memory: overrides.buildKitMemory ?? '3Gi' } },
     gcKeepStorageMb: overrides.gcKeepStorageMb ?? 1024,
     namespace: 'compartment-build',
-    runnerImage: 'compartment-worker@sha256:runner',
     runnerResources: { limits: { memory: overrides.runnerMemory ?? '1Gi' } },
     scheduling: { nodeSelector: {}, runtimeClassName: 'gvisor', tolerations: [] },
     timeoutMs: 1_800_000,

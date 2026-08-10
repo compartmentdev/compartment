@@ -18,12 +18,12 @@ interface OrganizationQuotaDefinition {
 
 type PodQuotaResource = 'limits-cpu' | 'limits-memory' | 'requests-cpu' | 'requests-memory';
 
-export const organizationQuotaCapacity: OrganizationQuotaCapacity = {
-  limitsCpu: '4',
-  limitsMemory: '4Gi',
-  requestsCpu: '2',
-  requestsMemory: '2Gi',
-  requestsStorage: '20Gi',
+const organizationQuotaCapacity: OrganizationQuotaCapacity = {
+  limitsCpu: '20',
+  limitsMemory: '20Gi',
+  requestsCpu: '20',
+  requestsMemory: '20Gi',
+  requestsStorage: '100Gi',
 };
 
 const definitions: OrganizationQuotaDefinition[] = [

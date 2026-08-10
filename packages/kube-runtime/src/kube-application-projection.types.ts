@@ -1,3 +1,4 @@
+import type { KubeResourceReachabilityProbe } from './kube-resource-reachability-projection.types';
 import type { KubeWorkloadScheduling } from './kube-workload-scheduling.types';
 
 export interface KubeContainerLifecycle {
@@ -58,6 +59,8 @@ export interface ApplicationProjectionRow {
   projectName: string;
   readiness: ApplicationReadinessConfig | null;
   replicas: number;
+  /** Absent when this service declares no resources, so the Pod gains no init container at all. */
+  resourceProbe?: KubeResourceReachabilityProbe | undefined;
   runCommand: string | null;
   scheduling?: KubeWorkloadScheduling | undefined;
   serviceId: string;

@@ -13,7 +13,7 @@ const require = createRequire(import.meta.url);
 await runCommandAsync('pnpm', ['--filter', '@compartment/kube-runtime', 'build'], repositoryRoot, process.env);
 const { organizationGlobalCustomQuotaManifests } = require(join(repositoryRoot, 'packages/kube-runtime/dist/index.js'));
 const context = process.env.COMPARTMENT_E2E_KUBE_CONTEXT;
-const namespaces = ['quota-a-1', 'quota-a-2', 'quota-b'];
+const namespaces = ['quota-a-0', 'quota-a-1', 'quota-a-2', 'quota-b'];
 const platformNamespace = process.env.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? 'compartment';
 const buildNamespace = `${platformNamespace}-build`;
 const kubectlTimeoutMs = 130_000;
@@ -185,8 +185,8 @@ async function expectEventuallyAdmitted(action, label) {
 async function admitExactlyOneConcurrentPod() {
   for (let attempt = 1; attempt <= 120; attempt += 1) {
     const concurrent = await Promise.allSettled([
-      createPod('quota-a-1', 'concurrent-a', '1200m'),
-      createPod('quota-a-2', 'concurrent-b', '1200m'),
+      createPod('quota-a-1', 'concurrent-a', '6'),
+      createPod('quota-a-2', 'concurrent-b', '6'),
     ]);
     const admittedCount = concurrent.filter((result) => result.status === 'fulfilled').length;
     if (admittedCount === 1) {
@@ -272,27 +272,33 @@ async function runGate() {
     }
     await createNamespace('quota-a-1', organizationId);
     await createNamespace('quota-a-2', organizationId);
+    await createNamespace('quota-a-0', organizationId);
     await createNamespace('quota-b', 'quota-org-b');
     await applyProjectedOrganizationQuota(secondaryManifests);
-    await createPod('quota-a-1', 'first', '1500m');
-    await waitForQuotaMaterialized(requestsCpuQuota.metadata.name, '1500m');
-    await expectDenied(async () => await createPod('quota-a-2', 'shared-denied', '1'), 'shared project CPU');
+    await createPod('quota-a-1', 'first', '10');
+    await createPod('quota-a-2', 'second', '10');
+    await waitForQuotaMaterialized(requestsCpuQuota.metadata.name, '20');
+    await expectDenied(async () => await createPod('quota-a-0', 'shared-denied', '1'), 'shared project CPU');
     await kubectl(['delete', 'pod', 'first', '--namespace', 'quota-a-1', '--wait=true']);
+    await kubectl(['delete', 'pod', 'second', '--namespace', 'quota-a-2', '--wait=true']);
     await waitForReleasedCapacity(requestsCpuQuota.metadata.name);
 
+    await createPod('quota-a-0', 'concurrent-baseline', '9');
+    await waitForQuotaMaterialized(requestsCpuQuota.metadata.name, '9');
     const admitted = await admitExactlyOneConcurrentPod();
-    await waitForQuotaMaterialized(requestsCpuQuota.metadata.name, '1200m');
+    await waitForQuotaMaterialized(requestsCpuQuota.metadata.name, '15');
     await kubectl(['delete', 'pod', admitted.name, '--namespace', admitted.namespace, '--wait=true']);
+    await kubectl(['delete', 'pod', 'concurrent-baseline', '--namespace', 'quota-a-0', '--wait=true']);
     await waitForReleasedCapacity(requestsCpuQuota.metadata.name);
     await expectEventuallyAdmitted(
-      async () => await createPod('quota-a-2', 'released-capacity', '1200m'),
+      async () => await createPod('quota-a-2', 'released-capacity', '10'),
       'released Pod capacity',
     );
     await createPod('quota-b', 'isolated-org', '2');
     await createPod(platformNamespace, 'platform-unaffected', '1');
     await createPod(buildNamespace, 'build-unaffected', '1');
-    await createPvc('quota-a-1', 'storage-first', '15Gi');
-    await waitForQuotaMaterialized(storageQuota.metadata.name, '15Gi');
+    await createPvc('quota-a-1', 'storage-first', '95Gi');
+    await waitForQuotaMaterialized(storageQuota.metadata.name, '95Gi');
     await expectDenied(async () => await createPvc('quota-a-2', 'storage-denied', '10Gi'), 'shared PVC storage');
     await kubectl(['delete', 'pvc', 'storage-first', '--namespace', 'quota-a-1', '--wait=true']);
     await waitForReleasedCapacity(storageQuota.metadata.name);

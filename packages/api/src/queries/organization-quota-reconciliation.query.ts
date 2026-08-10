@@ -11,6 +11,7 @@ import type {
 
 const organizationQuotaLeaseDurationMs: number = 300_000;
 const organizationQuotaRetryDelayMs: number = 5_000;
+const organizationQuotaReconciliationAttemptLimit: number = 3;
 
 export async function createOrganizationQuotaReconciliationWithExecutor(
   transaction: OrganizationQuotaTransaction,
@@ -29,6 +30,7 @@ export async function claimOrganizationQuotaReconciliation(): Promise<Organizati
 async function claimOrganizationQuotaWithTransaction(
   transaction: OrganizationQuotaTransaction,
 ): Promise<OrganizationQuotaReconcileClaimRow | null> {
+  await failExhaustedOrganizationQuotaLease(transaction);
   return await claimSelectedRow(
     transaction,
     async (
@@ -41,6 +43,25 @@ async function claimOrganizationQuotaWithTransaction(
     ): Promise<OrganizationQuotaReconcileClaimRow> => await leaseOrganizationQuota(tx, row),
     null,
   );
+}
+
+async function failExhaustedOrganizationQuotaLease(transaction: OrganizationQuotaTransaction): Promise<void> {
+  await transaction
+    .update(organizationQuotaReconciliation)
+    .set({
+      failureMessage: `Organization quota reconciliation failed after ${organizationQuotaReconciliationAttemptLimit} attempts: the final lease expired.`,
+      leaseExpiresAt: null,
+      leaseId: null,
+      state: 'failed',
+      updatedAt: sql`now()`,
+    })
+    .where(
+      and(
+        eq(organizationQuotaReconciliation.state, 'running'),
+        gt(organizationQuotaReconciliation.attempts, organizationQuotaReconciliationAttemptLimit - 1),
+        lt(organizationQuotaReconciliation.leaseExpiresAt, sql`now()`),
+      ),
+    );
 }
 
 async function selectClaimableOrganizationQuota(
@@ -62,6 +83,7 @@ function organizationQuotaClaimableCondition(): SQL | undefined {
     eq(organizationQuotaReconciliation.state, 'pending'),
     and(
       eq(organizationQuotaReconciliation.state, 'failed'),
+      lt(organizationQuotaReconciliation.attempts, organizationQuotaReconciliationAttemptLimit),
       lt(
         organizationQuotaReconciliation.updatedAt,
         sql`now() - (${organizationQuotaRetryDelayMs} * interval '1 millisecond')`,
@@ -69,6 +91,7 @@ function organizationQuotaClaimableCondition(): SQL | undefined {
     ),
     and(
       eq(organizationQuotaReconciliation.state, 'running'),
+      lt(organizationQuotaReconciliation.attempts, organizationQuotaReconciliationAttemptLimit),
       lt(organizationQuotaReconciliation.leaseExpiresAt, sql`now()`),
     ),
   );
@@ -82,7 +105,7 @@ async function leaseOrganizationQuota(
   await transaction
     .update(organizationQuotaReconciliation)
     .set({
-      attempts: row.state === 'running' ? row.attempts : row.attempts + 1,
+      attempts: row.attempts + 1,
       failureMessage: null,
       leaseExpiresAt: sql`now() + (${organizationQuotaLeaseDurationMs} * interval '1 millisecond')`,
       leaseId,

@@ -229,6 +229,39 @@ describe('projects service', (): void => {
     expect(reclaimed?.leaseId).not.toBe(first.leaseId);
   });
 
+  it('stops retrying organization quota reconciliation after three attempts', async (): Promise<void> => {
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ attempts: 3, failureMessage: 'terminal quota failure', state: 'failed', updatedAt: new Date(0) })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+
+    await expect(claimOrganizationQuotaReconciliation()).resolves.toBeNull();
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toBeNull();
+  });
+
+  it('terminalizes an expired final organization quota lease', async (): Promise<void> => {
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ attempts: 3, leaseExpiresAt: new Date(0), leaseId: 'oql_final', state: 'running' })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+
+    await expect(claimOrganizationQuotaReconciliation()).resolves.toBeNull();
+    await expect(
+      db
+        .select({
+          failureMessage: organizationQuotaReconciliation.failureMessage,
+          state: organizationQuotaReconciliation.state,
+        })
+        .from(organizationQuotaReconciliation)
+        .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources')),
+    ).resolves.toEqual([
+      {
+        failureMessage: 'Organization quota reconciliation failed after 3 attempts: the final lease expired.',
+        state: 'failed',
+      },
+    ]);
+  });
+
   it('backfills exactly one durable quota row for an existing organization', async (): Promise<void> => {
     const client: PoolClient = await pool.connect();
     const migration: string = readFileSync(

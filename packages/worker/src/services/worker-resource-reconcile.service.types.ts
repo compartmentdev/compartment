@@ -1,10 +1,6 @@
 import type { ResourceReconcileIntent, WorkerClaimResourceReconcileResponse } from '@compartment/contracts';
 import type { KubeManifest } from '@compartment/kube-runtime';
 
-export interface ObservedClaimStatus {
-  phase?: string | undefined;
-}
-
 export interface ManagedResourceUpdatePlan {
   desired: KubeManifest[];
   leaseId: string;

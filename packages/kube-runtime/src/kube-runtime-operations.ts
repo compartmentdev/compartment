@@ -42,7 +42,7 @@ export async function mergePatchExistingObject(
   object: KubeManifest,
 ): Promise<KubeManifest | null> {
   try {
-    return await objectApi.patch(object, undefined, undefined, undefined, false, PatchStrategy.MergePatch);
+    return await objectApi.patch(object, undefined, undefined, undefined, undefined, PatchStrategy.MergePatch);
   } catch (error) {
     if (isNotFoundError(typeof error === 'object' ? error : null)) {
       return null;

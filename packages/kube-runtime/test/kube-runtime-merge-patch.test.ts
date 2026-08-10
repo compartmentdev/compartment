@@ -25,7 +25,14 @@ describe('KubeRuntime merge patch', (): void => {
     const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): object => ({}) } as never);
 
     await expect(runtime.mergePatchExisting(namespace)).resolves.toEqual(namespace);
-    expect(api.patch).toHaveBeenCalledWith(namespace, undefined, undefined, undefined, false, PatchStrategy.MergePatch);
+    expect(api.patch).toHaveBeenCalledWith(
+      namespace,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      PatchStrategy.MergePatch,
+    );
     api.patch.mockRejectedValueOnce(Object.assign(new Error('not found'), { statusCode: 404 }));
     await expect(runtime.mergePatchExisting(namespace)).resolves.toBeNull();
   });

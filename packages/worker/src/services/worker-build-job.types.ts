@@ -40,12 +40,34 @@ export interface WorkerRegistryVerificationBuildJobInput {
 
 export type WorkerBuildJobInput = WorkerRegistryVerificationBuildJobInput | WorkerSourceBuildJobInput;
 
-export interface RunWorkerBuildJobInput {
-  build: WorkerBuildJobInput;
+interface RunWorkerBuildJobBase {
   id: string;
-  internalToken: string;
   onProgressLine?: ((line: DockerProgressLine) => void | Promise<void>) | undefined;
 }
+
+export interface RunWorkerSourceBuildJobInput extends RunWorkerBuildJobBase {
+  build: WorkerSourceBuildJobInput;
+  sourceArchiveCredential: string;
+}
+
+export interface RunWorkerRegistryVerificationBuildJobInput extends RunWorkerBuildJobBase {
+  build: WorkerRegistryVerificationBuildJobInput;
+}
+
+export type RunWorkerBuildJobInput = RunWorkerRegistryVerificationBuildJobInput | RunWorkerSourceBuildJobInput;
+
+export interface WorkerSourceBuildJobEnvironment {
+  input: WorkerSourceBuildJobInput;
+  kind: 'source';
+  sourceArchiveCredential: string;
+}
+
+export interface WorkerRegistryVerificationBuildJobEnvironment {
+  input: WorkerRegistryVerificationBuildJobInput;
+  kind: 'registry-verification';
+}
+
+export type WorkerBuildJobEnvironment = WorkerRegistryVerificationBuildJobEnvironment | WorkerSourceBuildJobEnvironment;
 
 export interface WorkerBuildJobLogResult {
   result: DockerBuildImageResult;

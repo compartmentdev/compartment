@@ -12,7 +12,7 @@ const minimum = /^>=([0-9]+\.[0-9]+)/u.exec(chart.kubeVersion)?.[1];
 assert.ok(minimum, 'Chart kubeVersion must declare a minimum major and minor version.');
 const [minimumMajor, minimumMinor] = minimum.split('.').map(Number);
 assert.ok(
-  minimumMajor > 1 || (minimumMajor === 1 && minimumMinor >= 30),
+  minimumMajor > 1 || (minimumMajor === 1 && minimumMinor >= 35),
   'Chart kubeVersion must require Kubernetes 1.35 or newer for stable admission policy support.',
 );
 assert.match(readme, new RegExp(`Kubernetes ${minimum.replace('.', '\\.')}(?:\\.0)? or newer`, 'u'));

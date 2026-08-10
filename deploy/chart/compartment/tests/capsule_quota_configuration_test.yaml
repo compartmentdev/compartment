@@ -44,8 +44,17 @@ release:
   name: compartment
   namespace: compartment
 tests:
-  - it: pins Capsule manager 0.13.11
+  - it: pins Capsule manager 0.13.11 by digest and runs it highly available
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/projectcapsule/capsule:v0.13.11
+          value: ghcr.io/projectcapsule/capsule:v0.13.11@sha256:d55bef9a0753259dddbe84a84a5a8d1ee0ebecf23de44ea2056072e08c41338c
+      - equal:
+          path: spec.replicas
+          value: 2
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: system-cluster-critical
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests
+          value: { cpu: 100m, memory: 128Mi }

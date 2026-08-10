@@ -6,7 +6,15 @@ import {
 import type { OrganizationQuotaReconciliationCompletionInput } from './organization-quota-reconciliation.service.types';
 
 export async function claimNextOrganizationQuotaReconciliation(): Promise<OrganizationQuotaReconcileTarget | null> {
-  return await claimOrganizationQuotaReconciliation();
+  const row = await claimOrganizationQuotaReconciliation();
+  if (row === null) {
+    return null;
+  }
+  return {
+    leaseId: row.leaseId,
+    namespaceIds: row.namespaceIds,
+    organizationId: row.organizationId,
+  };
 }
 
 export async function acknowledgeOrganizationQuotaReconciliation(

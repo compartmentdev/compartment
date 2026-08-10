@@ -8,7 +8,7 @@ import type { KubePodVolume, KubeVolumeMount } from './kube-volume.types';
 import type { KubeContainerSecurityContext, KubePodSecurityContext } from './kube-security-context.types';
 import type { KubeToleration } from './kube-workload-scheduling.types';
 
-export type { KubeJobVolumeMount, KubePodVolume, KubeVolumeMount } from './kube-volume.types';
+export type { KubePodVolume, KubeVolumeMount } from './kube-volume.types';
 export type {
   KubeJobEmptyDirVolume,
   KubeJobResult,
@@ -145,11 +145,20 @@ export interface KubeProjectedSidecarContainer extends Omit<KubeProjectedContain
   restartPolicy: 'Always';
 }
 
+/**
+ * A run-to-completion init container. It carries no `restartPolicy`, which is what separates it from a native
+ * sidecar: the Pod's own containers do not start until this one exits successfully.
+ */
+export interface KubeProjectedInitContainer extends Omit<KubeProjectedContainer, 'env'> {
+  env: KubeLiteralEnvVariable[];
+  terminationMessagePolicy: 'FallbackToLogsOnError';
+}
+
 export interface KubeProjectedPodSpec {
   automountServiceAccountToken: false;
   containers: KubeProjectedContainer[];
   imagePullSecrets?: KubeLocalObjectReference[] | undefined;
-  initContainers?: KubeProjectedSidecarContainer[] | undefined;
+  initContainers?: (KubeProjectedInitContainer | KubeProjectedSidecarContainer)[] | undefined;
   nodeSelector?: Readonly<Record<string, string>> | undefined;
   priorityClassName?: string | undefined;
   restartPolicy?: 'Never' | 'OnFailure' | undefined;

@@ -35,14 +35,13 @@ async function buildVerificationImage(
   installationId: string,
   artifactId: string,
 ): Promise<DockerBuildImageResult> {
-  const result: DockerBuildImageResult = await runWorkerBuildJob(runtime, config.buildSandbox, {
+  const result: DockerBuildImageResult = await runWorkerBuildJob(runtime, config, {
     build: {
       docker: buildVerificationImageInput(config, installationId, artifactId),
       dockerfile: 'FROM busybox:1.36.1\nCMD ["sh", "-c", "sleep 600"]\n',
       kind: 'registry-verification',
     },
     id: artifactId,
-    internalToken: config.runtimeControlToken,
   });
   if (!result.pushed) {
     throw new Error('Registry acceptance image was not pushed.');

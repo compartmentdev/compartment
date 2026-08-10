@@ -2,7 +2,8 @@ import type { KubeRuntime } from '@compartment/kube-runtime';
 import type { Mock } from 'vitest';
 
 export interface NetworkPolicyRule {
-  from?: NetworkPolicyPeer[] | undefined;
+  /** Manifests carry ingress peers under the client-node model property `_from`, which serializes to wire `from`. */
+  _from?: NetworkPolicyPeer[] | undefined;
   ports?: NetworkPolicyRulePort[] | undefined;
 }
 

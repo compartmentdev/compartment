@@ -43,6 +43,10 @@ tests:
           path: spec.validations[0].expression
           pattern: oldObject.metadata.labels
         documentIndex: 2
+      - matchRegex:
+          path: spec.validations[0].expression
+          pattern: has\(object.metadata.annotations\)
+        documentIndex: 2
       - isKind:
           of: ValidatingAdmissionPolicyBinding
         documentIndex: 3

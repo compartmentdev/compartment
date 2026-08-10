@@ -10,8 +10,10 @@ import {
   deploymentRuns,
   deploymentRoutes,
   deployments,
+  environmentResourceOutputVariableBindings,
   operations,
   projectKubeProvisioning,
+  projectResources,
   projectServices,
 } from '../src/db/schema';
 import {
@@ -187,6 +189,35 @@ describe('deployment Kubernetes transition persistence', (): void => {
     const claimed: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
 
     expect(claimed?.candidate).toMatchObject({ deploymentId: 'dep_kube', state: 'pending' });
+  });
+
+  it('carries the resources the deployed application dials', async (): Promise<void> => {
+    await seedDeclaredResource();
+    await claimablePendingCandidate();
+
+    await expect(findNextDeploymentReconcilePair()).resolves.toMatchObject({
+      candidate: { resourceEndpoints: [{ port: 5432, resourceId: 'res_kube', timeoutMs: 30_000 }] },
+    });
+  });
+
+  it('carries no endpoint for a resource the operator stopped', async (): Promise<void> => {
+    await seedDeclaredResource();
+    await db.update(projectResources).set({ status: 'stopped' }).where(eq(projectResources.id, 'res_kube'));
+    await claimablePendingCandidate();
+
+    await expect(findNextDeploymentReconcilePair()).resolves.toMatchObject({
+      candidate: { resourceEndpoints: [] },
+    });
+  });
+
+  it('carries no endpoint for a declared resource that publishes no readiness signal', async (): Promise<void> => {
+    await seedDeclaredResource();
+    await db.update(projectResources).set({ readinessJson: 'null' }).where(eq(projectResources.id, 'res_kube'));
+    await claimablePendingCandidate();
+
+    await expect(findNextDeploymentReconcilePair()).resolves.toMatchObject({
+      candidate: { resourceEndpoints: [] },
+    });
   });
 
   it('does not orphan an active deployment when its recovery rollout exceeds the progress deadline', async (): Promise<void> => {
@@ -431,7 +462,8 @@ describe('deployment Kubernetes transition persistence', (): void => {
     await db
       .insert(projectKubeProvisioning)
       .values({ isolationVersion: projectIsolationVersion, projectId: 'prj_kube', state: 'succeeded' });
-    const holder: PoolClient = await pool.connect();
+    const holderPool: Pool = createDatabasePool(databaseUrl);
+    const holder: PoolClient = await holderPool.connect();
     let preparation: Promise<PrepareDeploymentReconcileResult> | null = null;
     try {
       await holder.query('begin');
@@ -467,6 +499,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
       await holder.query('rollback');
       await Promise.allSettled(preparation === null ? [] : [preparation]);
       holder.release();
+      await holderPool.end();
     }
   }, 10_000);
 
@@ -476,7 +509,8 @@ describe('deployment Kubernetes transition persistence', (): void => {
     await db
       .insert(projectKubeProvisioning)
       .values({ isolationVersion: projectIsolationVersion, projectId: 'prj_kube', state: 'succeeded' });
-    const holder: PoolClient = await pool.connect();
+    const holderPool: Pool = createDatabasePool(databaseUrl);
+    const holder: PoolClient = await holderPool.connect();
     let preparation: Promise<PrepareDeploymentReconcileResult> | null = null;
     try {
       await holder.query('begin');
@@ -509,6 +543,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
       await holder.query('rollback');
       await Promise.allSettled(preparation === null ? [] : [preparation]);
       holder.release();
+      await holderPool.end();
     }
   }, 10_000);
 
@@ -1063,4 +1098,42 @@ async function markTwoServiceCandidateRunPending(): Promise<void> {
       revision: 0,
     });
   }
+}
+
+/** The descriptor output binding is the only record that a service declares a resource. */
+async function seedDeclaredResource(): Promise<void> {
+  await db.insert(projectResources).values({
+    commandJson: '[]',
+    envJson: '[]',
+    environmentId: 'env_kube',
+    id: 'res_kube',
+    image: 'postgres:17',
+    name: 'postgres',
+    portsJson: '[5432]',
+    readinessJson: JSON.stringify({ port: 5432, timeoutMs: 30_000, type: 'tcp' }),
+    runtimeDefinitionHash: 'runtime-hash',
+    status: 'running',
+    volumesJson: '[]',
+  });
+  await db.insert(environmentResourceOutputVariableBindings).values({
+    environmentId: 'env_kube',
+    id: 'binding_kube',
+    keyName: 'DATABASE_URL',
+    outputName: 'connection-url',
+    resourceName: 'postgres',
+    source: 'descriptor',
+    targetServiceName: 'web',
+  });
+}
+
+async function claimablePendingCandidate(): Promise<void> {
+  await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
+  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+  await persistDeploymentReconcileObservation({
+    deploymentId: 'dep_kube',
+    failureMessage: 'active pod missing',
+    observation: 'pending',
+    observedAt: new Date('2026-07-12T10:00:00.000Z'),
+    revision: 0,
+  });
 }

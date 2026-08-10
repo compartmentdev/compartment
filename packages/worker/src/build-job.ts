@@ -12,7 +12,7 @@ import { createCompartmentBinaryRequester, getArtifactSourceArchive } from '@com
 import { readWorkerBuildJobInputEnvironment, writeWorkerBuildJobLog } from './services/worker-build-job.service';
 import type {
   WorkerBuildJobDockerInput,
-  WorkerBuildJobInput,
+  WorkerBuildJobEnvironment,
   WorkerSourceBuildJobInput,
 } from './services/worker-build-job.types';
 import { prepareServiceDirectory } from './services/worker-source.service';
@@ -42,24 +42,22 @@ class BuildJobDockerImageInput implements DockerBuildImageInput {
 }
 
 async function main(): Promise<void> {
-  const environment: { input: WorkerBuildJobInput; internalToken: string } = readWorkerBuildJobInputEnvironment(
-    process.env,
-  );
+  const environment: WorkerBuildJobEnvironment = readWorkerBuildJobInputEnvironment(process.env);
   const result: DockerBuildImageResult =
-    environment.input.kind === 'source'
-      ? await buildSourceImage(environment.input, environment.internalToken)
+    environment.kind === 'source'
+      ? await buildSourceImage(environment.input, environment.sourceArchiveCredential)
       : await buildRegistryVerificationImage(environment.input.dockerfile, environment.input.docker);
   writeWorkerBuildJobLog({ result, type: 'result' });
 }
 
 async function buildSourceImage(
   input: WorkerSourceBuildJobInput,
-  internalToken: string,
+  sourceArchiveCredential: string,
 ): Promise<DockerBuildImageResult> {
   const directory: string = await mkdtemp(join(tmpdir(), 'compartment-build-job-'));
   try {
     const archive: Buffer = await getArtifactSourceArchive(
-      createCompartmentBinaryRequester({ apiUrl: input.apiUrl, internalToken }),
+      createCompartmentBinaryRequester({ apiUrl: input.apiUrl, internalToken: sourceArchiveCredential }),
       input.artifactId,
     );
     const prepared: PreparedWorkerSource = await prepareServiceDirectory(

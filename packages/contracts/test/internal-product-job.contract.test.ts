@@ -7,6 +7,8 @@ import {
   workerPersistProductJobIntentResponseSchema,
   workerPersistProductJobResultRequestSchema,
   workerSubmitProductJobRequestSchema,
+  workerSubmitProductJobResponseSchema,
+  type ProductJobResourceReadiness,
 } from '../src';
 
 const timedOutResult: object = {
@@ -39,7 +41,12 @@ describe('internal product Job result contract', (): void => {
   });
 
   it('carries the resources a claimed Job must find ready before it runs', (): void => {
-    const readiness: object = { deadlineAt: '2026-07-12T12:00:00.000Z', resourceId: 'res-1' };
+    const readiness: ProductJobResourceReadiness = {
+      deadlineAt: '2026-07-12T12:00:00.000Z',
+      port: 5432,
+      resourceId: 'res-1',
+      timeoutMs: 30_000,
+    };
     const claim: object = { job: null, resourceReadiness: [readiness], result: null };
 
     expect(workerClaimProductJobResponseSchema.safeParse(claim).success).toBe(true);
@@ -107,5 +114,12 @@ describe('internal product Job submission contract', (): void => {
         .success,
     ).toBe(false);
     expect(workerSubmitProductJobRequestSchema.safeParse({ jobClass: 'release' }).success).toBe(false);
+  });
+
+  it('answers whether the Job may be created, with no room for a partial yes', (): void => {
+    expect(workerSubmitProductJobResponseSchema.safeParse({ recorded: true }).success).toBe(true);
+    expect(workerSubmitProductJobResponseSchema.safeParse({ recorded: false }).success).toBe(true);
+    expect(workerSubmitProductJobResponseSchema.safeParse({}).success).toBe(false);
+    expect(workerSubmitProductJobResponseSchema.safeParse({ recorded: true, retryAfterMs: 5 }).success).toBe(false);
   });
 });

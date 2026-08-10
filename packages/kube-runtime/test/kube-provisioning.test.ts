@@ -201,12 +201,12 @@ describe('project namespace bootstrap provisioning', (): void => {
           'count/secrets': '100',
           'count/serviceaccounts': '10',
           'count/services': '50',
-          'limits.cpu': '4',
-          'limits.memory': '4Gi',
+          'limits.cpu': '20',
+          'limits.memory': '20Gi',
           pods: '50',
-          'requests.cpu': '2',
-          'requests.memory': '2Gi',
-          'requests.storage': '20Gi',
+          'requests.cpu': '10',
+          'requests.memory': '10Gi',
+          'requests.storage': '100Gi',
         },
       },
     });
@@ -313,7 +313,7 @@ describe('project namespace bootstrap provisioning', (): void => {
         spec: {
           ingress: [
             {
-              from: [
+              _from: [
                 {
                   namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': 'platform-01jz' } },
                   podSelector: { matchLabels: { 'app.kubernetes.io/name': 'caddy' } },
@@ -328,7 +328,7 @@ describe('project namespace bootstrap provisioning', (): void => {
         spec: {
           ingress: [
             {
-              from: [
+              _from: [
                 { podSelector: { matchLabels: { app: 'application' } } },
                 {
                   podSelector: {

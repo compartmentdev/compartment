@@ -36,7 +36,7 @@ describe('organization GlobalCustomQuota projection', (): void => {
     const quotas: KubeManifest[] = organizationGlobalCustomQuotaManifests({ organizationId: 'org_a' });
     const podQuotas: GlobalCustomQuotaSpec[] = quotas
       .map((manifest: KubeManifest): GlobalCustomQuotaSpec => manifest.spec as GlobalCustomQuotaSpec)
-      .filter((spec: GlobalCustomQuotaSpec): boolean => spec.limit !== '20Gi');
+      .filter((spec: GlobalCustomQuotaSpec): boolean => spec.sources[0]?.kind === 'Pod');
     for (const quota of podQuotas) {
       expect(quota.sources).toHaveLength(2);
       expect(quota.sources[0]?.path).toContain('.spec.containers[*]');

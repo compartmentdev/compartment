@@ -1,15 +1,13 @@
-import type {
-  ProductJobIntent,
-  ProductJobClass,
-  WorkerFinalizeProductJobRequest,
-  WorkerPersistProductJobResultRequest,
-  WorkerSubmitProductJobRequest,
-} from '@compartment/contracts';
 import {
-  claimProductJob,
-  persistProductJobFinalized,
-  persistProductJobKubeSubmission,
-} from '../queries/product-job-runs.query';
+  productJobIdentityId,
+  type ProductJobIntent,
+  type ProductJobClass,
+  type WorkerFinalizeProductJobRequest,
+  type WorkerPersistProductJobResultRequest,
+  type WorkerSubmitProductJobRequest,
+} from '@compartment/contracts';
+import { claimProductJob, persistProductJobFinalized } from '../queries/product-job-runs.query';
+import { persistProductJobKubeSubmission } from '../queries/product-job-kube-submission.query';
 import { persistProductJobResult } from '../queries/product-job-result.query';
 import { persistProductJobIntent } from '../queries/product-job-intent.query';
 import type { ClaimedProductJobQueryResult } from '../queries/product-job-runs.query.types';
@@ -18,7 +16,7 @@ import type { ClaimedProductJobResult } from './product-job.service.types';
 export async function createProductJobIntent(
   input: ProductJobIntent,
 ): Promise<WorkerPersistProductJobResultRequest | null> {
-  return await persistProductJobIntent({ identityId: readProductJobIdentity(input), intent: input });
+  return await persistProductJobIntent({ identityId: productJobIdentityId(input), intent: input });
 }
 
 export async function claimNextProductJob(jobClass: ProductJobClass): Promise<ClaimedProductJobResult> {
@@ -38,10 +36,7 @@ export async function finalizeProductJob(input: WorkerFinalizeProductJobRequest)
   await persistProductJobFinalized(input.jobClass, input.identityId);
 }
 
-export async function submitProductJob(input: WorkerSubmitProductJobRequest): Promise<void> {
-  await persistProductJobKubeSubmission(input.jobClass, input.identityId);
-}
-
-function readProductJobIdentity(input: ProductJobIntent): string {
-  return input.jobClass === 'release' ? input.deploymentId : input.operationId;
+/** True when the worker may hand the manifest to the API server; false when a reconcile owns one of its resources. */
+export async function submitProductJob(input: WorkerSubmitProductJobRequest): Promise<boolean> {
+  return await persistProductJobKubeSubmission(input.jobClass, input.identityId);
 }

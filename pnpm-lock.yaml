@@ -493,6 +493,9 @@ importers:
       '@compartment/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
+      '@kubernetes/client-node':
+        specifier: ^1.4.0
+        version: 1.4.0
 
   public-docs:
     dependencies:

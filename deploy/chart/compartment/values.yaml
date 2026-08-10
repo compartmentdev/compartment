@@ -284,9 +284,38 @@ resources:
     limits: { cpu: 100m, memory: 128Mi }
 
 capsule:
+  crds:
+    install: false
+  global:
+    jobs:
+      postInstall:
+        enabled: false
+      preDelete:
+        enabled: false
+  replicaCount: 2
+  priorityClassName: system-cluster-critical
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            topologyKey: kubernetes.io/hostname
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: capsule
   manager:
     image:
-      tag: 'v0.13.11'
+      registry: ghcr.io
+      repository: projectcapsule/capsule
+      tag: 'v0.13.11@sha256:d55bef9a0753259dddbe84a84a5a8d1ee0ebecf23de44ea2056072e08c41338c'
+    rbac:
+      create: false
+      strict: true
+    options:
+      users: []
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
   webhooks:
     hooks:
       customquotas: { enabled: false }

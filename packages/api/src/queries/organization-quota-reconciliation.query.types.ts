@@ -1,7 +1,10 @@
-import type { OrganizationQuotaReconcileTarget } from '@compartment/contracts';
 import type { ApiDatabaseTransaction } from '../db/client.types';
 
-export type OrganizationQuotaReconcileClaimRow = OrganizationQuotaReconcileTarget;
+export interface OrganizationQuotaReconcileClaimRow {
+  leaseId: string;
+  namespaceIds: string[];
+  organizationId: string;
+}
 export type OrganizationQuotaTransaction = ApiDatabaseTransaction;
 
 export interface CompleteOrganizationQuotaReconcileInput {

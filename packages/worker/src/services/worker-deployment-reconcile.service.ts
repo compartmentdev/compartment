@@ -33,6 +33,7 @@ type ReconcileArguments = readonly [
   DeploymentReconcileTarget,
   TenantSecretsKeyring,
   number,
+  string,
 ];
 
 export async function reconcileDeploymentTarget(
@@ -42,11 +43,19 @@ export async function reconcileDeploymentTarget(
   artifactRegistry: WorkerArtifactRegistryConfig,
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,
+  workerImage: string,
   rolloutStarts: DeploymentRolloutStartTracker,
   scheduling?: KubeWorkloadScheduling,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
   target = retargetWorkerDeploymentArtifactImages(target, artifactRegistry);
-  const reconcileArguments: ReconcileArguments = [request, runtime, target, tenantSecretsKek, infrastructureTimeoutMs];
+  const reconcileArguments: ReconcileArguments = [
+    request,
+    runtime,
+    target,
+    tenantSecretsKek,
+    infrastructureTimeoutMs,
+    workerImage,
+  ];
   if (target.state === 'pending') {
     return await reconcilePendingDeployment(...reconcileArguments, rolloutStarts, scheduling);
   }
@@ -64,13 +73,22 @@ async function reconcileNonPendingDeployment(
   target: DeploymentReconcileTarget,
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,
+  workerImage: string,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<void> {
+  const deploymentArguments: ReconcileArguments = [
+    request,
+    runtime,
+    target,
+    tenantSecretsKek,
+    infrastructureTimeoutMs,
+    workerImage,
+  ];
   if (target.state === 'desired') {
-    await reconcileDesiredDeployment(request, runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling);
+    await reconcileDesiredDeployment(...deploymentArguments, scheduling);
     return;
   }
-  await reconcileActiveDeployment(request, runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling);
+  await reconcileActiveDeployment(...deploymentArguments, scheduling);
 }
 
 async function reconcileStopState(
@@ -79,6 +97,7 @@ async function reconcileStopState(
   target: DeploymentReconcileTarget,
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,
+  workerImage: string,
   rolloutStarts: DeploymentRolloutStartTracker,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<boolean> {
@@ -89,7 +108,7 @@ async function reconcileStopState(
   if (target.state !== 'stopping') {
     return false;
   }
-  await deleteApplication(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling);
+  await deleteApplication(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
   await applyProjectNetworkPolicies(runtime, target.candidate.projectId, target.networkPolicy);
   const applied: boolean = (await persistDeploymentObservation(request, target, 'stopped')).applied;
   rolloutStarts.clearIfApplied(target.candidate.deploymentId, applied);
@@ -102,6 +121,7 @@ async function reconcileActiveDeployment(
   target: DeploymentReconcileTarget,
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,
+  workerImage: string,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<void> {
   const applied: KubeDeploymentManifest = await applyApplication(
@@ -110,6 +130,7 @@ async function reconcileActiveDeployment(
     tenantSecretsKek,
     infrastructureTimeoutMs,
     scheduling,
+    workerImage,
   );
   if (await activeDeploymentRemainsNonReady(runtime, applied, target, infrastructureTimeoutMs)) {
     await persistDeploymentObservation(
@@ -151,6 +172,7 @@ async function reconcileDesiredDeployment(
   target: DeploymentReconcileTarget,
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,
+  workerImage: string,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<void> {
   const release: ProductJobIntent | null = releaseIntent(target.candidate, releaseTimeoutMs);
@@ -166,6 +188,6 @@ async function reconcileDesiredDeployment(
       return;
     }
   }
-  await applyApplication(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling);
+  await applyApplication(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
   await persistDeploymentObservation(request, target, 'pending');
 }

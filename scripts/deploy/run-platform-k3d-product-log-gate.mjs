@@ -232,21 +232,6 @@ async function startLoadPods() {
         repositoryRoot,
       );
       await delay(10_000);
-      runCommand(
-        'kubectl',
-        [
-          '--context',
-          context,
-          '--namespace',
-          namespace,
-          'delete',
-          'pod',
-          podName,
-          '--wait=true',
-          `--timeout=${kubernetesReadinessTimeout}`,
-        ],
-        repositoryRoot,
-      );
     }
   } catch (error) {
     cleanup(loadTarget);
