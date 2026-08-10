@@ -24,6 +24,7 @@ import { DeploymentRolloutStartTracker } from '../src/services/worker-deployment
 import { encryptTestTenantEnvironment, testTenantSecretsKek } from './tenant-secret-test.fixtures';
 import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
 import type {
+  AppliedGateContainer,
   ApplyMockCall,
   ApplyReadRuntime,
   DeleteRuntime,
@@ -955,16 +956,6 @@ function requester(): CompartmentRequester {
     await Promise.resolve();
     throw new Error('Unexpected direct request.');
   };
-}
-
-interface AppliedGateEnvironmentVariable {
-  name: string;
-  value: string;
-}
-
-interface AppliedGateContainer {
-  env: AppliedGateEnvironmentVariable[];
-  image: string;
 }
 
 /** The reachability gate on the Deployment this reconcile applied, if it projected one. */

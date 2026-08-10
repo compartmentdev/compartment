@@ -2,6 +2,7 @@ import { KubernetesObjectApi } from '@kubernetes/client-node';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { waitForTerminalJob, type TerminalJob } from '../src/kube-job';
 import { kubeJobName } from '../src/kube-naming';
+import type { ObservedPodStatus } from './kube-job-gate-failure.test.types';
 import { KubeRuntime } from '../src/kube-runtime';
 import type {
   KubeJobResult,
@@ -148,7 +149,7 @@ function retriedIntoGateFailureObservation(): KubeObservation {
   );
 }
 
-function observationOf(jobName: string, podStatus: object): KubeObservation {
+function observationOf(jobName: string, podStatus: ObservedPodStatus): KubeObservation {
   const cache: Map<string, KubeObservedManifest> = new Map<string, KubeObservedManifest>([
     [
       'jobs/p1/job',

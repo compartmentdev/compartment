@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { ContractSchema } from './schema.types';
+import type { ResourceReachabilityEndpointShape } from './internal-resource-reachability.contract.types';
 
 /**
  * A declared resource endpoint that a workload dials, with the budget the resource has to accept a connection.
@@ -15,18 +16,7 @@ export interface ResourceReachabilityEndpoint {
   timeoutMs: number;
 }
 
-/**
- * The endpoint's Zod shape, so a schema that adds fields to it composes from one definition rather than restating
- * the field rules. The return type is written inline because neither alternative is available: `z.object` needs an
- * implicit index signature, which an `interface` does not get, and a named object type alias is what
- * `@typescript-eslint/consistent-type-definitions` rejects. `service-readiness.contract.ts` resolves the same
- * tension the same way.
- */
-export function createResourceReachabilityEndpointShape(): {
-  port: z.ZodNumber;
-  resourceId: z.ZodString;
-  timeoutMs: z.ZodNumber;
-} {
+export function createResourceReachabilityEndpointShape(): ResourceReachabilityEndpointShape {
   return {
     port: z.number().int().min(1).max(65_535),
     resourceId: z.string().min(1),
@@ -35,5 +25,5 @@ export function createResourceReachabilityEndpointShape(): {
 }
 
 export const resourceReachabilityEndpointSchema: ContractSchema<ResourceReachabilityEndpoint> = z
-  .object(createResourceReachabilityEndpointShape())
+  .object({ ...createResourceReachabilityEndpointShape() })
   .strict();

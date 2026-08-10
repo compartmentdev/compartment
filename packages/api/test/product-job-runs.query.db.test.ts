@@ -305,16 +305,26 @@ describe('product Job persistence', (): void => {
       .where(eq(projectResources.id, 'res-db'));
     await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
 
-    const claimedAt: number = Date.now();
-    const claimed: ClaimedProductJobQueryResult = await claimProductJob('release');
-    const settledAt: number = Date.now();
+    await claimProductJob('release');
+    // Pin the first claim well in the past, then hand the row back. A budget anchored to whichever claim is running
+    // would move with the re-claim; anchored to the first, it does not, and the resource does not get a fresh wait
+    // every time the worker picks the Job up again.
+    const firstClaimedAt: Date = new Date(Date.now() - 60_000);
+    await db
+      .update(productJobRuns)
+      .set({ startedAt: firstClaimedAt, status: 'queued' })
+      .where(eq(productJobRuns.identityId, 'dep_job'));
 
-    expect(claimed.resourceReadiness).toEqual([
-      { deadlineAt: expect.any(String) as string, port: 5432, resourceId: 'res-db', timeoutMs: 180_000 },
+    const reclaimed: ClaimedProductJobQueryResult = await claimProductJob('release');
+
+    expect(reclaimed.resourceReadiness).toEqual([
+      {
+        deadlineAt: new Date(firstClaimedAt.getTime() + 180_000).toISOString(),
+        port: 5432,
+        resourceId: 'res-db',
+        timeoutMs: 180_000,
+      },
     ]);
-    const deadlineAt: number = Date.parse(claimed.resourceReadiness[0]!.deadlineAt);
-    expect(deadlineAt).toBeGreaterThanOrEqual(claimedAt + 180_000);
-    expect(deadlineAt).toBeLessThanOrEqual(settledAt + 180_000);
   });
 
   it('gates a resource operation that runs against the resource itself', async (): Promise<void> => {
