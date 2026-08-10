@@ -62,8 +62,10 @@ const updateValuesPath: string = resolve(
 );
 const releaseName: string = 'compartment';
 const updateVersion: string = 'e2e';
-const updateTimeoutMs: number = 30 * 60_000;
-const helmCommandTimeoutMs: number = 10 * 60_000;
+const updateTimeoutMs: number = 20 * 60_000;
+const plantTimeoutMs: number = 8 * 60_000;
+/** Must exceed the plant plus the update, so the CLI reports its own diagnostics before vitest gives up. */
+const testTimeoutMs: number = updateTimeoutMs + plantTimeoutMs + 60_000;
 const chartPath: string = resolve(repositoryRoot, 'deploy/chart/compartment');
 /**
  * The build memory limits an installation carried before the chart raised them. Planting a release
@@ -146,7 +148,7 @@ describe.sequential('production Kubernetes system update', (): void => {
       );
       expect(status.ready).toBe(true);
     },
-    updateTimeoutMs,
+    testTimeoutMs,
   );
 });
 
@@ -163,13 +165,18 @@ async function readChartBuildResourceMemory(): Promise<Readonly<Record<string, s
 }
 
 /**
- * Renders the release from a copy of the chart carrying the superseded build memory defaults, using
- * the same `--reuse-values` upgrade an installation performed before this shape was fixed. The
- * release then holds an older chart's defaults while the working-tree chart declares new ones, so a
- * `system update` that drops changed defaults leaves the superseded values in place.
+ * Renders the release from a copy of the chart carrying the superseded build memory defaults, so the
+ * release under test holds an older chart's defaults while the chart the update ships declares new
+ * ones. That is the state a real installation was in, and the only state in which an update can drop
+ * a changed default.
  *
- * This upgrade passes no `--values`: the update values file carries the images the update itself is
- * supposed to move the release to, and planting those here would defeat the image assertions.
+ * The plant itself must use `--reset-then-reuse-values`: `--reuse-values` keeps the values the
+ * release was already rendered from and ignores the defaults of the chart it is handed, so planting
+ * with it is a no-op that would leave this test asserting nothing. It waits, because the migration
+ * Job is a plain resource keyed by release revision and the update prunes the previous one.
+ *
+ * It passes no `--values`: the update values file carries the images the update itself is supposed to
+ * move the release to, and planting those here would defeat the image assertions.
  */
 async function plantSupersededChartDefaults(): Promise<void> {
   const directory: string = await mkdtemp(join(tempRootDirectory, 'superseded-chart-'));
@@ -192,19 +199,24 @@ async function plantSupersededChartDefaults(): Promise<void> {
       platformNamespace,
       '--kube-context',
       platformKubeContext,
-      '--reuse-values',
+      '--reset-then-reuse-values',
+      '--wait',
+      '--wait-for-jobs',
+      '--timeout',
+      '6m',
     ],
-    helmCommandTimeoutMs,
+    plantTimeoutMs,
   );
   expect(await readReleasedBuildResourceMemory()).toEqual(supersededBuildResourceMemory);
 }
 
 async function readReleasedBuildResourceMemory(): Promise<Readonly<Record<string, string>>> {
   const rendered: Record<string, string> = {};
-  for (const [name, key] of [
+  const configMapKeys: readonly (readonly [string, string])[] = [
     ['buildRunner', 'COMPARTMENT_BUILD_RUNNER_RESOURCES'],
     ['buildkit', 'COMPARTMENT_BUILDKIT_RESOURCES'],
-  ]) {
+  ];
+  for (const [name, key] of configMapKeys) {
     const result: SelfHostedUserSetupCommandResult = await runRequired([
       'kubectl',
       '--context',
@@ -213,9 +225,9 @@ async function readReleasedBuildResourceMemory(): Promise<Readonly<Record<string
       platformNamespace,
       'get',
       `configmap/${releaseName}`,
-      `--output=jsonpath={.data.${key!}}`,
+      `--output=jsonpath={.data.${key}}`,
     ]);
-    rendered[name!] = (JSON.parse(result.stdout) as ChartResourceEntry).limits.memory;
+    rendered[name] = (JSON.parse(result.stdout) as ChartResourceEntry).limits.memory;
   }
   return rendered;
 }

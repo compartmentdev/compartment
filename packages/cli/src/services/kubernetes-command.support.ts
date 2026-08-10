@@ -33,8 +33,10 @@ export function buildHelmGetValuesCommand(
  * defaults on its next upgrade without any repair step.
  *
  * This flag belongs here rather than in each caller: every upgrade of an existing release is built
- * through this function, so no future upgrade path can forget it. The install path deliberately does
- * not use this builder; it runs `upgrade --install` and re-supplies its full values set instead.
+ * through this function, so no future upgrade path can omit it. Helm ignores it when the caller also
+ * passes `--reuse-values` or `--reset-values`, so callers must not add either; the upgrade tests
+ * assert their absence. The install path deliberately does not use this builder; it runs
+ * `upgrade --install` and re-supplies its full values set instead.
  */
 const helmExistingReleaseValuesFlag: string = '--reset-then-reuse-values';
 

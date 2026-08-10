@@ -1,11 +1,5 @@
 import type { ManagedVmOwnedPathDrift, ManagedVmOwnedPathIdentity } from './managed-vm-owned-file-drift.service.types';
 
-/**
- * Owned-path identities are the self-describing strings produced by `managedVmFileIdentity` and
- * `managedVmDirectoryIdentity`: `file:<mode>:<digest>` and `directory:<uid>:<gid>:<mode>`. Installs
- * recorded before metadata version 3 stored a bare digest or the literal `directory` instead, so an
- * unrecognized shape degrades to reporting that the content changed rather than guessing.
- */
 export function listManagedVmOwnedFileDrift(
   observed: Readonly<Record<string, string>>,
   recorded: Readonly<Record<string, string>>,
@@ -14,23 +8,32 @@ export function listManagedVmOwnedFileDrift(
     (left: string, right: string): number => left.localeCompare(right),
   );
   return paths.flatMap((path: string): ManagedVmOwnedPathDrift[] => {
-    const before: string | undefined = recorded[path];
-    const after: string | undefined = observed[path];
+    const before: string | undefined = readIdentity(recorded, path);
+    const after: string | undefined = readIdentity(observed, path);
     if (before === after) {
       return [];
     }
     if (after === undefined) {
-      return [{ detail: 'missing from the host', kind: 'missing', path }];
+      return [{ detail: 'missing from the host', path }];
     }
     if (before === undefined) {
-      return [{ detail: 'present but never written by the installer', kind: 'unexpected', path }];
+      return [{ detail: 'present but never written by the installer', path }];
     }
-    return [{ detail: describeIdentityChange(before, after), kind: 'changed', path }];
+    return [{ detail: describeIdentityChange(before, after), path }];
   });
 }
 
 export function formatManagedVmOwnedFileDrift(drift: readonly ManagedVmOwnedPathDrift[]): string {
   return drift.map((entry: ManagedVmOwnedPathDrift): string => `  ${entry.path}: ${entry.detail}`).join('\n');
+}
+
+/**
+ * Recorded paths come from a state file whose keys are not validated, so an own-property lookup keeps
+ * a key such as `constructor` from resolving to an inherited `Object.prototype` member and being read
+ * as an identity.
+ */
+function readIdentity(identities: Readonly<Record<string, string>>, path: string): string | undefined {
+  return Object.hasOwn(identities, path) ? identities[path] : undefined;
 }
 
 function describeIdentityChange(recorded: string, observed: string): string {
@@ -65,6 +68,12 @@ function formatOwner(identity: ManagedVmOwnedPathIdentity): string {
   return `${identity.uid ?? 'unknown'}:${identity.gid ?? 'unknown'}`;
 }
 
+/**
+ * Identities are the strings produced by `managedVmFileIdentity` and `managedVmDirectoryIdentity`:
+ * `file:<mode>:<digest>` and `directory:<uid>:<gid>:<mode>`. Every caller is gated to the current
+ * metadata version before reaching here, so a shape that does not parse means the recorded state file
+ * is corrupt; report that as changed content rather than inventing a reason for it.
+ */
 function parseIdentity(identity: string): ManagedVmOwnedPathIdentity {
   const [kind, ...fields]: string[] = identity.split(':');
   if (kind === 'file' && fields.length === 2) {

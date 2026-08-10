@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CommandResult } from '../src/command-runner.types';
 import { buildHelmUpgradeCommand, formatKubernetesCommandFailure } from '../src/services/kubernetes-command.support';
+import { buildDomainHelmCommand } from '../src/services/kubernetes-system-domain-release.support';
 
 describe('Helm upgrade command', (): void => {
   it('re-reads current chart defaults instead of replaying the previous release coalesced values', (): void => {
@@ -14,7 +15,7 @@ describe('Helm upgrade command', (): void => {
     expect(command).not.toContain('--reset-values');
   });
 
-  it('keeps the caller values order so the last --values file still wins', (): void => {
+  it('keeps the caller values files in order after the release coordinates', (): void => {
     const command: string[] = buildHelmUpgradeCommand({ namespace: 'compartment' }, 'compartment', '/chart.tgz', [
       '--values',
       '/operator.yaml',
@@ -23,7 +24,27 @@ describe('Helm upgrade command', (): void => {
     ]);
 
     expect(command.slice(0, 6)).toEqual(['helm', 'upgrade', 'compartment', '/chart.tgz', '--namespace', 'compartment']);
-    expect(command.at(-1)).toBe('/image-trust.json');
+    expect(command.filter((value: string): boolean => value.endsWith('.yaml') || value.endsWith('.json'))).toEqual([
+      '/operator.yaml',
+      '/image-trust.json',
+    ]);
+  });
+});
+
+describe('Kubernetes system-domain release command', (): void => {
+  it('adopts current chart defaults for a domain rollout as well as a platform update', (): void => {
+    const command: string[] = buildDomainHelmCommand(
+      { namespace: 'compartment', releaseName: 'compartment' },
+      '/chart.tgz',
+      '/operator.yaml',
+      '/domain-values.json',
+      '/image-trust-values.json',
+    );
+
+    expect(command).toContain('--reset-then-reuse-values');
+    expect(command).not.toContain('--reuse-values');
+    expect(command).not.toContain('--reset-values');
+    expect(command).toEqual(expect.arrayContaining(['--rollback-on-failure', '--wait', '--timeout', '10m']));
   });
 });
 

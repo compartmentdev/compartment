@@ -1,15 +1,12 @@
-export type ManagedVmOwnedPathDriftKind = 'changed' | 'missing' | 'unexpected';
-
 export interface ManagedVmOwnedPathDrift {
   detail: string;
-  kind: ManagedVmOwnedPathDriftKind;
   path: string;
 }
 
 export interface ManagedVmOwnedPathIdentity {
   digest?: string | undefined;
   gid?: string | undefined;
-  kind: string;
+  kind: 'directory' | 'file';
   mode?: string | undefined;
   uid?: string | undefined;
 }

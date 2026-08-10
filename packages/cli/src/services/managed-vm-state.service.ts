@@ -122,8 +122,14 @@ export async function persistManagedVmStage(
     state,
     completedStage,
   );
-  if (listManagedVmOwnedFileDrift(stageOwnedFileDigests, expectedOwnedFileDigests).length > 0) {
-    throw new Error('Managed-VM installer-written content changed before ownership could be persisted.');
+  const stageDrift: ManagedVmOwnedPathDrift[] = listManagedVmOwnedFileDrift(
+    stageOwnedFileDigests,
+    expectedOwnedFileDigests,
+  );
+  if (stageDrift.length > 0) {
+    throw new Error(
+      `Managed-VM installer-written content changed before ownership could be persisted:\n${formatManagedVmOwnedFileDrift(stageDrift)}`,
+    );
   }
   const next: ManagedVmProvisionerState = {
     ...state,

@@ -49,7 +49,7 @@ defaults that changed since it was installed. Values recorded for your installat
 `/etc/compartment/values.yaml`, are reapplied on top of those defaults and still win.
 
 If the update refuses to run because installer-owned host content changed, the error lists every drifted path and what
-changed about it — content, file mode, or owner — against what the installer recorded in
+changed about it (content, file mode, or owner) against what the installer recorded in
 `/var/lib/compartment/installer/state.json`. Restore those paths to their installer-written state and rerun, or
 capture a bundle with `sudo compartment system diagnose` and reprovision a clean VM. Replacing an installer-owned
 binary such as `/usr/local/bin/helm` with a different build is enough to trip this check.
