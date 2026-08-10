@@ -1,7 +1,8 @@
 # Multi-Organization Cloud
 
-Status: proposal (research complete, no implementation). Scope: what it takes to run a hosted
-Compartment cloud where many mutually-untrusting organizations live on shared infrastructure.
+Status: in progress. The isolation fixes and CLI signup described here have shipped; see the
+status table under "V1 scope" for what remains. Scope: what it takes to run a hosted Compartment
+cloud where many mutually-untrusting organizations live on shared infrastructure.
 
 ## Verdict
 
