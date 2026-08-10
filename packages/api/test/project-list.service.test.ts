@@ -12,7 +12,7 @@ import type { resolveRequiredOrganization } from '../src/services/project-scope.
 import { listProjectListForPrincipal } from '../src/services/project-list.service';
 import { buildProjectSummaryListItem } from '../src/services/project-summary-list-item.service.helpers';
 import type { ProjectListResult, ProjectSummaryListItem } from '../src/services/projects.service.types';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 type BuildProjectOverviewSummaries = typeof buildProjectOverviewSummaries;
 type BuildProjectStatusSummaries = typeof buildProjectStatusSummaries;
@@ -206,20 +206,11 @@ describe('project list service', (): void => {
 });
 
 function createApiConfig(): ApiConfig {
-  return {
+  return createApiTestConfig({
     baseDomain: 'example.test',
     publicHttpPort: 80,
-    publicHttpsPort: 443,
     publicProtocol: 'https',
-    auditRetentionDays: 90,
-    auditRetentionCleanupBatchSize: 1000,
-    auditRetentionCleanupCron: '0 3 * * *',
-    auditRetentionCleanupMaxBatches: 100,
-    usageMeteringIntervalMs: 60_000,
-    usageRetentionDays: 400,
-    auditFileSink: defaultAuditFileSinkConfig,
-    rollbackRetentionLimit: null,
-  } as ApiConfig;
+  });
 }
 
 function createOrganization(): OrganizationRow {

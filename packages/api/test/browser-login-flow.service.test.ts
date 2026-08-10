@@ -1,6 +1,5 @@
 import type { AppAccessBrowserFlowTarget } from '@compartment/contracts';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { ApiConfig } from '../src/config';
 import type { findActiveDeploymentRouteByHost } from '../src/queries/deployment-routes.query';
 import type { DeploymentRouteLookupRow } from '../src/queries/deployment-routes.query.types';
 import type {
@@ -20,6 +19,7 @@ import type { BrowserLoginFlowState } from '../src/services/browser-login-flow.s
 import type { listBrowserSsoProviderOptionsForOrganization } from '../src/services/sso-oidc/sso-oidc-provider.service';
 import type { BrowserSsoProviderOption } from '../src/services/sso-oidc/sso-oidc.service.types';
 import { createBrowserFlowTarget } from './browser-test.fixtures';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 type CountOrganizations = typeof countOrganizations;
 type FindActiveDeploymentRouteByHost = typeof findActiveDeploymentRouteByHost;
@@ -96,7 +96,7 @@ describe('browser login flow service', (): void => {
     Object.values(mocks).forEach((mock: Mock): void => {
       mock.mockReset();
     });
-    mocks.getApiConfig.mockReturnValue({ baseDomain: 'localhost' } as ApiConfig);
+    mocks.getApiConfig.mockReturnValue(createApiTestConfig());
     mocks.readOrganizationAuthSettings.mockResolvedValue({ localPasswordEnabled: false });
     mocks.listBrowserSsoProviderOptionsForOrganization.mockImplementation(readSsoOptions);
   });

@@ -1,12 +1,11 @@
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { type ApiConfig } from '../src/config';
 import { hashToken } from '../src/lib/tokens';
 import type { findAuthenticationSessionByTokenHash } from '../src/queries/authentication.query';
 import type { AuthenticationSessionRow } from '../src/queries/authentication.query.types';
 import type { getApiConfig } from '../src/runtime/runtime-access';
 import { authenticateSession } from '../src/services/authentication.service';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 type FindAuthenticationSessionByTokenHash = typeof findAuthenticationSessionByTokenHash;
 type GetApiConfig = typeof getApiConfig;
@@ -40,7 +39,7 @@ describe('authentication service', (): void => {
   });
 
   it('returns null when no active session matches the hashed token', async (): Promise<void> => {
-    const config: ApiConfig = createApiConfig();
+    const config: ApiConfig = createApiTestConfig();
     mocks.getApiConfig.mockReturnValue(config);
     mocks.findAuthenticationSessionByTokenHash.mockResolvedValueOnce(undefined);
 
@@ -51,7 +50,7 @@ describe('authentication service', (): void => {
   });
 
   it('returns null when the persisted session principal is not a user', async (): Promise<void> => {
-    const config: ApiConfig = createApiConfig();
+    const config: ApiConfig = createApiTestConfig();
     mocks.getApiConfig.mockReturnValue(config);
     mocks.findAuthenticationSessionByTokenHash.mockResolvedValueOnce({
       authMethodKind: 'password',
@@ -67,7 +66,7 @@ describe('authentication service', (): void => {
   });
 
   it('returns the authenticated user actor with the hashed token when the session is valid', async (): Promise<void> => {
-    const config: ApiConfig = createApiConfig();
+    const config: ApiConfig = createApiTestConfig();
     mocks.getApiConfig.mockReturnValue(config);
     mocks.findAuthenticationSessionByTokenHash.mockResolvedValueOnce({
       authMethodKind: 'password',
@@ -94,40 +93,3 @@ describe('authentication service', (): void => {
     });
   });
 });
-
-function createApiConfig(): ApiConfig {
-  return {
-    bindHost: '127.0.0.1',
-    baseDomain: 'localhost',
-    tlsMode: 'internal',
-    controlPlaneHost: 'console.localhost',
-    databaseUrl: 'postgresql:///compartment_test?host=/tmp',
-    edgeToken: 'test-edge-token',
-    edgeUrl: 'http://127.0.0.1:9080',
-    logLevel: 'silent',
-    port: 9443,
-    publicProtocol: 'http',
-    auditRetentionDays: 90,
-    auditRetentionCleanupBatchSize: 1000,
-    auditRetentionCleanupCron: '0 3 * * *',
-    auditRetentionCleanupMaxBatches: 100,
-    usageMeteringIntervalMs: 60_000,
-    usageRetentionDays: 400,
-    auditFileSink: defaultAuditFileSinkConfig,
-    rollbackRetentionLimit: null,
-    publicHttpPort: 9080,
-    publicHttpsPort: 443,
-    sessionSecret: 'test-session-secret',
-    sessionTtlMs: 604_800_000,
-    signupEnabled: false,
-    sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-    sourceArchiveMaxBytes: 104_857_600,
-    throttle: defaultApiAuthThrottleConfig,
-    systemApiSocketPath: '/tmp/compartment/compartment-authentication-system-api.sock',
-    systemToken: 'test-system-token',
-    trustedOutboundHosts: [],
-    tenantSecretsKek: Buffer.from('11'.repeat(32), 'hex'),
-    variablesMasterKey: Buffer.from('11'.repeat(32), 'hex'),
-    runtimeControlToken: 'test-runtime-control-token',
-  };
-}

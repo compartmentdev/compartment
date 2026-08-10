@@ -20,7 +20,6 @@ import {
 import { createApp } from '../src/app';
 import type { ApiApp } from '../src/app.types';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import { throttleBuckets } from '../src/db/schema';
@@ -35,6 +34,7 @@ import {
   installCompartment,
   requireQueryParam,
 } from './api-integration.harness';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 interface AppAccessEdgeServiceModule {
   invalidateEdgeAppAccessSessions: () => Promise<void>;
@@ -56,34 +56,10 @@ vi.mock(
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const authThrottleDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'api_auth_throttle');
-const apiConfig: ApiConfig = {
-  bindHost: '127.0.0.1',
-  baseDomain: 'localhost',
-  tlsMode: 'internal',
-  controlPlaneHost: 'console.localhost',
+const apiConfig: ApiConfig = createApiTestConfig({
   databaseUrl: authThrottleDatabaseUrl,
-  edgeToken: 'test-edge-token',
-  edgeUrl: 'http://127.0.0.1:9081',
-  logLevel: 'silent',
-  port: 9443,
   publicHttpPort: 80,
-  publicHttpsPort: 443,
-  publicProtocol: 'http',
-  auditRetentionDays: 90,
-  auditRetentionCleanupBatchSize: 1000,
-  auditRetentionCleanupCron: '0 3 * * *',
-  auditRetentionCleanupMaxBatches: 100,
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  auditFileSink: defaultAuditFileSinkConfig,
-  rollbackRetentionLimit: null,
-  sessionSecret: 'test-secret',
-  sessionTtlMs: 604_800_000,
-  signupEnabled: false,
   sourceArchiveDirectory: join(tmpdir(), 'compartment-api-auth-throttle-source-archives'),
-  sourceArchiveMaxBytes: 104_857_600,
-  systemApiSocketPath: '/tmp/compartment/compartment-auth-throttle-system-api.sock',
-  systemToken: 'test-system-token',
   throttle: {
     activation: {
       ...defaultApiAuthThrottleConfig.activation,
@@ -152,11 +128,7 @@ const apiConfig: ApiConfig = {
       },
     },
   },
-  trustedOutboundHosts: [],
-  tenantSecretsKek: Buffer.from('11'.repeat(32), 'hex'),
-  variablesMasterKey: Buffer.from('11'.repeat(32), 'hex'),
-  runtimeControlToken: 'test-runtime-control-token',
-};
+});
 
 let dbPool!: Pool;
 let db!: Database;

@@ -1,12 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
 import { deriveDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import { localCredentials, organizationMemberships, organizations, principals } from '../src/db/schema';
-import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { findLoginRowByEmailWithExecutor } from '../src/queries/login.query';
 import type { LoginRow } from '../src/queries/login.query.types';
 import { listOrganizationRowsForPrincipalEmail } from '../src/queries/organizations.query';
@@ -26,43 +23,13 @@ import { findPrincipalCredentialByEmailWithExecutor } from '../src/queries/princ
 import { findOrganizationSsoPrincipalByEmailWithExecutor } from '../src/queries/sso-oidc-principal.query';
 import type { SsoOidcPrincipalRow } from '../src/queries/sso-oidc.query.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const principalEmailQueryDatabaseUrl: string = deriveDatabaseUrl(testDatabaseUrl, 'principal_email_query');
-const apiConfig: ApiConfig = {
-  baseDomain: 'localhost',
-  bindHost: '127.0.0.1',
-  tlsMode: 'internal',
-  controlPlaneHost: 'compartment.localhost',
+const apiConfig: ApiConfig = createApiTestConfig({
   databaseUrl: principalEmailQueryDatabaseUrl,
-  edgeToken: 'test-edge-token',
-  edgeUrl: 'http://127.0.0.1:9081',
-  logLevel: 'silent',
-  port: 9443,
-  publicProtocol: 'http',
-  auditRetentionDays: 90,
-  auditRetentionCleanupBatchSize: 1000,
-  auditRetentionCleanupCron: '0 3 * * *',
-  auditRetentionCleanupMaxBatches: 100,
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  auditFileSink: defaultAuditFileSinkConfig,
-  rollbackRetentionLimit: null,
-  publicHttpPort: 9080,
-  publicHttpsPort: 443,
-  sessionSecret: 'test-secret',
-  sessionTtlMs: 604_800_000,
-  signupEnabled: false,
-  sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  sourceArchiveMaxBytes: 104_857_600,
-  throttle: defaultApiAuthThrottleConfig,
-  runtimeControlToken: 'test-runtime-control-token',
-  systemApiSocketPath: '/tmp/compartment-test-system-api.sock',
-  systemToken: 'test-system-token',
-  trustedOutboundHosts: [],
-  tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
-  variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
-};
+});
 const pool: Pool = createDatabasePool(principalEmailQueryDatabaseUrl);
 const db: Database = createDatabase(pool);
 

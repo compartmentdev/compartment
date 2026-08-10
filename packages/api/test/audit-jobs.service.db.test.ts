@@ -12,7 +12,6 @@ import type {
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import { auditEvents, authSessions, environments, organizations, principals, projects } from '../src/db/schema';
-import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import type { CurrentOrganizationAccess } from '../src/http/request.types';
 import type { Actor } from '../src/services/auth-actor.types';
 import { configureApiRuntime } from '../src/runtime/runtime';
@@ -25,45 +24,13 @@ import {
 } from '../src/routes/audit/privileged-operation-audit';
 import type { AuditRetentionCleanupResult } from '../src/services/audit-retention-cleanup.service.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'audit_jobs_service');
-const apiConfig: ApiConfig = {
-  auditRetentionDays: 90,
-  auditRetentionCleanupBatchSize: 1000,
-  auditRetentionCleanupCron: '0 3 * * *',
-  auditRetentionCleanupMaxBatches: 100,
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  auditFileSink: defaultAuditFileSinkConfig,
-  baseDomain: 'localhost',
-  bindHost: '127.0.0.1',
-  tlsMode: 'internal',
-  controlPlaneHost: 'console.localhost',
+const apiConfig: ApiConfig = createApiTestConfig({
   databaseUrl,
-  edgeToken: 'test-edge-token',
-  edgeUrl: 'http://127.0.0.1:9081',
-  logLevel: 'silent',
-  port: 9443,
-  publicHttpPort: 9080,
-  publicHttpsPort: 443,
-  publicProtocol: 'http',
-  rollbackRetentionLimit: null,
-  runtimeControlToken: 'test-runtime-control-token',
-  sessionSecret: 'test-secret',
-  sessionTtlMs: 604_800_000,
-  signupEnabled: false,
-  sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  sourceArchiveMaxBytes: 104_857_600,
-  systemApiSocketPath: '/tmp/compartment/compartment-test-system-api.sock',
-  systemToken: 'test-system-token',
-  throttle: defaultApiAuthThrottleConfig,
-  trustedOutboundHosts: [],
-  tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
-  variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
-};
+});
 const pool: Pool = createDatabasePool(databaseUrl);
 const db: Database = createDatabase(pool);
 const dayMs: number = 24 * 60 * 60 * 1000;

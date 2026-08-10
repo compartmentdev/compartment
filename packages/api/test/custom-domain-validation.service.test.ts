@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { type ApiConfig, type ApiPublicIngressConfig } from '../src/config';
 import type { Database } from '../src/db/client';
 import { clearApiRuntime, configureApiRuntime } from '../src/runtime/runtime';
@@ -7,7 +6,7 @@ import {
   assertRuntimeSupportsCustomDomains,
   normalizeCustomDomainHost,
 } from '../src/services/custom-domain-validation.service';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 afterEach((): void => {
   clearApiRuntime();
@@ -134,40 +133,13 @@ function configureValidationRuntime(config: ApiConfig): void {
 }
 
 function createApiConfig(): ApiConfig {
-  return {
+  return createApiTestConfig({
     baseDomain: 'example.compartment.run',
-    bindHost: '127.0.0.1',
-    tlsMode: 'broker-dns01',
     controlPlaneHost: 'console.example.compartment.run',
-    databaseUrl: 'postgresql://postgres:postgres@127.0.0.1:5432/compartment_test',
-    edgeToken: 'edge-token',
-    edgeUrl: 'http://127.0.0.1:9081',
-    logLevel: 'silent',
-    port: 9443,
     publicHttpPort: 80,
-    publicHttpsPort: 443,
     publicProtocol: 'https',
-    auditRetentionDays: 90,
-    auditRetentionCleanupBatchSize: 1000,
-    auditRetentionCleanupCron: '0 3 * * *',
-    auditRetentionCleanupMaxBatches: 100,
-    usageMeteringIntervalMs: 60_000,
-    usageRetentionDays: 400,
-    auditFileSink: defaultAuditFileSinkConfig,
-    rollbackRetentionLimit: null,
-    runtimeControlToken: 'runtime-token',
-    sessionSecret: 'test-session-secret',
-    sessionTtlMs: 604_800_000,
-    signupEnabled: false,
-    sourceArchiveDirectory: '/tmp/source-archives',
-    sourceArchiveMaxBytes: 104_857_600,
-    throttle: defaultApiAuthThrottleConfig,
-    systemApiSocketPath: '/tmp/compartment/system-api.sock',
-    systemToken: 'system-token',
-    trustedOutboundHosts: [],
-    tenantSecretsKek: Buffer.from('11'.repeat(32), 'hex'),
-    variablesMasterKey: Buffer.from('11'.repeat(32), 'hex'),
-  };
+    tlsMode: 'broker-dns01',
+  });
 }
 
 function createPublicIngressConfig(): ApiPublicIngressConfig {

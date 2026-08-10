@@ -5,14 +5,12 @@ import type { AuditEventSummary } from '@compartment/contracts';
 import { readFileModePermissions } from '@compartment/test-support';
 import pino from 'pino';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ApiConfig, AuditFileSinkConfig } from '../src/config';
-import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import {
   closeAuditEventFileSink,
   initializeAuditEventFileSink,
   writeAuditEventToLocalFileSink,
 } from '../src/services/audit-event-file-sink.service';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 const logger: pino.Logger<never, boolean> = pino({ level: 'silent' });
 let cleanupDirectories: string[] = [];
@@ -28,12 +26,14 @@ describe('audit event file sink service', (): void => {
     const directory: string = await createTemporaryDirectory();
     const event: AuditEventSummary = buildAuditEventSummary();
     initializeAuditEventFileSink({
-      config: buildApiConfig({
-        directory,
-        enabled: true,
-        retentionFiles: 30,
-        rotateInterval: '1d',
-        rotateSize: '64M',
+      config: createApiTestConfig({
+        auditFileSink: {
+          directory,
+          enabled: true,
+          retentionFiles: 30,
+          rotateInterval: '1d',
+          rotateSize: '64M',
+        },
       }),
       logger,
     });
@@ -50,12 +50,14 @@ describe('audit event file sink service', (): void => {
   it('does not create a local audit file when disabled', async (): Promise<void> => {
     const directory: string = await createTemporaryDirectory();
     initializeAuditEventFileSink({
-      config: buildApiConfig({
-        directory,
-        enabled: false,
-        retentionFiles: 30,
-        rotateInterval: '1d',
-        rotateSize: '64M',
+      config: createApiTestConfig({
+        auditFileSink: {
+          directory,
+          enabled: false,
+          retentionFiles: 30,
+          rotateInterval: '1d',
+          rotateSize: '64M',
+        },
       }),
       logger,
     });
@@ -110,42 +112,5 @@ function buildAuditEventSummary(): AuditEventSummary {
       serviceId: null,
       type: 'organization',
     },
-  };
-}
-
-function buildApiConfig(auditFileSink: AuditFileSinkConfig): ApiConfig {
-  return {
-    auditFileSink,
-    auditRetentionDays: 90,
-    auditRetentionCleanupBatchSize: 1000,
-    auditRetentionCleanupCron: '0 3 * * *',
-    auditRetentionCleanupMaxBatches: 100,
-    usageMeteringIntervalMs: 60_000,
-    usageRetentionDays: 400,
-    baseDomain: 'localhost',
-    bindHost: '127.0.0.1',
-    tlsMode: 'internal',
-    controlPlaneHost: 'console.localhost',
-    databaseUrl: 'postgresql://postgres:postgres@127.0.0.1:5432/compartment_dev',
-    edgeToken: 'test-edge-token',
-    edgeUrl: 'http://127.0.0.1:9081',
-    logLevel: 'silent',
-    port: 9443,
-    publicHttpPort: 9080,
-    publicHttpsPort: 443,
-    publicProtocol: 'http',
-    rollbackRetentionLimit: null,
-    runtimeControlToken: 'test-runtime-control-token',
-    sessionSecret: 'test-secret',
-    sessionTtlMs: 604_800_000,
-    signupEnabled: false,
-    sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-    sourceArchiveMaxBytes: 104_857_600,
-    systemApiSocketPath: '/tmp/compartment/compartment-test-system-api.sock',
-    systemToken: 'test-system-token',
-    throttle: defaultApiAuthThrottleConfig,
-    trustedOutboundHosts: [],
-    tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
-    variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
   };
 }

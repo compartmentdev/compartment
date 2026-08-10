@@ -27,7 +27,6 @@ import {
   projects,
 } from '../src/db/schema';
 import { hashToken } from '../src/lib/tokens';
-import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { createOrganizationMembershipWithExecutor } from '../src/queries/organization-memberships.query';
 import { createAccessAssignmentWithExecutor } from '../src/queries/rbac-assignments.query';
 import type { CreateAccessAssignmentInput, RbacTransaction } from '../src/queries/rbac.query.types';
@@ -35,8 +34,7 @@ import { addAccessGroupMembershipWithExecutor, createAccessGroupWithExecutor } f
 import { createAccessRoleWithExecutor } from '../src/queries/rbac-roles.query';
 import { clearApiRuntime, configureApiRuntime } from '../src/runtime/runtime';
 import { createOrganizationMemberSession } from './api-auth-session-test.fixtures';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 
@@ -267,38 +265,9 @@ export async function findRoleIdByName(
 const systemRoleNames: readonly CompartmentMembershipRole[] = ['admin', 'deployer', 'readonly', 'viewer'];
 
 function createRbacApiConfig(databaseUrl: string, scope: string): ApiConfig {
-  return {
-    baseDomain: 'localhost',
-    bindHost: '127.0.0.1',
-    tlsMode: 'internal',
-    controlPlaneHost: 'console.localhost',
+  return createApiTestConfig({
     databaseUrl,
-    edgeToken: 'test-edge-token',
-    edgeUrl: 'http://127.0.0.1:9081',
-    logLevel: 'silent',
-    port: 9443,
-    publicHttpPort: 9080,
-    publicHttpsPort: 443,
-    publicProtocol: 'http',
-    auditRetentionDays: 90,
-    auditRetentionCleanupBatchSize: 1000,
-    auditRetentionCleanupCron: '0 3 * * *',
-    auditRetentionCleanupMaxBatches: 100,
-    usageMeteringIntervalMs: 60_000,
-    usageRetentionDays: 400,
-    auditFileSink: defaultAuditFileSinkConfig,
-    rollbackRetentionLimit: null,
-    runtimeControlToken: 'test-runtime-control-token',
-    sessionSecret: 'test-secret',
-    sessionTtlMs: 604_800_000,
-    signupEnabled: false,
     sourceArchiveDirectory: join(tmpdir(), `compartment-${scope}-source-archives`),
-    sourceArchiveMaxBytes: 104_857_600,
-    systemApiSocketPath: `/tmp/compartment/${scope}-system-api.sock`,
-    systemToken: 'test-system-token',
-    throttle: defaultApiAuthThrottleConfig,
     trustedOutboundHosts: ['idp.example.com'],
-    tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
-    variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
-  };
+  });
 }

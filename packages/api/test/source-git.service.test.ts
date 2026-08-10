@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import type { GitProviderRegistrationRow } from '../src/queries/git-provider-registration.query.types';
 import type {
   SourceBindingBranchMappingRow,
@@ -41,7 +40,7 @@ import type {
   listSourceSyncTaskCandidatesByTaskIdWithExecutor,
 } from '../src/queries/source-sync.query';
 import { connectGitSource, readGitSource } from '../src/services/git-source/git-source.service';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 type AssertGitHubRepositoryBranchExists = typeof assertGitHubRepositoryBranchExists;
 type ReadGitHubRepositoryMetadata = typeof readGitHubRepositoryMetadata;
@@ -468,40 +467,10 @@ function createReadInput(): DisconnectGitSourceInput {
 }
 
 function createApiConfig(): ApiConfig {
-  return {
-    baseDomain: 'localhost',
-    bindHost: '127.0.0.1',
-    tlsMode: 'internal',
-    controlPlaneHost: 'console.localhost',
-    databaseUrl: 'postgres://localhost/compartment',
-    edgeToken: 'edge-token',
-    edgeUrl: 'http://127.0.0.1:9081',
-    logLevel: 'silent',
-    port: 9443,
-    publicHttpPort: 9080,
-    publicHttpsPort: 443,
-    publicProtocol: 'http',
-    auditRetentionDays: 90,
-    auditRetentionCleanupBatchSize: 1000,
-    auditRetentionCleanupCron: '0 3 * * *',
-    auditRetentionCleanupMaxBatches: 100,
-    usageMeteringIntervalMs: 60_000,
-    usageRetentionDays: 400,
-    auditFileSink: defaultAuditFileSinkConfig,
-    rollbackRetentionLimit: null,
-    runtimeControlToken: 'runtime-token',
-    sessionSecret: 'session-secret',
-    sessionTtlMs: 604_800_000,
-    signupEnabled: false,
-    sourceArchiveDirectory: '/tmp/compartment-source-archives',
-    sourceArchiveMaxBytes: 104_857_600,
-    throttle: defaultApiAuthThrottleConfig,
-    systemApiSocketPath: '/tmp/compartment/compartment-test-system-api.sock',
-    systemToken: 'system-token',
-    trustedOutboundHosts: [],
+  return createApiTestConfig({
     tenantSecretsKek: Buffer.alloc(32, 1),
     variablesMasterKey: Buffer.alloc(32, 1),
-  };
+  });
 }
 
 function createActiveRegistration(): GitProviderRegistrationRow {
