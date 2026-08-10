@@ -12,7 +12,6 @@ export function buildDomainHelmCommand(
   imageTrustValuesPath: string,
 ): string[] {
   return buildHelmUpgradeCommand(target, target.releaseName, chartPath, [
-    '--reuse-values',
     ...buildKubernetesHelmValuesArgs([operatorValuesPath, domainValuesPath, imageTrustValuesPath]),
     '--rollback-on-failure',
     '--wait',

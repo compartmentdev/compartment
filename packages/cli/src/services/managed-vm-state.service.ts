@@ -7,6 +7,8 @@ import type {
   ManagedVmProvisionerState,
   ManagedVmUpdateState,
 } from './managed-vm-provisioning.types';
+import { formatManagedVmOwnedFileDrift, listManagedVmOwnedFileDrift } from './managed-vm-owned-file-drift.service';
+import type { ManagedVmOwnedPathDrift } from './managed-vm-owned-file-drift.service.types';
 import { managedVmReleaseMetadata } from './managed-vm-release-metadata.service';
 import { isManagedVmInstallStageComplete } from './managed-vm-stage.service';
 import { parseManagedVmState } from './managed-vm-state-validation.service';
@@ -120,8 +122,14 @@ export async function persistManagedVmStage(
     state,
     completedStage,
   );
-  if (!ownedFileDigestsEqual(stageOwnedFileDigests, expectedOwnedFileDigests)) {
-    throw new Error('Managed-VM installer-written content changed before ownership could be persisted.');
+  const stageDrift: ManagedVmOwnedPathDrift[] = listManagedVmOwnedFileDrift(
+    stageOwnedFileDigests,
+    expectedOwnedFileDigests,
+  );
+  if (stageDrift.length > 0) {
+    throw new Error(
+      `Managed-VM installer-written content changed before ownership could be persisted:\n${formatManagedVmOwnedFileDrift(stageDrift)}`,
+    );
   }
   const next: ManagedVmProvisionerState = {
     ...state,
@@ -155,22 +163,16 @@ export async function assertManagedVmOwnedFileDigests(state: ManagedVmProvisione
     state,
     state.completedStage,
   );
-  if (!ownedFileDigestsEqual(observed, state.ownedFileDigests)) {
-    throw new Error('Managed-VM owned host content has changed; refusing to overwrite or remove it.');
-  }
-}
-
-function ownedFileDigestsEqual(
-  left: Readonly<Record<string, string>>,
-  right: Readonly<Record<string, string>>,
-): boolean {
-  const ordered: (value: Readonly<Record<string, string>>) => readonly [string, string][] = (
-    value: Readonly<Record<string, string>>,
-  ): readonly [string, string][] =>
-    Object.entries(value).sort(([leftPath]: [string, string], [rightPath]: [string, string]): number =>
-      leftPath.localeCompare(rightPath),
+  const drift: ManagedVmOwnedPathDrift[] = listManagedVmOwnedFileDrift(observed, state.ownedFileDigests);
+  if (drift.length > 0) {
+    throw new Error(
+      'Managed-VM owned host content has changed; refusing to overwrite or remove it.\n' +
+        `These paths no longer match what the installer recorded in ${managedVmStatePath}:\n` +
+        `${formatManagedVmOwnedFileDrift(drift)}\n` +
+        'Restore each path to its installer-written state and retry, or reprovision the VM. ' +
+        'Run `sudo compartment system diagnose` first to capture a support bundle.',
     );
-  return JSON.stringify(ordered(left)) === JSON.stringify(ordered(right));
+  }
 }
 
 async function writeStateAtomically(state: ManagedVmProvisionerState): Promise<void> {

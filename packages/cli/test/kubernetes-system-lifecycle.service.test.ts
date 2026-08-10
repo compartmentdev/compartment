@@ -132,8 +132,16 @@ describe('Kubernetes system lifecycle', (): void => {
           const lastValuesPath: string | undefined = command[(valuesIndexes.at(-1) ?? -2) + 1];
           expect(lastValuesPath).toContain('image-trust-values.json');
           expect(command).toEqual(
-            expect.arrayContaining(['--rollback-on-failure', '--wait', '--wait-for-jobs', '--timeout', '15m']),
+            expect.arrayContaining([
+              '--reset-then-reuse-values',
+              '--rollback-on-failure',
+              '--wait',
+              '--wait-for-jobs',
+              '--timeout',
+              '15m',
+            ]),
           );
+          expect(command).not.toContain('--reuse-values');
           return successful('');
         }
         return await statusCommandHandler(true)(command);
