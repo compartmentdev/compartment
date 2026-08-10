@@ -1,6 +1,11 @@
 import { randomInt } from 'node:crypto';
 import { managedDomainAllocationPathname, type ManagedDomainAllocationResponse } from '@compartment/contracts';
-import { allocateManagedDomain, isCompartmentRequestError, isRetryableTransportRequestError } from '@compartment/sdk';
+import {
+  allocateManagedDomain,
+  isCompartmentRequestError,
+  isRetryableRequestError,
+  isRetryableTransportRequestError,
+} from '@compartment/sdk';
 import { waitForInstallDelay } from './kubernetes-install-delay.service';
 import type { KubernetesInstallProgressReporter } from './kubernetes-install-progress.types';
 import { createApiRequester } from './context.service';
@@ -39,7 +44,7 @@ async function runManagedDomainRequest<TResult>(
       return await request();
     } catch (error) {
       const failure: Error = error instanceof Error ? error : new Error('Unknown network request failure.');
-      if (!isRetryableManagedDomainError(failure) || attempt === brokerMaxAttempts) {
+      if (!isRetryableRequestError(failure) || attempt === brokerMaxAttempts) {
         throw createManagedDomainError(failure, attempt, operation, method, requestUrl);
       }
       const delayMs: number = readRetryDelayMs(attempt);
@@ -50,13 +55,6 @@ async function runManagedDomainRequest<TResult>(
     }
   }
   throw new Error(`Managed-domain broker ${operation} exhausted its retry policy. Re-run install to resume.`);
-}
-
-function isRetryableManagedDomainError(error: Error): boolean {
-  return (
-    (isCompartmentRequestError(error) && (error.statusCode === 429 || error.statusCode >= 500)) ||
-    isRetryableTransportRequestError(error)
-  );
 }
 
 function createManagedDomainError(

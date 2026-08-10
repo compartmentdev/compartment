@@ -100,6 +100,7 @@ export * from './contracts/organization-settings.contract';
 export * from './contracts/auth.contract';
 export * from './contracts/auth-cli-login.contract';
 export * from './contracts/auth-signup.contract';
+export * from './contracts/idempotency-key.contract';
 export * from './contracts/password-reset.contract';
 export * from './contracts/rbac.contract';
 export * from './contracts/control-plane-protocol.contract';

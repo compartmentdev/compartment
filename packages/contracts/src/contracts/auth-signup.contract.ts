@@ -23,6 +23,13 @@ export const signupRequestSchema: ContractSchema<SignupRequest> = z
   })
   .strict();
 
+/**
+ * A signup idempotency key is the only proof that a retry comes from the caller that created the account, so the wire
+ * contract requires a random UUID rather than any non-empty string. A guessable key would let a stranger mint a session
+ * for an account they do not own.
+ */
+export const signupIdempotencyKeySchema: ContractSchema<string> = z.string().uuid();
+
 export const signupResponseSchema: ContractSchema<SignupResponse> = loginTokenResponseSchema;
 
 export const claimAccountRequestSchema: ContractSchema<ClaimAccountRequest> = z

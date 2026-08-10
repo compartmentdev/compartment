@@ -52,6 +52,19 @@ can start immediately. `--email` is optional: when you omit it Compartment gener
 `signup.<baseDomain>` so an unattended caller never has to invent one. That placeholder is an identifier only. It is not
 a mailbox, and nothing is ever sent to it.
 
+### Retrying a signup
+
+Signup is safe to retry. `compartment signup` generates one random UUID per run, sends it as an `Idempotency-Key`
+header, and reuses it for every attempt, so a request that is lost on the way back does not strand the account it
+already created. Retrying with the same key returns the same account and organization with a newly issued session
+instead of reporting the email address as taken.
+
+Callers that talk to `POST /v1/auth/signup` directly must send the header themselves; it is required, and it must be a
+UUID the caller generates randomly. The key is the only proof that a retry comes from the original caller, so treat it
+as a secret, keep it for the length of the retry and no longer, and generate a fresh one for every signup. A key is
+honoured for 24 hours. Reusing one with a different email address or organization name is rejected as a conflict rather
+than silently returning the first account.
+
 Claim the account when a person should be able to sign in to the browser control plane:
 
 ```bash

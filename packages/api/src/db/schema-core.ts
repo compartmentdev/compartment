@@ -42,6 +42,16 @@ export const principals: CoreSchemaTypes.PrincipalsTable = pgTable(
   }),
 );
 
+export const signupIdempotencyKeys: CoreSchemaTypes.SignupIdempotencyKeysTable = pgTable('signup_idempotency_keys', {
+  id: text('id').primaryKey(),
+  principalId: text('principal_id')
+    .notNull()
+    .references((): typeof principals.id => principals.id, { onDelete: 'cascade' }),
+  keyHash: text('key_hash').notNull().unique(),
+  requestHash: text('request_hash').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const localCredentials: CoreSchemaTypes.LocalCredentialsTable = pgTable('local_credentials', {
   principalId: text('principal_id')
     .primaryKey()

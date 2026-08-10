@@ -38,6 +38,14 @@ interface PrincipalsColumnBuilders {
   createdAt: DefaultTimestampBuilder<'created_at'>;
 }
 
+interface SignupIdempotencyKeysColumnBuilders {
+  id: PrimaryTextBuilder<'id'>;
+  principalId: RequiredTextBuilder<'principal_id'>;
+  keyHash: RequiredTextBuilder<'key_hash'>;
+  requestHash: RequiredTextBuilder<'request_hash'>;
+  createdAt: DefaultTimestampBuilder<'created_at'>;
+}
+
 interface LocalCredentialsColumnBuilders {
   principalId: PrimaryTextBuilder<'principal_id'>;
   passwordHash: OptionalTextBuilder<'password_hash'>;
@@ -222,6 +230,7 @@ export interface EnvironmentsColumnBuilders {
 export type OrganizationsTable = PgTableOf<'organizations', OrganizationsColumnBuilders>;
 export type PrincipalsTable = PgTableOf<'principals', PrincipalsColumnBuilders>;
 export type PrincipalsExtraConfigColumns = ExtraColumns<'principals', PrincipalsColumnBuilders>;
+export type SignupIdempotencyKeysTable = PgTableOf<'signup_idempotency_keys', SignupIdempotencyKeysColumnBuilders>;
 export type LocalCredentialsTable = PgTableOf<'local_credentials', LocalCredentialsColumnBuilders>;
 export type SsoOidcProvidersTable = PgTableOf<'sso_oidc_providers', SsoOidcProvidersColumnBuilders>;
 export type SsoOidcProvidersExtraConfigColumns = ExtraColumns<'sso_oidc_providers', SsoOidcProvidersColumnBuilders>;

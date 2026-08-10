@@ -6,6 +6,7 @@ export {
   createCompartmentRawRequester,
   createCompartmentRequester,
   isCompartmentRequestError,
+  isRetryableRequestError,
 } from './http/request';
 export { isRetryableTransportRequestError } from './http/request-error';
 
