@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { parse, stringify } from 'yaml';
 
@@ -66,6 +66,9 @@ async function runShard(shardName) {
           );
         } finally {
           sampler.kill('SIGTERM');
+          // Baseline instrument: a passing run never reaches the failure dump, so the series it
+          // recorded would be discarded. Emitting here captures what a green shard looks like.
+          emitTenantStateSeries(diagnosticsPath);
         }
       },
       keepOnFailure: platformEnvironment.keepOnFailure,
@@ -95,6 +98,14 @@ async function startPlatform(env, signal) {
       ? [lifecycleScript, 'up']
       : [lifecycleScript, 'up', '--image-source', 'archive', '--image-archive-dir', archiveDirectory];
   await runInterruptibleCommand(process.execPath, args, env, signal);
+}
+
+function emitTenantStateSeries(diagnosticsPath) {
+  const path = join(diagnosticsPath, 'tenant-state-series.log');
+  if (!existsSync(path)) {
+    return;
+  }
+  process.stderr.write(`\n===== k3d e2e diagnostic: tenant-state-series =====\n${readFileSync(path, 'utf8')}`);
 }
 
 function startTenantStateSampler(env, diagnosticsPath) {
