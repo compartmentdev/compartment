@@ -44,6 +44,16 @@ generated K3s files because it cannot prove their exact ownership.
 Managed Kubernetes components do not update in the background. If an update stops, correct the reported problem and
 rerun the same command.
 
+The platform update re-reads the defaults of the chart bundled with the CLI you just installed, so a release picks up
+defaults that changed since it was installed. Values recorded for your installation, including anything in
+`/etc/compartment/values.yaml`, are reapplied on top of those defaults and still win.
+
+If the update refuses to run because installer-owned host content changed, the error lists every drifted path and what
+changed about it (content, file mode, or owner) against what the installer recorded in
+`/var/lib/compartment/installer/state.json`. Restore those paths to their installer-written state and rerun, or
+capture a bundle with `sudo compartment system diagnose` and reprovision a clean VM. Replacing an installer-owned
+binary such as `/usr/local/bin/helm` with a different build is enough to trip this check.
+
 Scheduled local etcd snapshots protect against some operator errors. They are stored on the same VM and are not a
 machine-loss backup. Copy verified backups and application data off-host according to your recovery requirements.
 

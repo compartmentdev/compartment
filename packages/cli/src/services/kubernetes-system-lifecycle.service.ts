@@ -113,7 +113,6 @@ function buildKubernetesUpdateHelmCommand(
   imageTrustValuesPath: string,
 ): string[] {
   return buildHelmUpgradeCommand(input, input.releaseName, chartPath, [
-    '--reuse-values',
     ...buildKubernetesHelmValuesArgs([input.valuesPath, updateValuesPath, imageTrustValuesPath]),
     '--rollback-on-failure',
     '--wait',
