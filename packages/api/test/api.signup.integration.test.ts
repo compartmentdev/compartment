@@ -10,13 +10,14 @@ import {
   type ClaimAccountResponse,
   type LoginResponse,
   type OrganizationSummary,
+  type PermissionKey,
   type SignupRequest,
   type SignupResponse,
   type WhoAmIResponse,
 } from '@compartment/contracts';
 import type { LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
-import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ApiApp } from '../src/app.types';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
@@ -31,6 +32,29 @@ import {
   resetApiIntegrationTempDirectory,
 } from './api-app-test.harness';
 import { useApiDatabaseTestHarness } from './api-db-test.harness';
+
+type InvalidateEdgeAppAccessSessions = () => Promise<void>;
+type SynchronizeEdgeAppAccessState = () => Promise<void>;
+
+interface AppAccessEdgeServiceMocks {
+  invalidateEdgeAppAccessSessions: Mock<InvalidateEdgeAppAccessSessions>;
+  synchronizeEdgeAppAccessState: Mock<SynchronizeEdgeAppAccessState>;
+}
+
+const appAccessEdgeServiceMocks: AppAccessEdgeServiceMocks = vi.hoisted(
+  (): AppAccessEdgeServiceMocks => ({
+    invalidateEdgeAppAccessSessions: vi.fn<InvalidateEdgeAppAccessSessions>(),
+    synchronizeEdgeAppAccessState: vi.fn<SynchronizeEdgeAppAccessState>(),
+  }),
+);
+
+vi.mock(
+  '../src/services/app-access-edge.service',
+  (): AppAccessEdgeServiceMocks => ({
+    invalidateEdgeAppAccessSessions: appAccessEdgeServiceMocks.invalidateEdgeAppAccessSessions,
+    synchronizeEdgeAppAccessState: appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState,
+  }),
+);
 
 const {
   apiConfig: signupDisabledApiConfig,
@@ -50,6 +74,10 @@ describe('Phase 0 API integration CLI self-service signup', (): void => {
   useApiDatabaseTestHarness(apiIntegrationDatabaseUrl);
 
   beforeEach(async (): Promise<void> => {
+    appAccessEdgeServiceMocks.invalidateEdgeAppAccessSessions.mockReset();
+    appAccessEdgeServiceMocks.invalidateEdgeAppAccessSessions.mockResolvedValue(undefined);
+    appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState.mockReset();
+    appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState.mockResolvedValue(undefined);
     await resetApiIntegrationTempDirectory(testTempDirectory);
     pool = createDatabasePool(apiIntegrationDatabaseUrl);
     db = createDatabase(pool);
@@ -148,7 +176,9 @@ describe('Phase 0 API integration CLI self-service signup', (): void => {
     expect(login.sessionToken).toBeDefined();
     const identity: WhoAmIResponse = await readWhoAmI(login.sessionToken!, 'agent-org');
     expect(identity.principal.id).toBe(signup.principal.id);
-    expect(identity.currentOrganizationPermissions).toEqual(listCompartmentRolePermissions('admin'));
+    expect(sortPermissionKeys(identity.currentOrganizationPermissions)).toEqual(
+      sortPermissionKeys(listCompartmentRolePermissions('admin')),
+    );
   });
 
   it('refuses a second claim so a leaked session cannot rewrite settled credentials', async (): Promise<void> => {
@@ -222,6 +252,10 @@ describe('Phase 0 API integration CLI self-service signup', (): void => {
     expect(errorResponseSchema.parse(response.json()).error.code).toBe('signup_disabled');
   });
 });
+
+function sortPermissionKeys(permissionKeys: readonly PermissionKey[]): PermissionKey[] {
+  return [...permissionKeys].sort((left: PermissionKey, right: PermissionKey): number => left.localeCompare(right));
+}
 
 async function injectSignup(payload: SignupRequest): Promise<LightMyRequestResponse> {
   return await app.inject({
