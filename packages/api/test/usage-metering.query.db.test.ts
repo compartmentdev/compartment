@@ -21,7 +21,6 @@ import {
   workloadUsageCheckpoints,
   workloadUsageHourly,
 } from '../src/db/schema';
-import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { appendDeploymentRunEvent } from '../src/queries/deployment-run-events.query';
 import type { AppendDeploymentRunEventInput } from '../src/queries/deployment-run-events.query.types';
 import { recordJobUsage } from '../src/queries/job-usage.query';
@@ -31,47 +30,20 @@ import { deleteExpiredUsageBatch, recordPodUsage } from '../src/queries/usage-me
 import { publishEdgeTrafficMetrics } from '../src/services/usage-metering.service';
 import type { PublishEdgeTrafficMetricsInput } from '../src/services/usage-metering.service.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'usage_metering');
 const pool: Pool = createDatabasePool(databaseUrl);
 const db: Database = createDatabase(pool);
-const apiConfig: ApiConfig = {
-  auditFileSink: defaultAuditFileSinkConfig,
+const apiConfig: ApiConfig = createApiTestConfig({
   auditRetentionCleanupBatchSize: 100,
-  auditRetentionCleanupCron: '0 3 * * *',
   auditRetentionCleanupMaxBatches: 10,
-  auditRetentionDays: 90,
-  baseDomain: 'localhost',
-  bindHost: '127.0.0.1',
-  controlPlaneHost: 'console.localhost',
   databaseUrl,
-  edgeToken: 'edge',
-  edgeUrl: 'http://edge:9081',
-  logLevel: 'silent',
-  port: 9443,
-  publicHttpPort: 9080,
   publicHttpsPort: 9443,
-  publicProtocol: 'http',
-  rollbackRetentionLimit: null,
-  runtimeControlToken: 'runtime',
-  sessionSecret: 'secret',
   sessionTtlMs: 1000,
-  signupEnabled: false,
-  sourceArchiveDirectory: '/tmp/source',
   sourceArchiveMaxBytes: 1000,
-  systemApiSocketPath: '/tmp/system.sock',
-  systemToken: 'system',
-  throttle: defaultApiAuthThrottleConfig,
-  tlsMode: 'internal',
-  trustedOutboundHosts: [],
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
-  variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
-};
+});
 
 describe('usage metering persistence', (): void => {
   useApiRuntimeDatabaseTestHarness({ apiConfig, databaseUrl, db, pool });

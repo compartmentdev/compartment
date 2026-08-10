@@ -1,52 +1,20 @@
 import type { Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import { organizations } from '../src/db/schema';
-import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { insertOperationRecord, updateOperationRecord } from '../src/queries/operations.query';
 import type { OperationRecord } from '../src/queries/operations.query.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'operations_tenancy_query');
-const apiConfig: ApiConfig = {
-  baseDomain: 'localhost',
-  bindHost: '127.0.0.1',
-  tlsMode: 'internal',
-  controlPlaneHost: 'console.localhost',
+const apiConfig: ApiConfig = createApiTestConfig({
   databaseUrl,
-  edgeToken: 'test-edge-token',
-  edgeUrl: 'http://127.0.0.1:9081',
-  logLevel: 'silent',
-  port: 9443,
-  publicHttpPort: 9080,
-  publicHttpsPort: 443,
-  publicProtocol: 'http',
-  auditRetentionDays: 90,
-  auditRetentionCleanupBatchSize: 1000,
-  auditRetentionCleanupCron: '0 3 * * *',
-  auditRetentionCleanupMaxBatches: 100,
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  auditFileSink: defaultAuditFileSinkConfig,
   rollbackRetentionLimit: 5,
-  runtimeControlToken: 'test-runtime-control-token',
-  sessionSecret: 'test-secret',
-  sessionTtlMs: 604_800_000,
-  signupEnabled: false,
-  sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  sourceArchiveMaxBytes: 104_857_600,
-  systemApiSocketPath: '/tmp/compartment/compartment-test-system-api.sock',
-  systemToken: 'test-system-token',
-  throttle: defaultApiAuthThrottleConfig,
-  trustedOutboundHosts: [],
-  tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
-  variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
-};
+});
 const pool: Pool = createDatabasePool(databaseUrl);
 const db: Database = createDatabase(pool);
 

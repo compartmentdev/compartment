@@ -7,8 +7,6 @@ import type {
   PermissionKey,
 } from '@compartment/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
 import type { Database } from '../src/db/client';
 import type { listActiveCustomDeploymentRoutes } from '../src/queries/custom-deployment-routes.query';
@@ -18,6 +16,7 @@ import type { hasCompletedInstallation } from '../src/queries/install.query';
 import type { listAllPrincipalPermissionGrantStates } from '../src/queries/rbac-assignments.query';
 import { clearApiRuntime, configureApiRuntime } from '../src/runtime/runtime';
 import { readAppAccessState } from '../src/services/app-access-state.service';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 type ListActiveDeploymentRoutes = typeof listActiveDeploymentRoutes;
 type ListActiveCustomDeploymentRoutes = typeof listActiveCustomDeploymentRoutes;
@@ -81,40 +80,7 @@ vi.mock(
   }),
 );
 
-const apiConfig: ApiConfig = {
-  bindHost: '127.0.0.1',
-  baseDomain: 'localhost',
-  tlsMode: 'internal',
-  controlPlaneHost: 'console.localhost',
-  databaseUrl: 'postgresql://postgres:postgres@127.0.0.1:5432/compartment_test',
-  edgeToken: 'test-edge-token',
-  edgeUrl: 'http://127.0.0.1:9080',
-  logLevel: 'silent',
-  port: 9443,
-  publicProtocol: 'http',
-  auditRetentionDays: 90,
-  auditRetentionCleanupBatchSize: 1000,
-  auditRetentionCleanupCron: '0 3 * * *',
-  auditRetentionCleanupMaxBatches: 100,
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  auditFileSink: defaultAuditFileSinkConfig,
-  rollbackRetentionLimit: null,
-  publicHttpPort: 9080,
-  publicHttpsPort: 443,
-  sessionSecret: 'test-session-secret',
-  sessionTtlMs: 604_800_000,
-  signupEnabled: false,
-  sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  sourceArchiveMaxBytes: 104_857_600,
-  throttle: defaultApiAuthThrottleConfig,
-  systemApiSocketPath: '/tmp/compartment/compartment-app-access-state-system-api.sock',
-  systemToken: 'test-system-token',
-  trustedOutboundHosts: [],
-  tenantSecretsKek: Buffer.from('11'.repeat(32), 'hex'),
-  variablesMasterKey: Buffer.from('11'.repeat(32), 'hex'),
-  runtimeControlToken: 'test-runtime-control-token',
-};
+const apiConfig: ApiConfig = createApiTestConfig();
 
 describe('app access state service', (): void => {
   beforeEach((): void => {

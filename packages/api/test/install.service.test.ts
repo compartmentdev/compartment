@@ -1,6 +1,4 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
 import { createEdgeStateUpdateFailedError } from '../src/errors/api-business-error';
 import type { InsertOperationInput, OperationRecord } from '../src/queries/operations.query.types';
@@ -13,6 +11,7 @@ import type {
   InstallGuardCallback,
   InstallTransaction,
 } from '../src/queries/install.query.types';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 type HashPassword = (password: string) => Promise<string>;
 type GetApiConfig = () => ApiConfig;
@@ -94,40 +93,7 @@ const installInput: InstallServiceInput = {
   organizationSlug: 'acme-dev',
 };
 
-const apiConfig: ApiConfig = {
-  bindHost: '127.0.0.1',
-  baseDomain: 'localhost',
-  tlsMode: 'internal',
-  controlPlaneHost: 'console.localhost',
-  databaseUrl: 'postgresql://127.0.0.1:5432/compartment_test',
-  edgeToken: 'test-edge-token',
-  edgeUrl: 'http://127.0.0.1:9080',
-  logLevel: 'info',
-  port: 9443,
-  publicProtocol: 'http',
-  auditRetentionDays: 90,
-  auditRetentionCleanupBatchSize: 1000,
-  auditRetentionCleanupCron: '0 3 * * *',
-  auditRetentionCleanupMaxBatches: 100,
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  auditFileSink: defaultAuditFileSinkConfig,
-  rollbackRetentionLimit: null,
-  publicHttpPort: 9080,
-  publicHttpsPort: 443,
-  sessionSecret: 'test-secret',
-  sessionTtlMs: 604_800_000,
-  signupEnabled: false,
-  sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  sourceArchiveMaxBytes: 104_857_600,
-  throttle: defaultApiAuthThrottleConfig,
-  systemApiSocketPath: '/tmp/compartment/compartment-install-service-system-api.sock',
-  systemToken: 'test-system-token',
-  trustedOutboundHosts: [],
-  tenantSecretsKek: Buffer.from('11'.repeat(32), 'hex'),
-  variablesMasterKey: Buffer.from('11'.repeat(32), 'hex'),
-  runtimeControlToken: 'test-runtime-control-token',
-};
+const apiConfig: ApiConfig = createApiTestConfig();
 
 const sessionPlan: AuthSessionPlan = {
   authMethodKind: 'password',

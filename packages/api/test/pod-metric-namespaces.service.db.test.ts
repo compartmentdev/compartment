@@ -5,7 +5,6 @@ import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '@compartme
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import { organizationQuotaReconciliation, organizations, projectKubeProvisioning, projects } from '../src/db/schema';
-import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import type {
   ProjectKubeProvisioningState,
   ProjectProvisioningClaimRow,
@@ -14,47 +13,17 @@ import { completeProjectProvisioning } from '../src/queries/project-provisioning
 import { claimPendingProjectProvisioning } from '../src/queries/project-provisioning.query';
 import { readPodMetricNamespaceScope } from '../src/services/pod-metrics-namespace.service';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'pod_metric_namespaces');
 const pool: Pool = createDatabasePool(databaseUrl);
 const db: Database = createDatabase(pool);
-const apiConfig: ApiConfig = {
-  auditFileSink: defaultAuditFileSinkConfig,
+const apiConfig: ApiConfig = createApiTestConfig({
   auditRetentionCleanupBatchSize: 1,
-  auditRetentionCleanupCron: '0 3 * * *',
   auditRetentionCleanupMaxBatches: 1,
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  auditRetentionDays: 90,
-  baseDomain: 'localhost',
-  bindHost: '127.0.0.1',
-  tlsMode: 'internal',
-  controlPlaneHost: 'compartment.localhost',
   databaseUrl,
-  edgeToken: 'edge',
-  edgeUrl: 'http://127.0.0.1:9081',
-  logLevel: 'silent',
-  port: 9443,
-  publicHttpPort: 9080,
-  publicHttpsPort: 443,
-  publicProtocol: 'http',
-  rollbackRetentionLimit: null,
-  runtimeControlToken: 'runtime',
-  sessionSecret: 'secret',
-  sessionTtlMs: 604_800_000,
-  signupEnabled: false,
-  sourceArchiveDirectory: '/tmp/sources',
-  sourceArchiveMaxBytes: 104_857_600,
-  systemApiSocketPath: '/tmp/system.sock',
-  systemToken: 'system',
-  throttle: defaultApiAuthThrottleConfig,
-  trustedOutboundHosts: [],
-  tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
-  variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
-};
+});
 
 describe('Pod metric namespace scope', (): void => {
   useApiRuntimeDatabaseTestHarness({ apiConfig, databaseUrl, db, pool });

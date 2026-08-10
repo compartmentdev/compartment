@@ -21,8 +21,6 @@ import { deployments, organizations, projects } from '../src/db/schema';
 import { recoverOrphanedDeploymentBuildClaims } from '../src/services/deployment-worker.service';
 import { createApp } from '../src/app';
 import type { ApiApp } from '../src/app.types';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
@@ -36,6 +34,7 @@ import {
   requireClaimedDeployment,
   requireDeployResponseDeployment,
 } from './api-integration.harness';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 interface IdentifiedRow {
   id: string;
@@ -58,40 +57,13 @@ const { testDatabaseUrl } = readDatabaseTestMode();
 const runtimeMovementDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'api_runtime_claim_order');
 const variablesMasterKey: Buffer = parseVariablesMasterKey('11'.repeat(32));
 const deploymentRuntimeMovementTimeoutMs: number = 20_000;
-const apiConfig: ApiConfig = {
-  bindHost: '127.0.0.1',
-  baseDomain: 'localhost',
-  tlsMode: 'internal',
-  controlPlaneHost: 'console.localhost',
+const apiConfig: ApiConfig = createApiTestConfig({
   databaseUrl: runtimeMovementDatabaseUrl,
-  edgeToken: 'test-edge-token',
-  edgeUrl: 'http://127.0.0.1:9081',
-  logLevel: 'silent',
-  port: 9443,
-  publicProtocol: 'http',
-  auditRetentionDays: 90,
-  auditRetentionCleanupBatchSize: 1000,
-  auditRetentionCleanupCron: '0 3 * * *',
-  auditRetentionCleanupMaxBatches: 100,
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  auditFileSink: defaultAuditFileSinkConfig,
-  rollbackRetentionLimit: null,
   publicHttpPort: 80,
-  publicHttpsPort: 443,
-  sessionSecret: 'test-secret',
-  sessionTtlMs: 604_800_000,
-  signupEnabled: false,
   sourceArchiveDirectory: join(tmpdir(), 'compartment-api-runtime-claim-order-source-archives'),
-  sourceArchiveMaxBytes: 104_857_600,
-  throttle: defaultApiAuthThrottleConfig,
-  systemApiSocketPath: '/tmp/compartment/compartment-runtime-claim-order-system-api.sock',
-  systemToken: 'test-system-token',
-  trustedOutboundHosts: [],
   tenantSecretsKek: variablesMasterKey,
   variablesMasterKey,
-  runtimeControlToken: 'test-runtime-control-token',
-};
+});
 const pool: Pool = createDatabasePool(runtimeMovementDatabaseUrl);
 const db: Database = createDatabase(pool);
 const app: ApiApp = createApp({ config: apiConfig, pool });

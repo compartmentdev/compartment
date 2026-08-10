@@ -22,7 +22,6 @@ import {
   projects,
   resourceReconcileRuns,
 } from '../src/db/schema';
-import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import {
   completeResourceBackupWithExecutor,
   createResourceBackupWithExecutor,
@@ -41,8 +40,7 @@ import { restoreResourceBackupAsForPrincipal } from '../src/services/resource-ba
 import { serializeResourceDefinitionSnapshot } from '../src/services/resources.service.storage';
 import type { ResourceRestoreAsResult } from '../src/services/resources.service.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 const backupId: string = 'rbak_restore_as';
 const backupChecksum: string = 'a'.repeat(64);
@@ -320,39 +318,8 @@ async function delay(milliseconds: number): Promise<void> {
 }
 
 function buildApiConfig(url: string): ApiConfig {
-  return {
-    auditFileSink: defaultAuditFileSinkConfig,
-    auditRetentionCleanupBatchSize: 1_000,
-    auditRetentionCleanupCron: '0 3 * * *',
-    auditRetentionCleanupMaxBatches: 100,
-    usageMeteringIntervalMs: 60_000,
-    usageRetentionDays: 400,
-    auditRetentionDays: 90,
-    baseDomain: 'localhost',
-    bindHost: '127.0.0.1',
-    tlsMode: 'internal',
-    controlPlaneHost: 'compartment.localhost',
+  return createApiTestConfig({
     databaseUrl: url,
-    edgeToken: 'edge',
-    edgeUrl: 'http://127.0.0.1:9081',
-    logLevel: 'silent',
-    port: 9443,
-    publicHttpPort: 9080,
-    publicHttpsPort: 443,
-    publicProtocol: 'http',
-    rollbackRetentionLimit: null,
-    runtimeControlToken: 'runtime',
-    sessionSecret: 'secret',
-    sessionTtlMs: 604_800_000,
-    signupEnabled: false,
-    sourceArchiveDirectory: '/tmp/sources',
-    sourceArchiveMaxBytes: 104_857_600,
-    systemApiSocketPath: '/tmp/system.sock',
-    systemToken: 'system',
-    throttle: defaultApiAuthThrottleConfig,
-    trustedOutboundHosts: [],
-    tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
-    variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
     workerImageRef: 'compartment-worker@sha256:test',
-  };
+  });
 }

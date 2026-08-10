@@ -32,12 +32,10 @@ import {
   projects,
   variableAccessEvents,
 } from '../src/db/schema';
-import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { createSourceArchive, injectDeployRequest, installCompartment, setVariable } from './api-integration.harness';
 import { useApiDatabaseTestHarness } from './api-db-test.harness';
 import { expectJsonError } from './api-route-test.harness';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 interface AppAccessEdgeServiceModule {
   invalidateEdgeAppAccessSessions: () => Promise<void>;
@@ -65,40 +63,11 @@ vi.mock(
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'api_variable_resource_output_bindings');
-const apiConfig: ApiConfig = {
-  auditFileSink: defaultAuditFileSinkConfig,
-  auditRetentionCleanupBatchSize: 1000,
-  auditRetentionCleanupCron: '0 3 * * *',
-  auditRetentionCleanupMaxBatches: 100,
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  auditRetentionDays: 90,
-  baseDomain: 'localhost',
-  bindHost: '127.0.0.1',
-  tlsMode: 'internal',
-  controlPlaneHost: 'console.localhost',
+const apiConfig: ApiConfig = createApiTestConfig({
   databaseUrl,
-  edgeToken: 'test-edge-token',
-  edgeUrl: 'http://127.0.0.1:9081',
-  logLevel: 'silent',
-  port: 9444,
   publicHttpPort: 80,
-  publicHttpsPort: 443,
-  publicProtocol: 'http',
-  rollbackRetentionLimit: null,
-  runtimeControlToken: 'test-runtime-control-token',
-  sessionSecret: 'test-secret',
-  sessionTtlMs: 604_800_000,
-  signupEnabled: false,
   sourceArchiveDirectory: join(tmpdir(), 'compartment-api-variable-resource-output-archives'),
-  sourceArchiveMaxBytes: 104_857_600,
-  systemApiSocketPath: '/tmp/compartment/compartment-variable-resource-output-system-api.sock',
-  systemToken: 'test-system-token',
-  throttle: defaultApiAuthThrottleConfig,
-  trustedOutboundHosts: [],
-  tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
-  variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
-};
+});
 const pool: Pool = createDatabasePool(databaseUrl);
 const db: Database = createDatabase(pool);
 const app: ApiApp = createApp({ config: apiConfig, pool });

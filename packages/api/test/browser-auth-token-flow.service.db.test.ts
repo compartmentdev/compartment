@@ -5,7 +5,6 @@ import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import { browserAuthTokenFlows } from '../src/db/schema';
-import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { createBrowserAuthTokenFlow } from '../src/queries/browser-auth-token-flow.query';
 import {
   consumeBrowserAuthTokenFlow,
@@ -16,48 +15,16 @@ import { runBrowserAuthTokenFlowCleanup } from '../src/services/browser-auth-tok
 import type { BrowserAuthTokenFlowCleanupResult } from '../src/services/browser-auth-token-flow-cleanup.service.types';
 import type { BrowserAuthTokenFlowPlan } from '../src/services/browser-auth-token-flow.service.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const browserAuthTokenFlowDatabaseUrl: string = deriveProcessScopedDatabaseUrl(
   testDatabaseUrl,
   'browser_auth_token_flow',
 );
-const apiConfig: ApiConfig = {
-  auditFileSink: defaultAuditFileSinkConfig,
-  auditRetentionCleanupBatchSize: 1000,
-  auditRetentionCleanupCron: '0 3 * * *',
-  auditRetentionCleanupMaxBatches: 100,
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  auditRetentionDays: 90,
-  baseDomain: 'localhost',
-  bindHost: '127.0.0.1',
-  tlsMode: 'internal',
-  controlPlaneHost: 'compartment.localhost',
+const apiConfig: ApiConfig = createApiTestConfig({
   databaseUrl: browserAuthTokenFlowDatabaseUrl,
-  edgeToken: 'test-edge-token',
-  edgeUrl: 'http://127.0.0.1:9081',
-  logLevel: 'silent',
-  port: 9443,
-  publicHttpPort: 9080,
-  publicHttpsPort: 443,
-  publicProtocol: 'http',
-  rollbackRetentionLimit: null,
-  runtimeControlToken: 'test-runtime-control-token',
-  sessionSecret: 'test-secret',
-  sessionTtlMs: 604_800_000,
-  signupEnabled: false,
-  sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  sourceArchiveMaxBytes: 104_857_600,
-  systemApiSocketPath: '/tmp/compartment/compartment-test-system-api.sock',
-  systemToken: 'test-system-token',
-  throttle: defaultApiAuthThrottleConfig,
-  trustedOutboundHosts: [],
-  tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
-  variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
-};
+});
 const pool: Pool = createDatabasePool(browserAuthTokenFlowDatabaseUrl);
 const db: Database = createDatabase(pool);
 type BrowserAuthTokenFlowTableRow = typeof browserAuthTokenFlows.$inferSelect;

@@ -20,7 +20,6 @@ import {
   principals,
   ssoOidcIdentities,
 } from '../../src/db/schema';
-import { parseVariablesMasterKey } from '../../src/lib/variables-crypto';
 import { createSsoOidcProvider } from '../../src/queries/sso-oidc.query';
 import type { RbacTransaction } from '../../src/queries/rbac.query.types';
 import type { CreateSsoOidcProviderInput, SsoOidcProviderRow } from '../../src/queries/sso-oidc.query.types';
@@ -29,48 +28,16 @@ import type { ResolveSsoOidcLoginSessionResult } from '../../src/services/sso-oi
 import type { OidcIdentityClaims } from '../../src/services/sso-oidc/sso-oidc-client.adapter.types';
 import { assignOrganizationSystemRoleToPrincipalWithExecutor } from '../../src/services/rbac-seed.service';
 import { useApiRuntimeDatabaseTestHarness } from '../api-db-test.harness';
-import { defaultApiAuthThrottleConfig } from '../auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from '../audit-file-sink-config.fixture';
+import { createApiTestConfig } from '../api-config-test.fixtures';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const ssoOidcLoginResolutionDatabaseUrl: string = deriveProcessScopedDatabaseUrl(
   testDatabaseUrl,
   'sso_oidc_login_resolution_service',
 );
-const apiConfig: ApiConfig = {
-  baseDomain: 'localhost',
-  bindHost: '127.0.0.1',
-  tlsMode: 'internal',
-  controlPlaneHost: 'compartment.localhost',
+const apiConfig: ApiConfig = createApiTestConfig({
   databaseUrl: ssoOidcLoginResolutionDatabaseUrl,
-  edgeToken: 'test-edge-token',
-  edgeUrl: 'http://127.0.0.1:9081',
-  logLevel: 'silent',
-  port: 9443,
-  publicProtocol: 'http',
-  auditRetentionDays: 90,
-  auditRetentionCleanupBatchSize: 1000,
-  auditRetentionCleanupCron: '0 3 * * *',
-  auditRetentionCleanupMaxBatches: 100,
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  auditFileSink: defaultAuditFileSinkConfig,
-  rollbackRetentionLimit: null,
-  publicHttpPort: 9080,
-  publicHttpsPort: 443,
-  runtimeControlToken: 'test-runtime-control-token',
-  sessionSecret: 'test-secret',
-  sessionTtlMs: 604_800_000,
-  signupEnabled: false,
-  sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  sourceArchiveMaxBytes: 104_857_600,
-  throttle: defaultApiAuthThrottleConfig,
-  systemApiSocketPath: '/tmp/compartment-test-system-api.sock',
-  systemToken: 'test-system-token',
-  trustedOutboundHosts: [],
-  tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
-  variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
-};
+});
 const pool: Pool = createDatabasePool(ssoOidcLoginResolutionDatabaseUrl);
 const db: Database = createDatabase(pool);
 

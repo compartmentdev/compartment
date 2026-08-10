@@ -15,7 +15,6 @@ import type { DeploymentJoinedRow, DeploymentRow, EnvironmentRow } from '../src/
 import type { insertOperationRecord, updateOperationRecord } from '../src/queries/operations.query';
 import type { OperationRecord } from '../src/queries/operations.query.types';
 import type { ProjectRow } from '../src/queries/projects.query.types';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import type { getApiConfig } from '../src/runtime/runtime-access';
 import type { requireScopedPermission } from '../src/services/access-scope.service';
 import type { queueArtifactStartDeployments } from '../src/services/artifact-deployment-queue.service';
@@ -23,7 +22,7 @@ import type { resolveActiveProjectScope } from '../src/services/project-scope.se
 import type { ResolvedProjectScope } from '../src/services/project-scope.service.types';
 import { startProjectForPrincipal, stopProjectForPrincipal } from '../src/services/project-lifecycle.service';
 import type { ProjectLifecycleInput, ProjectLifecycleResult } from '../src/services/project-lifecycle.service.types';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 type FindEnvironmentByProjectAndName = typeof findEnvironmentByProjectAndName;
 type FindJoinedDeploymentById = typeof findJoinedDeploymentById;
@@ -250,40 +249,15 @@ describe('project lifecycle service', (): void => {
 });
 
 function mockLifecycleContext(deployments: DeploymentJoinedRow[], activeDeployments: DeploymentJoinedRow[]): void {
-  mocks.getApiConfig.mockReturnValue({
-    baseDomain: 'localhost',
-    bindHost: '127.0.0.1',
-    tlsMode: 'internal',
-    controlPlaneHost: 'console.localhost',
-    databaseUrl: 'postgresql://postgres:postgres@127.0.0.1:5432/compartment_test',
-    edgeToken: 'edge-token',
-    edgeUrl: 'http://127.0.0.1:9081',
-    logLevel: 'silent',
-    port: 9453,
-    publicHttpPort: 9080,
-    publicHttpsPort: 9443,
-    publicProtocol: 'http',
-    auditRetentionDays: 90,
-    auditRetentionCleanupBatchSize: 1000,
-    auditRetentionCleanupCron: '0 3 * * *',
-    auditRetentionCleanupMaxBatches: 100,
-    usageMeteringIntervalMs: 60_000,
-    usageRetentionDays: 400,
-    auditFileSink: defaultAuditFileSinkConfig,
-    rollbackRetentionLimit: null,
-    sessionSecret: 'session-secret',
-    sessionTtlMs: 86_400_000,
-    signupEnabled: false,
-    sourceArchiveDirectory: '/tmp/compartment-source-archive',
-    sourceArchiveMaxBytes: 1024,
-    throttle: defaultApiAuthThrottleConfig,
-    systemApiSocketPath: '/tmp/compartment/compartment-system.sock',
-    systemToken: 'system-token',
-    trustedOutboundHosts: [],
-    tenantSecretsKek: Buffer.alloc(32, 1),
-    variablesMasterKey: Buffer.alloc(32, 1),
-    runtimeControlToken: 'worker-token',
-  });
+  mocks.getApiConfig.mockReturnValue(
+    createApiTestConfig({
+      publicHttpsPort: 9443,
+      sessionTtlMs: 86_400_000,
+      sourceArchiveMaxBytes: 1024,
+      tenantSecretsKek: Buffer.alloc(32, 1),
+      variablesMasterKey: Buffer.alloc(32, 1),
+    }),
+  );
   mocks.resolveActiveProjectScope.mockResolvedValueOnce(createProjectScope());
   mocks.findEnvironmentByProjectAndName.mockResolvedValueOnce(createEnvironment());
   mocks.listJoinedDeploymentsForEnvironment.mockResolvedValueOnce(deployments);

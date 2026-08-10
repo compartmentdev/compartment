@@ -25,8 +25,6 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
 import { createApp } from '../src/app';
 import type { ApiApp } from '../src/app.types';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import {
@@ -41,7 +39,6 @@ import {
   projectServices,
   variableAccessEvents,
 } from '../src/db/schema';
-import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import type * as VariablesQueryModule from '../src/queries/variables.query';
 import {
   buildDeploymentRuntimePlan,
@@ -52,6 +49,7 @@ import { useApiDatabaseTestHarness } from './api-db-test.harness';
 import { expectJsonError } from './api-route-test.harness';
 import { createSourceArchive, injectDeployRequest, installCompartment } from './api-integration.harness';
 import { encryptVariableValueForStorageForTests, type TestEncryptedVariableValue } from './variables-test-crypto';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 interface AppAccessEdgeServiceModule {
   invalidateEdgeAppAccessSessions: () => Promise<void>;
@@ -68,40 +66,11 @@ vi.mock(
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const variablesDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'api_variables_routes');
-const apiConfig: ApiConfig = {
-  bindHost: '127.0.0.1',
-  baseDomain: 'localhost',
-  tlsMode: 'internal',
-  controlPlaneHost: 'console.localhost',
+const apiConfig: ApiConfig = createApiTestConfig({
   databaseUrl: variablesDatabaseUrl,
-  edgeToken: 'test-edge-token',
-  edgeUrl: 'http://127.0.0.1:9081',
-  logLevel: 'silent',
-  port: 9443,
-  publicProtocol: 'http',
-  auditRetentionDays: 90,
-  auditRetentionCleanupBatchSize: 1000,
-  auditRetentionCleanupCron: '0 3 * * *',
-  auditRetentionCleanupMaxBatches: 100,
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  auditFileSink: defaultAuditFileSinkConfig,
-  rollbackRetentionLimit: null,
   publicHttpPort: 80,
-  publicHttpsPort: 443,
-  sessionSecret: 'test-secret',
-  sessionTtlMs: 604_800_000,
-  signupEnabled: false,
   sourceArchiveDirectory: join(tmpdir(), 'compartment-api-variables-source-archives'),
-  sourceArchiveMaxBytes: 104_857_600,
-  throttle: defaultApiAuthThrottleConfig,
-  systemApiSocketPath: '/tmp/compartment/compartment-variables-system-api.sock',
-  systemToken: 'test-system-token',
-  trustedOutboundHosts: [],
-  tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
-  variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
-  runtimeControlToken: 'test-runtime-control-token',
-};
+});
 const pool: Pool = createDatabasePool(variablesDatabaseUrl);
 const db: Database = createDatabase(pool);
 const app: ApiApp = createApp({ config: apiConfig, pool });
