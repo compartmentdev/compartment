@@ -1,6 +1,7 @@
 import { createServer, type AddressInfo, type Server } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ProductJobIntent, ResourceReachabilityTarget } from '@compartment/contracts';
+import type { ProductJobIntent } from '@compartment/contracts';
+import type { ResourceReachabilityTarget } from '../src/resource-reachability-probe.types';
 import { kubeNamespaceName, kubeResourceName, type KubeResourceReachabilityProbe } from '@compartment/kube-runtime';
 import { productJobResourceProbe, resourceReachabilityProbe } from '../src/resource-reachability-probe';
 import { awaitResourceReachability } from '../src/services/resource-reachability.service';

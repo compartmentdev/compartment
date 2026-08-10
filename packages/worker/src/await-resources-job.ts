@@ -3,7 +3,7 @@ import {
   resourceReachabilityTargetsEnvironmentName,
   resourceReachabilityTargetsSchema,
   type ResourceReachabilityTarget,
-} from '@compartment/contracts';
+} from './resource-reachability-probe.types';
 import { awaitResourceReachability } from './services/resource-reachability.service';
 
 /**

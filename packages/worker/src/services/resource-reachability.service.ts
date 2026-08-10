@@ -1,5 +1,5 @@
 import { connect, type Socket } from 'node:net';
-import type { ResourceReachabilityTarget } from '@compartment/contracts';
+import type { ResourceReachabilityTarget } from '../resource-reachability-probe.types';
 
 const connectTimeoutMs: number = 2_000;
 const retryDelayMs: number = 250;

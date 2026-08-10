@@ -1,10 +1,12 @@
+import type {
+  ProductJobIntent,
+  ProductJobResourceReadiness,
+  ResourceReachabilityEndpoint,
+} from '@compartment/contracts';
 import {
   resourceReachabilityTargetsEnvironmentName,
-  type ProductJobIntent,
-  type ProductJobResourceReadiness,
-  type ResourceReachabilityEndpoint,
   type ResourceReachabilityTarget,
-} from '@compartment/contracts';
+} from './resource-reachability-probe.types';
 import type { KubeResourceReachabilityProbe } from '@compartment/kube-runtime';
 import { kubeResourceServiceDns } from '@compartment/utils';
 
