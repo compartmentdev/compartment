@@ -3,8 +3,12 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "nameOverride": { "type": "string" },
-    "fullnameOverride": { "type": "string" },
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
     "images": {
       "type": "object",
       "additionalProperties": false,
@@ -20,46 +24,126 @@
         "productLogAgent"
       ],
       "properties": {
-        "api": { "$ref": "#/definitions/platformImage" },
-        "worker": { "$ref": "#/definitions/platformImage" },
-        "edge": { "$ref": "#/definitions/platformImage" },
-        "caddy": { "$ref": "#/definitions/platformImage" },
-        "dns01Solver": { "$ref": "#/definitions/platformImage" },
-        "postgres": { "$ref": "#/definitions/platformImage" },
-        "registry": { "$ref": "#/definitions/platformImage" },
-        "kubectl": { "$ref": "#/definitions/platformImage" },
-        "productLogAgent": { "$ref": "#/definitions/platformImage" }
+        "api": {
+          "$ref": "#/definitions/platformImage"
+        },
+        "worker": {
+          "$ref": "#/definitions/platformImage"
+        },
+        "edge": {
+          "$ref": "#/definitions/platformImage"
+        },
+        "caddy": {
+          "$ref": "#/definitions/platformImage"
+        },
+        "dns01Solver": {
+          "$ref": "#/definitions/platformImage"
+        },
+        "postgres": {
+          "$ref": "#/definitions/platformImage"
+        },
+        "registry": {
+          "$ref": "#/definitions/platformImage"
+        },
+        "kubectl": {
+          "$ref": "#/definitions/platformImage"
+        },
+        "productLogAgent": {
+          "$ref": "#/definitions/platformImage"
+        }
       }
     },
     "ingress": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["className", "endpoint", "targetsJson"],
+      "required": [
+        "className",
+        "endpoint",
+        "targetsJson"
+      ],
       "properties": {
-        "className": { "type": "string", "minLength": 1 },
+        "className": {
+          "type": "string",
+          "minLength": 1
+        },
         "endpoint": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["type", "value"],
+          "required": [
+            "type",
+            "value"
+          ],
           "properties": {
-            "type": { "type": "string", "enum": ["", "A", "AAAA", "hostname"] },
-            "value": { "type": "string" }
+            "type": {
+              "type": "string",
+              "enum": [
+                "",
+                "A",
+                "AAAA",
+                "hostname"
+              ]
+            },
+            "value": {
+              "type": "string"
+            }
           },
           "allOf": [
             {
-              "if": { "properties": { "type": { "const": "" } } },
-              "then": { "properties": { "value": { "const": "" } } }
+              "if": {
+                "properties": {
+                  "type": {
+                    "const": ""
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "value": {
+                    "const": ""
+                  }
+                }
+              }
             },
             {
-              "if": { "properties": { "type": { "const": "A" } } },
-              "then": { "properties": { "value": { "format": "ipv4" } } }
+              "if": {
+                "properties": {
+                  "type": {
+                    "const": "A"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "value": {
+                    "format": "ipv4"
+                  }
+                }
+              }
             },
             {
-              "if": { "properties": { "type": { "const": "AAAA" } } },
-              "then": { "properties": { "value": { "format": "ipv6" } } }
+              "if": {
+                "properties": {
+                  "type": {
+                    "const": "AAAA"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "value": {
+                    "format": "ipv6"
+                  }
+                }
+              }
             },
             {
-              "if": { "properties": { "type": { "const": "hostname" } } },
+              "if": {
+                "properties": {
+                  "type": {
+                    "const": "hostname"
+                  }
+                }
+              },
               "then": {
                 "properties": {
                   "value": {
@@ -72,39 +156,82 @@
             }
           ]
         },
-        "targetsJson": { "type": "string", "pattern": "^\\[" }
+        "targetsJson": {
+          "type": "string",
+          "pattern": "^\\["
+        }
       }
     },
     "tls": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["issuerRef", "existingSecret", "acme", "solver"],
+      "required": [
+        "issuerRef",
+        "existingSecret",
+        "acme",
+        "solver"
+      ],
       "properties": {
         "issuerRef": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["name", "kind"],
+          "required": [
+            "name",
+            "kind"
+          ],
           "properties": {
-            "name": { "type": "string", "minLength": 1 },
-            "kind": { "type": "string", "enum": ["Issuer", "ClusterIssuer"] }
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "Issuer",
+                "ClusterIssuer"
+              ]
+            }
           }
         },
-        "existingSecret": { "type": "string" },
+        "existingSecret": {
+          "type": "string"
+        },
         "acme": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["environment", "productionUrl", "stagingUrl", "skipTlsVerify"],
+          "required": [
+            "environment",
+            "productionUrl",
+            "stagingUrl",
+            "skipTlsVerify"
+          ],
           "properties": {
-            "environment": { "type": "string", "enum": ["staging", "production"] },
-            "productionUrl": { "type": "string", "pattern": "^https://" },
-            "stagingUrl": { "type": "string", "pattern": "^https://" },
-            "skipTlsVerify": { "type": "boolean" }
+            "environment": {
+              "type": "string",
+              "enum": [
+                "staging",
+                "production"
+              ]
+            },
+            "productionUrl": {
+              "type": "string",
+              "pattern": "^https://"
+            },
+            "stagingUrl": {
+              "type": "string",
+              "pattern": "^https://"
+            },
+            "skipTlsVerify": {
+              "type": "boolean"
+            }
           }
         },
         "solver": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["groupName"],
+          "required": [
+            "groupName"
+          ],
           "properties": {
             "groupName": {
               "type": "string",
@@ -118,53 +245,120 @@
     "ports": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["api", "edge", "registry", "registryInternal", "http"],
+      "required": [
+        "api",
+        "edge",
+        "registry",
+        "registryInternal",
+        "http"
+      ],
       "properties": {
-        "api": { "$ref": "#/definitions/tcpPort" },
-        "edge": { "$ref": "#/definitions/tcpPort" },
-        "registry": { "$ref": "#/definitions/tcpPort" },
-        "registryInternal": { "$ref": "#/definitions/tcpPort" },
-        "http": { "$ref": "#/definitions/tcpPort" }
+        "api": {
+          "$ref": "#/definitions/tcpPort"
+        },
+        "edge": {
+          "$ref": "#/definitions/tcpPort"
+        },
+        "registry": {
+          "$ref": "#/definitions/tcpPort"
+        },
+        "registryInternal": {
+          "$ref": "#/definitions/tcpPort"
+        },
+        "http": {
+          "$ref": "#/definitions/tcpPort"
+        }
       }
     },
-    "api": { "$ref": "#/definitions/haComponent" },
+    "api": {
+      "$ref": "#/definitions/haComponent"
+    },
     "worker": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["replicas", "deploymentInfrastructureTimeoutMs"],
+      "required": [
+        "replicas",
+        "deploymentInfrastructureTimeoutMs"
+      ],
       "properties": {
-        "replicas": { "type": "integer", "minimum": 1 },
-        "deploymentInfrastructureTimeoutMs": { "type": "integer", "minimum": 1 }
+        "replicas": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deploymentInfrastructureTimeoutMs": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
-    "projectProvisioner": { "$ref": "#/definitions/haComponent" },
+    "projectProvisioner": {
+      "$ref": "#/definitions/haComponent"
+    },
     "leaderElection": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["leaseDurationMs", "renewDeadlineMs", "retryPeriodMs"],
+      "required": [
+        "leaseDurationMs",
+        "renewDeadlineMs",
+        "retryPeriodMs"
+      ],
       "properties": {
-        "leaseDurationMs": { "type": "integer", "minimum": 1 },
-        "renewDeadlineMs": { "type": "integer", "minimum": 1 },
-        "retryPeriodMs": { "type": "integer", "minimum": 1 }
+        "leaseDurationMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "renewDeadlineMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "retryPeriodMs": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
-    "caddy": { "$ref": "#/definitions/haComponent" },
+    "caddy": {
+      "$ref": "#/definitions/haComponent"
+    },
     "postgres": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["database", "username", "external"],
+      "required": [
+        "database",
+        "username",
+        "external"
+      ],
       "properties": {
-        "database": { "type": "string", "minLength": 1 },
-        "username": { "type": "string", "minLength": 1 },
+        "database": {
+          "type": "string",
+          "minLength": 1
+        },
+        "username": {
+          "type": "string",
+          "minLength": 1
+        },
         "external": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "existingSecret", "databaseUrlKey", "passwordKey"],
+          "required": [
+            "enabled",
+            "existingSecret",
+            "databaseUrlKey",
+            "passwordKey"
+          ],
           "properties": {
-            "enabled": { "type": "boolean" },
-            "existingSecret": { "type": "string" },
-            "databaseUrlKey": { "type": "string" },
-            "passwordKey": { "type": "string" }
+            "enabled": {
+              "type": "boolean"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "databaseUrlKey": {
+              "type": "string"
+            },
+            "passwordKey": {
+              "type": "string"
+            }
           }
         }
       }
@@ -172,57 +366,128 @@
     "registry": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["clusterIP", "hostname", "issuerRef"],
+      "required": [
+        "clusterIP",
+        "hostname",
+        "issuerRef"
+      ],
       "properties": {
         "clusterIP": {
-          "oneOf": [{ "const": "" }, { "type": "string", "format": "ipv4" }]
+          "oneOf": [
+            {
+              "const": ""
+            },
+            {
+              "type": "string",
+              "format": "ipv4"
+            }
+          ]
         },
         "hostname": {
           "type": "string",
-          "oneOf": [{ "const": "" }, { "type": "string", "format": "ipv4" }]
+          "oneOf": [
+            {
+              "const": ""
+            },
+            {
+              "type": "string",
+              "format": "ipv4"
+            }
+          ]
         },
         "issuerRef": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["group", "kind", "name"],
+          "required": [
+            "group",
+            "kind",
+            "name"
+          ],
           "properties": {
-            "group": { "const": "cert-manager.io" },
-            "kind": { "type": "string", "enum": ["Issuer", "ClusterIssuer"] },
-            "name": { "type": "string" }
+            "group": {
+              "const": "cert-manager.io"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "Issuer",
+                "ClusterIssuer"
+              ]
+            },
+            "name": {
+              "type": "string"
+            }
           }
         },
         "storage": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["backend", "s3"],
+          "required": [
+            "backend",
+            "s3"
+          ],
           "properties": {
-            "backend": { "type": "string", "enum": ["pvc", "s3"] },
+            "backend": {
+              "type": "string",
+              "enum": [
+                "pvc",
+                "s3"
+              ]
+            },
             "s3": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["bucket", "region", "regionEndpoint", "forcePathStyle", "existingSecret"],
+              "required": [
+                "bucket",
+                "region",
+                "regionEndpoint",
+                "forcePathStyle",
+                "existingSecret"
+              ],
               "properties": {
-                "bucket": { "type": "string" },
-                "region": { "type": "string" },
-                "regionEndpoint": { "type": "string" },
-                "forcePathStyle": { "type": "boolean" },
-                "existingSecret": { "type": "string" }
+                "bucket": {
+                  "type": "string"
+                },
+                "region": {
+                  "type": "string"
+                },
+                "regionEndpoint": {
+                  "type": "string"
+                },
+                "forcePathStyle": {
+                  "type": "boolean"
+                },
+                "existingSecret": {
+                  "type": "string"
+                }
               }
             }
           },
           "allOf": [
             {
               "if": {
-                "required": ["backend"],
-                "properties": { "backend": { "const": "s3" } }
+                "required": [
+                  "backend"
+                ],
+                "properties": {
+                  "backend": {
+                    "const": "s3"
+                  }
+                }
               },
               "then": {
                 "properties": {
                   "s3": {
                     "properties": {
-                      "bucket": { "minLength": 1 },
-                      "region": { "minLength": 1 },
-                      "existingSecret": { "minLength": 1 }
+                      "bucket": {
+                        "minLength": 1
+                      },
+                      "region": {
+                        "minLength": 1
+                      },
+                      "existingSecret": {
+                        "minLength": 1
+                      }
                     }
                   }
                 }
@@ -263,50 +528,157 @@
         "rollbackRetentionLimit",
         "sourceArchiveMaxBytes",
         "sessionTtl",
+        "signupEnabled",
         "authThrottle",
         "rolloutMarker"
       ],
       "properties": {
-        "startupStage": { "type": "string", "enum": ["foundation", "full"] },
-        "domainGeneration": { "type": "integer", "minimum": 0 },
-        "domainCommit": { "type": "boolean" },
-        "installationId": { "type": "string" },
-        "domainMode": { "type": "string", "enum": ["custom", "managed"] },
-        "baseDomain": { "type": "string" },
-        "publicProtocol": { "type": "string", "enum": ["http", "https"] },
-        "tlsMode": { "type": "string", "enum": ["broker-dns01", "internal", "issuer"] },
+        "startupStage": {
+          "type": "string",
+          "enum": [
+            "foundation",
+            "full"
+          ]
+        },
+        "domainGeneration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "domainCommit": {
+          "type": "boolean"
+        },
+        "installationId": {
+          "type": "string"
+        },
+        "domainMode": {
+          "type": "string",
+          "enum": [
+            "custom",
+            "managed"
+          ]
+        },
+        "baseDomain": {
+          "type": "string"
+        },
+        "publicProtocol": {
+          "type": "string",
+          "enum": [
+            "http",
+            "https"
+          ]
+        },
+        "tlsMode": {
+          "type": "string",
+          "enum": [
+            "broker-dns01",
+            "internal",
+            "issuer"
+          ]
+        },
         "acmeEmail": {
           "type": "string",
-          "oneOf": [{ "const": "" }, { "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$" }]
+          "oneOf": [
+            {
+              "const": ""
+            },
+            {
+              "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+            }
+          ]
         },
         "managedDomainBrokerUrl": {
-          "oneOf": [{ "const": "" }, { "type": "string", "pattern": "^https?://[^/?#@]+/?$" }]
+          "oneOf": [
+            {
+              "const": ""
+            },
+            {
+              "type": "string",
+              "pattern": "^https?://[^/?#@]+/?$"
+            }
+          ]
         },
         "logLevel": {
           "type": "string",
-          "enum": ["fatal", "error", "warn", "info", "debug", "trace", "silent"]
+          "enum": [
+            "fatal",
+            "error",
+            "warn",
+            "info",
+            "debug",
+            "trace",
+            "silent"
+          ]
         },
         "trustedOutboundHosts": {
           "description": "Comma-separated hosts hosted applications may reach outside the cluster.",
           "type": "string"
         },
-        "workerPollIntervalMs": { "type": "integer", "minimum": 1 },
-        "usageMeteringIntervalMs": { "type": "integer", "minimum": 1 },
-        "usageRetentionDays": { "type": "integer", "minimum": 1 },
-        "auditRetentionDays": { "type": "integer", "minimum": 1 },
-        "auditCleanupCron": { "type": "string", "minLength": 1 },
-        "auditCleanupBatchSize": { "type": "integer", "minimum": 1 },
-        "auditCleanupMaxBatches": { "type": "integer", "minimum": 1 },
-        "auditFileSinkEnabled": { "type": "boolean" },
-        "auditFileSinkRotateInterval": { "type": "string", "minLength": 1 },
-        "auditFileSinkRotateSize": { "type": "string", "minLength": 1 },
-        "auditFileSinkRetentionFiles": { "type": "integer", "minimum": 1 },
+        "workerPollIntervalMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "usageMeteringIntervalMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "usageRetentionDays": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "auditRetentionDays": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "auditCleanupCron": {
+          "type": "string",
+          "minLength": 1
+        },
+        "auditCleanupBatchSize": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "auditCleanupMaxBatches": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "auditFileSinkEnabled": {
+          "type": "boolean"
+        },
+        "auditFileSinkRotateInterval": {
+          "type": "string",
+          "minLength": 1
+        },
+        "auditFileSinkRotateSize": {
+          "type": "string",
+          "minLength": 1
+        },
+        "auditFileSinkRetentionFiles": {
+          "type": "integer",
+          "minimum": 1
+        },
         "rollbackRetentionLimit": {
           "description": "Maximum retained rollback images inherited by organizations. Leave empty for indefinite retention.",
-          "oneOf": [{ "const": "" }, { "type": "integer", "minimum": 1 }]
+          "oneOf": [
+            {
+              "const": ""
+            },
+            {
+              "type": "integer",
+              "minimum": 1
+            }
+          ]
         },
-        "sourceArchiveMaxBytes": { "type": "integer", "minimum": 1 },
-        "sessionTtl": { "type": "string", "minLength": 1 },
+        "sourceArchiveMaxBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sessionTtl": {
+          "type": "string",
+          "minLength": 1
+        },
+        "signupEnabled": {
+          "type": "boolean"
+        },
         "rolloutMarker": {
           "description": "Opaque marker that forces a platform rollout when it changes.",
           "type": "string"
@@ -315,25 +687,50 @@
           "description": "Per-replica hosted-application request and in-flight limits. Set a rate or burst to zero to disable that token bucket; set inFlight to zero to disable the cap.",
           "type": "object",
           "additionalProperties": false,
-          "required": ["app", "client"],
+          "required": [
+            "app",
+            "client"
+          ],
           "properties": {
             "app": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["requestsPerSecond", "burst", "inFlight"],
+              "required": [
+                "requestsPerSecond",
+                "burst",
+                "inFlight"
+              ],
               "properties": {
-                "requestsPerSecond": { "type": "number", "minimum": 0 },
-                "burst": { "type": "integer", "minimum": 0 },
-                "inFlight": { "type": "integer", "minimum": 0 }
+                "requestsPerSecond": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "burst": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "inFlight": {
+                  "type": "integer",
+                  "minimum": 0
+                }
               }
             },
             "client": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["requestsPerSecond", "burst"],
+              "required": [
+                "requestsPerSecond",
+                "burst"
+              ],
               "properties": {
-                "requestsPerSecond": { "type": "number", "minimum": 0 },
-                "burst": { "type": "integer", "minimum": 0 }
+                "requestsPerSecond": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "burst": {
+                  "type": "integer",
+                  "minimum": 0
+                }
               }
             }
           }
@@ -342,7 +739,11 @@
           "description": "Authentication throttle windows, limits, and cooldowns.",
           "type": "object",
           "additionalProperties": false,
-          "required": ["login", "activation", "passwordReset"],
+          "required": [
+            "login",
+            "activation",
+            "passwordReset"
+          ],
           "properties": {
             "login": {
               "description": "Login throttles by route, source, account, and source-account pair.",
@@ -363,9 +764,14 @@
     "productLogs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "namespace"],
+      "required": [
+        "enabled",
+        "namespace"
+      ],
       "properties": {
-        "enabled": { "type": "boolean" },
+        "enabled": {
+          "type": "boolean"
+        },
         "namespace": {
           "description": "Namespace for the product log agent. Empty means the release-owned observability namespace.",
           "type": "string"
@@ -389,40 +795,94 @@
         "managedDomainAcmeDnsToken"
       ],
       "properties": {
-        "installToken": { "type": "string" },
-        "postgresPassword": { "type": "string" },
-        "registryCredentialSigningKey": {
-          "oneOf": [{ "const": "" }, { "type": "string", "minLength": 32 }]
+        "installToken": {
+          "type": "string"
         },
-        "edgeToken": { "type": "string" },
-        "productLogIngestToken": { "type": "string" },
-        "runtimeControlToken": { "type": "string" },
-        "sessionSecret": { "type": "string" },
-        "systemToken": { "type": "string" },
+        "postgresPassword": {
+          "type": "string"
+        },
+        "registryCredentialSigningKey": {
+          "oneOf": [
+            {
+              "const": ""
+            },
+            {
+              "type": "string",
+              "minLength": 32
+            }
+          ]
+        },
+        "edgeToken": {
+          "type": "string"
+        },
+        "productLogIngestToken": {
+          "type": "string"
+        },
+        "runtimeControlToken": {
+          "type": "string"
+        },
+        "sessionSecret": {
+          "type": "string"
+        },
+        "systemToken": {
+          "type": "string"
+        },
         "tenantSecretsKek": {
-          "oneOf": [{ "const": "" }, { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }]
+          "oneOf": [
+            {
+              "const": ""
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{64}$"
+            }
+          ]
         },
         "tenantSecretsPreviousKek": {
           "description": "Optional previous key-encryption key. Helm drops the default null, so this key stays optional.",
-          "oneOf": [{ "type": "null" }, { "const": "" }, { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }]
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "const": ""
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{64}$"
+            }
+          ]
         },
-        "variablesMasterKey": { "type": "string" },
-        "managedDomainAcmeDnsToken": { "type": "string" }
+        "variablesMasterKey": {
+          "type": "string"
+        },
+        "managedDomainAcmeDnsToken": {
+          "type": "string"
+        }
       }
     },
     "podSecurityContext": {
       "description": "Pod-level security context shared by every platform workload.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["seccompProfile"],
+      "required": [
+        "seccompProfile"
+      ],
       "properties": {
         "seccompProfile": {
           "description": "Only RuntimeDefault is renderable: Localhost needs a localhostProfile the chart never emits, and Unconfined would unharden every platform workload at once because this context is shared. The build Job admission policy also requires RuntimeDefault.",
           "type": "object",
           "additionalProperties": false,
-          "required": ["type"],
+          "required": [
+            "type"
+          ],
           "properties": {
-            "type": { "type": "string", "enum": ["RuntimeDefault"] }
+            "type": {
+              "type": "string",
+              "enum": [
+                "RuntimeDefault"
+              ]
+            }
           }
         }
       }
@@ -430,19 +890,34 @@
     "nodePools": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["system", "build", "tenant"],
+      "required": [
+        "system",
+        "build",
+        "tenant"
+      ],
       "properties": {
-        "system": { "$ref": "#/definitions/nodePool" },
-        "build": { "$ref": "#/definitions/nodePool" },
-        "tenant": { "$ref": "#/definitions/nodePool" }
+        "system": {
+          "$ref": "#/definitions/nodePool"
+        },
+        "build": {
+          "$ref": "#/definitions/nodePool"
+        },
+        "tenant": {
+          "$ref": "#/definitions/nodePool"
+        }
       }
     },
     "sandboxRuntime": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["runtimeClassName"],
+      "required": [
+        "runtimeClassName"
+      ],
       "properties": {
-        "runtimeClassName": { "type": "string", "minLength": 1 }
+        "runtimeClassName": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "buildkit": {
@@ -460,32 +935,68 @@
         "serviceCidr"
       ],
       "properties": {
-        "enabled": { "type": "boolean" },
-        "namespace": { "type": "string", "minLength": 1 },
-        "gcKeepStorageMb": { "type": "integer", "minimum": 1 },
-        "maximumConcurrentBuilds": { "type": "integer", "minimum": 1 },
-        "maximumConcurrentBuildsPerOrganization": { "type": "integer", "minimum": 1 },
+        "enabled": {
+          "type": "boolean"
+        },
+        "namespace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gcKeepStorageMb": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximumConcurrentBuilds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximumConcurrentBuildsPerOrganization": {
+          "type": "integer",
+          "minimum": 1
+        },
         "resourceQuota": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["limits"],
+          "required": [
+            "limits"
+          ],
           "properties": {
             "limits": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["cpu", "memory"],
+              "required": [
+                "cpu",
+                "memory"
+              ],
               "properties": {
-                "cpu": { "$ref": "#/definitions/kubernetesQuantity" },
-                "memory": { "$ref": "#/definitions/kubernetesQuantity" }
+                "cpu": {
+                  "$ref": "#/definitions/kubernetesQuantity"
+                },
+                "memory": {
+                  "$ref": "#/definitions/kubernetesQuantity"
+                }
               }
             }
           }
         },
-        "timeoutMs": { "type": "integer", "minimum": 1 },
-        "dnsNamespaceSelector": { "$ref": "#/definitions/labelSelectorLabels" },
-        "dnsPodSelector": { "$ref": "#/definitions/labelSelectorLabels" },
-        "podCidr": { "type": "string", "minLength": 1 },
-        "serviceCidr": { "type": "string", "minLength": 1 }
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "dnsNamespaceSelector": {
+          "$ref": "#/definitions/labelSelectorLabels"
+        },
+        "dnsPodSelector": {
+          "$ref": "#/definitions/labelSelectorLabels"
+        },
+        "podCidr": {
+          "type": "string",
+          "minLength": 1
+        },
+        "serviceCidr": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "resources": {
@@ -507,34 +1018,74 @@
         "wait"
       ],
       "properties": {
-        "api": { "$ref": "#/definitions/containerResources" },
-        "apiMigrate": { "$ref": "#/definitions/containerResources" },
-        "worker": { "$ref": "#/definitions/containerResources" },
-        "edge": { "$ref": "#/definitions/containerResources" },
-        "caddy": { "$ref": "#/definitions/containerResources" },
-        "caddyInit": { "$ref": "#/definitions/containerResources" },
-        "postgres": { "$ref": "#/definitions/containerResources" },
-        "registry": { "$ref": "#/definitions/containerResources" },
-        "registryAuth": { "$ref": "#/definitions/containerResources" },
-        "buildkit": { "$ref": "#/definitions/buildContainerResources" },
-        "buildRunner": { "$ref": "#/definitions/buildContainerResources" },
-        "productLogAgent": { "$ref": "#/definitions/containerResources" },
-        "wait": { "$ref": "#/definitions/containerResources" }
+        "api": {
+          "$ref": "#/definitions/containerResources"
+        },
+        "apiMigrate": {
+          "$ref": "#/definitions/containerResources"
+        },
+        "worker": {
+          "$ref": "#/definitions/containerResources"
+        },
+        "edge": {
+          "$ref": "#/definitions/containerResources"
+        },
+        "caddy": {
+          "$ref": "#/definitions/containerResources"
+        },
+        "caddyInit": {
+          "$ref": "#/definitions/containerResources"
+        },
+        "postgres": {
+          "$ref": "#/definitions/containerResources"
+        },
+        "registry": {
+          "$ref": "#/definitions/containerResources"
+        },
+        "registryAuth": {
+          "$ref": "#/definitions/containerResources"
+        },
+        "buildkit": {
+          "$ref": "#/definitions/buildContainerResources"
+        },
+        "buildRunner": {
+          "$ref": "#/definitions/buildContainerResources"
+        },
+        "productLogAgent": {
+          "$ref": "#/definitions/containerResources"
+        },
+        "wait": {
+          "$ref": "#/definitions/containerResources"
+        }
       }
     },
     "edge": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["replicas", "snapshots"],
+      "required": [
+        "replicas",
+        "snapshots"
+      ],
       "properties": {
-        "replicas": { "type": "integer", "minimum": 1 },
+        "replicas": {
+          "type": "integer",
+          "minimum": 1
+        },
         "snapshots": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "mountPath"],
+          "required": [
+            "enabled",
+            "mountPath"
+          ],
           "properties": {
-            "enabled": { "type": "boolean" },
-            "mountPath": { "type": "string", "pattern": "^/" }
+            "enabled": {
+              "type": "boolean"
+            },
+            "mountPath": {
+              "type": "string",
+              "pattern": "^/"
+            }
           }
         }
       }
@@ -542,27 +1093,49 @@
     "storage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["storageClass", "postgres", "registry", "edgeSnapshots", "api"],
+      "required": [
+        "storageClass",
+        "postgres",
+        "registry",
+        "edgeSnapshots",
+        "api"
+      ],
       "properties": {
         "storageClass": {
           "description": "StorageClass for every platform claim. Empty means the cluster default.",
           "type": "string"
         },
-        "postgres": { "$ref": "#/definitions/kubernetesQuantity" },
-        "registry": { "$ref": "#/definitions/kubernetesQuantity" },
-        "edgeSnapshots": { "$ref": "#/definitions/kubernetesQuantity" },
-        "api": { "$ref": "#/definitions/kubernetesQuantity" }
+        "postgres": {
+          "$ref": "#/definitions/kubernetesQuantity"
+        },
+        "registry": {
+          "$ref": "#/definitions/kubernetesQuantity"
+        },
+        "edgeSnapshots": {
+          "$ref": "#/definitions/kubernetesQuantity"
+        },
+        "api": {
+          "$ref": "#/definitions/kubernetesQuantity"
+        }
       }
     }
   },
   "allOf": [
     {
       "if": {
-        "required": ["platform"],
+        "required": [
+          "platform"
+        ],
         "properties": {
           "platform": {
-            "required": ["domainMode"],
-            "properties": { "domainMode": { "const": "managed" } }
+            "required": [
+              "domainMode"
+            ],
+            "properties": {
+              "domainMode": {
+                "const": "managed"
+              }
+            }
           }
         }
       },
@@ -571,7 +1144,11 @@
           "tls": {
             "properties": {
               "issuerRef": {
-                "properties": { "kind": { "const": "Issuer" } }
+                "properties": {
+                  "kind": {
+                    "const": "Issuer"
+                  }
+                }
               }
             }
           }
@@ -587,49 +1164,88 @@
     "labelSelectorLabels": {
       "description": "Kubernetes label selector. Operators choose the label keys, so only the value type is fixed.",
       "type": "object",
-      "additionalProperties": { "type": "string" }
+      "additionalProperties": {
+        "type": "string"
+      }
     },
     "containerResourceQuantities": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "cpu": { "$ref": "#/definitions/kubernetesQuantity" },
-        "memory": { "$ref": "#/definitions/kubernetesQuantity" },
-        "ephemeral-storage": { "$ref": "#/definitions/kubernetesQuantity" }
+        "cpu": {
+          "$ref": "#/definitions/kubernetesQuantity"
+        },
+        "memory": {
+          "$ref": "#/definitions/kubernetesQuantity"
+        },
+        "ephemeral-storage": {
+          "$ref": "#/definitions/kubernetesQuantity"
+        }
       }
     },
     "containerResources": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "requests": { "$ref": "#/definitions/containerResourceQuantities" },
-        "limits": { "$ref": "#/definitions/containerResourceQuantities" }
+        "requests": {
+          "$ref": "#/definitions/containerResourceQuantities"
+        },
+        "limits": {
+          "$ref": "#/definitions/containerResourceQuantities"
+        }
       }
     },
     "buildContainerResources": {
       "description": "Build container resources. The worker reads the limits, so they must stay complete.",
-      "allOf": [{ "$ref": "#/definitions/containerResources" }],
-      "required": ["limits"],
-      "properties": { "limits": { "required": ["cpu", "memory"] } }
+      "allOf": [
+        {
+          "$ref": "#/definitions/containerResources"
+        }
+      ],
+      "required": [
+        "limits"
+      ],
+      "properties": {
+        "limits": {
+          "required": [
+            "cpu",
+            "memory"
+          ]
+        }
+      }
     },
     "haComponent": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["replicas"],
+      "required": [
+        "replicas"
+      ],
       "properties": {
-        "replicas": { "type": "integer", "minimum": 1 }
+        "replicas": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
-    "tcpPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "tcpPort": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
     "nodePool": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["nodeSelector", "tolerations"],
+      "required": [
+        "nodeSelector",
+        "tolerations"
+      ],
       "properties": {
         "nodeSelector": {
           "description": "Node labels operators choose, so only the value type is fixed.",
           "type": "object",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "tolerations": {
           "type": "array",
@@ -637,11 +1253,31 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "effect": { "type": "string", "enum": ["NoExecute", "NoSchedule", "PreferNoSchedule"] },
-              "key": { "type": "string" },
-              "operator": { "type": "string", "enum": ["Equal", "Exists"] },
-              "tolerationSeconds": { "type": "integer", "minimum": 0 },
-              "value": { "type": "string" }
+              "effect": {
+                "type": "string",
+                "enum": [
+                  "NoExecute",
+                  "NoSchedule",
+                  "PreferNoSchedule"
+                ]
+              },
+              "key": {
+                "type": "string"
+              },
+              "operator": {
+                "type": "string",
+                "enum": [
+                  "Equal",
+                  "Exists"
+                ]
+              },
+              "tolerationSeconds": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "value": {
+                "type": "string"
+              }
             }
           }
         }
@@ -650,53 +1286,127 @@
     "platformImage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repository", "tag", "digest", "pullPolicy"],
+      "required": [
+        "repository",
+        "tag",
+        "digest",
+        "pullPolicy"
+      ],
       "properties": {
-        "repository": { "type": "string", "minLength": 1 },
-        "tag": { "type": "string", "minLength": 1 },
-        "digest": { "type": "string", "pattern": "^$|^sha256:[a-f0-9]{64}$" },
-        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^$|^sha256:[a-f0-9]{64}$"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        }
       }
     },
     "throttleRoute": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["window", "limit"],
+      "required": [
+        "window",
+        "limit"
+      ],
       "properties": {
-        "window": { "description": "Measurement window duration.", "type": "string", "minLength": 1 },
-        "limit": { "description": "Maximum requests in the window.", "type": "integer", "minimum": 1 }
+        "window": {
+          "description": "Measurement window duration.",
+          "type": "string",
+          "minLength": 1
+        },
+        "limit": {
+          "description": "Maximum requests in the window.",
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
     "throttleCooldownScope": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["window", "limit", "cooldown"],
+      "required": [
+        "window",
+        "limit",
+        "cooldown"
+      ],
       "properties": {
-        "window": { "description": "Failure measurement window duration.", "type": "string", "minLength": 1 },
-        "limit": { "description": "Maximum failures in the window.", "type": "integer", "minimum": 1 },
-        "cooldown": { "description": "Block duration after the limit is reached.", "type": "string", "minLength": 1 }
+        "window": {
+          "description": "Failure measurement window duration.",
+          "type": "string",
+          "minLength": 1
+        },
+        "limit": {
+          "description": "Maximum failures in the window.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "cooldown": {
+          "description": "Block duration after the limit is reached.",
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "loginAuthThrottle": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["route", "source", "account", "sourceAccount"],
+      "required": [
+        "route",
+        "source",
+        "account",
+        "sourceAccount"
+      ],
       "properties": {
-        "route": { "$ref": "#/definitions/throttleRoute" },
-        "source": { "$ref": "#/definitions/throttleCooldownScope" },
-        "account": { "$ref": "#/definitions/throttleCooldownScope" },
-        "sourceAccount": { "$ref": "#/definitions/throttleCooldownScope" }
+        "route": {
+          "$ref": "#/definitions/throttleRoute"
+        },
+        "source": {
+          "$ref": "#/definitions/throttleCooldownScope"
+        },
+        "account": {
+          "$ref": "#/definitions/throttleCooldownScope"
+        },
+        "sourceAccount": {
+          "$ref": "#/definitions/throttleCooldownScope"
+        }
       }
     },
     "subjectAuthThrottle": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["route", "source", "subject", "sourceSubject"],
+      "required": [
+        "route",
+        "source",
+        "subject",
+        "sourceSubject"
+      ],
       "properties": {
-        "route": { "$ref": "#/definitions/throttleRoute" },
-        "source": { "$ref": "#/definitions/throttleCooldownScope" },
-        "subject": { "$ref": "#/definitions/throttleCooldownScope" },
-        "sourceSubject": { "$ref": "#/definitions/throttleCooldownScope" }
+        "route": {
+          "$ref": "#/definitions/throttleRoute"
+        },
+        "source": {
+          "$ref": "#/definitions/throttleCooldownScope"
+        },
+        "subject": {
+          "$ref": "#/definitions/throttleCooldownScope"
+        },
+        "sourceSubject": {
+          "$ref": "#/definitions/throttleCooldownScope"
+        }
       }
     }
   }
