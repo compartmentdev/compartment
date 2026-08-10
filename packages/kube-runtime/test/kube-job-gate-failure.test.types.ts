@@ -1,7 +1,15 @@
+export interface ObservedTerminatedState {
+  exitCode: number;
+  message?: string | undefined;
+}
+
+export interface ObservedWaitingState {
+  reason: string;
+}
+
 export interface ObservedContainerState {
-  running?: object | undefined;
-  terminated?: { exitCode: number; message?: string | undefined } | undefined;
-  waiting?: { reason: string } | undefined;
+  terminated?: ObservedTerminatedState | undefined;
+  waiting?: ObservedWaitingState | undefined;
 }
 
 export interface ObservedContainerStatus {
@@ -13,4 +21,9 @@ export interface ObservedContainerStatus {
 export interface ObservedPodStatus {
   containerStatuses: ObservedContainerStatus[];
   initContainerStatuses?: ObservedContainerStatus[] | undefined;
+}
+
+/** The core API surface this suite's Job never reaches, because its own container never starts. */
+export interface StubCoreApi {
+  readNamespacedPodLog?: undefined;
 }

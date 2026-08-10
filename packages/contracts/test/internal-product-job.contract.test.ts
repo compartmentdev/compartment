@@ -8,6 +8,7 @@ import {
   workerPersistProductJobResultRequestSchema,
   workerSubmitProductJobRequestSchema,
   workerSubmitProductJobResponseSchema,
+  type ProductJobResourceReadiness,
 } from '../src';
 
 const timedOutResult: object = {
@@ -40,7 +41,7 @@ describe('internal product Job result contract', (): void => {
   });
 
   it('carries the resources a claimed Job must find ready before it runs', (): void => {
-    const readiness: object = {
+    const readiness: ProductJobResourceReadiness = {
       deadlineAt: '2026-07-12T12:00:00.000Z',
       port: 5432,
       resourceId: 'res-1',

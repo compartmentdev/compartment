@@ -1,8 +1,9 @@
 import { KubernetesObjectApi } from '@kubernetes/client-node';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { waitForTerminalJob, type TerminalJob } from '../src/kube-job';
+import { waitForTerminalJob } from '../src/kube-job';
+import type { TerminalJob } from '../src/kube-job.types';
 import { kubeJobName } from '../src/kube-naming';
-import type { ObservedPodStatus } from './kube-job-gate-failure.test.types';
+import type { ObservedPodStatus, StubCoreApi } from './kube-job-gate-failure.test.types';
 import { KubeRuntime } from '../src/kube-runtime';
 import type {
   KubeJobResult,
@@ -19,6 +20,14 @@ vi.mock('../src/kube-observation', (): object => ({ createKubeObservation: creat
 
 const gateFailureMessage: string =
   'Resource endpoint resource-res-db.cpt-p1.svc:5432 did not accept a connection within 300ms.';
+
+class StubKubeConfig {
+  public makeApiClient(): StubCoreApi {
+    return new StubCoreApiClient();
+  }
+}
+
+class StubCoreApiClient implements StubCoreApi {}
 
 class StubObjectApi {
   public async patch(object: KubeManifest): Promise<KubeManifest> {
@@ -72,7 +81,7 @@ describe('Job whose reachability gate never passed', (): void => {
   it('reports the unreachable endpoint as the Job result the operator reads', async (): Promise<void> => {
     const spec: KubeJobSpec = jobSpec();
     createObservationMock.mockResolvedValue(gateFailureObservation(kubeJobName(spec.id)));
-    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): object => ({}) } as never);
+    const runtime: KubeRuntime = new KubeRuntime(new StubKubeConfig() as never);
 
     const result: KubeJobResult = await runtime.runJob(spec);
 

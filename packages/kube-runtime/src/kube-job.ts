@@ -1,48 +1,6 @@
 import type { KubeObservation, KubeObservationEvent, KubeObservedManifest } from './kube-runtime.types';
 import { jobStatusFailed } from './kube-job-status';
-
-export interface TerminalJob {
-  exitCode: number;
-  /** Set when the Pod never reached its own container because an init container failed first. */
-  initFailureMessage: string | null;
-  podName: string;
-  podNames: string[];
-  succeeded: boolean;
-}
-
-interface JobStatus {
-  conditions?: JobStatusCondition[] | undefined;
-  failed?: number | undefined;
-  succeeded?: number | undefined;
-}
-
-interface JobStatusCondition {
-  status?: string | undefined;
-  type?: string | undefined;
-}
-
-interface PodInitFailure {
-  exitCode: number;
-  message: string;
-}
-
-interface PodTerminatedState {
-  exitCode?: number | undefined;
-  message?: string | undefined;
-}
-
-interface PodContainerState {
-  terminated?: PodTerminatedState | undefined;
-}
-
-interface PodContainerStatus {
-  state?: PodContainerState | undefined;
-}
-
-interface PodStatus {
-  containerStatuses?: PodContainerStatus[];
-  initContainerStatuses?: PodContainerStatus[];
-}
+import type { JobStatus, PodInitFailure, PodStatus, TerminalJob } from './kube-job.types';
 
 export async function waitForTerminalJob(
   observation: KubeObservation,
