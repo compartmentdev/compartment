@@ -6,6 +6,7 @@ import {
   type ProjectProvisioningEnvironment,
 } from './project-provisioning-environment';
 import type { ProjectProvisionerConfig } from './project-provisioner.types';
+import { readEdgePodLabels } from './project-network-policy';
 import { readTenantWorkloadScheduling } from './tenant-workload-scheduling';
 
 interface ProjectProvisionerEnvironment extends ProjectProvisioningEnvironment {
@@ -30,6 +31,7 @@ export function readProjectProvisionerConfig(env: NodeJS.ProcessEnv = process.en
     apiUrl: worker.apiUrl,
     artifactRegistry: worker.artifactRegistry,
     edgeNamespace: parsed.COMPARTMENT_EDGE_NAMESPACE,
+    edgePodLabels: readEdgePodLabels(parsed.COMPARTMENT_EDGE_POD_LABELS),
     image: parsed.COMPARTMENT_PROJECT_PROVISIONER_IMAGE,
     installationId: parsed.COMPARTMENT_INSTALLATION_ID,
     leaderElection,

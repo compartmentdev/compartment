@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readProjectProvisionerConfig } from '../src/project-provisioner-config';
 import type { ProjectProvisionerConfig } from '../src/project-provisioner.types';
+import { testEdgePodLabels, testEdgePodLabelsJson } from './worker-config-test.fixtures';
 
 const podCidr: string = ['10', '42', '0', '0/16'].join('.');
 const serviceCidr: string = ['10', '43', '0', '0/16'].join('.');
@@ -18,6 +19,7 @@ describe('readProjectProvisionerConfig', (): void => {
         internalUrl: 'http://compartment-registry:5000',
       },
       edgeNamespace: 'compartment',
+      edgePodLabels: testEdgePodLabels,
       image: 'registry.internal/compartment-worker@sha256:worker',
       installationId: 'inst_1',
       leaderElection: {
@@ -67,6 +69,7 @@ function projectProvisionerEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL: 'http://compartment-registry:5000',
     COMPARTMENT_ARTIFACT_REGISTRY_PORT: '443',
     COMPARTMENT_EDGE_NAMESPACE: 'compartment',
+    COMPARTMENT_EDGE_POD_LABELS: testEdgePodLabelsJson,
     COMPARTMENT_INSTALLATION_ID: 'inst_1',
     COMPARTMENT_KUBE_POD_CIDR: podCidr,
     COMPARTMENT_KUBE_SERVICE_CIDR: serviceCidr,

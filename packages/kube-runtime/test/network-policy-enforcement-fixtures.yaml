@@ -115,14 +115,11 @@ kind: Deployment
 metadata: { name: caddy, namespace: platform-ns }
 spec:
   replicas: 1
-  selector: { matchLabels: { app.kubernetes.io/component: caddy } }
+  # The check script substitutes the Caddy Pod labels the chart renders. Labels restated here could agree
+  # with a peer that misses every Caddy Pod the platform actually runs, which is what this gate must catch.
+  selector: { matchLabels: __CADDY_POD_LABELS__ }
   template:
-    metadata:
-      # The chart labels Caddy Pods with compartment.componentLabels: name, instance, and component.
-      labels:
-        app.kubernetes.io/name: compartment
-        app.kubernetes.io/instance: compartment
-        app.kubernetes.io/component: caddy
+    metadata: { labels: __CADDY_POD_LABELS__ }
     spec:
       automountServiceAccountToken: false
       containers:
