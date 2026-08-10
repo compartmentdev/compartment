@@ -74,8 +74,8 @@ export async function claimLocalPasswordHashWithExecutor(
         passwordResetTokenHash: null,
         updatedAt: input.updatedAt,
       },
+      setWhere: isNull(localCredentials.passwordHash),
       target: localCredentials.principalId,
-      targetWhere: isNull(localCredentials.passwordHash),
     })
     .returning({ principalId: localCredentials.principalId });
 
