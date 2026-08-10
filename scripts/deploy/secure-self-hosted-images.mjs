@@ -4,11 +4,11 @@ import { mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { pathToFileURL } from 'node:url';
 
 import { captureCommand, captureCommandResult, runCommand } from '../lib/command.mjs';
 import { readRequiredOptionValue } from '../lib/options.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
-import { runMain } from '../lib/run-main.mjs';
 import { assertImageDigest, resolveScannedCanonicalDigest } from './secure-self-hosted-image-digests.mjs';
 import {
   buildSelfHostedImageRefForRepository,
@@ -816,4 +816,6 @@ function dropUndefinedProperties(value) {
   return Object.fromEntries(Object.entries(value).filter(([, entryValue]) => entryValue !== undefined));
 }
 
-runMain(import.meta.url, process.argv[1], main);
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await main();
+}
