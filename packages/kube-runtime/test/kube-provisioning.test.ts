@@ -312,7 +312,7 @@ describe('project namespace bootstrap provisioning', (): void => {
         spec: {
           ingress: [
             {
-              from: [
+              _from: [
                 {
                   namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': 'platform-01jz' } },
                   podSelector: { matchLabels: { 'app.kubernetes.io/name': 'caddy' } },
@@ -327,7 +327,7 @@ describe('project namespace bootstrap provisioning', (): void => {
         spec: {
           ingress: [
             {
-              from: [
+              _from: [
                 { podSelector: { matchLabels: { app: 'application' } } },
                 {
                   podSelector: {

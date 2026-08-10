@@ -2,7 +2,7 @@ import type { KubeRuntime } from '@compartment/kube-runtime';
 import type { Mock } from 'vitest';
 
 export interface NetworkPolicyRule {
-  from?: NetworkPolicyPeer[] | undefined;
+  _from?: NetworkPolicyPeer[] | undefined;
   ports?: NetworkPolicyRulePort[] | undefined;
 }
 

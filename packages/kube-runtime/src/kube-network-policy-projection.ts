@@ -113,7 +113,7 @@ function applicationIngressManifest(
         ? []
         : [
             {
-              from: [
+              _from: [
                 {
                   namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': projection.edgeNamespaceName } },
                   podSelector: { matchLabels: projection.edgePodLabels },
@@ -139,7 +139,7 @@ function resourceIngressManifest(
         ? []
         : [
             {
-              from: [
+              _from: [
                 { podSelector: { matchLabels: projection.applicationPodLabels } },
                 { podSelector: { matchExpressions: [productJobSelectorExpression()] } },
               ],
