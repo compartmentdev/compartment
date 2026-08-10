@@ -10,6 +10,7 @@
     "scripts/deploy/collect-platform-k3d-e2e-diagnostics.mjs!",
     "scripts/deploy/run-platform-k3d-product-log-gate.mjs!",
     "scripts/deploy/run-platform-k3d-retained-state-gate.mjs!",
+    "scripts/deploy/sample-platform-k3d-tenant-state.mjs!",
     "scripts/dev/run-compartment-cli.mjs!",
     "packages/contracts/src/index.browser.ts!",
   ],

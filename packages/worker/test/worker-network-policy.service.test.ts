@@ -39,7 +39,7 @@ describe('worker NetworkPolicy desired state', (): void => {
     const ingress: NetworkPolicyRule[] = readPolicyIngress(applicationPolicyManifests([8080]), 'application-ingress');
 
     expect(ingress).toHaveLength(1);
-    expect(ingress[0]?.from).toEqual([
+    expect(ingress[0]?._from).toEqual([
       {
         namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': 'platform' } },
         podSelector: { matchLabels: { 'app.kubernetes.io/component': 'caddy' } },

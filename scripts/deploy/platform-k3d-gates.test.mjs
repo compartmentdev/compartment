@@ -14,6 +14,12 @@ import {
   parseProductLogBufferMaxBytes,
 } from './run-platform-k3d-product-log-gate.mjs';
 import { findReadyNonTerminatingPodName, isDeploymentConverged } from './run-platform-k3d-retained-state-gate.mjs';
+import {
+  describeDeployment,
+  describeNetworkPolicy,
+  diffObjectStates,
+  readObjectStates,
+} from './sample-platform-k3d-tenant-state.mjs';
 
 describe('platform k3d diagnostics and product-log gates', () => {
   it('waits for the current deployment generation and selects only its stable pod', () => {
@@ -63,6 +69,59 @@ describe('platform k3d diagnostics and product-log gates', () => {
         }),
       ),
     ).toBe('postgres-current');
+  });
+
+  it('records a network policy sample only when its rule or generation moves', () => {
+    const policies = (generation, ingress) =>
+      readObjectStates(
+        JSON.stringify({
+          items: [
+            { metadata: { generation, name: 'np-resource-ingress-x', namespace: 'cpt-project' }, spec: { ingress } },
+          ],
+        }),
+        describeNetworkPolicy,
+      );
+    const withPort = policies(2, [{ from: [{ podSelector: {} }], ports: [{ port: 5432, protocol: 'TCP' }] }]);
+
+    expect(diffObjectStates(new Map(), withPort)).toEqual([
+      'cpt-project/np-resource-ingress-x generation=2 ingress=[{"from":[{"podSelector":{}}],"ports":[{"port":5432,"protocol":"TCP"}]}]',
+    ]);
+    expect(diffObjectStates(withPort, withPort)).toEqual([]);
+    expect(diffObjectStates(withPort, policies(2, []))).toEqual([
+      'cpt-project/np-resource-ingress-x generation=2 ingress=[]',
+    ]);
+    expect(diffObjectStates(policies(2, []), policies(3, []))).toEqual([
+      'cpt-project/np-resource-ingress-x generation=3 ingress=[]',
+    ]);
+    expect(diffObjectStates(withPort, new Map())).toEqual(['cpt-project/np-resource-ingress-x deleted']);
+  });
+
+  it('separates a replaced resource Pod from an oscillating Deployment template', () => {
+    const deployments = (generation, image) =>
+      readObjectStates(
+        JSON.stringify({
+          items: [
+            {
+              metadata: { generation, name: 'resource-res-x', namespace: 'cpt-project' },
+              spec: {
+                replicas: 1,
+                strategy: { type: 'Recreate' },
+                template: { spec: { containers: [{ image, name: 'resource' }] } },
+              },
+            },
+          ],
+        }),
+        describeDeployment,
+      );
+    const first = deployments(3, 'postgres:16');
+
+    expect(diffObjectStates(first, deployments(3, 'postgres:16'))).toEqual([]);
+    const [retemplated] = diffObjectStates(first, deployments(3, 'postgres:16-alpine'));
+    expect(retemplated).toContain('cpt-project/resource-res-x generation=3 replicas=1 strategy=Recreate template=');
+    expect(retemplated).not.toEqual([...diffObjectStates(new Map(), first)][0]);
+    expect(diffObjectStates(first, deployments(4, 'postgres:16'))).toEqual([
+      [...diffObjectStates(new Map(), first)][0].replace('generation=3', 'generation=4'),
+    ]);
   });
 
   it('parses namespaced deployment references', () => {
