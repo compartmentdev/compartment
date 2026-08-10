@@ -13,12 +13,18 @@ const retryDelayMs: number = 250;
  *
  * Each target's budget is its own declared readiness timeout, measured from when this process started rather than
  * from any control-plane instant, so a Pod scheduled long after the decision still gets the whole budget.
+ *
+ * Targets are waited on together rather than in turn. Checking them in turn would make a later target's budget run
+ * down while an earlier one was still starting, so the declared order of a service's resources would decide whether
+ * a rollout succeeds. Together, the whole wait is also bounded by the largest declared budget instead of their sum.
  */
 export async function awaitResourceReachability(targets: readonly ResourceReachabilityTarget[]): Promise<void> {
   const startedAt: number = Date.now();
-  for (const target of targets) {
-    await awaitResourceTarget(target, startedAt);
-  }
+  await Promise.all(
+    targets.map(async (target: ResourceReachabilityTarget): Promise<void> => {
+      await awaitResourceTarget(target, startedAt);
+    }),
+  );
 }
 
 function unreachableResourceMessage(target: ResourceReachabilityTarget): string {

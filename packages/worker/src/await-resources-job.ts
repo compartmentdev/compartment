@@ -23,6 +23,19 @@ async function main(): Promise<void> {
   await awaitResourceReachability(targets);
 }
 
+/**
+ * The Pod spec overrides the image entrypoint, so this process is PID 1 with no init shim and Node applies no
+ * default signal disposition. Without this a Pod deleted while the gate is still polling would ignore SIGTERM and
+ * wait out its whole termination grace period.
+ */
+function exitOnTermination(): void {
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.on(signal, (): void => {
+      process.exit(1);
+    });
+  }
+}
+
 function reportFailure(error: Error): void {
   const message: string = error.message;
   process.exitCode = 1;
@@ -34,4 +47,5 @@ function reportFailure(error: Error): void {
   }
 }
 
+exitOnTermination();
 void main().catch(reportFailure);

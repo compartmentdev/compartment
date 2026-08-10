@@ -107,12 +107,14 @@ function readTerminalPod(
   const terminalPods: KubeObservedManifest[] = pods.filter(
     (pod: KubeObservedManifest): boolean => readPodExitCode(pod) !== null,
   );
-  const failedInitPods: KubeObservedManifest[] = succeeded
-    ? []
-    : pods.filter((pod: KubeObservedManifest): boolean => readPodInitFailure(pod) !== null);
+  // A Job that retried can hold one Pod that ran and failed and another that never got past its gate. Taking the
+  // last of either list separately would report whichever list happened to be non-empty, not the last attempt.
+  const failedPods: KubeObservedManifest[] = pods.filter(
+    (pod: KubeObservedManifest): boolean => readPodExitCode(pod) !== null || readPodInitFailure(pod) !== null,
+  );
   const pod: KubeObservedManifest | undefined = succeeded
     ? terminalPods.find((candidate: KubeObservedManifest): boolean => readPodExitCode(candidate) === 0)
-    : (terminalPods.at(-1) ?? failedInitPods.at(-1));
+    : failedPods.at(-1);
   if (pod?.metadata?.name === undefined) {
     return null;
   }

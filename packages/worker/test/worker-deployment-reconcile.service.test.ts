@@ -150,6 +150,29 @@ describe('deployment reconciliation', (): void => {
     );
   });
 
+  it('gates every Pod it projects for a service that declares a resource', async (): Promise<void> => {
+    const runtime: ApplyReadRuntime = pendingRuntimeStub(true);
+    const connected: DeploymentReconcileTarget = target({
+      ...projection(null),
+      resourceEndpoints: [{ port: 5432, resourceId: 'res_db', timeoutMs: 30_000 }],
+    });
+
+    await reconcileDeploymentTarget(requester(), runtime, connected);
+
+    const gate: AppliedGateContainer | undefined = appliedGate(runtime);
+    expect(gate?.image).toBe(workerImage);
+    expect(gate?.env[0]?.value).toContain('"port":5432');
+    expect(gate?.env[0]?.value).toContain('"timeoutMs":30000');
+  });
+
+  it('projects no gate for a service that declares no resource', async (): Promise<void> => {
+    const runtime: ApplyReadRuntime = pendingRuntimeStub(true);
+
+    await reconcileDeploymentTarget(requester(), runtime, target(projection(null)));
+
+    expect(appliedGate(runtime)).toBeUndefined();
+  });
+
   it('applies the claimed port policy before the Deployment in the same bundle', async (): Promise<void> => {
     const runtime: ApplyReadRuntime = pendingRuntimeStub(true);
     const claimedTarget: DeploymentReconcileTarget = {
@@ -932,4 +955,23 @@ function requester(): CompartmentRequester {
     await Promise.resolve();
     throw new Error('Unexpected direct request.');
   };
+}
+
+interface AppliedGateEnvironmentVariable {
+  name: string;
+  value: string;
+}
+
+interface AppliedGateContainer {
+  env: AppliedGateEnvironmentVariable[];
+  image: string;
+}
+
+/** The reachability gate on the Deployment this reconcile applied, if it projected one. */
+function appliedGate(runtime: ApplyReadRuntime): AppliedGateContainer | undefined {
+  const bundle: ApplyBundle = runtime.apply.mock.calls.at(-1)?.[0] as ApplyBundle;
+  const deployment: KubeDeploymentManifest | undefined = bundle.objects.find(
+    (object: KubeManifest): object is KubeDeploymentManifest => object.kind === 'Deployment',
+  );
+  return deployment?.spec?.template.spec.initContainers?.[0];
 }

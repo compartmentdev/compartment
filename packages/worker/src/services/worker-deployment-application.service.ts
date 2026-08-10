@@ -48,7 +48,7 @@ export async function applyApplication(
  * manifest is applied on rollout, on restart, and on rollback recovery, and a scale-up Pod no controller observes
  * still waits for the resources its service declares.
  */
-function projectApplicationObjects(
+export function projectApplicationObjects(
   projection: DeploymentReconcileProjection,
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,

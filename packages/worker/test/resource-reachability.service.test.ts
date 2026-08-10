@@ -44,6 +44,21 @@ describe('resource reachability wait', (): void => {
     expect(Date.now() - startedAt).toBeLessThan(connectAttemptTimeoutMs);
   });
 
+  it('does not spend one resource budget waiting for another, whatever order they are declared in', async (): Promise<void> => {
+    const slow: number = await reservedPort();
+    const quick: number = await listeningPort();
+
+    // The slow endpoint takes most of its own budget. A shared, sequential budget would leave the quick endpoint
+    // already past its shorter deadline by the time it was first tried, and the declared order would decide.
+    const waited: Promise<void> = awaitResourceReachability([
+      { host: '127.0.0.1', port: slow, timeoutMs: 5_000 },
+      { host: '127.0.0.1', port: quick, timeoutMs: 400 },
+    ]);
+    await listenLater(slow, 800);
+
+    await expect(waited).resolves.toBeUndefined();
+  });
+
   it('waits for every declared endpoint, not just the first', async (): Promise<void> => {
     const reachable: number = await listeningPort();
     const unreachable: number = await reservedPort();

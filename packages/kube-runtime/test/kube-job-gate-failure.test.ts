@@ -62,6 +62,12 @@ describe('Job whose reachability gate never passed', (): void => {
     expect(terminal).toMatchObject({ exitCode: 17, initFailureMessage: null, podNames: ['job-pod'] });
   });
 
+  it('reports the last attempt when an earlier attempt failed in its own container instead', async (): Promise<void> => {
+    const terminal: TerminalJob = await waitForTerminalJob(retriedIntoGateFailureObservation(), 'job-1', 0);
+
+    expect(terminal).toMatchObject({ exitCode: 1, initFailureMessage: gateFailureMessage, podName: 'job-pod-2' });
+  });
+
   it('reports the unreachable endpoint as the Job result the operator reads', async (): Promise<void> => {
     const spec: KubeJobSpec = jobSpec();
     createObservationMock.mockResolvedValue(gateFailureObservation(kubeJobName(spec.id)));
@@ -116,6 +122,30 @@ class StaticObservation implements KubeObservation {
   public async stop(): Promise<void> {
     await Promise.resolve();
   }
+}
+
+/** A Job that used its one retry: the first Pod's command failed, the second never got past its gate. */
+function retriedIntoGateFailureObservation(): KubeObservation {
+  return new StaticObservation(
+    new Map([
+      ...observationOf('job-1', { containerStatuses: [{ name: 'job', state: { terminated: { exitCode: 17 } } }] })
+        .cache,
+      [
+        'pods/p1/job-pod-2',
+        {
+          apiVersion: 'v1',
+          kind: 'Pod',
+          metadata: { labels: { 'job-name': 'job-1' }, name: 'job-pod-2' },
+          status: {
+            containerStatuses: [{ name: 'job', state: { waiting: { reason: 'PodInitializing' } } }],
+            initContainerStatuses: [
+              { name: 'await-resources', state: { terminated: { exitCode: 1, message: gateFailureMessage } } },
+            ],
+          },
+        },
+      ],
+    ]),
+  );
 }
 
 function observationOf(jobName: string, podStatus: object): KubeObservation {

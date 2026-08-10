@@ -1,17 +1,11 @@
 import type { DeploymentReconcileTarget } from '@compartment/contracts';
-import {
-  projectApplicationManifests,
-  type KubeManifest,
-  type KubeRuntime,
-  type KubeWorkloadScheduling,
-} from '@compartment/kube-runtime';
+import { type KubeManifest, type KubeRuntime, type KubeWorkloadScheduling } from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
-import { decryptTenantProjection, tenantApplicationProbe } from '../tenant-workload-projections';
 import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
 import { deploymentFromObjects, persistDeploymentObservation } from './worker-deployment-reconcile.helpers';
 import { maximumRolloutDeadlineAt } from './worker-deployment-rollout-observation.service';
 import type { DeploymentRolloutStartTracker } from './worker-deployment-rollout-start-tracker.service';
-import { includeRecoveryRestartedAnnotation } from './worker-deployment-application.service';
+import { includeRecoveryRestartedAnnotation, projectApplicationObjects } from './worker-deployment-application.service';
 import { projectProjectNetworkPolicyManifests } from './worker-network-policy.service';
 
 export async function restartActiveCandidate(
@@ -71,12 +65,6 @@ function buildRestartObjects(
 ): KubeManifest[] {
   return [
     ...projectProjectNetworkPolicyManifests(target.candidate.projectId, target.networkPolicy),
-    ...projectApplicationManifests(
-      {
-        ...decryptTenantProjection(target.candidate, scheduling, tenantSecretsKek),
-        resourceProbe: tenantApplicationProbe(target.candidate, workerImage),
-      },
-      infrastructureTimeoutMs,
-    ),
+    ...projectApplicationObjects(target.candidate, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage),
   ];
 }
