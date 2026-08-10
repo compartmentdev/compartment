@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { resolveConfiguredPath } from './config-paths';
+import { readRequiredBoolean } from './config-value';
 
 export interface AuditFileSinkConfigEnv {
   COMPARTMENT_AUDIT_FILE_SINK_DIR: string;
@@ -39,17 +40,6 @@ export function readAuditFileSinkConfig(parsed: AuditFileSinkConfigEnv): AuditFi
       'COMPARTMENT_AUDIT_FILE_SINK_ROTATE_SIZE',
     ),
   };
-}
-
-function readRequiredBoolean(value: string, variableName: string): boolean {
-  if (value === 'true') {
-    return true;
-  }
-  if (value === 'false') {
-    return false;
-  }
-
-  throw new Error(`${variableName} must be true or false.`);
 }
 
 function readRequiredRotatingFileStreamInterval(value: string, variableName: string): string {

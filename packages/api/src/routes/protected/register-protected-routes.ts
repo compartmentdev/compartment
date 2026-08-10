@@ -4,6 +4,7 @@ import { addNoStoreCacheControlHeader } from '../../http/no-store-response-cache
 import { registerAssignmentRoutes } from '../assignments/register-assignment-routes';
 import { registerAuditEventRoutes } from '../audit/audit-events.route';
 import { registerOrganizationAuthSettingsRoutes } from '../auth-settings/auth-settings.route';
+import { registerPostClaimRoute } from '../auth/post-claim.route';
 import { registerPostLogoutRoute } from '../auth/post-logout.route';
 import { registerCustomDomainRoutes } from '../custom-domains/register-custom-domain-routes';
 import { registerGetDeploymentListRoute } from '../deployments-list/get-deployment-list.route';
@@ -49,6 +50,7 @@ export function registerProtectedApiRoutes(
 
 function registerSessionProtectedRoutes(app: ApiApp): void {
   const registrars: ProtectedRouteRegistrar[] = [
+    registerPostClaimRoute,
     registerPostLogoutRoute,
     registerGetWhoAmIRoute,
     registerGetOrganizationsRoute,

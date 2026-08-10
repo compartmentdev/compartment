@@ -11,6 +11,7 @@ import { registerPostCliStartRoute } from './auth/post-cli-start.route';
 import { registerPostCliStatusRoute } from './auth/post-cli-status.route';
 import { registerPostLoginDiscoveryRoute } from './auth/post-login-discovery.route';
 import { registerPostResetPasswordRoute } from './auth/post-reset-password.route';
+import { registerPostSignupRoute } from './auth/post-signup.route';
 import { registerBrowserRoutes } from './browser/register-browser-routes';
 import { registerPostLoginRoute } from './auth/post-login.route';
 import { registerGetHealthzRoute } from './health/get-healthz.route';
@@ -77,10 +78,15 @@ function registerAuthRoutesWithNoStore(app: ApiApp, _options: FastifyPluginOptio
   registerPostLoginDiscoveryRoute(app);
   registerPostLoginRoute(app);
   registerPostResetPasswordRoute(app);
+  registerPostSignupRoute(app);
+  registerCliLoginRoutes(app);
+  done();
+}
+
+function registerCliLoginRoutes(app: ApiApp): void {
   registerPostCliStartRoute(app);
   registerPostCliStatusRoute(app);
   registerPostCliExchangeRoute(app);
-  done();
 }
 
 function registerSourceRoutes(app: ApiApp): void {

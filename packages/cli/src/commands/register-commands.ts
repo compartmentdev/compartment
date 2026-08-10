@@ -17,6 +17,7 @@ import { registerLogsCommand } from './logs/logs.command';
 import { registerLogoutCommand } from './auth/logout.command';
 import { registerPromoteCommand } from './promote.command';
 import { registerRollbackCommand } from './rollback.command';
+import { registerSignupCommand } from './auth/signup.command';
 import { registerWhoAmICommand } from './identity/whoami.command';
 import { registerOrganizationCommands } from './organizations/register-organization.commands';
 import { registerProjectCommands } from './projects/register-project.commands';
@@ -45,6 +46,7 @@ function registerAuthenticationCommands(program: Command, dependencies: CliComma
   registerInstallCommand(program, dependencies);
   registerLoginCommand(program, dependencies);
   registerLogoutCommand(program, dependencies);
+  registerSignupCommand(program, dependencies);
   registerWhoAmICommand(program, dependencies);
 }
 

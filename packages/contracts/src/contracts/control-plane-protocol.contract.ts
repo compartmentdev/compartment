@@ -3,6 +3,7 @@ import type { GitHubInstallationRepositoryListRequest } from './source-git-boots
 const compartmentAuthPathname: string = '/v1/auth';
 export const compartmentAuthActivatePathname: string = `${compartmentAuthPathname}/activate`;
 export const compartmentAuthActivateStatePathname: string = `${compartmentAuthPathname}/activate-state`;
+export const compartmentAuthClaimPathname: string = `${compartmentAuthPathname}/claim`;
 export const compartmentAuthCliExchangePathname: string = `${compartmentAuthPathname}/cli/exchange`;
 export const compartmentAuthCliStartPathname: string = `${compartmentAuthPathname}/cli/start`;
 export const compartmentAuthCliStatusPathname: string = `${compartmentAuthPathname}/cli/status`;
@@ -13,6 +14,7 @@ export const compartmentAuthLogoutPathname: string = `${compartmentAuthPathname}
 export const compartmentAuthResetPasswordPathname: string = `${compartmentAuthPathname}/reset-password`;
 export const compartmentAuthResetPasswordStatePathname: string = `${compartmentAuthPathname}/reset-password-state`;
 export const compartmentAuthSettingsPathname: string = `${compartmentAuthPathname}/settings`;
+export const compartmentAuthSignupPathname: string = `${compartmentAuthPathname}/signup`;
 export const compartmentInstallPathname: string = '/v1/install';
 export const compartmentOrganizationListPathname: string = '/v1/orgs';
 export const compartmentOrganizationsPathname: string = '/v1/organizations';

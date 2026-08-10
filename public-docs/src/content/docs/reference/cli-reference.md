@@ -33,6 +33,7 @@ Start with the generated pages for:
 - [resource](/reference/generated/cli/resource/)
 - [role](/reference/generated/cli/role/)
 - [rollback](/reference/generated/cli/rollback/)
+- [signup](/reference/generated/cli/signup/)
 - [skill](/reference/generated/cli/skill/)
 - [source](/reference/generated/cli/source/)
 - [group](/reference/generated/cli/group/)

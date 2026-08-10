@@ -28,7 +28,40 @@ compartment remote use <name>
 Current local-password flows include:
 
 - invited-user activation;
+- self-service signup and account claim;
 - current-user session inspection and logout.
+
+## Self-service signup
+
+Self-service signup lets a caller register an account and its first organization in one CLI step, without an invitation.
+It is **disabled by default** so an install stays closed until an operator opts in. Enable it with the chart value:
+
+```yaml
+platform:
+  signupEnabled: true
+```
+
+With signup enabled:
+
+```bash
+compartment signup --api-url https://console.example.com --organization "Acme"
+```
+
+The command stores the returned session in the CLI config and prints the new organization slug, so a follow-up deploy
+can start immediately. `--email` is optional: when you omit it Compartment generates a unique placeholder address under
+`signup.<baseDomain>` so an unattended caller never has to invent one. That placeholder is an identifier only. It is not
+a mailbox, and nothing is ever sent to it.
+
+Claim the account when a person should be able to sign in to the browser control plane:
+
+```bash
+compartment auth claim --email owner@example.com
+```
+
+`auth claim` binds a real email address and a password to the same account in one step, using the session `signup`
+already stored, and the account can then sign in normally. Compartment does not verify the address, so treat signup as
+open registration and only enable it where that is acceptable. An account can be claimed once; use password reset to
+change the password afterwards.
 
 For non-interactive invited-user activation, provide the new password through
 `COMPARTMENT_VIEWER_PASSWORD` and pass the email and invitation token as options:

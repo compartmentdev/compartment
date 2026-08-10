@@ -233,6 +233,7 @@ process.env.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_SUBJECT_WINDOW = '10
 process.env.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_SUBJECT_BLOCK = '30m';
 process.env.COMPARTMENT_VARIABLES_MASTER_KEY = process.env.COMPARTMENT_VARIABLES_MASTER_KEY ?? '11'.repeat(32);
 process.env.COMPARTMENT_RUNTIME_CONTROL_TOKEN = 'test-runtime-control-token';
+process.env.COMPARTMENT_SIGNUP_ENABLED = 'false';
 const defaultApiConfig: ApiConfig = readApiConfig();
 let pool!: Pool;
 let db!: Database;

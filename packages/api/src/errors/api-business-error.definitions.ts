@@ -21,9 +21,17 @@ export const businessErrorDefinitions: Record<ApiBusinessErrorCode, ApiBusinessE
     message: 'The requested service was not found in the compartment descriptor.',
     statusCode: 400,
   },
+  account_already_claimed: {
+    message: 'This account has already been claimed. Use password reset to change its password.',
+    statusCode: 409,
+  },
   edge_state_update_failed: {
     message: 'The edge state could not be updated. Retry the operation.',
     statusCode: 502,
+  },
+  email_taken: {
+    message: 'An account with this email address already exists.',
+    statusCode: 409,
   },
   environment_not_found: {
     message: 'The requested environment was not found.',
@@ -193,6 +201,10 @@ export const businessErrorDefinitions: Record<ApiBusinessErrorCode, ApiBusinessE
   service_not_found: {
     message: 'The requested service was not found.',
     statusCode: 404,
+  },
+  signup_disabled: {
+    message: 'Self-service signup is disabled on this Compartment installation.',
+    statusCode: 403,
   },
   source_and_target_environment_match: {
     message: 'Source and target environments must be different.',

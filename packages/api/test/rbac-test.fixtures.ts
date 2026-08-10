@@ -291,6 +291,7 @@ function createRbacApiConfig(databaseUrl: string, scope: string): ApiConfig {
     runtimeControlToken: 'test-runtime-control-token',
     sessionSecret: 'test-secret',
     sessionTtlMs: 604_800_000,
+    signupEnabled: false,
     sourceArchiveDirectory: join(tmpdir(), `compartment-${scope}-source-archives`),
     sourceArchiveMaxBytes: 104_857_600,
     systemApiSocketPath: `/tmp/compartment/${scope}-system-api.sock`,

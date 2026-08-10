@@ -59,6 +59,7 @@ const apiConfig: ApiConfig = {
   runtimeControlToken: 'test-runtime-control-token',
   sessionSecret: 'test-secret',
   sessionTtlMs: 604_800_000,
+  signupEnabled: false,
   sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
   sourceArchiveMaxBytes: 104_857_600,
   systemApiSocketPath: '/tmp/compartment-test-system-api.sock',

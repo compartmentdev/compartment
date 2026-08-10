@@ -14,7 +14,7 @@ import { readApiAuthThrottleConfig, type ApiAuthThrottleConfig } from './auth-th
 import type { ApiConfigEnv } from './config-env.types';
 import { parseOptionalAbsoluteUrl, parseOptionalPositiveInt, readRequiredCronExpression } from './config-parsers';
 import { parseTenantSecretsKek, parseVariablesMasterKey } from './lib/variables-crypto';
-import { normalizeApiHostValue, parseSessionTtl, readOptionalConfigText } from './config-value';
+import { normalizeApiHostValue, parseSessionTtl, readOptionalConfigText, readRequiredBoolean } from './config-value';
 import { assertValidSystemApiSocketPath } from './system-api-socket-path';
 
 export type { AuditFileSinkConfig } from './audit-file-sink-config';
@@ -53,6 +53,7 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_SOURCE_ARCHIVE_MAX_BYTES: z.coerce.number().int().positive(),
   COMPARTMENT_SESSION_SECRET: z.string().min(1),
   COMPARTMENT_SESSION_TTL: z.string().min(1),
+  COMPARTMENT_SIGNUP_ENABLED: z.string().min(1),
   COMPARTMENT_SYSTEM_API_SOCKET: z.string().min(1),
   COMPARTMENT_SYSTEM_TOKEN: z.string().min(1),
   COMPARTMENT_TENANT_SECRETS_KEK: z.string().min(1),
@@ -77,6 +78,7 @@ export interface ApiConfig {
   trustedOutboundHosts: string[];
   sessionSecret: string;
   sessionTtlMs: number;
+  signupEnabled: boolean;
   port: number;
   publicProtocol: 'http' | 'https';
   publicHttpPort: number;
@@ -103,7 +105,7 @@ export interface ApiConfig {
 
 type ApiCoreConfig = Pick<
   ApiConfig,
-  'bindHost' | 'databaseUrl' | 'edgeToken' | 'logLevel' | 'port' | 'sessionSecret' | 'sessionTtlMs'
+  'bindHost' | 'databaseUrl' | 'edgeToken' | 'logLevel' | 'port' | 'sessionSecret' | 'sessionTtlMs' | 'signupEnabled'
 >;
 type ApiHostConfig = Pick<ApiConfig, 'baseDomain' | 'tlsMode' | 'controlPlaneHost' | 'edgeUrl'>;
 type ApiIntegrationConfig = Pick<
@@ -208,6 +210,7 @@ function readApiCoreConfig(parsed: ApiConfigEnv): ApiCoreConfig {
     port: parsed.COMPARTMENT_API_PORT,
     sessionSecret: parsed.COMPARTMENT_SESSION_SECRET,
     sessionTtlMs: parseSessionTtl(parsed.COMPARTMENT_SESSION_TTL),
+    signupEnabled: readRequiredBoolean(parsed.COMPARTMENT_SIGNUP_ENABLED, 'COMPARTMENT_SIGNUP_ENABLED'),
   };
 }
 

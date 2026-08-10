@@ -9,6 +9,7 @@ export type AuditEventMetadata = Record<string, AuditEventMetadataValue>;
 export type AuditEventListOrderBy = 'eventType' | 'occurredAt' | 'status';
 export type AuditEventType =
   | 'audit.export.created'
+  | 'authentication.account_claimed'
   | 'authentication.login'
   | 'authorization.denied'
   | 'deployment.created'

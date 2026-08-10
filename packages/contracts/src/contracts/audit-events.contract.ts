@@ -68,6 +68,7 @@ const auditEventActorTypeValues: readonly [AuditEventActorType, ...AuditEventAct
 ];
 export const auditEventTypeOptions: readonly [AuditEventType, ...AuditEventType[]] = [
   'audit.export.created',
+  'authentication.account_claimed',
   'authentication.login',
   'authorization.denied',
   'deployment.created',

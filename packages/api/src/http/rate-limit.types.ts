@@ -8,9 +8,11 @@ export interface ApiRateLimitPolicy {
 }
 
 export interface ApiRouteRateLimitPolicies {
+  authClaim: ApiRateLimitPolicy;
   authCliLogin: ApiRateLimitPolicy;
   authLoginDiscoverySource: ApiRateLimitPolicy;
   authLoginDiscoverySubject: ApiRateLimitPolicy;
+  authSignup: ApiRateLimitPolicy;
   authState: ApiRateLimitPolicy;
   browserPage: ApiRateLimitPolicy;
   currentOrganization: ApiRateLimitPolicy;

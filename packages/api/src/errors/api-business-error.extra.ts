@@ -76,6 +76,18 @@ export function createServiceNotFoundError(): ApiBusinessError {
   return new ApiBusinessError('service_not_found');
 }
 
+export function createAccountAlreadyClaimedError(): ApiBusinessError {
+  return new ApiBusinessError('account_already_claimed');
+}
+
+export function createEmailTakenError(): ApiBusinessError {
+  return new ApiBusinessError('email_taken');
+}
+
+export function createSignupDisabledError(): ApiBusinessError {
+  return new ApiBusinessError('signup_disabled');
+}
+
 export function createSourceAndTargetEnvironmentMatchError(): ApiBusinessError {
   return new ApiBusinessError('source_and_target_environment_match');
 }

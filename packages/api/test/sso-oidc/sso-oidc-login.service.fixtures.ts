@@ -27,6 +27,7 @@ export function createSsoOidcApiConfig(): ApiConfig {
     runtimeControlToken: 'runtime-control-token',
     sessionSecret: 'session-secret',
     sessionTtlMs: 3_600_000,
+    signupEnabled: false,
     sourceArchiveDirectory: '/tmp/compartment',
     sourceArchiveMaxBytes: 104_857_600,
     systemApiSocketPath: '/tmp/compartment/compartment-test-system-api.sock',
