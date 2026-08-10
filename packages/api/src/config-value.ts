@@ -12,3 +12,14 @@ export function readOptionalConfigText(value: string | undefined): string | null
   const normalizedValue: string = value?.trim() ?? '';
   return normalizedValue === '' ? null : normalizedValue;
 }
+
+export function readRequiredBoolean(value: string, variableName: string): boolean {
+  if (value === 'true') {
+    return true;
+  }
+  if (value === 'false') {
+    return false;
+  }
+
+  throw new Error(`${variableName} must be true or false.`);
+}

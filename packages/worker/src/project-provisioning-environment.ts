@@ -7,6 +7,7 @@ import type { RegistryCredential } from './registry-credentials.types';
 
 export interface ProjectProvisioningEnvironment {
   COMPARTMENT_EDGE_NAMESPACE: string;
+  COMPARTMENT_EDGE_POD_LABELS: string;
   COMPARTMENT_INSTALLATION_ID: string;
   COMPARTMENT_KUBE_POD_CIDR: string;
   COMPARTMENT_KUBE_SERVICE_CIDR: string;
@@ -17,6 +18,7 @@ export interface ProjectProvisioningEnvironment {
 
 export const projectProvisioningEnvironmentSchema: z.ZodType<ProjectProvisioningEnvironment> = z.object({
   COMPARTMENT_EDGE_NAMESPACE: z.string().min(1),
+  COMPARTMENT_EDGE_POD_LABELS: z.string().min(1),
   COMPARTMENT_INSTALLATION_ID: z.string().min(1),
   COMPARTMENT_KUBE_POD_CIDR: z.string().min(1),
   COMPARTMENT_KUBE_SERVICE_CIDR: z.string().min(1),
@@ -61,6 +63,7 @@ export function projectProvisionerJobEnvironment(
     COMPARTMENT_ARTIFACT_REGISTRY_PULL_DOCKER_CONFIG_JSON: buildDockerConfig(registryUrl, pullCredential),
     COMPARTMENT_BOOTSTRAP_SERVICE_ACCOUNT_NAME: bootstrapServiceAccountName,
     COMPARTMENT_EDGE_NAMESPACE: config.edgeNamespace,
+    COMPARTMENT_EDGE_POD_LABELS: JSON.stringify(config.edgePodLabels),
     COMPARTMENT_KUBE_POD_CIDR: config.podCidr,
     COMPARTMENT_KUBE_SERVICE_CIDR: config.serviceCidr,
     COMPARTMENT_INSTALLATION_ID: config.installationId,

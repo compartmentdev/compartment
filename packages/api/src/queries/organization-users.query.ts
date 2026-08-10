@@ -101,6 +101,13 @@ export async function createPrincipalWithExecutor(
   });
 }
 
+export async function deletePrincipalWithExecutor(
+  executor: OrganizationUsersTransaction,
+  principalId: string,
+): Promise<void> {
+  await executor.delete(principals).where(eq(principals.id, principalId));
+}
+
 export async function createPrincipalIfMissingWithExecutor(
   executor: OrganizationUsersTransaction,
   input: CreatePrincipalInput,

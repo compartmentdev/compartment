@@ -1,6 +1,12 @@
 import type { SelectedFields } from 'drizzle-orm/pg-core/query-builders/select.types';
 import type { localCredentials, principals } from '../db/schema';
 
+export interface SetLocalPasswordHashInput {
+  passwordHash: string;
+  principalId: string;
+  updatedAt: Date;
+}
+
 export interface PrincipalCredentialSelection extends SelectedFields {
   bootstrapTokenExpiresAt: typeof localCredentials.bootstrapTokenExpiresAt;
   bootstrapTokenHash: typeof localCredentials.bootstrapTokenHash;

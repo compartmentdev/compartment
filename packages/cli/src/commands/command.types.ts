@@ -38,9 +38,21 @@ export interface ActivateCommandOptions {
   token?: string | undefined;
 }
 
+export interface SignupCommandOptions {
+  apiUrl?: string | undefined;
+  email?: string | undefined;
+  organization?: string | undefined;
+  output: OutputFormat;
+  remote?: string | undefined;
+}
+
 export interface OutputOnlyOptions {
   output: OutputFormat;
   remote?: string | undefined;
+}
+
+export interface ClaimCommandOptions extends OutputOnlyOptions {
+  email?: string | undefined;
 }
 
 export interface ConfirmedOutputOnlyOptions extends OutputOnlyOptions {

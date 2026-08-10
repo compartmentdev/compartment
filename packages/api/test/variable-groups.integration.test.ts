@@ -77,6 +77,7 @@ const apiConfig: ApiConfig = {
   publicHttpsPort: 443,
   sessionSecret: 'test-secret',
   sessionTtlMs: 604_800_000,
+  signupEnabled: false,
   sourceArchiveDirectory: join(tmpdir(), 'compartment-api-variable-groups-source-archives'),
   sourceArchiveMaxBytes: 104_857_600,
   throttle: defaultApiAuthThrottleConfig,

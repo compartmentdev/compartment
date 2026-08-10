@@ -4,6 +4,12 @@ const apiRateLimitOneMinuteMs: number = 60_000;
 const apiRateLimitOneMinute: string = '1 minute';
 
 export const apiRouteRateLimitPolicies: ApiRouteRateLimitPolicies = {
+  authClaim: {
+    bucketId: 'auth.claim',
+    hook: 'preHandler',
+    max: 5,
+    timeWindow: apiRateLimitOneMinuteMs,
+  },
   authCliLogin: {
     bucketId: 'auth.cli_login',
     hook: 'preHandler',
@@ -18,6 +24,12 @@ export const apiRouteRateLimitPolicies: ApiRouteRateLimitPolicies = {
   authLoginDiscoverySubject: {
     bucketId: 'auth.login_discovery.subject',
     max: 120,
+    timeWindow: apiRateLimitOneMinuteMs,
+  },
+  authSignup: {
+    bucketId: 'auth.signup',
+    hook: 'preHandler',
+    max: 5,
     timeWindow: apiRateLimitOneMinuteMs,
   },
   authState: {

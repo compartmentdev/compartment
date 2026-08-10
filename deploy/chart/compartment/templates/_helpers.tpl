@@ -268,6 +268,32 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/component: {{ .component }}
 {{- end }}
 
+{{- define "compartment.caddyPodLabels" -}}
+{{- include "compartment.componentLabels" (dict "root" . "component" "caddy") -}}
+{{- end }}
+
+{{/*
+The worker builds the tenant ingress NetworkPolicy peer from these labels, so the peer selects whatever
+this chart puts on the Caddy Pods and nothing else. JSON is the serialization: label values may carry the
+separators a `key=value,key=value` form would need, and `JSON.parse` gives the worker the map without a
+hand-written parser. `toJson` sorts keys, so the value is stable across renders.
+The guard reads back the rendered Caddy Deployment: a Pod label written past "compartment.caddyPodLabels"
+would otherwise leave the peer selecting Pods that no longer exist, which is silent lost ingress at
+runtime. Failing the render is the loud version of that.
+*/}}
+{{- define "compartment.caddyPodLabelsJson" -}}
+{{- $declared := include "compartment.caddyPodLabels" . | fromYaml -}}
+{{- range $document := include (print .Template.BasePath "/caddy.yaml") . | splitList "\n---\n" -}}
+{{- $parsed := fromYaml $document -}}
+{{- if eq (dig "kind" "" $parsed) "Deployment" -}}
+{{- if ne (toJson (dig "spec" "template" "metadata" "labels" dict $parsed)) (toJson $declared) -}}
+{{- fail "Caddy Pod labels must be rendered from the compartment.caddyPodLabels template: the worker projects the tenant ingress NetworkPolicy peer from it" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $declared | toJson -}}
+{{- end }}
+
 {{- define "compartment.certManagerCertificate" -}}
 apiVersion: cert-manager.io/v1
 kind: Certificate

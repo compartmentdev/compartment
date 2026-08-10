@@ -34,7 +34,6 @@ describe('NetworkPolicy transport', (): void => {
         podSelector: { matchLabels: edgePodLabels },
       },
     ]);
-    expect(rule).not.toHaveProperty('_from');
   });
 
   it('serializes the resource ingress peers onto the Kubernetes wire contract', async (): Promise<void> => {

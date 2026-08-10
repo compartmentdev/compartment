@@ -1,10 +1,12 @@
 import type { WorkerArtifactRegistryConfig } from './worker-artifact-registry.types';
 import type { KubeLeaderElectionConfig, KubeWorkloadScheduling } from '@compartment/kube-runtime';
+import type { EdgePodLabels } from './project-network-policy';
 
 export interface ProjectProvisionerConfig {
   apiUrl: string;
   artifactRegistry: WorkerArtifactRegistryConfig;
   edgeNamespace: string;
+  edgePodLabels: EdgePodLabels;
   image: string;
   installationId: string;
   leaderElection: KubeLeaderElectionConfig;

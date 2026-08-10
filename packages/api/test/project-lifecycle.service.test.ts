@@ -273,6 +273,7 @@ function mockLifecycleContext(deployments: DeploymentJoinedRow[], activeDeployme
     rollbackRetentionLimit: null,
     sessionSecret: 'session-secret',
     sessionTtlMs: 86_400_000,
+    signupEnabled: false,
     sourceArchiveDirectory: '/tmp/compartment-source-archive',
     sourceArchiveMaxBytes: 1024,
     throttle: defaultApiAuthThrottleConfig,

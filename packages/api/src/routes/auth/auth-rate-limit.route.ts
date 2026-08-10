@@ -22,6 +22,14 @@ export const authRateLimitRouteOptions: AuthRateLimitRouteOptions = createApiRat
   apiRouteRateLimitPolicies.authState,
 );
 
+export const authSignupRateLimitRouteOptions: AuthRateLimitRouteOptions = createApiRateLimitRouteOptions(
+  apiRouteRateLimitPolicies.authSignup,
+);
+
+export const authClaimRateLimitRouteOptions: AuthRateLimitRouteOptions = createApiRateLimitRouteOptions(
+  apiRouteRateLimitPolicies.authClaim,
+);
+
 export function createAuthLoginDiscoveryRateLimitRouteOptions(app: ApiApp): ApiMultiRateLimitRouteOptions {
   return createApiMultiRateLimitRouteOptions(app, [
     {

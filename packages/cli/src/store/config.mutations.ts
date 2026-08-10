@@ -24,6 +24,21 @@ export function buildLoggedInConfig(
   };
 }
 
+export function buildPrincipalEmailConfig(config: CliConfig, remoteName: string, principalEmail: string): CliConfig {
+  const remoteConfig: CliRemoteConfig = requireRemoteConfig(config, remoteName);
+
+  return {
+    ...config,
+    remotes: {
+      ...(config.remotes ?? {}),
+      [remoteName]: {
+        ...remoteConfig,
+        principalEmail,
+      },
+    },
+  };
+}
+
 export function buildOrganizationSelectionConfig(
   config: CliConfig,
   remoteName: string,

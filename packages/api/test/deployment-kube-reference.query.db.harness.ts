@@ -188,6 +188,7 @@ function buildApiConfig(url: string): ApiConfig {
     runtimeControlToken: 'runtime',
     sessionSecret: 'secret',
     sessionTtlMs: 604_800_000,
+    signupEnabled: false,
     sourceArchiveDirectory: '/tmp/sources',
     sourceArchiveMaxBytes: 104_857_600,
     systemApiSocketPath: '/tmp/system.sock',

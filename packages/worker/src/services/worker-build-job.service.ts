@@ -18,6 +18,7 @@ import type {
   WorkerSourceBuildJobInput,
 } from './worker-build-job.types';
 import { readBuildLogRecord, readBuildLogRecords } from './worker-build-log-record';
+import { workerJobCommand, workerJobEntrypoints } from '../worker-entrypoints';
 
 const buildKitAddress: string = 'tcp://127.0.0.1:1234';
 const buildJobInputEnvironmentName: string = 'COMPARTMENT_BUILD_JOB_INPUT';
@@ -89,7 +90,7 @@ export function writeWorkerBuildJobLog(record: WorkerBuildJobLogRecord): void {
 function buildKubeJobSpec(config: WorkerBuildConfig, input: RunWorkerBuildJobInput): KubeJobSpec {
   return {
     cleanupPolicy: 'delete',
-    command: ['node', 'dist/build-job.js'],
+    command: workerJobCommand(workerJobEntrypoints.build),
     emptyDirVolumes: buildSandboxVolumes(),
     env: buildJobEnvironment(input),
     id: input.id,

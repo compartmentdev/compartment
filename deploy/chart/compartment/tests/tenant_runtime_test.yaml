@@ -2,6 +2,8 @@ suite: sandbox runtime
 templates:
   - api.yaml
   - api-migrate.yaml
+  # The worker reads the Caddy Pod labels back out of the rendered Caddy Deployment.
+  - caddy.yaml
   - configmap.yaml
   - install-state-secret.yaml
   - worker.yaml

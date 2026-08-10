@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
 
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
+import { runMain } from '../lib/run-main.mjs';
 
 const forbiddenRuntimeTerms = [
   ['node', 'SocketPath'].join(''),
@@ -243,6 +244,4 @@ export function findContentViolations(path, contents) {
   return terms.flatMap((term) => (contents.includes(term) ? [`${path}: contains forbidden runtime term ${term}`] : []));
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) {
-  main();
-}
+runMain(import.meta.url, process.argv[1], main);

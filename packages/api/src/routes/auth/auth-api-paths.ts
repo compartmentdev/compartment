@@ -1,6 +1,7 @@
 export {
   compartmentAuthActivatePathname as authApiActivatePathname,
   compartmentAuthActivateStatePathname as authApiActivateStatePathname,
+  compartmentAuthClaimPathname as authApiClaimPathname,
   compartmentAuthCliExchangePathname as authApiCliExchangePathname,
   compartmentAuthCliStartPathname as authApiCliStartPathname,
   compartmentAuthCliStatusPathname as authApiCliStatusPathname,
@@ -10,4 +11,5 @@ export {
   compartmentAuthLogoutPathname as authApiLogoutPathname,
   compartmentAuthResetPasswordPathname as authApiResetPasswordPathname,
   compartmentAuthResetPasswordStatePathname as authApiResetPasswordStatePathname,
+  compartmentAuthSignupPathname as authApiSignupPathname,
 } from '@compartment/contracts';

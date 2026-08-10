@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
+import { runMain } from '../lib/run-main.mjs';
 
 export function readDrizzleMigrationJournal(rawJournal) {
   return JSON.parse(rawJournal);
@@ -308,6 +308,4 @@ function main() {
   process.stdout.write(`Validated ${changedJournalPaths.length} changed Drizzle journal file(s).\n`);
 }
 
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main();
-}
+runMain(import.meta.url, process.argv[1], main);
