@@ -1176,14 +1176,10 @@ tests:
           any: true
         template: api.yaml
         documentIndex: 1
-      - contains:
-          path: spec.template.spec.containers[0].env
-          content:
-            name: COMPARTMENT_WORKER_IMAGE
-            value: ghcr.io/compartmentdev/compartment-worker:latest
-          any: true
-        template: api.yaml
-        documentIndex: 1
+      - equal:
+          path: data.COMPARTMENT_WORKER_IMAGE
+          value: ghcr.io/compartmentdev/compartment-worker:latest
+        template: configmap.yaml
       - hasDocuments:
           count: 3
         template: pvc.yaml
@@ -1585,14 +1581,10 @@ tests:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/compartmentdev/compartment-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         template: api-migrate.yaml
-      - contains:
-          path: spec.template.spec.containers[0].env
-          content:
-            name: COMPARTMENT_WORKER_IMAGE
-            value: ghcr.io/compartmentdev/compartment-worker@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-          any: true
-        template: api.yaml
-        documentIndex: 1
+      - equal:
+          path: data.COMPARTMENT_WORKER_IMAGE
+          value: ghcr.io/compartmentdev/compartment-worker@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        template: configmap.yaml
       - equal:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/compartmentdev/compartment-worker@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb

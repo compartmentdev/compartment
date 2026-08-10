@@ -6,7 +6,7 @@ import {
   type KubeWorkloadScheduling,
 } from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
-import { decryptTenantProjection } from '../tenant-workload-projections';
+import { decryptTenantProjection, tenantApplicationProbe } from '../tenant-workload-projections';
 import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
 import { deploymentFromObjects, persistDeploymentObservation } from './worker-deployment-reconcile.helpers';
 import { maximumRolloutDeadlineAt } from './worker-deployment-rollout-observation.service';
@@ -20,6 +20,7 @@ export async function restartActiveCandidate(
   target: DeploymentReconcileTarget,
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,
+  workerImage: string,
   rolloutStarts: DeploymentRolloutStartTracker,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<boolean> {
@@ -28,7 +29,7 @@ export async function restartActiveCandidate(
     return false;
   }
   const objects: KubeManifest[] = includeRecoveryRestartedAnnotation(
-    buildRestartObjects(target, tenantSecretsKek, infrastructureTimeoutMs, scheduling),
+    buildRestartObjects(target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage),
   );
   await runtime.delete([deploymentFromObjects(objects)]);
   await runtime.apply({
@@ -66,11 +67,15 @@ function buildRestartObjects(
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,
   scheduling: KubeWorkloadScheduling | undefined,
+  workerImage: string,
 ): KubeManifest[] {
   return [
     ...projectProjectNetworkPolicyManifests(target.candidate.projectId, target.networkPolicy),
     ...projectApplicationManifests(
-      decryptTenantProjection(target.candidate, scheduling, tenantSecretsKek),
+      {
+        ...decryptTenantProjection(target.candidate, scheduling, tenantSecretsKek),
+        resourceProbe: tenantApplicationProbe(target.candidate, workerImage),
+      },
       infrastructureTimeoutMs,
     ),
   ];

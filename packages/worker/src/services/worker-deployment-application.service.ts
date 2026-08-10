@@ -1,8 +1,4 @@
-import type {
-  DeploymentReconcileProjection,
-  DeploymentReconcileTarget,
-  ProjectNetworkPolicyPorts,
-} from '@compartment/contracts';
+import type { DeploymentReconcileProjection, DeploymentReconcileTarget } from '@compartment/contracts';
 import {
   projectApplicationManifests,
   type KubeDeploymentManifest,
@@ -11,7 +7,7 @@ import {
   type KubeRuntime,
   type KubeWorkloadScheduling,
 } from '@compartment/kube-runtime';
-import { decryptTenantProjection } from '../tenant-workload-projections';
+import { decryptTenantProjection, tenantApplicationProbe } from '../tenant-workload-projections';
 import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
 import { deploymentFromObjects } from './worker-deployment-reconcile.helpers';
 import { projectProjectNetworkPolicyManifests } from './worker-network-policy.service';
@@ -29,17 +25,42 @@ export async function applyApplication(
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,
   scheduling: KubeWorkloadScheduling | undefined,
+  workerImage: string,
 ): Promise<KubeDeploymentManifest> {
   return deploymentFromObjects(
     await runtime.apply({
       objects: [
         ...projectProjectNetworkPolicyManifests(target.candidate.projectId, target.networkPolicy),
-        ...projectApplicationManifests(
-          decryptTenantProjection(target.candidate, scheduling, tenantSecretsKek),
+        ...projectApplicationObjects(
+          target.candidate,
+          tenantSecretsKek,
           infrastructureTimeoutMs,
+          scheduling,
+          workerImage,
         ),
       ],
     }),
+  );
+}
+
+/**
+ * The reachability probe rides on the Pod template, so every projection of this deployment carries it: the same
+ * manifest is applied on rollout, on restart, and on rollback recovery, and a scale-up Pod no controller observes
+ * still waits for the resources its service declares.
+ */
+function projectApplicationObjects(
+  projection: DeploymentReconcileProjection,
+  tenantSecretsKek: TenantSecretsKeyring,
+  infrastructureTimeoutMs: number,
+  scheduling: KubeWorkloadScheduling | undefined,
+  workerImage: string,
+): KubeManifest[] {
+  return projectApplicationManifests(
+    {
+      ...decryptTenantProjection(projection, scheduling, tenantSecretsKek),
+      resourceProbe: tenantApplicationProbe(projection, workerImage),
+    },
+    infrastructureTimeoutMs,
   );
 }
 
@@ -49,15 +70,19 @@ export async function applyPendingApplication(
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,
   scheduling: KubeWorkloadScheduling | undefined,
+  workerImage: string,
 ): Promise<AppliedPendingApplication> {
-  const applicationObjects: KubeManifest[] = projectApplicationManifests(
-    decryptTenantProjection(target.candidate, scheduling, tenantSecretsKek),
+  const candidateObjects: KubeManifest[] = projectApplicationObjects(
+    target.candidate,
+    tenantSecretsKek,
     infrastructureTimeoutMs,
+    scheduling,
+    workerImage,
   );
-  const recoveryRestarted: boolean = await readRecoveryRestarted(runtime, target, applicationObjects);
+  const recoveryRestarted: boolean = await readRecoveryRestarted(runtime, target, candidateObjects);
   const pendingObjects: KubeManifest[] = recoveryRestarted
-    ? includeRecoveryRestartedAnnotation(applicationObjects)
-    : applicationObjects;
+    ? includeRecoveryRestartedAnnotation(candidateObjects)
+    : candidateObjects;
   const deployment: KubeDeploymentManifest = deploymentFromObjects(
     await runtime.apply({
       objects: [
@@ -75,12 +100,10 @@ export async function deleteApplication(
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,
   scheduling: KubeWorkloadScheduling | undefined,
+  workerImage: string,
 ): Promise<void> {
   await runtime.delete(
-    projectApplicationManifests(
-      decryptTenantProjection(target.candidate, scheduling, tenantSecretsKek),
-      infrastructureTimeoutMs,
-    ),
+    projectApplicationObjects(target.candidate, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage),
   );
 }
 
@@ -90,20 +113,24 @@ export async function recoverFailedRollout(
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,
   scheduling: KubeWorkloadScheduling | undefined,
+  workerImage: string,
 ): Promise<void> {
   if (target.active === null) {
     return;
   }
   await runtime.apply({
     force: true,
-    objects: recoveryObjects(
-      target.active,
-      target.candidate,
-      target.networkPolicy,
-      tenantSecretsKek,
-      infrastructureTimeoutMs,
-      scheduling,
-    ),
+    objects: [
+      ...projectProjectNetworkPolicyManifests(target.active.projectId, target.networkPolicy),
+      ...activeRecoveryObjects(
+        target.active,
+        target.candidate,
+        tenantSecretsKek,
+        infrastructureTimeoutMs,
+        scheduling,
+        workerImage,
+      ),
+    ],
   });
 }
 
@@ -122,30 +149,20 @@ function hasRecoveryRestartedAnnotation(observed: KubeObservedManifest | null): 
   return observed?.kind === 'Deployment' && observed.metadata?.annotations?.[recoveryRestartedAnnotation] === 'true';
 }
 
-function recoveryObjects(
-  active: DeploymentReconcileProjection,
-  candidate: DeploymentReconcileProjection,
-  networkPolicy: ProjectNetworkPolicyPorts,
-  tenantSecretsKek: TenantSecretsKeyring,
-  infrastructureTimeoutMs: number,
-  scheduling: KubeWorkloadScheduling | undefined,
-): KubeManifest[] {
-  return [
-    ...projectProjectNetworkPolicyManifests(active.projectId, networkPolicy),
-    ...activeRecoveryObjects(active, candidate, tenantSecretsKek, infrastructureTimeoutMs, scheduling),
-  ];
-}
-
 function activeRecoveryObjects(
   active: DeploymentReconcileProjection,
   candidate: DeploymentReconcileProjection,
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,
   scheduling: KubeWorkloadScheduling | undefined,
+  workerImage: string,
 ): KubeManifest[] {
-  const activeObjects: KubeManifest[] = projectApplicationManifests(
-    decryptTenantProjection(active, scheduling, tenantSecretsKek),
+  const activeObjects: KubeManifest[] = projectApplicationObjects(
+    active,
+    tenantSecretsKek,
     infrastructureTimeoutMs,
+    scheduling,
+    workerImage,
   );
   return active.deploymentId === candidate.deploymentId
     ? includeRecoveryRestartedAnnotation(activeObjects)

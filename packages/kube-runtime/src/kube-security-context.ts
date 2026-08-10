@@ -54,6 +54,20 @@ export function gvisorBuildRunnerSecurityContext(): KubeContainerSecurityContext
   };
 }
 
+/**
+ * The platform image runs as its own baked-in user, so a container built from it pins that user explicitly rather
+ * than inheriting the Pod's. A resource operation Job runs its Pod as the resource image's user, which the
+ * platform image knows nothing about.
+ */
+export function platformContainerSecurityContext(): KubeContainerSecurityContext {
+  return {
+    ...restrictedContainerSecurityContext(),
+    runAsGroup: projectRuntimeUserId,
+    runAsNonRoot: true,
+    runAsUser: projectRuntimeUserId,
+  };
+}
+
 export function restrictedContainerSecurityContext(): KubeContainerSecurityContext {
   return {
     allowPrivilegeEscalation: false,

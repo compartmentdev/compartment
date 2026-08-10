@@ -24,6 +24,7 @@ describe('deployment reconcile contracts', (): void => {
       readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
       releaseCommand: null,
       replicas: 1,
+      resourceEndpoints: [{ port: 5432, resourceId: 'res_db', timeoutMs: 30_000 }],
       runCommand: null,
       secretId: 'dep_candidate',
       serviceId: 'svc_1',

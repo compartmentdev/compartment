@@ -217,7 +217,7 @@ export class KubeRuntime {
       completedAt: new Date(),
       exitCode: terminal.succeeded ? 0 : terminal.exitCode,
       jobName,
-      logs: output,
+      logs: `${output}${terminal.initFailureMessage ?? ''}`,
       podName: terminal.podName,
       status: terminal.succeeded ? 'succeeded' : 'failed',
     };

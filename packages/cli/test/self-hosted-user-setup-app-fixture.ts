@@ -203,12 +203,37 @@ const port = Number.parseInt(process.env.PORT ?? '3000', 10);
 const listeningLogText = '${selfHostedUserSetupAppListeningLogText}';
 const buildMessageFileUrl = new URL('./build-message.txt', import.meta.url);
 
+// One connection attempt at boot, with no retry of its own. Without the platform reachability gate the CNI
+// refuses this first packet, so a green result here is evidence the gate ran before this process did.
+let bootDatabase = { attempted: false, connected: false, error: null };
+
+async function probeDatabaseAtBoot() {
+  if (process.env.DATABASE_URL === undefined || process.env.DATABASE_URL === '') {
+    return;
+  }
+  bootDatabase = { attempted: true, connected: false, error: null };
+  try {
+    await runPsql('select 1');
+    bootDatabase = { attempted: true, connected: true, error: null };
+  } catch (error) {
+    bootDatabase = {
+      attempted: true,
+      connected: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 const server = createServer(async (request, response) => {
   try {
     const requestUrl = new URL(request.url ?? '/', \`http://\${request.headers.host ?? 'localhost'}\`);
 
     if (requestUrl.pathname === '/healthz') {
       sendJson(response, 200, { status: 'ok' });
+      return;
+    }
+    if (requestUrl.pathname === '/probe/db/boot') {
+      sendJson(response, 200, bootDatabase);
       return;
     }
     if (requestUrl.pathname === '/probe/env') {
@@ -282,6 +307,8 @@ const server = createServer(async (request, response) => {
     });
   }
 });
+
+await probeDatabaseAtBoot();
 
 server.listen(port, () => {
   console.log(\`\${listeningLogText} on \${port}\`);

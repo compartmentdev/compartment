@@ -38,6 +38,7 @@ const artifactRegistry: WorkerArtifactRegistryConfig = {
   internalUrl: 'http://registry-internal.example',
 };
 const infrastructureTimeoutMs: number = 600_000;
+const workerImage: string = 'compartment-worker@sha256:worker';
 let rolloutStarts: DeploymentRolloutStartTracker;
 
 async function reconcileDeploymentTarget(
@@ -54,6 +55,7 @@ async function reconcileDeploymentTarget(
     artifactRegistry,
     testTenantSecretsKek,
     configuredInfrastructureTimeoutMs,
+    workerImage,
     rolloutStarts,
     scheduling,
   );
@@ -732,6 +734,7 @@ function projection(releaseCommand: string | null): DeploymentReconcileProjectio
     readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
     releaseCommand,
     replicas: 1,
+    resourceEndpoints: [],
     runCommand: null,
     secretId: 'dep_candidate',
     serviceId: 'svc_1',

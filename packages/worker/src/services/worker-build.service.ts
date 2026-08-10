@@ -72,7 +72,7 @@ async function buildPreparedSourceImage(input: ReleaseImageBuildContext, build: 
     eventContext: input.eventContext,
     failureSummary: 'image build failed',
     run: async (): Promise<DockerBuildImageResult> =>
-      await runWorkerBuildJob(input.runtime, input.config.buildSandbox, {
+      await runWorkerBuildJob(input.runtime, input.config, {
         build: buildSourceJobInput(input, build),
         id: `${input.deployment.deploymentRunId}:${input.deployment.artifact.id}`,
         onProgressLine: createBuildProgressReporter(input.eventContext),

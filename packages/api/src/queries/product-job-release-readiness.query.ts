@@ -1,4 +1,5 @@
 import { and, eq, not, sql, type SQL } from 'drizzle-orm';
+import type { Database } from '../db/client';
 import type { ApiDatabaseTransaction } from '../db/client.types';
 import {
   deployments,
@@ -97,12 +98,15 @@ function releaseResourceBindingLockKey(binding: ReleaseResourceBindingRow): stri
   return `${binding.environmentId}:${binding.resourceName}`;
 }
 
-/** Descriptor-bound resources of a release, in the canonical lock order. */
+/**
+ * Descriptor-bound resources of a release, in the canonical lock order. Also the resource set the deployed
+ * application itself dials, so the deployment reconcile projection reads it outside any transaction.
+ */
 export async function readReleaseResourceIds(
-  transaction: ApiDatabaseTransaction,
+  executor: ApiDatabaseTransaction | Database,
   deploymentId: string,
 ): Promise<ReleaseResourceIdRow[]> {
-  const rows: ReleaseResourceIdRow[] = await transaction
+  const rows: ReleaseResourceIdRow[] = await executor
     .select({ id: projectResources.id })
     .from(deployments)
     .innerJoin(projectServices, eq(projectServices.id, deployments.projectServiceId))

@@ -15,6 +15,7 @@ import type {
   KubeServicePort,
 } from './kube-runtime.types';
 import { kubeApplicationIdentityName, kubeApplicationName, kubeNamespaceName, kubeSecretName } from './kube-naming';
+import { projectResourceReachabilityInitContainer } from './kube-resource-reachability-projection';
 import { projectSecretManifest, secretChecksum, secretEnvironment } from './kube-secret-projection';
 import { projectPodSecurityContext, restrictedContainerSecurityContext } from './kube-security-context';
 import { projectTenantScheduling } from './kube-workload-scheduling';
@@ -117,6 +118,9 @@ function applicationPodSpec(row: ApplicationProjectionRow): KubeProjectedPodSpec
     automountServiceAccountToken: false,
     containers: [applicationContainer(row)],
     imagePullSecrets: [{ name: kubeSecretName(row.imagePullSecretId) }],
+    ...(row.resourceProbe === undefined
+      ? {}
+      : { initContainers: [projectResourceReachabilityInitContainer(row.resourceProbe)] }),
     ...projectTenantScheduling(row.scheduling),
     securityContext: projectPodSecurityContext(),
     serviceAccountName: kubeNamespaceName(row.namespaceId),

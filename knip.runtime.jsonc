@@ -82,6 +82,7 @@
       "entry": [
         "src/index.ts!",
         "src/server.ts!",
+        "src/await-resources-job.ts!",
         "src/build-job.ts!",
         "src/registry-auth-proxy.ts!",
         "src/registry-install-verifier.ts!",

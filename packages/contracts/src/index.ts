@@ -234,6 +234,7 @@ export {
 } from './contracts/internal-worker.contract';
 export * from './contracts/internal-product-job.contract';
 export * from './contracts/internal-deployment-reconcile.contract';
+export * from './contracts/internal-resource-reachability.contract';
 export * from './contracts/internal-observability.contract';
 export {
   type WorkerRunNextScheduledResourceOperationResponse,

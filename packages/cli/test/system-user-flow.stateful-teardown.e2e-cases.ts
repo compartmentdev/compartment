@@ -81,6 +81,7 @@ import {
 } from './self-hosted-user-setup.e2e.harness';
 import {
   expectAppBuildMessage,
+  expectAppConnectedToDatabaseAtBoot,
   expectAppDatabaseValue,
   expectAppEnvMessage,
   expectAppForbidden,
@@ -178,6 +179,7 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
       );
       expect(missingBackup.stderr).toContain(missingResourceBackupMessage);
 
+      await expectAppConnectedToDatabaseAtBoot(routeUrl, adminAppSessionCookie);
       await writeAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue);
       await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue, true);
 

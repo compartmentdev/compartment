@@ -4,7 +4,6 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import type {
   ProductJobIntent,
-  ProductJobResourceReadiness,
   ResourceOperationProductJobIntent,
   ResourceReconcileIntent,
   WorkerPersistProductJobResultRequest,
@@ -310,9 +309,9 @@ describe('product Job persistence', (): void => {
     const claimed: ClaimedProductJobQueryResult = await claimProductJob('release');
     const settledAt: number = Date.now();
 
-    expect(
-      claimed.resourceReadiness.map((resource: ProductJobResourceReadiness): string => resource.resourceId),
-    ).toEqual(['res-db']);
+    expect(claimed.resourceReadiness).toEqual([
+      { deadlineAt: expect.any(String) as string, port: 5432, resourceId: 'res-db', timeoutMs: 180_000 },
+    ]);
     const deadlineAt: number = Date.parse(claimed.resourceReadiness[0]!.deadlineAt);
     expect(deadlineAt).toBeGreaterThanOrEqual(claimedAt + 180_000);
     expect(deadlineAt).toBeLessThanOrEqual(settledAt + 180_000);

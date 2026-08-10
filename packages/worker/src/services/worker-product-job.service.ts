@@ -11,6 +11,7 @@ import {
   type KubeJobResult,
   type KubeJobSpec,
   type KubePersistedJobResult,
+  type KubeResourceReachabilityProbe,
   type KubeRuntime,
   type KubeWorkloadScheduling,
 } from '@compartment/kube-runtime';
@@ -41,6 +42,7 @@ export async function executeProductJob(
   runtime: KubeRuntime,
   intent: ProductJobIntent,
   tenantSecretsKek: TenantSecretsKeyring,
+  resourceProbe?: KubeResourceReachabilityProbe,
   scheduling?: KubeWorkloadScheduling,
 ): Promise<WorkerPersistProductJobResultRequest | null> {
   const persisted: WorkerPersistProductJobIntentResponse = await persistProductJobIntent(request, intent);
@@ -52,6 +54,7 @@ export async function executeProductJob(
     intent,
     identityId,
     tenantSecretsKek,
+    resourceProbe,
     scheduling,
   );
   if (jobResult === null) {
@@ -95,6 +98,7 @@ async function runFencedProductJob(
   intent: ProductJobIntent,
   identityId: string,
   tenantSecretsKek: TenantSecretsKeyring,
+  resourceProbe: KubeResourceReachabilityProbe | undefined,
   scheduling?: KubeWorkloadScheduling,
 ): Promise<KubeJobResult | null> {
   await fenceProductJobClaims(request, runtime, intent);
@@ -107,7 +111,9 @@ async function runFencedProductJob(
   if (!submission.recorded) {
     return null;
   }
-  return await runtime.runJob(tenantJobSpec(buildKubeJobSpec(intent, identityId, tenantSecretsKek), scheduling));
+  return await runtime.runJob(
+    tenantJobSpec(buildKubeJobSpec(intent, identityId, tenantSecretsKek, resourceProbe), scheduling),
+  );
 }
 
 export async function finalizeRecoveredProductJob(
@@ -119,7 +125,7 @@ export async function finalizeRecoveredProductJob(
   scheduling?: KubeWorkloadScheduling,
 ): Promise<void> {
   const jobResult: KubeJobResult = await runtime.runJob(
-    tenantJobSpec(buildKubeJobSpec(intent, persisted.identityId, tenantSecretsKek), scheduling),
+    tenantJobSpec(buildKubeJobSpec(intent, persisted.identityId, tenantSecretsKek, undefined), scheduling),
     {
       completedAt: new Date(persisted.completedAt),
       exitCode: persisted.exitCode,
@@ -151,10 +157,15 @@ function createJobResult(
   };
 }
 
+/**
+ * A recovered Job passes no probe: its Pod template already exists and is immutable, so `recoveredJobSpec` reads
+ * the live container back rather than letting a fresh resolution rewrite it.
+ */
 function buildKubeJobSpec(
   intent: ProductJobIntent,
   identityId: string,
   tenantSecretsKek: TenantSecretsKeyring,
+  resourceProbe: KubeResourceReachabilityProbe | undefined,
 ): KubeJobSpec {
   return {
     command: intent.command,
@@ -165,6 +176,7 @@ function buildKubeJobSpec(
     jobClass: intent.jobClass === 'release' ? 'release' : 'operation',
     labels: { 'compartment.dev/job-class': intent.jobClass },
     namespace: intent.namespace,
+    ...(resourceProbe === undefined ? {} : { resourceProbe }),
     securityProfile:
       intent.jobClass === 'release' || intent.runtimeIdentity === 'project'
         ? 'project-restricted'

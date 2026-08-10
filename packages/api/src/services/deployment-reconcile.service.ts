@@ -142,6 +142,7 @@ function createProjection(
     projectName: row.projectName,
     ...projectionBehavior(row),
     replicas: 1,
+    resourceEndpoints: row.resourceEndpoints,
     secretId: row.deploymentId,
     serviceId: row.serviceId,
     serviceName: row.serviceName,

@@ -1,5 +1,6 @@
 import {
   createKubeRuntimeFromEnvironment,
+  type KubeResourceReachabilityProbe,
   type KubeRuntime,
   type KubeWorkloadScheduling,
 } from '@compartment/kube-runtime';
@@ -25,6 +26,7 @@ import type { TenantSecretsKeyring } from './tenant-secret-environment.types';
 import { cleanupWorkerArtifacts } from './services/worker-artifact-cleanup.service';
 import { executeProductJob, finalizeRecoveredProductJob } from './services/worker-product-job.service';
 import { passesProductJobResourceGate } from './services/worker-product-job-resource-gate.service';
+import { productJobResourceProbe } from './resource-reachability-probe';
 import { reconcileDeploymentTarget } from './services/worker-deployment-reconcile.service';
 import { DeploymentRolloutStartTracker } from './services/worker-deployment-rollout-start-tracker.service';
 import { executeResourceReconcile } from './services/worker-resource-reconcile.service';
@@ -47,6 +49,7 @@ class DeploymentReconcileArea implements KubeControllerHost {
     private readonly tenantSecretsKek: TenantSecretsKeyring,
     private readonly deploymentInfrastructureTimeoutMs: number,
     private readonly scheduling: KubeWorkloadScheduling | undefined,
+    private readonly workerImage: string,
   ) {}
 
   public async reconcile(): Promise<boolean> {
@@ -73,7 +76,14 @@ class DeploymentReconcileArea implements KubeControllerHost {
   }
 
   private async reconcileRelease(): Promise<boolean> {
-    return await reconcileProductJob(this.request, this.runtime, 'release', this.tenantSecretsKek, this.scheduling);
+    return await reconcileProductJob(
+      this.request,
+      this.runtime,
+      'release',
+      this.tenantSecretsKek,
+      this.workerImage,
+      this.scheduling,
+    );
   }
 
   private async reconcileDeployment(): Promise<boolean> {
@@ -89,6 +99,7 @@ class DeploymentReconcileArea implements KubeControllerHost {
         this.artifactRegistry,
         this.tenantSecretsKek,
         this.deploymentInfrastructureTimeoutMs,
+        this.workerImage,
         this.#rolloutStarts,
         this.scheduling,
       ),
@@ -104,6 +115,7 @@ class ResourceReconcileArea implements KubeControllerHost {
     private readonly runtime: KubeRuntime,
     private readonly tenantSecretsKek: TenantSecretsKeyring,
     private readonly scheduling: KubeWorkloadScheduling | undefined,
+    private readonly workerImage: string,
   ) {}
 
   public async reconcile(): Promise<boolean> {
@@ -119,6 +131,7 @@ class ResourceReconcileArea implements KubeControllerHost {
         this.runtime,
         'resource-operation',
         this.tenantSecretsKek,
+        this.workerImage,
         this.scheduling,
       )) || reconciled
     );
@@ -182,8 +195,9 @@ export function createKubeControllerHosts(
       config.tenantSecretsKek,
       config.deploymentInfrastructureTimeoutMs,
       config.tenantScheduling,
+      config.workerImage,
     ),
-    new ResourceReconcileArea(request, runtime, config.tenantSecretsKek, config.tenantScheduling),
+    new ResourceReconcileArea(request, runtime, config.tenantSecretsKek, config.tenantScheduling, config.workerImage),
     new CustomDomainReconcileArea(request, runtime, config.customDomains),
   ];
 }
@@ -199,6 +213,7 @@ async function reconcileProductJob(
   runtime: KubeRuntime,
   jobClass: ProductJobClass,
   tenantSecretsKek: TenantSecretsKeyring,
+  workerImage: string,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<boolean> {
   const claimed: WorkerClaimProductJobResponse = await claimProductJob(request, { jobClass });
@@ -212,7 +227,12 @@ async function reconcileProductJob(
   if (!(await passesProductJobResourceGate(request, runtime, claimed.job, claimed.resourceReadiness))) {
     return false;
   }
-  return (await executeProductJob(request, runtime, claimed.job, tenantSecretsKek, scheduling)) !== null;
+  const probe: KubeResourceReachabilityProbe | undefined = productJobResourceProbe(
+    claimed.job,
+    claimed.resourceReadiness,
+    workerImage,
+  );
+  return (await executeProductJob(request, runtime, claimed.job, tenantSecretsKek, probe, scheduling)) !== null;
 }
 
 function throwCombinedControllerErrors(deploymentError: Error | null, releaseError: Error): never {

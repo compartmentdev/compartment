@@ -6,7 +6,7 @@ import {
   type KubeJobSpec,
   type KubeRunJobOptions,
 } from '@compartment/kube-runtime';
-import type { WorkerBuildSandboxConfig } from '../src/config';
+import { createWorkerTestConfig } from './worker-config-test.fixtures';
 import { readWorkerBuildJobInputEnvironment, runWorkerBuildJob } from '../src/services/worker-build-job.service';
 import type {
   RunWorkerRegistryVerificationBuildJobInput,
@@ -30,7 +30,11 @@ describe('runWorkerBuildJob', (): void => {
     });
     const reporter: Mock = vi.fn();
 
-    const pending: Promise<DockerBuildImageResult> = runWorkerBuildJob({ runJob }, buildConfig(), buildInput(reporter));
+    const pending: Promise<DockerBuildImageResult> = runWorkerBuildJob(
+      { runJob },
+      createWorkerTestConfig(),
+      buildInput(reporter),
+    );
     await vi.waitFor((): void => expect(reporter).toHaveBeenCalledWith({ message: '#1 loading', stream: 'stdout' }));
     await vi.waitFor((): void => expect(completeJob).toBeDefined());
     expect(finalize).not.toHaveBeenCalled();
@@ -61,7 +65,7 @@ describe('runWorkerBuildJob', (): void => {
 
     await runWorkerBuildJob(
       { runJob },
-      buildConfig(),
+      createWorkerTestConfig(),
       buildInput(async (): Promise<void> => {
         await Promise.resolve();
         events.push('progress');
@@ -86,7 +90,7 @@ describe('runWorkerBuildJob', (): void => {
 
     await runWorkerBuildJob(
       { runJob },
-      buildConfig(),
+      createWorkerTestConfig(),
       buildInput((line: DockerProgressLine): void => {
         messages.push(line.message);
       }),
@@ -109,7 +113,7 @@ describe('runWorkerBuildJob', (): void => {
     });
     const reporter: Mock = vi.fn();
 
-    await expect(runWorkerBuildJob({ runJob }, buildConfig(), buildInput(reporter))).resolves.toMatchObject({
+    await expect(runWorkerBuildJob({ runJob }, createWorkerTestConfig(), buildInput(reporter))).resolves.toMatchObject({
       pushed: true,
     });
 
@@ -136,7 +140,7 @@ describe('runWorkerBuildJob', (): void => {
     await expect(
       runWorkerBuildJob(
         { runJob },
-        buildConfig(),
+        createWorkerTestConfig(),
         buildInput(async (): Promise<void> => {
           await Promise.resolve();
           throw new Error('event publication failed');
@@ -155,7 +159,7 @@ describe('runWorkerBuildJob', (): void => {
       return await Promise.resolve(successfulResult(finalize, '#4 done'));
     });
 
-    await expect(runWorkerBuildJob({ runJob }, buildConfig(), buildInput(vi.fn()))).rejects.toThrow(
+    await expect(runWorkerBuildJob({ runJob }, createWorkerTestConfig(), buildInput(vi.fn()))).rejects.toThrow(
       'log connection failed',
     );
     expect(finalize).toHaveBeenCalledOnce();
@@ -171,7 +175,7 @@ describe('runWorkerBuildJob', (): void => {
     });
     const reporter: Mock = vi.fn();
 
-    await expect(runWorkerBuildJob({ runJob }, buildConfig(), buildInput(reporter))).resolves.toMatchObject({
+    await expect(runWorkerBuildJob({ runJob }, createWorkerTestConfig(), buildInput(reporter))).resolves.toMatchObject({
       pushed: true,
     });
     expect(reporter).toHaveBeenCalledOnce();
@@ -198,7 +202,7 @@ describe('runWorkerBuildJob', (): void => {
     );
 
     await expect(
-      runWorkerBuildJob({ runJob }, buildConfig(), {
+      runWorkerBuildJob({ runJob }, createWorkerTestConfig(), {
         build: {
           docker: {
             imageTag: 'registry.example/web:art_123',
@@ -228,7 +232,7 @@ describe('build Job credential environment', (): void => {
       async (): Promise<KubeJobResult> => await Promise.resolve(successfulResult(vi.fn(), 'done')),
     );
 
-    await runWorkerBuildJob({ runJob }, buildConfig(), {
+    await runWorkerBuildJob({ runJob }, createWorkerTestConfig(), {
       build: sourceBuild(),
       id: 'art_123',
       sourceArchiveCredential: 'scoped-credential',
@@ -244,7 +248,7 @@ describe('build Job credential environment', (): void => {
       async (): Promise<KubeJobResult> => await Promise.resolve(successfulResult(vi.fn(), 'done')),
     );
 
-    await runWorkerBuildJob({ runJob }, buildConfig(), { build: buildInput().build, id: 'art_123' });
+    await runWorkerBuildJob({ runJob }, createWorkerTestConfig(), { build: buildInput().build, id: 'art_123' });
 
     const env: Record<string, string> = runJob.mock.calls[0]?.[0].env ?? {};
     expect(Object.keys(env).sort((left: string, right: string): number => left.localeCompare(right))).toEqual([
@@ -310,18 +314,6 @@ function sourceBuild(): WorkerSourceBuildJobInput {
       requiresRoutesFile: false,
       run: {},
     },
-  };
-}
-
-function buildConfig(): WorkerBuildSandboxConfig {
-  return {
-    buildKitResources: { limits: { memory: '3Gi' } },
-    gcKeepStorageMb: 1024,
-    namespace: 'compartment-build',
-    runnerImage: 'compartment-worker@sha256:runner',
-    runnerResources: { limits: { memory: '1Gi' } },
-    scheduling: { nodeSelector: {}, runtimeClassName: 'gvisor', tolerations: [] },
-    timeoutMs: 900000,
   };
 }
 
