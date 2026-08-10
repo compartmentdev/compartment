@@ -89,7 +89,7 @@ tests:
           type: LoadBalancer
     asserts:
       - failedTemplate:
-          errorPattern: additional properties 'service' not allowed
+          errorPattern: "at '': additional properties 'service' not allowed"
 
   - it: rejects the removed Caddy HTTPS port
     set:
@@ -105,7 +105,7 @@ tests:
         acmeIssuer: acme
     asserts:
       - failedTemplate:
-          errorPattern: additional properties 'acmeIssuer' not allowed
+          errorPattern: "at '/platform': additional properties 'acmeIssuer' not allowed"
 
   - it: rejects the removed Caddy ACME CA URL value
     set:
@@ -113,7 +113,7 @@ tests:
         acmeCaUrl: https://acme.example.com/directory
     asserts:
       - failedTemplate:
-          errorPattern: additional properties 'acmeCaUrl' not allowed
+          errorPattern: "at '/platform': additional properties 'acmeCaUrl' not allowed"
 
   - it: rejects a malformed broker URL through the values schema
     set:

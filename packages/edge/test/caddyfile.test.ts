@@ -18,6 +18,7 @@ import {
 } from '../src/edge-public-control-plane-paths';
 import type {
   CaddyAdaptedConfig,
+  CaddyCookieReplacement,
   CaddyCommandResult,
   CaddyHandler,
   CaddyHandlerLocation,
@@ -27,11 +28,11 @@ import type {
 } from './caddy-config.types';
 import {
   adaptCaddyfile,
-  chartCaddyEnvironment,
   collectCaddyHandlers,
   readCaddyValidationSetup,
   readCaddyfileEnvironmentPlaceholders,
-  readChartCaddyEnvironmentNames,
+  readChartCaddyEnvironment,
+  readChartCaddyEnvironmentValue,
   readDeletedRequestHeaders,
   readSingleCaddyServer,
   validateCaddyfile,
@@ -43,9 +44,6 @@ const caddyfilePath: string = resolve(edgePackageRoot, 'Caddyfile');
 const syncCaddyfileScriptPath: string = resolve(edgePackageRoot, 'scripts/sync-caddyfile.mjs');
 const ciWorkflowPath: string = resolve(repositoryRoot, '.github/workflows/ci.yml');
 const mainCiWorkflowPath: string = resolve(repositoryRoot, '.github/workflows/main-ci.yml');
-const baseDomain: string = chartCaddyEnvironment.COMPARTMENT_BASE_DOMAIN ?? '';
-const consoleHost: string = `console.${baseDomain}`;
-const applicationHost: string = `*.${baseDomain}`;
 /** The image copies this file into /etc/caddy/Caddyfile, so every behavioral assertion reads it from disk. */
 const committedCaddyfile: string = readFileSync(caddyfilePath, 'utf8');
 const caddyValidation: CaddyValidationSetup = readCaddyValidationSetup();
@@ -53,18 +51,6 @@ const caddyValidation: CaddyValidationSetup = readCaddyValidationSetup();
 describe('edge Caddyfile source', (): void => {
   it('matches the committed generated file', (): void => {
     expect(committedCaddyfile).toBe(renderCaddyfile());
-  });
-
-  it('only reads environment variables the chart gives the Caddy container', (): void => {
-    const placeholders: string[] = readCaddyfileEnvironmentPlaceholders(committedCaddyfile);
-    const chartEnvironmentNames: string[] = readChartCaddyEnvironmentNames();
-
-    expect(placeholders.length).toBeGreaterThan(0);
-    for (const placeholder of placeholders) {
-      expect(chartEnvironmentNames).toContain(placeholder);
-    }
-    // Validation runs under the chart environment, so a new placeholder must land in both places.
-    expect(Object.keys(chartCaddyEnvironment)).toStrictEqual(expect.arrayContaining(placeholders));
   });
 });
 
@@ -89,9 +75,19 @@ describe('edge Caddyfile validation gate', (): void => {
   });
 });
 
-describe.skipIf(caddyValidation.image === undefined)(
+describe.skipIf(caddyValidation.image === undefined || !caddyValidation.helmAvailable)(
   'committed edge Caddyfile adapted by the shipped Caddy build',
   (): void => {
+    it('only reads environment variables the rendered chart gives the Caddy container', (): void => {
+      const placeholders: string[] = readCaddyfileEnvironmentPlaceholders(committedCaddyfile);
+      const renderedEnvironmentNames: string[] = Object.keys(readChartCaddyEnvironment());
+
+      expect(placeholders.length).toBeGreaterThan(0);
+      for (const placeholder of placeholders) {
+        expect(renderedEnvironmentNames).toContain(placeholder);
+      }
+    });
+
     it('validates against the Caddy build that carries the Compartment plugins', (): void => {
       const result: CaddyCommandResult = validateCaddyfile(committedCaddyfile);
 
@@ -126,7 +122,7 @@ describe.skipIf(caddyValidation.image === undefined)(
 
       expect(Object.keys(config.apps)).toStrictEqual(['http']);
       expect(server.automatic_https?.disable).toBe(true);
-      expect(server.listen).toStrictEqual([`:${chartCaddyEnvironment.COMPARTMENT_CADDY_HTTP_PORT}`]);
+      expect(server.listen).toStrictEqual([`:${readChartCaddyEnvironmentValue('COMPARTMENT_CADDY_HTTP_PORT')}`]);
       expect(config.apps.http.metrics).toBeDefined();
       expect(JSON.stringify(config)).not.toContain('on_demand');
       expect(JSON.stringify(config)).not.toContain('issuer');
@@ -151,19 +147,18 @@ describe.skipIf(caddyValidation.image === undefined)(
 
     it('allow-lists public control-plane paths on the console host and rejects the rest', (): void => {
       const locations: CaddyHandlerLocation[] = collectCaddyHandlers(readAdaptedServer());
-      const consoleLocations: CaddyHandlerLocation[] = readHostLocations(locations, consoleHost);
-      const consoleProxy: CaddyHandlerLocation | undefined = consoleLocations.find(
+      const consoleLocations: CaddyHandlerLocation[] = readHostLocations(locations, readConsoleHost());
+      const consoleProxies: CaddyHandlerLocation[] = consoleLocations.filter(
         (location: CaddyHandlerLocation): boolean => location.handler.handler === 'reverse_proxy',
       );
-      const allowedPaths: string[] = consoleProxy?.matchers.flatMap((matcher): string[] => matcher.path ?? []) ?? [];
+      // A second proxy on the console host would reach the control plane without the allow-list above it.
+      const consoleProxy: CaddyHandlerLocation = readOnlyLocation(consoleProxies, 'console host reverse_proxy');
+      const allowedPaths: string[] = consoleProxy.matchers.flatMap((matcher): string[] => matcher.path ?? []);
 
+      expect(consoleProxies).toHaveLength(1);
       expect(allowedPaths).toStrictEqual(readCompartmentPublicPathMatchers());
       expect(allowedPaths.some((path: string): boolean => path.startsWith('/internal'))).toBe(false);
-      expect(consoleProxy?.handler.upstreams).toStrictEqual([
-        {
-          dial: `${chartCaddyEnvironment.COMPARTMENT_API_INTERNAL_HOST}:${chartCaddyEnvironment.COMPARTMENT_API_PORT}`,
-        },
-      ]);
+      expect(consoleProxy.handler.upstreams).toStrictEqual([{ dial: readApiUpstream() }]);
       expect(readHandlers(consoleLocations, 'compartment_rate_limit')).toStrictEqual([]);
       expect(readHandlers(consoleLocations, 'compartment_traffic_meter')).toStrictEqual([]);
       expect(readHandlers(consoleLocations, 'static_response').map(readStatusCode)).toStrictEqual([404]);
@@ -171,7 +166,7 @@ describe.skipIf(caddyValidation.image === undefined)(
 
     it('resolves, meters, limits and authorizes hosted application requests in that order', (): void => {
       const locations: CaddyHandlerLocation[] = collectCaddyHandlers(readAdaptedServer());
-      const applicationLocations: CaddyHandlerLocation[] = readHostLocations(locations, applicationHost);
+      const applicationLocations: CaddyHandlerLocation[] = readHostLocations(locations, readApplicationHost());
       const [meter]: CaddyHandler[] = readHandlers(applicationLocations, 'compartment_traffic_meter');
       const [rateLimit]: CaddyHandler[] = readHandlers(applicationLocations, 'compartment_rate_limit');
 
@@ -188,31 +183,30 @@ describe.skipIf(caddyValidation.image === undefined)(
       expect(readHandlers(applicationLocations, 'compartment_traffic_meter')).toHaveLength(1);
       expect(readHandlers(applicationLocations, 'compartment_rate_limit')).toHaveLength(1);
       expect(pipelineOrders).toStrictEqual([...pipelineOrders].sort(compareOrders));
-      expect(meter?.api_url).toBe(
-        `http://${chartCaddyEnvironment.COMPARTMENT_API_INTERNAL_HOST}:${chartCaddyEnvironment.COMPARTMENT_API_PORT}`,
-      );
-      expect(meter?.edge_token).toBe(chartCaddyEnvironment.COMPARTMENT_EDGE_TOKEN);
+      expect(meter?.api_url).toBe(`http://${readApiUpstream()}`);
+      expect(meter?.edge_token).toBe(readChartCaddyEnvironmentValue('COMPARTMENT_EDGE_TOKEN'));
       // Caddy durations are nanoseconds, so the chart's millisecond value must survive the conversion.
       expect(meter?.flush_interval).toBe(
-        Number(chartCaddyEnvironment.COMPARTMENT_USAGE_METERING_INTERVAL_MS) * 1_000_000,
+        Number(readChartCaddyEnvironmentValue('COMPARTMENT_USAGE_METERING_INTERVAL_MS')) * 1_000_000,
       );
       expect(rateLimit?.app_requests_per_second).toBe(
-        Number(chartCaddyEnvironment.COMPARTMENT_EDGE_APP_REQUESTS_PER_SECOND),
+        Number(readChartCaddyEnvironmentValue('COMPARTMENT_EDGE_APP_REQUESTS_PER_SECOND')),
       );
-      expect(rateLimit?.app_burst).toBe(Number(chartCaddyEnvironment.COMPARTMENT_EDGE_APP_BURST));
-      expect(rateLimit?.app_in_flight).toBe(Number(chartCaddyEnvironment.COMPARTMENT_EDGE_APP_IN_FLIGHT));
+      expect(rateLimit?.app_burst).toBe(Number(readChartCaddyEnvironmentValue('COMPARTMENT_EDGE_APP_BURST')));
+      expect(rateLimit?.app_in_flight).toBe(Number(readChartCaddyEnvironmentValue('COMPARTMENT_EDGE_APP_IN_FLIGHT')));
       expect(rateLimit?.client_requests_per_second).toBe(
-        Number(chartCaddyEnvironment.COMPARTMENT_EDGE_CLIENT_REQUESTS_PER_SECOND),
+        Number(readChartCaddyEnvironmentValue('COMPARTMENT_EDGE_CLIENT_REQUESTS_PER_SECOND')),
       );
-      expect(rateLimit?.client_burst).toBe(Number(chartCaddyEnvironment.COMPARTMENT_EDGE_CLIENT_BURST));
+      expect(rateLimit?.client_burst).toBe(Number(readChartCaddyEnvironmentValue('COMPARTMENT_EDGE_CLIENT_BURST')));
     });
 
     it('hides platform-owned headers and cookies from tenant applications', (): void => {
       const locations: CaddyHandlerLocation[] = collectCaddyHandlers(readAdaptedServer());
-      const applicationLocations: CaddyHandlerLocation[] = readHostLocations(locations, applicationHost);
+      const applicationLocations: CaddyHandlerLocation[] = readHostLocations(locations, readApplicationHost());
       const upstreamProxy: CaddyHandler = readUpstreamProxy(applicationLocations).handler;
-      const cookieReplacements: CaddyHeaderReplacement[] = upstreamProxy.headers?.request?.replace?.Cookie ?? [];
-      const cookieStripDirectives: readonly string[] = readCaddyPlatformAppCookieStripDirectives();
+      const requestReplacements: CaddyHeaderReplacement[] = upstreamProxy.headers?.request?.replace?.Cookie ?? [];
+      const responseReplacements: CaddyHeaderReplacement[] =
+        upstreamProxy.headers?.response?.replace?.['Set-Cookie'] ?? [];
 
       expect(upstreamProxy.headers?.request?.delete).toStrictEqual([
         compartmentIngressRouteResolvedHeaderName,
@@ -220,15 +214,12 @@ describe.skipIf(caddyValidation.image === undefined)(
         compartmentUpstreamHostHeaderName,
         compartmentUpstreamPortHeaderName,
       ]);
-      expect(cookieReplacements).toHaveLength(
-        cookieStripDirectives.filter((directive: string): boolean => directive.startsWith('header_up Cookie')).length,
+      // Comparing every pattern, not just the count, keeps a duplicated rewrite from hiding a lost one.
+      expect(requestReplacements.map(readAdaptedReplacement)).toStrictEqual(
+        readCookieStripReplacements('header_up Cookie'),
       );
-      for (const replacement of cookieReplacements) {
-        expect(cookieStripDirectives.join('\n')).toContain(replacement.search_regexp);
-      }
-      expect(upstreamProxy.headers?.response?.replace?.['Set-Cookie']).toHaveLength(
-        cookieStripDirectives.filter((directive: string): boolean => directive.startsWith('header_down Set-Cookie'))
-          .length,
+      expect(responseReplacements.map(readAdaptedReplacement)).toStrictEqual(
+        readCookieStripReplacements('header_down Set-Cookie'),
       );
     });
   },
@@ -239,6 +230,44 @@ function renderCaddyfile(): string {
     cwd: edgePackageRoot,
     encoding: 'utf8',
   });
+}
+
+function readConsoleHost(): string {
+  return `console.${readChartCaddyEnvironmentValue('COMPARTMENT_BASE_DOMAIN')}`;
+}
+
+function readApplicationHost(): string {
+  return `*.${readChartCaddyEnvironmentValue('COMPARTMENT_BASE_DOMAIN')}`;
+}
+
+function readApiUpstream(): string {
+  return `${readChartCaddyEnvironmentValue('COMPARTMENT_API_INTERNAL_HOST')}:${readChartCaddyEnvironmentValue('COMPARTMENT_API_PORT')}`;
+}
+
+function readOnlyLocation(locations: CaddyHandlerLocation[], description: string): CaddyHandlerLocation {
+  const [location]: CaddyHandlerLocation[] = locations;
+  if (locations.length !== 1 || location === undefined) {
+    throw new Error(`Expected exactly one ${description}, found ${locations.length}.`);
+  }
+
+  return location;
+}
+
+/** Directives read `header_up Cookie "<search>" "<replace>"`, which adapts into one replacement entry. */
+function readCookieStripReplacements(directivePrefix: string): CaddyCookieReplacement[] {
+  return readCaddyPlatformAppCookieStripDirectives()
+    .filter((directive: string): boolean => directive.startsWith(directivePrefix))
+    .map((directive: string): CaddyCookieReplacement => {
+      const quotedArguments: string[] = [...directive.matchAll(/"(?<argument>[^"]*)"/gu)].map(
+        (match: RegExpExecArray): string => match.groups?.argument ?? '',
+      );
+
+      return { replace: quotedArguments[1] ?? '', searchRegexp: quotedArguments[0] ?? '' };
+    });
+}
+
+function readAdaptedReplacement(replacement: CaddyHeaderReplacement): CaddyCookieReplacement {
+  return { replace: replacement.replace ?? '', searchRegexp: replacement.search_regexp ?? '' };
 }
 
 function readAdaptedServer(): CaddyServerConfig {

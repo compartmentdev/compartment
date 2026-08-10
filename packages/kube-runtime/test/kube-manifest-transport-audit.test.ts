@@ -143,8 +143,15 @@ describe('Kubernetes manifest transport audit', (): void => {
 
   for (const auditCase of transportAuditRegistry) {
     it(`sends every ${auditCase.projection} field to the Kubernetes API server`, async (): Promise<void> => {
+      const manifests: KubeManifest[] = auditCase.manifests();
+      // An empty projection serializes nothing, so without this the case would report "no losses" while auditing air.
+      expect(
+        manifests.length,
+        `${auditCase.projection} built no manifest on its audit input, so this case compares nothing.`,
+      ).toBeGreaterThan(0);
+
       const losses: string[] = [];
-      for (const manifest of auditCase.manifests()) {
+      for (const manifest of manifests) {
         const serialized: WireObject = await serializeManifestOnTheWire(manifest);
         const differences: WireDifference[] = auditManifestOnTheWire(manifest, serialized);
         losses.push(

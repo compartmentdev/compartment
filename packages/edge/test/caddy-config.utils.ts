@@ -1,6 +1,6 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { parseAllDocuments } from 'yaml';
 import type {
   CaddyAdaptedConfig,
   CaddyCommandResult,
@@ -11,43 +11,29 @@ import type {
   CaddyRouteScope,
   CaddyServerConfig,
   CaddyValidationSetup,
+  ChartContainer,
+  ChartManifest,
 } from './caddy-config.types';
 
 const repositoryRoot: string = resolve(__dirname, '../../..');
-const chartCaddyTemplatePath: string = resolve(repositoryRoot, 'deploy/chart/compartment/templates/caddy.yaml');
+const chartPath: string = resolve(repositoryRoot, 'deploy/chart/compartment');
 const caddyValidationImageVariable: string = 'COMPARTMENT_CADDY_VALIDATION_IMAGE';
 const caddyValidationRequiredVariable: string = 'COMPARTMENT_CADDY_VALIDATION_REQUIRED';
+const caddyContainerName: string = 'caddy';
+/** Secret-backed values are not part of a rendered chart, but the adapter still needs something to substitute. */
+const renderedSecretPlaceholder: string = 'caddy-config-validation-secret';
 const adaptedConfigsByCaddyfile = new Map<string, CaddyAdaptedConfig>();
+let chartCaddyEnvironmentCache: Readonly<Record<string, string>> | undefined;
 
 /**
- * The values mirror `deploy/chart/compartment/values.yaml` defaults as the chart passes them to the
- * Caddy container in `templates/caddy.yaml`. Adapting under a different environment would prove a
- * configuration nobody runs.
- */
-export const chartCaddyEnvironment: Readonly<Record<string, string>> = Object.freeze({
-  COMPARTMENT_API_INTERNAL_HOST: 'compartment-api',
-  COMPARTMENT_API_PORT: '39444',
-  COMPARTMENT_BASE_DOMAIN: 'localhost',
-  COMPARTMENT_CADDY_HTTP_PORT: '8080',
-  COMPARTMENT_EDGE_APP_BURST: '600',
-  COMPARTMENT_EDGE_APP_IN_FLIGHT: '512',
-  COMPARTMENT_EDGE_APP_REQUESTS_PER_SECOND: '300',
-  COMPARTMENT_EDGE_CLIENT_BURST: '120',
-  COMPARTMENT_EDGE_CLIENT_REQUESTS_PER_SECOND: '60',
-  COMPARTMENT_EDGE_INTERNAL_HOST: 'compartment-edge',
-  COMPARTMENT_EDGE_PORT: '39081',
-  COMPARTMENT_EDGE_TOKEN: 'caddy-config-validation-edge-token',
-  COMPARTMENT_USAGE_METERING_INTERVAL_MS: '60000',
-});
-
-/**
- * A missing Caddy build makes the adapted-config suite skip, which is only acceptable on a
- * developer machine. CI sets the required flag so the same gap fails the run instead.
+ * A missing Caddy build or Helm binary makes the adapted-config suite skip, which is only acceptable
+ * on a developer machine. CI sets the required flag so the same gap fails the run instead.
  */
 export function readCaddyValidationSetup(): CaddyValidationSetup {
   const image: string | undefined = process.env[caddyValidationImageVariable];
   const required: boolean = process.env[caddyValidationRequiredVariable] === '1';
   const resolvedImage: string | undefined = image === undefined || image === '' ? undefined : image;
+  const helmAvailable: boolean = spawnSync('helm', ['version', '--short'], { encoding: 'utf8' }).status === 0;
 
   if (required && resolvedImage === undefined) {
     throw new Error(
@@ -55,8 +41,32 @@ export function readCaddyValidationSetup(): CaddyValidationSetup {
         'from packages/edge/Dockerfile.caddy.self-hosted. Caddyfile validation must never skip in CI.',
     );
   }
+  if (required && !helmAvailable) {
+    throw new Error(
+      `${caddyValidationRequiredVariable}=1 requires a helm binary on PATH: the validation environment is rendered ` +
+        'from the chart instead of copied. Caddyfile validation must never skip in CI.',
+    );
+  }
 
-  return { image: resolvedImage, required };
+  return { helmAvailable, image: resolvedImage, required };
+}
+
+/**
+ * The environment comes from the rendered chart rather than a copy of its values, so a changed
+ * default or a changed template expression validates a configuration the container never receives.
+ */
+export function readChartCaddyEnvironment(): Readonly<Record<string, string>> {
+  chartCaddyEnvironmentCache ??= Object.freeze(readRenderedCaddyContainerEnvironment());
+  return chartCaddyEnvironmentCache;
+}
+
+export function readChartCaddyEnvironmentValue(name: string): string {
+  const value: string | undefined = readChartCaddyEnvironment()[name];
+  if (value === undefined) {
+    throw new Error(`The rendered chart gives the Caddy container no ${name}.`);
+  }
+
+  return value;
 }
 
 export function validateCaddyfile(caddyfile: string): CaddyCommandResult {
@@ -118,17 +128,74 @@ export function readCaddyfileEnvironmentPlaceholders(caddyfile: string): string[
   return [...names].sort(compareNames);
 }
 
-export function readChartCaddyEnvironmentNames(): string[] {
-  const template: string = readFileSync(chartCaddyTemplatePath, 'utf8');
-  const environmentNamePattern = /name: (COMPARTMENT_[A-Z0-9_]+)/gu;
-
-  return [...new Set([...template.matchAll(environmentNamePattern)].map(([, name]: string[]): string => name ?? ''))]
-    .filter((name: string): boolean => name !== '')
-    .sort(compareNames);
-}
-
 function compareNames(left: string, right: string): number {
   return left.localeCompare(right);
+}
+
+/**
+ * The Caddy workload only renders in the full startup stage, and the chart refuses to render at all
+ * without an installation identity and a registry issuer, so the gate supplies exactly those.
+ */
+function readRenderedCaddyContainerEnvironment(): Record<string, string> {
+  const result: SpawnSyncReturns<string> = spawnSync(
+    'helm',
+    [
+      'template',
+      'compartment',
+      chartPath,
+      '--show-only',
+      'templates/caddy.yaml',
+      '--set',
+      'platform.startupStage=full',
+      '--set',
+      'platform.installationId=caddy-config-validation',
+      '--set',
+      'registry.hostname=10.43.0.1',
+      '--set',
+      'registry.issuerRef.kind=Issuer',
+      '--set',
+      'registry.issuerRef.name=compartment',
+      '--set',
+      `secrets.productLogIngestToken=${renderedSecretPlaceholder}`,
+    ],
+    { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
+  );
+
+  if (result.error !== undefined) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(`helm template failed with exit code ${result.status ?? 1}: ${result.stderr}`);
+  }
+
+  return readContainerEnvironment(readRenderedCaddyContainer(result.stdout));
+}
+
+function readRenderedCaddyContainer(renderedChart: string): ChartContainer {
+  const manifests: ChartManifest[] = parseAllDocuments(renderedChart).map(
+    (document): ChartManifest => document.toJS() as ChartManifest,
+  );
+  const containers: ChartContainer[] = manifests.flatMap(
+    (manifest: ChartManifest): ChartContainer[] => manifest.spec?.template?.spec?.containers ?? [],
+  );
+  const container: ChartContainer | undefined = containers.find(
+    (candidate: ChartContainer): boolean => candidate.name === caddyContainerName,
+  );
+  if (container === undefined) {
+    throw new Error('The rendered chart has no Caddy container to take the validation environment from.');
+  }
+
+  return container;
+}
+
+function readContainerEnvironment(container: ChartContainer): Record<string, string> {
+  const environment: Record<string, string> = {};
+
+  for (const entry of container.env ?? []) {
+    environment[entry.name] = entry.value ?? renderedSecretPlaceholder;
+  }
+
+  return environment;
 }
 
 function runCaddy(args: readonly string[], caddyfile: string): CaddyCommandResult {
@@ -137,7 +204,7 @@ function runCaddy(args: readonly string[], caddyfile: string): CaddyCommandResul
     throw new Error(`${caddyValidationImageVariable} is not set, so no Caddy build is available to run ${args[0]}.`);
   }
 
-  const environmentArgs: string[] = Object.entries(chartCaddyEnvironment).flatMap(
+  const environmentArgs: string[] = Object.entries(readChartCaddyEnvironment()).flatMap(
     ([name, value]: [string, string]): string[] => ['--env', `${name}=${value}`],
   );
   // The adapter never needs egress, and denying it keeps a config gate from depending on the network.

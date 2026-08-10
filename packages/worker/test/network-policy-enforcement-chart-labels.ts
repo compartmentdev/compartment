@@ -1,21 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { parseAllDocuments, type Document } from 'yaml';
-
-interface ChartContainerEnvironmentEntry {
-  name: string;
-  value?: string;
-}
-
-interface ChartContainer {
-  env?: ChartContainerEnvironmentEntry[];
-}
-
-interface ChartWorkload {
-  kind?: string;
-  metadata?: { name?: string };
-  spec?: { template?: { metadata?: { labels?: Record<string, string> }; spec?: { containers?: ChartContainer[] } } };
-}
+import type { ChartContainerEnvironmentEntry, ChartWorkload } from './network-policy-enforcement-chart-labels.types';
 
 const chartDirectory: string = resolve(__dirname, '../../../deploy/chart/compartment');
 const releaseName: string = 'compartment';

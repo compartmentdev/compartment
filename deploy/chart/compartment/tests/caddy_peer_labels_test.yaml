@@ -13,17 +13,19 @@ release:
   name: compartment
   namespace: default
 tests:
-  # The tenant ingress NetworkPolicy peer the worker projects must select the Caddy Pods this chart
-  # labels. Both sides render from "compartment.caddyPodLabels", and "compartment.caddyPodLabelsJson"
-  # reads the rendered Caddy Deployment back before it hands the value to the worker: a Caddy Pod
-  # labelled past the shared template fails these renders instead of reaching the assertions below.
+  # The tenant ingress NetworkPolicy peer the worker projects must select the Caddy Pods this chart labels.
+  # The Caddy Pod labels are deliberately not restated here: "compartment.caddyPodLabelsJson" reads the
+  # rendered Caddy Deployment back and fails the render unless its Pod labels are exactly the map it hands
+  # the worker, so a suite that renders at all has already proven the two agree. helm-unittest has no
+  # assertion that compares one rendered document against another, so the peer value below is the single
+  # expectation these tests state, and a change to the shared template moves it here and nowhere else.
   - it: hands the worker and the provisioner the labels the Caddy Pods carry
     set:
-      platform:
+      platform: &fullInstallPlatform
         startupStage: full
         installationId: test-install
         baseDomain: apps.example.com
-      secrets:
+      secrets: &fullInstallSecrets
         installToken: test-install-token
         postgresPassword: test-postgres-password
         registryCredentialSigningKey: test-registry-signing-key-with-at-least-32-characters
@@ -36,22 +38,14 @@ tests:
         variablesMasterKey: test-variables-master-key
         managedDomainAcmeDnsToken: ''
     asserts:
-      - equal:
-          path: spec.template.metadata.labels
-          value:
-            app.kubernetes.io/component: caddy
-            app.kubernetes.io/instance: compartment
-            app.kubernetes.io/name: compartment
-        template: caddy.yaml
-        documentIndex: 1
-      - contains: &edgePodLabelsEnv
+      - contains: &releasePeerLabelsEnv
           path: spec.template.spec.containers[0].env
           content:
             name: COMPARTMENT_EDGE_POD_LABELS
             value: >-
               {"app.kubernetes.io/component":"caddy","app.kubernetes.io/instance":"compartment","app.kubernetes.io/name":"compartment"}
         template: worker.yaml
-      - contains: *edgePodLabelsEnv
+      - contains: *releasePeerLabelsEnv
         template: project-provisioner.yaml
 
   - it: keeps the peer labels tracking the release the Caddy Pods belong to
@@ -59,35 +53,15 @@ tests:
       name: staging
       namespace: default
     set:
-      platform:
-        startupStage: full
-        installationId: test-install
-        baseDomain: apps.example.com
-      secrets:
-        installToken: test-install-token
-        postgresPassword: test-postgres-password
-        registryCredentialSigningKey: test-registry-signing-key-with-at-least-32-characters
-        edgeToken: test-edge-token
-        productLogIngestToken: test-product-log-token
-        runtimeControlToken: test-runtime-control-token
-        sessionSecret: test-session-secret
-        systemToken: test-system-token
-        tenantSecretsKek: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-        variablesMasterKey: test-variables-master-key
-        managedDomainAcmeDnsToken: ''
+      platform: *fullInstallPlatform
+      secrets: *fullInstallSecrets
     asserts:
-      - equal:
-          path: spec.template.metadata.labels
-          value:
-            app.kubernetes.io/component: caddy
-            app.kubernetes.io/instance: staging
-            app.kubernetes.io/name: compartment
-        template: caddy.yaml
-        documentIndex: 1
-      - contains:
+      - contains: &stagingPeerLabelsEnv
           path: spec.template.spec.containers[0].env
           content:
             name: COMPARTMENT_EDGE_POD_LABELS
             value: >-
               {"app.kubernetes.io/component":"caddy","app.kubernetes.io/instance":"staging","app.kubernetes.io/name":"compartment"}
         template: worker.yaml
+      - contains: *stagingPeerLabelsEnv
+        template: project-provisioner.yaml

@@ -112,6 +112,11 @@ export interface CaddyHandlerLocation {
   order: number;
 }
 
+export interface CaddyCookieReplacement {
+  replace: string;
+  searchRegexp: string;
+}
+
 export interface CaddyRouteScope {
   hosts: readonly string[];
   matchers: readonly CaddyMatcher[];
@@ -124,6 +129,34 @@ export interface CaddyCommandResult {
 }
 
 export interface CaddyValidationSetup {
+  helmAvailable: boolean;
   image: string | undefined;
   required: boolean;
+}
+
+/** Subset of a rendered chart manifest the validation environment is taken from. */
+export interface ChartManifest {
+  spec?: ChartWorkloadSpec;
+}
+
+export interface ChartWorkloadSpec {
+  template?: ChartPodTemplate;
+}
+
+export interface ChartPodTemplate {
+  spec?: ChartPodSpec;
+}
+
+export interface ChartPodSpec {
+  containers?: ChartContainer[];
+}
+
+export interface ChartContainer {
+  env?: ChartContainerEnvEntry[];
+  name: string;
+}
+
+export interface ChartContainerEnvEntry {
+  name: string;
+  value?: string;
 }

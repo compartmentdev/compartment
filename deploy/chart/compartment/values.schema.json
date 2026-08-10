@@ -417,11 +417,12 @@
       "required": ["seccompProfile"],
       "properties": {
         "seccompProfile": {
+          "description": "Only RuntimeDefault is renderable: Localhost needs a localhostProfile the chart never emits, and Unconfined would unharden every platform workload at once because this context is shared. The build Job admission policy also requires RuntimeDefault.",
           "type": "object",
           "additionalProperties": false,
           "required": ["type"],
           "properties": {
-            "type": { "type": "string", "enum": ["RuntimeDefault", "Localhost", "Unconfined"] }
+            "type": { "type": "string", "enum": ["RuntimeDefault"] }
           }
         }
       }
