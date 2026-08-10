@@ -1,0 +1,129 @@
+export interface CaddyAdaptedConfig {
+  admin?: CaddyAdminConfig;
+  apps: CaddyAppsConfig;
+}
+
+export interface CaddyAdminConfig {
+  listen?: string;
+}
+
+export interface CaddyAppsConfig {
+  http: CaddyHttpAppConfig;
+}
+
+export interface CaddyHttpAppConfig {
+  metrics?: CaddyMetricsConfig;
+  servers: Record<string, CaddyServerConfig>;
+}
+
+export interface CaddyMetricsConfig {
+  per_host?: boolean;
+}
+
+export interface CaddyServerConfig {
+  automatic_https?: CaddyAutomaticHttpsConfig;
+  client_ip_headers?: string[];
+  listen: string[];
+  routes: CaddyRoute[];
+  trusted_proxies?: CaddyTrustedProxiesConfig;
+  trusted_proxies_strict?: number;
+}
+
+export interface CaddyAutomaticHttpsConfig {
+  disable?: boolean;
+}
+
+export interface CaddyTrustedProxiesConfig {
+  ranges?: string[];
+  source: string;
+}
+
+export interface CaddyRoute {
+  handle?: CaddyHandler[];
+  match?: CaddyMatcher[];
+}
+
+export interface CaddyMatcher {
+  header?: Record<string, string[]>;
+  host?: string[];
+  path?: string[];
+}
+
+export interface CaddyHandler {
+  api_url?: string;
+  app_burst?: number;
+  app_in_flight?: number;
+  app_requests_per_second?: number;
+  client_burst?: number;
+  client_requests_per_second?: number;
+  edge_token?: string;
+  flush_interval?: number;
+  handle_response?: CaddyResponseHandler[];
+  handler: string;
+  headers?: CaddyHeadersConfig;
+  public_scheme?: string;
+  /** The `headers` handler carries its operations directly; `reverse_proxy` nests them under `headers`. */
+  request?: CaddyHeaderOperations;
+  response?: CaddyHeaderOperations;
+  rewrite?: CaddyRewriteConfig;
+  routes?: CaddyRoute[];
+  status_code?: number;
+  upstreams?: CaddyUpstream[];
+}
+
+export interface CaddyResponseHandler {
+  routes?: CaddyRoute[];
+}
+
+export interface CaddyHeadersConfig {
+  request?: CaddyHeaderOperations;
+  response?: CaddyHeaderOperations;
+}
+
+export interface CaddyHeaderOperations {
+  delete?: string[];
+  replace?: Record<string, CaddyHeaderReplacement[]>;
+  set?: Record<string, string[]>;
+}
+
+export interface CaddyHeaderReplacement {
+  replace?: string;
+  search_regexp?: string;
+}
+
+export interface CaddyRewriteConfig {
+  method?: string;
+  uri?: string;
+}
+
+export interface CaddyUpstream {
+  dial: string;
+}
+
+/**
+ * Handlers are nested arbitrarily deep in subroutes, and the matchers that gate them sit on ancestor
+ * routes. Assertions therefore address a handler by the hosts and matchers it inherits and by its
+ * position in the request pipeline instead of by array indexes.
+ */
+export interface CaddyHandlerLocation {
+  handler: CaddyHandler;
+  hosts: readonly string[];
+  matchers: readonly CaddyMatcher[];
+  order: number;
+}
+
+export interface CaddyRouteScope {
+  hosts: readonly string[];
+  matchers: readonly CaddyMatcher[];
+}
+
+export interface CaddyCommandResult {
+  exitCode: number;
+  stderr: string;
+  stdout: string;
+}
+
+export interface CaddyValidationSetup {
+  image: string | undefined;
+  required: boolean;
+}
