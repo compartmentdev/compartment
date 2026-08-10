@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -165,5 +166,13 @@ describe('readChartValueReads', () => {
     expect(reads.get('platform.installationId')).toContain('deploy/chart/compartment/templates/_helpers.tpl');
     expect(reads.get('ingress.endpoint.type')).toContain('deploy/chart/compartment/templates/_helpers.tpl');
     expect(reads.get('projectProvisioner.replicas')).toContain('deploy/chart/compartment/templates/pdb.yaml');
+  });
+});
+
+describe('the committed chart', () => {
+  it('declares every value it reads and reads every value it declares', () => {
+    const schema = JSON.parse(readFileSync(join(chartRoot, 'values.schema.json'), 'utf8'));
+
+    expect(findValuesContractViolations(readChartValueReads(chartRoot), schema)).toEqual([]);
   });
 });

@@ -3,6 +3,7 @@ import { join, relative } from 'node:path';
 import { parse } from 'yaml';
 
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
+import { runMain } from '../lib/run-main.mjs';
 
 const chartDirectory = 'deploy/chart/compartment';
 const chartSchemaPath = `${chartDirectory}/values.schema.json`;
@@ -201,6 +202,4 @@ function arePathsRelated(left, right) {
   return left === right || left.startsWith(`${right}.`) || right.startsWith(`${left}.`);
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) {
-  main();
-}
+runMain(import.meta.url, process.argv[1], main);

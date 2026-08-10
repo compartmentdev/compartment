@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
-import { pathToFileURL } from 'node:url';
 
 import { readRequiredOptionValue } from '../lib/options.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
+import { runMain } from '../lib/run-main.mjs';
 import {
   buildSelfHostedImageRefForRepository,
   defaultSelfHostedImageRepositoryPrefix,
@@ -239,6 +239,4 @@ async function main() {
   await buildSelfHostedImages(readBuildSelfHostedImagesOptions(process.argv.slice(2)));
 }
 
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await main();
-}
+runMain(import.meta.url, process.argv[1], main);
