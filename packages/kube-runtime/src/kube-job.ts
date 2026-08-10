@@ -26,8 +26,17 @@ interface PodInitFailure {
   message: string;
 }
 
+interface PodTerminatedState {
+  exitCode?: number | undefined;
+  message?: string | undefined;
+}
+
+interface PodContainerState {
+  terminated?: PodTerminatedState | undefined;
+}
+
 interface PodContainerStatus {
-  state?: { terminated?: { exitCode?: number | undefined; message?: string | undefined } | undefined } | undefined;
+  state?: PodContainerState | undefined;
 }
 
 interface PodStatus {

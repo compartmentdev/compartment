@@ -152,8 +152,9 @@ Every Pod that dials a declared resource therefore carries a reachability init c
 containers: application Deployments and the product Jobs that dial a resource alike. It runs the platform worker
 image, which is the image reference the worker already holds, and it exits only once each declared resource
 endpoint accepts a TCP connection from that Pod's own address. Proving reachability from the control plane cannot
-substitute: the address whose policy programming is in question is the new Pod's, and a Deployment scale-up or a
-rescheduled Pod produces one that no controller observes. A resource that declares no readiness publishes no
+substitute: the address whose policy programming is in question is the new Pod's, which does not exist yet when
+any control-plane decision about it is made, and a Deployment scale-up or a rescheduled Pod produces one without
+any reconcile to hang that decision on. A resource that declares no readiness publishes no
 endpoint and a stopped resource is not expected to answer, so neither is waited on.
 
 Each endpoint's bound is the resource's own declared readiness timeout, measured from container start rather than

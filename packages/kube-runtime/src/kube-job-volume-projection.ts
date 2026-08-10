@@ -63,9 +63,8 @@ export function kubeJobVolumeMounts(spec: KubeJobSpec): KubeVolumeMount[] {
       }),
     ) ?? [];
   const emptyDirectoryMounts: KubeVolumeMount[] =
-    spec.emptyDirVolumes?.flatMap(
-      ({ containerMountPath, name }: { containerMountPath?: string | undefined; name: string }): KubeVolumeMount[] =>
-        containerMountPath === undefined ? [] : [{ mountPath: containerMountPath, name }],
+    spec.emptyDirVolumes?.flatMap(({ containerMountPath, name }: KubeJobEmptyDirVolume): KubeVolumeMount[] =>
+      containerMountPath === undefined ? [] : [{ mountPath: containerMountPath, name }],
     ) ?? [];
   const jobMounts: KubeVolumeMount[] = [...mounts, ...emptyDirectoryMounts];
   return spec.serviceAccountTokenExpirationSeconds === undefined

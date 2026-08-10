@@ -6,6 +6,8 @@ import { productJobResourceProbe, resourceReachabilityProbe } from '../src/resou
 import { awaitResourceReachability } from '../src/services/resource-reachability.service';
 
 const listeners: Server[] = [];
+const blackholeHost: string = '192.0.2.1';
+const connectAttemptTimeoutMs: number = 2_000;
 
 afterEach(async (): Promise<void> => {
   await Promise.all(listeners.splice(0).map(closeListener));
@@ -27,6 +29,18 @@ describe('resource reachability wait', (): void => {
     await expect(awaitResourceReachability([{ host: '127.0.0.1', port, timeoutMs: 300 }])).rejects.toThrow(
       `Resource endpoint 127.0.0.1:${port} did not accept a connection within 300ms.`,
     );
+  });
+
+  it('bounds the attempt itself, so a silently dropped connection cannot overrun the budget', async (): Promise<void> => {
+    const startedAt: number = Date.now();
+
+    // TEST-NET-1 is unroutable, so the SYN is dropped rather than refused and the attempt hangs. Only bounding the
+    // attempt by the remaining budget keeps a short timeout short.
+    await expect(awaitResourceReachability([{ host: blackholeHost, port: 5432, timeoutMs: 300 }])).rejects.toThrow(
+      `${blackholeHost}:5432`,
+    );
+
+    expect(Date.now() - startedAt).toBeLessThan(connectAttemptTimeoutMs);
   });
 
   it('waits for every declared endpoint, not just the first', async (): Promise<void> => {

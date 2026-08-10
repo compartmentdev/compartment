@@ -90,8 +90,8 @@ the claim transaction, which takes the resource runtime claim locks before decid
 
 Beyond that the retry belongs to the Pod, not to the control plane and not to the tenant's command. A denial on the
 supported CNI is a connection refusal indistinguishable from nothing listening, and a brand-new Pod can be refused
-for a short interval after it reaches Running, so the only place that can tell a refused connection from an absent
-service is the Pod's own network namespace. `k8s-runtime.md` assigns that to a reachability init container ahead of
+for a short interval after it reaches Running. One failed connection therefore proves nothing; only retrying from
+the Pod's own network namespace until the endpoint answers or the budget expires separates the two. `k8s-runtime.md` assigns that to a reachability init container ahead of
 the tenant's containers. It closes no window this document promises to leave open: the resource can still be
 replaced while the command runs, and a command that must survive that still owns its own reconnect, which is the
 position `docs/specs/compartment-yaml.md` takes on readiness.
