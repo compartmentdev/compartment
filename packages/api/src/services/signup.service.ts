@@ -5,6 +5,7 @@ import {
   createSignupDisabledError,
   createSignupIdempotencyConflictError,
   createSignupIdempotencyKeyExpiredError,
+  isOrganizationSlugTakenError,
 } from '../errors/api-business-error';
 import { createId, hashToken } from '../lib/tokens';
 import { createPrincipalWithExecutor, deletePrincipalWithExecutor } from '../queries/organization-users.query';
@@ -26,6 +27,7 @@ import {
 import type { AuthSessionPlan } from './auth-session.types';
 import { createOrganization } from './create-organization.service';
 import type { CreateOrganizationResult } from './create-organization.service.types';
+import { resolveOrganizationSlug } from './organization-slug.service';
 import type { SignupAccount, SignupInput, SignupResult } from './signup.service.types';
 
 const generatedSignupEmailSubdomain: string = 'signup';
@@ -126,11 +128,16 @@ async function createSignupAccount(
   return { email, isNewAccount: true, principalId };
 }
 
+/**
+ * An account this request just created provably has no organization, so only a retry has to look before creating one.
+ */
 async function resolveSignupOrganizations(
   account: SignupAccount,
   organizationName: string,
 ): Promise<OrganizationRow[]> {
-  const organizations: OrganizationRow[] = await listOrganizationRowsForPrincipal(account.principalId);
+  const organizations: OrganizationRow[] = account.isNewAccount
+    ? []
+    : await listOrganizationRowsForPrincipal(account.principalId);
   if (organizations.length > 0) {
     return organizations;
   }
@@ -138,11 +145,6 @@ async function resolveSignupOrganizations(
   return await createSignupOrganizations(account, organizationName);
 }
 
-/**
- * Two attempts under the same key can reach this point together, and the one that loses the name collides on the
- * organization slug. That failure is only real when the account still has no organization: otherwise the collision is
- * with the organization the other attempt just created for this very account, which is the result both callers wanted.
- */
 async function createSignupOrganizations(account: SignupAccount, organizationName: string): Promise<OrganizationRow[]> {
   try {
     const created: CreateOrganizationResult = await createOrganization({
@@ -151,14 +153,26 @@ async function createSignupOrganizations(account: SignupAccount, organizationNam
     });
     return [created.organization];
   } catch (error) {
+    return await recoverSignupOrganizations(account, error as Error);
+  }
+}
+
+/**
+ * Two attempts under the same key can reach organization creation together, and the one that loses collides on the
+ * slug. When the account already holds an organization the collision was with the one the other attempt just created
+ * for this very account, which is the result both callers asked for. Every other failure, including a name somebody
+ * else owns, still fails the request.
+ */
+async function recoverSignupOrganizations(account: SignupAccount, error: Error): Promise<OrganizationRow[]> {
+  if (isOrganizationSlugTakenError(error)) {
     const organizations: OrganizationRow[] = await listOrganizationRowsForPrincipal(account.principalId);
     if (organizations.length > 0) {
       return organizations;
     }
-
-    await discardSignupAccount(account);
-    throw error;
   }
+
+  await discardSignupAccount(account);
+  throw error;
 }
 
 /**
@@ -195,10 +209,19 @@ async function issueSignupSession(principalId: string, config: ApiConfig): Promi
 
 /**
  * The fingerprint is what makes a reused key with a different email or organization name a conflict instead of a
- * silent hand-back of the first account.
+ * silent hand-back of the first account. It is taken over the identities the request resolves to rather than the bytes
+ * the caller sent, because the account is found by lowercased email and the organization by slug: a retry that
+ * capitalizes the address differently is the same request, and answering it with a conflict would strand the account
+ * this key already created.
  */
 function hashSignupRequest(input: SignupInput, secret: string): string {
-  return hashToken(JSON.stringify({ email: input.email ?? null, organizationName: input.organizationName }), secret);
+  return hashToken(
+    JSON.stringify({
+      email: input.email === undefined ? null : input.email.trim().toLowerCase(),
+      organizationSlug: resolveOrganizationSlug(input.organizationName),
+    }),
+    secret,
+  );
 }
 
 /**

@@ -25,6 +25,7 @@ import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import { signupIdempotencyKeys } from '../src/db/schema';
 import { hashToken } from '../src/lib/tokens';
+import { resolveOrganizationSlug } from '../src/services/organization-slug.service';
 import { authApiClaimPathname, authApiLoginPathname, authApiSignupPathname } from '../src/routes/auth/auth-api-paths';
 import {
   buildOrganizationAuthorizationHeaders,
@@ -72,6 +73,7 @@ const {
 } = createApiIntegrationTestContext('api_integration_signup', 'api-integration-signup');
 const signupEnabledApiConfig: ApiConfig = { ...signupDisabledApiConfig, signupEnabled: true };
 const claimedPassword: string = 'claimed-password-1';
+const livingSignupKeyAgeMs: number = 82_800_000;
 const expiredSignupKeyAgeMs: number = 90_000_000;
 const racingSignupPrincipalId: string = 'prn_race_signup';
 
@@ -238,19 +240,38 @@ describe('Phase 0 API integration CLI self-service signup', (): void => {
     expect(identity.principal.email).toBe('agent@example.com');
   });
 
-  it('stops honouring a key once it is older than the retry window', async (): Promise<void> => {
+  it('answers a retry that spells the same request differently', async (): Promise<void> => {
     await installCompartment(app);
     const idempotencyKey: string = randomUUID();
-    await signUp({ email: 'agent@example.com', organizationName: 'Agent Org' }, idempotencyKey);
-    await expireStoredSignupIdempotencyKeys();
-
-    const response: LightMyRequestResponse = await injectSignup(
+    const lost: SignupResponse = await signUp(
       { email: 'agent@example.com', organizationName: 'Agent Org' },
       idempotencyKey,
     );
 
-    expect(response.statusCode).toBe(409);
-    expect(errorResponseSchema.parse(response.json()).error.code).toBe('signup_idempotency_key_expired');
+    const retry: SignupResponse = await signUp(
+      { email: 'Agent@Example.com', organizationName: 'agent org' },
+      idempotencyKey,
+    );
+
+    expect(retry.principal).toEqual(lost.principal);
+    expect(retry.organizations).toEqual(lost.organizations);
+  });
+
+  it('stops honouring a key once it is older than the retry window', async (): Promise<void> => {
+    await installCompartment(app);
+    const idempotencyKey: string = randomUUID();
+    const payload: SignupRequest = { email: 'agent@example.com', organizationName: 'Agent Org' };
+    const signup: SignupResponse = await signUp(payload, idempotencyKey);
+
+    await ageStoredSignupIdempotencyKeys(livingSignupKeyAgeMs);
+    const withinWindow: LightMyRequestResponse = await injectSignup(payload, idempotencyKey);
+    await ageStoredSignupIdempotencyKeys(expiredSignupKeyAgeMs);
+    const afterWindow: LightMyRequestResponse = await injectSignup(payload, idempotencyKey);
+
+    expect(withinWindow.statusCode).toBe(200);
+    expect(signupResponseSchema.parse(withinWindow.json()).principal).toEqual(signup.principal);
+    expect(afterWindow.statusCode).toBe(409);
+    expect(errorResponseSchema.parse(afterWindow.json()).error.code).toBe('signup_idempotency_key_expired');
   });
 
   it('refuses a signup that carries no key a retry could reuse', async (): Promise<void> => {
@@ -269,18 +290,22 @@ describe('Phase 0 API integration CLI self-service signup', (): void => {
     expect(errorResponseSchema.parse(guessableKey.json()).error.code).toBe('invalid_signup_idempotency_key');
   });
 
-  it('frees the requested email again when the organization name collides', async (): Promise<void> => {
+  it('frees the requested email and its key again when the organization name collides', async (): Promise<void> => {
     await installCompartment(app);
     await signUp({ email: 'agent@example.com', organizationName: 'Agent Org' });
+    const idempotencyKey: string = randomUUID();
 
-    const collision: LightMyRequestResponse = await injectSignup({
-      email: 'second@example.com',
-      organizationName: 'Agent Org',
-    });
+    const collision: LightMyRequestResponse = await injectSignup(
+      { email: 'second@example.com', organizationName: 'Agent Org' },
+      idempotencyKey,
+    );
     expect(collision.statusCode).toBe(409);
     expect(errorResponseSchema.parse(collision.json()).error.code).toBe('organization_slug_taken');
 
-    const retry: SignupResponse = await signUp({ email: 'second@example.com', organizationName: 'Second Org' });
+    const retry: SignupResponse = await signUp(
+      { email: 'second@example.com', organizationName: 'Second Org' },
+      idempotencyKey,
+    );
     expect(retry.principal.email).toBe('second@example.com');
   });
 
@@ -416,7 +441,8 @@ async function signUp(payload: SignupRequest, idempotencyKey?: string): Promise<
 /**
  * Holds an uncommitted account that claimed the same key first, so the request under test blocks on the email index
  * and only learns about the winner once this transaction commits. Two API replicas racing on one key reach exactly
- * this state, and a single in-process pair of requests never does.
+ * this state, and a single in-process pair of requests never does. The stored hashes mirror `hashSignupRequest` in
+ * `signup.service.ts`; a change there fails this test rather than passing it silently.
  */
 async function stageRacingSignupAccount(
   client: PoolClient,
@@ -437,7 +463,10 @@ async function stageRacingSignupAccount(
       racingSignupPrincipalId,
       hashToken(idempotencyKey, sessionSecret),
       hashToken(
-        JSON.stringify({ email: payload.email ?? null, organizationName: payload.organizationName }),
+        JSON.stringify({
+          email: payload.email?.trim().toLowerCase() ?? null,
+          organizationSlug: resolveOrganizationSlug(payload.organizationName),
+        }),
         sessionSecret,
       ),
     ],
@@ -445,11 +474,11 @@ async function stageRacingSignupAccount(
 }
 
 /**
- * Ages every stored key just past the retry window the service documents, which is the only way to observe the
- * expiry rule without waiting a day.
+ * Moves every stored key back in time, which is the only way to observe both sides of the retry window without
+ * waiting a day for it to close.
  */
-async function expireStoredSignupIdempotencyKeys(): Promise<void> {
-  await db.update(signupIdempotencyKeys).set({ createdAt: new Date(Date.now() - expiredSignupKeyAgeMs) });
+async function ageStoredSignupIdempotencyKeys(ageMs: number): Promise<void> {
+  await db.update(signupIdempotencyKeys).set({ createdAt: new Date(Date.now() - ageMs) });
 }
 
 async function injectClaim(sessionToken: string, payload: ClaimAccountRequest): Promise<LightMyRequestResponse> {

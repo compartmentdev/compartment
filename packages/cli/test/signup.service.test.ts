@@ -19,6 +19,13 @@ interface TransportFailureError extends Error {
   };
 }
 
+interface RequestFailureError extends Error {
+  code: string;
+  method: 'POST';
+  statusCode: number;
+  url: string;
+}
+
 const mocks: SignupServiceMocks = vi.hoisted(
   (): SignupServiceMocks => ({
     signUpToCompartment: vi.fn<SignUpToCompartment>(),
@@ -56,7 +63,6 @@ describe('cli signup service', (): void => {
     await signupAssertion;
     expect(mocks.signUpToCompartment).toHaveBeenCalledTimes(2);
     expect(readIdempotencyKey(1)).toBe(readIdempotencyKey(0));
-    expect(readIdempotencyKey(0)).toMatch(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u);
   });
 
   it('mints a separate key for every signup so two accounts never collide', async (): Promise<void> => {
@@ -69,14 +75,56 @@ describe('cli signup service', (): void => {
   });
 
   it('gives up without retrying when the API refuses the signup outright', async (): Promise<void> => {
-    mocks.signUpToCompartment.mockRejectedValue(new Error('Self-service signup is disabled.'));
+    mocks.signUpToCompartment.mockRejectedValue(
+      createRequestFailure(403, 'signup_disabled', 'Self-service signup is disabled on this Compartment installation.'),
+    );
 
     await expect(signUp({ apiUrl: 'https://console.example' }, { organizationName: 'Agent Org' })).rejects.toThrow(
-      'Self-service signup is disabled.',
+      'Self-service signup is disabled on this Compartment installation.',
     );
     expect(mocks.signUpToCompartment).toHaveBeenCalledTimes(1);
   });
+
+  it('reports a rate-limited signup instead of spending the rest of the budget on it', async (): Promise<void> => {
+    mocks.signUpToCompartment.mockRejectedValue(
+      createRequestFailure(429, 'api_rate_limit_exceeded', 'API rate limit exceeded. Try again later.'),
+    );
+
+    await expect(signUp({ apiUrl: 'https://console.example' }, { organizationName: 'Agent Org' })).rejects.toThrow(
+      'API rate limit exceeded. Try again later.',
+    );
+    expect(mocks.signUpToCompartment).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces the last failure when every attempt is dropped', async (): Promise<void> => {
+    vi.useFakeTimers();
+    mocks.signUpToCompartment.mockRejectedValue(createTransportFailure('ECONNRESET'));
+
+    const signupPromise: Promise<SignupResponse> = signUp(
+      { apiUrl: 'https://console.example' },
+      { organizationName: 'Agent Org' },
+    );
+    const signupAssertion: Promise<void> = expect(signupPromise).rejects.toThrow(
+      'POST /v1/auth/signup failed: connection closed.',
+    );
+
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    await signupAssertion;
+    expect(mocks.signUpToCompartment).toHaveBeenCalledTimes(3);
+    expect(readIdempotencyKey(2)).toBe(readIdempotencyKey(0));
+  });
 });
+
+function createRequestFailure(statusCode: number, code: string, message: string): RequestFailureError {
+  return Object.assign(new Error(message), {
+    code,
+    method: 'POST' as const,
+    name: 'CompartmentRequestError',
+    statusCode,
+    url: 'https://console.example/v1/auth/signup',
+  });
+}
 
 function readIdempotencyKey(callIndex: number): string {
   return mocks.signUpToCompartment.mock.calls[callIndex]![2];

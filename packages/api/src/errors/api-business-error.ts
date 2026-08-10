@@ -232,6 +232,10 @@ export function createOrganizationUserExistsError(): ApiBusinessError {
   return new ApiBusinessError('organization_user_exists');
 }
 
+export function isOrganizationSlugTakenError(value: Error | null | undefined): value is ApiBusinessError {
+  return isApiBusinessError(value) && value.code === 'organization_slug_taken';
+}
+
 export function createPasswordResetNotAvailableError(): ApiBusinessError {
   return new ApiBusinessError('password_reset_not_available');
 }

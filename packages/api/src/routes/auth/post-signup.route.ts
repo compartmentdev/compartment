@@ -59,6 +59,6 @@ function readSignupIdempotencyKey(request: FastifyRequest): string {
     signupIdempotencyKeySchema,
     readHeaderValue(request.headers[compartmentIdempotencyKeyHeaderName]),
     'invalid_signup_idempotency_key',
-    `A random UUID ${compartmentIdempotencyKeyHeaderName} header is required so a retried signup returns the original account instead of creating another one.`,
+    'A random UUID Idempotency-Key header is required so a retried signup returns the original account instead of creating another one.',
   );
 }

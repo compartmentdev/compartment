@@ -40,6 +40,13 @@ Auth sessions:
 - session validity is DB-driven through persisted `expiresAt` and `revokedAt` state;
 - logout and revoke work by updating server-side session state, so the model is intentionally stateful.
 
+Signup idempotency keys:
+
+- `POST /v1/auth/signup` requires an `Idempotency-Key` header and stores only its hash, like session tokens;
+- the key is the sole proof that a retry belongs to the caller that started the signup, so it must stay unguessable: keep the contract at a random UUID rather than any non-empty string;
+- a stored key mints a fresh session for its principal until it expires, so it is a credential and not a request tag; keep its validity window short and its storage hashed;
+- keys are not swept: a row lives with its principal and is removed by the same cascade.
+
 Auth abuse protection:
 
 - public auth or auth-like routes must make an explicit abuse-protection decision in the same change;

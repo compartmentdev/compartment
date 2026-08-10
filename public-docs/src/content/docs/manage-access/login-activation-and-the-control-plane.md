@@ -52,19 +52,6 @@ can start immediately. `--email` is optional: when you omit it Compartment gener
 `signup.<baseDomain>` so an unattended caller never has to invent one. That placeholder is an identifier only. It is not
 a mailbox, and nothing is ever sent to it.
 
-### Retrying a signup
-
-Signup is safe to retry. `compartment signup` generates one random UUID per run, sends it as an `Idempotency-Key`
-header, and reuses it for every attempt, so a request that is lost on the way back does not strand the account it
-already created. Retrying with the same key returns the same account and organization with a newly issued session
-instead of reporting the email address as taken.
-
-Callers that talk to `POST /v1/auth/signup` directly must send the header themselves; it is required, and it must be a
-UUID the caller generates randomly. The key is the only proof that a retry comes from the original caller, so treat it
-as a secret, keep it for the length of the retry and no longer, and generate a fresh one for every signup. A key is
-honoured for 24 hours. Reusing one with a different email address or organization name is rejected as a conflict rather
-than silently returning the first account.
-
 Claim the account when a person should be able to sign in to the browser control plane:
 
 ```bash
@@ -75,6 +62,26 @@ compartment auth claim --email owner@example.com
 already stored, and the account can then sign in normally. Compartment does not verify the address, so treat signup as
 open registration and only enable it where that is acceptable. An account can be claimed once; use password reset to
 change the password afterwards.
+
+### Retrying a signup
+
+A single `compartment signup` run is safe to retry. It generates one random UUID, sends it as an `Idempotency-Key`
+header, and reuses it for up to three attempts, so a request lost on the way back does not strand the account it
+already created: the retry returns the same account and organization with a newly issued session, instead of reporting
+the email address as taken.
+
+Each run generates its own key, so running the command again after it has given up starts a fresh signup. When the
+first run created the account, that second run reports the email address as taken. Pass a different `--email`, or omit
+`--email` so Compartment generates one.
+
+`POST /v1/auth/signup` requires the `Idempotency-Key` header — this is new, and a caller that sent no header before now
+receives `400`. It must be a UUID the caller generates randomly, because the key is what proves a retry comes from the
+caller that started the signup. Treat it as a secret, hold it only while the retry is in flight, and generate a fresh
+one for every signup.
+
+A key stops working 24 hours after the account was created, and it is never reusable after that: sign up again with a
+new key and a different email address. Reusing a key with a different email address or organization name is rejected as
+a conflict rather than silently returning the first account.
 
 For non-interactive invited-user activation, provide the new password through
 `COMPARTMENT_VIEWER_PASSWORD` and pass the email and invitation token as options:
