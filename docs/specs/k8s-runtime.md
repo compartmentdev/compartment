@@ -137,7 +137,16 @@ opt-out; the additional I/O cost is an accepted isolation tradeoff.
 
 Network isolation follows the T2 evidence. Application Pods and product Jobs
 carrying `compartment.dev/job-class` receive resource, kube-dns, and external
-egress; resource ingress admits those two workload classes only. Secret
+egress; resource ingress admits those two workload classes only. On the
+supported CNI a denied connection surfaces to the client as a connection
+refusal, not a timeout: the policy controller ends each per-Pod firewall chain
+with `REJECT --reject-with icmp-port-unreachable`. Policy programming for a
+newly created Pod is also not synchronous with container start, because every
+peer selector is expanded into a source IP set that the new Pod's address only
+joins on a later controller sync. A Pod's first packet to a policy-protected
+peer can therefore be refused for a short interval after the Pod reaches
+Running, while node-sourced traffic such as a kubelet probe is admitted ahead of
+policy evaluation and never observes the interval. Secret
 projection follows the T5 no-service-account-token and checksum rollout model. Resource rows project to
 `Recreate` Deployments, internal Services, Secrets, and stable PVC references.
 Release Jobs with descriptor-owned resource output bindings remain queued until
