@@ -1441,8 +1441,7 @@ function resourceOperationProductJobIntent(operationId: string): ProductJobInten
 }
 
 async function seedResourceBackupScope(): Promise<void> {
-  const organizationId: string = 'org_resource_backups';
-  await seedOrganizationWithReadyQuota(db, organizationId, 'Acme Dev', 'acme-dev');
+  await seedOrganizationWithReadyQuota(db, 'org_resource_backups', 'Acme Dev', 'acme-dev');
   await db.insert(principals).values({
     email: 'admin@example.com',
     id: 'prn_resource_backups',
@@ -1451,7 +1450,7 @@ async function seedResourceBackupScope(): Promise<void> {
   await db.insert(projects).values({
     id: 'prj_internal_tools',
     name: 'internal-tools',
-    organizationId,
+    organizationId: 'org_resource_backups',
   });
   await db.insert(projectKubeProvisioning).values({ projectId: 'prj_internal_tools', state: 'succeeded' });
   await db.insert(environments).values({
