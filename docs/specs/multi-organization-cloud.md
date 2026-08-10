@@ -37,7 +37,7 @@ not "add orgs" but six programs:
 | Cross-org invitations, blocked memberships, session revocation propagation to edge                                                                                                                                                                                     | `packages/api/src/services/organization-users-invitation.service.ts`, `auth-session-revocation.service.ts`; tests `packages/api/test/api.auth-cross-org-security.integration.test.ts` |
 | Per-org hourly usage ledger (CPU-seconds, byte-seconds, edge traffic, build/release job seconds), 400-day retention                                                                                                                                                    | `packages/api/src/db/schema-kube-runtime.ts:78` (`workload_usage_hourly`, `job_usage_hourly`), `packages/api/src/services/usage-metering.service.ts`                                  |
 | Runtime isolation baseline: namespace per project, PSA `restricted`, gVisor for all tenant code, default-deny NetworkPolicy, no SA tokens, per-project ResourceQuota/LimitRange, HMAC-scoped registry credentials, fail-closed ValidatingAdmissionPolicy on build Jobs | `packages/kube-runtime/src/kube-provisioning.ts`, `kube-network-policy-projection.ts`, `kube-resource-quota-projection.ts`, `deploy/chart/compartment/templates/buildkit.yaml`        |
-| Per-org domain allocation template: the managed-domain broker already derives `<label>.<zone>` from the first org's slug, with DNS-01 delegation                                                                                                                       | `packages/cli/src/services/managed-domain-label.service.ts`, `packages/contracts/src/contracts/managed-domain.contract.ts`, `packages/managed-domain-dns01-solver/`                   |
+| Installation-wide domain allocation: the broker derives one `<label>.<zone>` from the **first** organization's slug, and every later organization shares that zone (see D3), with DNS-01 delegation                                                                                                                       | `packages/cli/src/services/managed-domain-label.service.ts`, `packages/contracts/src/contracts/managed-domain.contract.ts`, `packages/managed-domain-dns01-solver/`                   |
 | Custom domains with DNS ownership verification, globally unique, cannot be claimed twice                                                                                                                                                                               | `docs/specs/app-custom-domains.md`, `packages/api/src/db/schema-deploy.ts`                                                                                                            |
 | HA for the stateless tier proven in e2e (api/edge/caddy at 2 replicas, worker leader failover)                                                                                                                                                                         | `packages/cli/test/platform-k3d-ha.e2e.test.ts`                                                                                                                                       |
 
@@ -141,7 +141,9 @@ document plans Shape A.
 
 Ordered by severity.
 
-1. **Installation-wide `runtimeControlToken` inside tenant build pods.** The build Job runner
+1. **Installation-wide `runtimeControlToken` inside tenant build pods. (RESOLVED — shipped in
+   #329.)** Build pods now receive a per-build, artifact-scoped credential. The original finding
+   is kept below because the reasoning is what generalizes. The build Job runner
    receives it as `COMPARTMENT_BUILD_JOB_INTERNAL_TOKEN`
    (`packages/worker/src/services/worker-build.service.ts:77` →
    `worker-build-job.service.ts`), and that bearer authenticates _every_ internal API route —
@@ -149,7 +151,9 @@ Ordered by severity.
    that separate tenant build code from an omnipotent credential. Replace with per-build,
    artifact-scoped, short-TTL credentials (the registry credential HMAC scheme in
    `packages/worker/src/registry-credentials.ts` is the in-repo template).
-2. **Tenant ingress isolation did not exist. (RESOLVED — mechanism found, fix in flight.)**
+2. **Tenant ingress isolation did not exist. (RESOLVED — shipped in #322, with the tenant-side
+   reachability wait in #334. Re-verified live after the 2026-08-10 upgrade: every tenant policy
+   carries a non-empty `from` peer list.)**
    Established on a live managed-VM install, not inferred. Every tenant ingress policy shipped
    **without its `from` peer list**: the Kubernetes JS client generates
    `V1NetworkPolicyIngressRule` with the model property `_from` mapped to the wire field `from`,
@@ -423,7 +427,10 @@ and none of it is identity work any more.
 2. **Fixed max resources per org** — a direct per-org compute/storage ceiling (constants, no
    plan model, not a project-count proxy). Kubernetes has no cross-namespace quota, so the
    control plane enforces an org ledger: the sum of the org's namespace quotas/usage is
-   checked against the ceiling at project creation and deploy admission; per-project
+   checked against the ceiling at project creation and deploy admission. **The check must reserve,
+   not just compare:** two concurrent project creations or deploys can both read a sum under the
+   ceiling and both proceed, so the ledger needs an atomic reservation under a lock, not a
+   read-then-act. Per-project
    ResourceQuota stays as the namespace-level sub-limit. (~1 wk)
 3. **Builds: many in parallel, bounded** — raise the global build pool beyond the current
    `maximumConcurrentBuilds: 2`; add a per-org concurrency cap and org-fair ordering to the
@@ -442,6 +449,13 @@ and none of it is identity work any more.
    and reset-token flows. Behind a system env flag, **off by default**, on for the cloud.
    Per-IP throttling on the route reuses the existing auth throttle buckets.
 
+   **Known gap — signup is not idempotent.** Confirmed live on 2026-08-10: the call creates the
+   principal, the organization and the session with no idempotency key, so a caller that retries
+   after losing the response gets `email_taken` and can never obtain a session for the account it
+   just created. With no password set and no self-service reset in the product, that account and
+   its organization are stranded permanently while still consuming quota. This matters precisely
+   because the intended caller is an unattended agent on a flaky network.
+
    No mail, no verification, no web signup page, no invite codes — all struck deliberately;
    an agent cannot read an inbox. Email stays a bare identifier and is generated when the
    caller omits it, so unattended registration never collides. Additional organizations keep
@@ -449,7 +463,9 @@ and none of it is identity work any more.
 
 6. **Deploy the cloud somewhere** — one cluster, the existing chart's cloud profile: external
    Postgres, registry with S3 storage backend + >1 replicas, cloud zone + wildcard cert,
-   backups, and a one-time NetworkPolicy-enforcement verification on the chosen CNI (replaces
+   backups, and a NetworkPolicy-enforcement verification on the chosen CNI — **re-run on any CNI,
+   chart or policy-projection change, not once at install**, since each of those can silently
+   invalidate the previous result (replaces
    the general fail-closed probe for V1, since we control this cluster). (~1 wk + provider
    decisions)
 7. **Load test** — ~100-org fixtures over the hot paths: edge snapshot sync, build claim
