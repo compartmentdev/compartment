@@ -248,7 +248,6 @@
         "acmeEmail",
         "managedDomainBrokerUrl",
         "logLevel",
-        "signupEnabled",
         "trustedOutboundHosts",
         "workerPollIntervalMs",
         "usageMeteringIntervalMs",
@@ -265,6 +264,7 @@
         "rollbackRetentionLimit",
         "sourceArchiveMaxBytes",
         "sessionTtl",
+        "signupEnabled",
         "authThrottle",
         "rolloutMarker"
       ],
@@ -288,7 +288,6 @@
           "type": "string",
           "enum": ["fatal", "error", "warn", "info", "debug", "trace", "silent"]
         },
-        "signupEnabled": { "type": "boolean" },
         "trustedOutboundHosts": {
           "description": "Comma-separated hosts hosted applications may reach outside the cluster.",
           "type": "string"
@@ -310,6 +309,7 @@
         },
         "sourceArchiveMaxBytes": { "type": "integer", "minimum": 1 },
         "sessionTtl": { "type": "string", "minLength": 1 },
+        "signupEnabled": { "type": "boolean" },
         "rolloutMarker": {
           "description": "Opaque marker that forces a platform rollout when it changes.",
           "type": "string"
