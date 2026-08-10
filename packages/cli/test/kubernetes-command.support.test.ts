@@ -1,6 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import type { CommandResult } from '../src/command-runner.types';
-import { formatKubernetesCommandFailure } from '../src/services/kubernetes-command.support';
+import { buildHelmUpgradeCommand, formatKubernetesCommandFailure } from '../src/services/kubernetes-command.support';
+
+describe('Helm upgrade command', (): void => {
+  it('re-reads current chart defaults instead of replaying the previous release coalesced values', (): void => {
+    const command: string[] = buildHelmUpgradeCommand({ namespace: 'compartment' }, 'compartment', '/chart.tgz', [
+      '--values',
+      '/operator.yaml',
+    ]);
+
+    expect(command).toContain('--reset-then-reuse-values');
+    expect(command).not.toContain('--reuse-values');
+    expect(command).not.toContain('--reset-values');
+  });
+
+  it('keeps the caller values order so the last --values file still wins', (): void => {
+    const command: string[] = buildHelmUpgradeCommand({ namespace: 'compartment' }, 'compartment', '/chart.tgz', [
+      '--values',
+      '/operator.yaml',
+      '--values',
+      '/image-trust.json',
+    ]);
+
+    expect(command.slice(0, 6)).toEqual(['helm', 'upgrade', 'compartment', '/chart.tgz', '--namespace', 'compartment']);
+    expect(command.at(-1)).toBe('/image-trust.json');
+  });
+});
 
 describe('Kubernetes command diagnostics', (): void => {
   it('excludes a partial Secret payload while retaining stderr and status', (): void => {

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import {
   kubernetesSystemStatusResponseSchema,
@@ -10,7 +10,7 @@ import {
 } from '@compartment/contracts';
 import { readSocketSafeTempRootDirectory } from '@compartment/test-support';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { parse } from 'yaml';
+import { parse, stringify } from 'yaml';
 import { buildSelfHostedUserSetupClientEnv } from './self-hosted-user-setup-client-env.harness';
 import { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import {
@@ -35,6 +35,22 @@ interface PlatformImageValue {
   readonly tag?: string | undefined;
 }
 
+interface ChartResourceLimits {
+  memory: string;
+}
+
+interface ChartResourceEntry {
+  limits: ChartResourceLimits;
+}
+
+interface ChartValues {
+  resources: Record<string, ChartResourceEntry>;
+}
+
+interface ReleaseConfigValues {
+  images?: Record<string, PlatformImageValue> | undefined;
+}
+
 const platformModeEnvName: string = 'COMPARTMENT_E2E_PLATFORM_MODE';
 const platformApiUrl: string = process.env.COMPARTMENT_E2E_API_URL ?? 'http://console.compartment.localhost:18680';
 const platformKubeContext: string = process.env.COMPARTMENT_E2E_KUBE_CONTEXT ?? 'k3d-compartment-e2e-system-update';
@@ -46,7 +62,18 @@ const updateValuesPath: string = resolve(
 );
 const releaseName: string = 'compartment';
 const updateVersion: string = 'e2e';
-const updateTimeoutMs: number = 20 * 60_000;
+const updateTimeoutMs: number = 30 * 60_000;
+const helmCommandTimeoutMs: number = 10 * 60_000;
+const chartPath: string = resolve(repositoryRoot, 'deploy/chart/compartment');
+/**
+ * The build memory limits an installation carried before the chart raised them. Planting a release
+ * rendered from these makes the upgrade a genuine old-chart-to-new-chart upgrade, which is the only
+ * shape that can catch a changed chart default being dropped.
+ */
+const supersededBuildResourceMemory: Readonly<Record<string, string>> = {
+  buildRunner: '512Mi',
+  buildkit: '1536Mi',
+};
 const tempRootDirectory: string = readSocketSafeTempRootDirectory('pk3u-', 'system-api.sock');
 const createdDirectories: string[] = [];
 
@@ -76,8 +103,11 @@ describe.sequential('production Kubernetes system update', (): void => {
   });
 
   it(
-    'updates verified platform images, completes the revision migration, and preserves owner data',
+    'adopts changed chart defaults, updates verified platform images, completes the revision migration, and preserves owner data',
     async (): Promise<void> => {
+      const chartBuildResourceMemory: Readonly<Record<string, string>> = await readChartBuildResourceMemory();
+      await plantSupersededChartDefaults();
+      const plantedOperatorValues: ReleaseConfigValues = await readOperatorValuesExceptImages();
       const previousRevision: number = await readHelmRevision();
       const previousApiImage: string = await readApiImage();
 
@@ -88,6 +118,8 @@ describe.sequential('production Kubernetes system update', (): void => {
 
       expect(update.updated).toBe(true);
       expect(update.version).toBe(updateVersion);
+      expect(await readReleasedBuildResourceMemory()).toEqual(chartBuildResourceMemory);
+      expect(await readOperatorValuesExceptImages()).toEqual(plantedOperatorValues);
       const updatedRevision: number = await readHelmRevision();
       expect(updatedRevision).toBe(previousRevision + 1);
       await expectMigrationCompleted(updatedRevision);
@@ -117,6 +149,94 @@ describe.sequential('production Kubernetes system update', (): void => {
     updateTimeoutMs,
   );
 });
+
+async function readChartBuildResourceMemory(): Promise<Readonly<Record<string, string>>> {
+  const values: ChartValues = parse(await readFile(join(chartPath, 'values.yaml'), 'utf8')) as ChartValues;
+  const memory: Record<string, string> = {};
+  for (const name of Object.keys(supersededBuildResourceMemory)) {
+    const declared: string | undefined = values.resources[name]?.limits.memory;
+    expect(declared).toBeTypeOf('string');
+    expect(declared).not.toBe(supersededBuildResourceMemory[name]);
+    memory[name] = declared!;
+  }
+  return memory;
+}
+
+/**
+ * Renders the release from a copy of the chart carrying the superseded build memory defaults, using
+ * the same `--reuse-values` upgrade an installation performed before this shape was fixed. The
+ * release then holds an older chart's defaults while the working-tree chart declares new ones, so a
+ * `system update` that drops changed defaults leaves the superseded values in place.
+ *
+ * This upgrade passes no `--values`: the update values file carries the images the update itself is
+ * supposed to move the release to, and planting those here would defeat the image assertions.
+ */
+async function plantSupersededChartDefaults(): Promise<void> {
+  const directory: string = await mkdtemp(join(tempRootDirectory, 'superseded-chart-'));
+  createdDirectories.push(directory);
+  const supersededChartPath: string = join(directory, 'compartment');
+  await cp(chartPath, supersededChartPath, { recursive: true });
+  const valuesPath: string = join(supersededChartPath, 'values.yaml');
+  const values: ChartValues = parse(await readFile(valuesPath, 'utf8')) as ChartValues;
+  for (const [name, memory] of Object.entries(supersededBuildResourceMemory)) {
+    values.resources[name]!.limits.memory = memory;
+  }
+  await writeFile(valuesPath, stringify(values));
+  await runRequired(
+    [
+      'helm',
+      'upgrade',
+      releaseName,
+      supersededChartPath,
+      '--namespace',
+      platformNamespace,
+      '--kube-context',
+      platformKubeContext,
+      '--reuse-values',
+    ],
+    helmCommandTimeoutMs,
+  );
+  expect(await readReleasedBuildResourceMemory()).toEqual(supersededBuildResourceMemory);
+}
+
+async function readReleasedBuildResourceMemory(): Promise<Readonly<Record<string, string>>> {
+  const rendered: Record<string, string> = {};
+  for (const [name, key] of [
+    ['buildRunner', 'COMPARTMENT_BUILD_RUNNER_RESOURCES'],
+    ['buildkit', 'COMPARTMENT_BUILDKIT_RESOURCES'],
+  ]) {
+    const result: SelfHostedUserSetupCommandResult = await runRequired([
+      'kubectl',
+      '--context',
+      platformKubeContext,
+      '--namespace',
+      platformNamespace,
+      'get',
+      `configmap/${releaseName}`,
+      `--output=jsonpath={.data.${key!}}`,
+    ]);
+    rendered[name!] = (JSON.parse(result.stdout) as ChartResourceEntry).limits.memory;
+  }
+  return rendered;
+}
+
+async function readOperatorValuesExceptImages(): Promise<ReleaseConfigValues> {
+  const result: SelfHostedUserSetupCommandResult = await runRequired([
+    'helm',
+    'get',
+    'values',
+    releaseName,
+    '--namespace',
+    platformNamespace,
+    '--kube-context',
+    platformKubeContext,
+    '--output',
+    'json',
+  ]);
+  const values: ReleaseConfigValues = (JSON.parse(result.stdout) ?? {}) as ReleaseConfigValues;
+  Reflect.deleteProperty(values, 'images');
+  return values;
+}
 
 async function readHelmRevision(): Promise<number> {
   const result: SelfHostedUserSetupCommandResult = await runRequired([
@@ -197,8 +317,11 @@ async function readTargetApiImage(): Promise<string> {
   return `${api.repository}@${api.digest}`;
 }
 
-async function runRequired(argv: readonly string[]): Promise<SelfHostedUserSetupCommandResult> {
-  const result: SelfHostedUserSetupCommandResult = await runCommand({ argv, timeoutMs: 60_000 });
+async function runRequired(
+  argv: readonly string[],
+  timeoutMs: number = 60_000,
+): Promise<SelfHostedUserSetupCommandResult> {
+  const result: SelfHostedUserSetupCommandResult = await runCommand({ argv, timeoutMs });
   expectSuccessfulCommand(result, argv.join(' '));
   return result;
 }

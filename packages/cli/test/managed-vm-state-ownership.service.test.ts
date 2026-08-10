@@ -186,6 +186,48 @@ describe('managed VM recorded file ownership', (): void => {
     });
   });
 
+  it('names each drifted path and what changed about it', async (): Promise<void> => {
+    files.lstat.mockImplementation(async (path: string): Promise<OwnedPathStats> => {
+      await Promise.resolve();
+      if (path === '/etc/compartment/firewall.nft') {
+        throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+      }
+      return new OwnedPathStats(false, path === '/etc/containerd/runsc.toml' ? 0o644 : 0o755);
+    });
+    files.readFile.mockImplementation(async (path: string): Promise<Buffer> => {
+      await Promise.resolve();
+      return Buffer.from(path === '/usr/local/bin/helm' ? 'helm v4.2.3' : 'installer content');
+    });
+    const { assertManagedVmOwnedFileDigests, managedVmFileIdentity } =
+      await import('../src/services/managed-vm-state.service');
+    const state: ManagedVmProvisionerState = {
+      ...validState(),
+      completedStage: 'preparing-host',
+      ownedFileDigests: {
+        '/etc/compartment/firewall.nft': managedVmFileIdentity('installer content', 0o755),
+        '/etc/containerd/runsc.toml': managedVmFileIdentity('installer content', 0o600),
+        '/usr/local/bin/helm': managedVmFileIdentity('helm v4.1.4', 0o755),
+      },
+      ownedPaths: [
+        { path: '/etc/compartment/firewall.nft', stage: 'preparing-host' },
+        { path: '/etc/containerd/runsc.toml', stage: 'preparing-host' },
+        { path: '/usr/local/bin/helm', stage: 'preparing-host' },
+      ],
+      releaseMetadata: { ...validState().releaseMetadata, gvisorVersion: 'release-test', metadataVersion: 3 },
+    };
+
+    const failure: Error = await assertManagedVmOwnedFileDigests(state).then(
+      (): Error => new Error('expected drift to be reported'),
+      (error: Error): Error => error,
+    );
+
+    expect(failure.message).toContain('/etc/containerd/runsc.toml: mode changed from 0600 to 0644');
+    expect(failure.message).toContain('/usr/local/bin/helm: content changed');
+    expect(failure.message).toContain('/etc/compartment/firewall.nft: missing from the host');
+    expect(failure.message).toContain('/var/lib/compartment/installer/state.json');
+    expect(failure.message).toContain('compartment system diagnose');
+  });
+
   it('rejects an ownership or mode change to an installer-owned directory', async (): Promise<void> => {
     files.lstat.mockResolvedValue(new OwnedPathStats(true, 0o755));
     const { assertManagedVmOwnedFileDigests, managedVmDirectoryIdentity } =

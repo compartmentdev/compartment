@@ -32,6 +32,12 @@ compartment system update \
 The command verifies the target images, updates the Helm release, runs database migrations, and waits for platform
 readiness. Your cluster, ingress controller, storage system, and node lifecycle remain operator-owned.
 
+An update re-reads the defaults of the chart shipped with the CLI you run, so a release picks up defaults that
+changed since it was installed. Values you set stay yours: anything from your `--values` file, or set on an earlier
+install or update, is reapplied on top of those defaults and still wins. To keep a value at a number Compartment
+later changes, keep it in your `--values` file rather than relying on the previous default. Inspect the values a
+release ended up with using `helm get values <release> --namespace <namespace> --all`.
+
 On a Compartment-managed VM, run:
 
 ```bash
