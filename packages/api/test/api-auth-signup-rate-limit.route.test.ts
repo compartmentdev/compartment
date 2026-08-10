@@ -76,9 +76,9 @@ describe('api auth signup rate limits', (): void => {
 function createSignupResult(): SignupResult {
   return {
     authSession: {
-      authMethodKind: 'password_scoped',
+      authMethodKind: 'password',
       oidcProviderId: null,
-      organizationId: 'org_agent',
+      organizationId: null,
       principalId: 'prn_agent',
     },
     organizations: [{ id: 'org_agent', name: 'Agent Org', slug: 'agent-org' }],

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { ApiConfig } from '../config';
-import { createSignupDisabledError, createEmailTakenError } from '../errors/api-business-error';
+import { createEmailTakenError, createSignupDisabledError } from '../errors/api-business-error';
 import { createId } from '../lib/tokens';
 import { createPrincipalWithExecutor, deletePrincipalWithExecutor } from '../queries/organization-users.query';
 import type { OrganizationUsersTransaction } from '../queries/organization-users.query.types';
@@ -9,7 +9,7 @@ import { isUniqueConstraintError } from '../queries/query-error';
 import { getApiConfig, getApiDatabase } from '../runtime/runtime-access';
 import {
   buildAuthSessionOrganizationPolicySession,
-  createScopedPasswordAuthSessionInput,
+  createPasswordAuthSessionInput,
   issueAuthSessionWithExecutor,
 } from './auth-session.service';
 import type { AuthSessionPlan } from './auth-session.types';
@@ -20,6 +20,12 @@ import type { SignupInput, SignupResult } from './signup.service.types';
 const generatedSignupEmailSubdomain: string = 'signup';
 const generatedSignupEmailSchema: z.ZodString = z.string().email();
 
+/**
+ * The account and its session are committed together, before the organization, so there is exactly one window where a
+ * failure can leave state behind. `createOrganization` owns its own transaction and stays untouched, so that window is
+ * closed by discarding the account instead: the session row cascades with it and the requested email address stays
+ * free for an immediate retry under another organization name.
+ */
 export async function signUp(input: SignupInput): Promise<SignupResult> {
   const config: ApiConfig = getApiConfig();
   if (!config.signupEnabled) {
@@ -28,32 +34,50 @@ export async function signUp(input: SignupInput): Promise<SignupResult> {
 
   const principalId: string = createId('prn');
   const email: string = input.email ?? buildGeneratedSignupEmail(principalId, config.baseDomain);
-
-  await createSignupPrincipal(principalId, email);
+  const session: AuthSessionPlan = await createSignupAccount(principalId, email, config);
   const organization: OrganizationRow = await createSignupOrganization(principalId, input.organizationName);
 
-  return await issueSignupSession(principalId, email, organization, config);
+  return {
+    authSession: buildAuthSessionOrganizationPolicySession(session, principalId),
+    organizations: [organization],
+    principalEmail: email,
+    principalId,
+    sessionExpiresAt: session.expiresAt,
+    sessionId: session.sessionId,
+    sessionToken: session.sessionToken,
+  };
 }
 
-/**
- * `createOrganization` owns its own transaction, so the principal is already committed when it runs. Discarding the
- * principal on failure keeps the requested email address free for an immediate retry with another organization name.
- */
+async function createSignupAccount(principalId: string, email: string, config: ApiConfig): Promise<AuthSessionPlan> {
+  try {
+    return await getApiDatabase().transaction(async (tx: OrganizationUsersTransaction): Promise<AuthSessionPlan> => {
+      await createPrincipalWithExecutor(tx, { email, principalId });
+      return await issueAuthSessionWithExecutor(tx, createPasswordAuthSessionInput(principalId, null), config);
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error as Error | undefined)) {
+      throw createEmailTakenError();
+    }
+
+    throw error;
+  }
+}
+
 async function createSignupOrganization(principalId: string, organizationName: string): Promise<OrganizationRow> {
   try {
     const created: CreateOrganizationResult = await createOrganization({ name: organizationName, principalId });
     return created.organization;
   } catch (error) {
-    await discardSignupPrincipal(principalId);
+    await discardSignupAccount(principalId);
     throw error;
   }
 }
 
 /**
- * Cleanup must never replace the failure the caller needs to see, so a failed discard leaves the orphan behind rather
+ * Cleanup must never replace the failure the caller needs to see, so a failed discard leaves the account behind rather
  * than turning a clean business error into a 500.
  */
-async function discardSignupPrincipal(principalId: string): Promise<void> {
+async function discardSignupAccount(principalId: string): Promise<void> {
   try {
     await getApiDatabase().transaction(async (tx: OrganizationUsersTransaction): Promise<void> => {
       await deletePrincipalWithExecutor(tx, principalId);
@@ -74,44 +98,4 @@ function buildGeneratedSignupEmail(principalId: string, baseDomain: string): str
   }
 
   return email;
-}
-
-async function createSignupPrincipal(principalId: string, email: string): Promise<void> {
-  try {
-    await getApiDatabase().transaction(async (tx: OrganizationUsersTransaction): Promise<void> => {
-      await createPrincipalWithExecutor(tx, { email, principalId });
-    });
-  } catch (error) {
-    if (isUniqueConstraintError(error as Error | undefined)) {
-      throw createEmailTakenError();
-    }
-
-    throw error;
-  }
-}
-
-async function issueSignupSession(
-  principalId: string,
-  email: string,
-  organization: OrganizationRow,
-  config: ApiConfig,
-): Promise<SignupResult> {
-  const session: AuthSessionPlan = await getApiDatabase().transaction(
-    async (tx: OrganizationUsersTransaction): Promise<AuthSessionPlan> =>
-      await issueAuthSessionWithExecutor(
-        tx,
-        createScopedPasswordAuthSessionInput(principalId, organization.id),
-        config,
-      ),
-  );
-
-  return {
-    authSession: buildAuthSessionOrganizationPolicySession(session, principalId),
-    organizations: [organization],
-    principalEmail: email,
-    principalId,
-    sessionExpiresAt: session.expiresAt,
-    sessionId: session.sessionId,
-    sessionToken: session.sessionToken,
-  };
 }
