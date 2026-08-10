@@ -1,24 +1,18 @@
 import { hasText } from '@compartment/utils';
-import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyReply } from 'fastify';
 import type { ApiApp } from '../../app.types';
 import { ApiBoundaryError } from '../../errors/api-boundary-error';
+import type { BuildArtifactSourceArchiveRequest } from './get-artifact-source-archive.route.types';
 import {
   ArtifactSourceArchiveNotFoundError,
   readArtifactSourceArchive,
 } from '../../services/artifact-source-archive.service';
 import { SourceUploadArchiveNotFoundError } from '../../services/source-upload-storage.service';
 
-interface BuildArtifactSourceArchiveParams {
-  artifactId: string;
-}
-
 export function registerGetArtifactSourceArchiveRoute(app: ApiApp): void {
   app.get(
     '/internal/artifacts/:artifactId/source-archive',
-    async (
-      request: FastifyRequest<{ Params: BuildArtifactSourceArchiveParams }>,
-      reply: FastifyReply,
-    ): Promise<FastifyReply> => {
+    async (request: BuildArtifactSourceArchiveRequest, reply: FastifyReply): Promise<FastifyReply> => {
       const artifactId: string = requireArtifactId(request.params.artifactId);
       const sourceArchive: Buffer = await readSourceArchiveOrThrowBoundaryError(artifactId);
 

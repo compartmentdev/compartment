@@ -33,13 +33,19 @@ export async function lockProductJobResourceFence(
   }
   const resourceIds: string[] = JSON.parse(row.resourceIdsJson) as string[];
   await lockResourceRuntimeClaims(transaction, resourceIds);
-  return !(await hasBlockingResourceReconcile(transaction, row, resourceIds)) &&
+  return !(await hasFencingResourceReconcile(transaction, row, resourceIds)) &&
     !(await hasActiveResourceJob(transaction, row.identityId, resourceIds))
     ? 'claimable'
     : 'blocked';
 }
 
-async function hasBlockingResourceReconcile(
+/**
+ * The re-read of `fencingResourceReconcileAbsent` under the per-resource claim locks, expressed against
+ * the already-parsed resource ids of one row. The two must state the same rule: a candidate that clears
+ * the offer filter and is then refused here is offered again forever, and the reverse claims a resource a
+ * reconcile owns.
+ */
+async function hasFencingResourceReconcile(
   transaction: ApiDatabaseTransaction,
   row: ProductJobRunRow,
   resourceIds: string[],
@@ -152,7 +158,7 @@ function claimableProductJobCondition(jobClass: ProductJobClass): SQL | undefine
   );
   if (jobClass === 'resource-operation') {
     return or(
-      and(eq(productJobRuns.status, 'queued'), resourceOperationReconcileFence()),
+      and(eq(productJobRuns.status, 'queued'), fencingResourceReconcileAbsent()),
       eq(productJobRuns.status, 'running'),
       terminal,
     );
@@ -164,7 +170,13 @@ function claimableProductJobCondition(jobClass: ProductJobClass): SQL | undefine
   );
 }
 
-function resourceOperationReconcileFence(): SQL {
+/**
+ * No resource reconcile fences the resource-operation Job row in scope. Pure ordering over
+ * `(created_at, id)` plus an in-flight phase: a `running` reconcile fences regardless of age, a pending
+ * one only while it was queued first. `fencingProductJobCondition` states the same rule from the
+ * reconcile side, and `hasFencingResourceReconcile` re-reads it under the claim locks.
+ */
+function fencingResourceReconcileAbsent(): SQL {
   return sql`not exists (
     select 1
     from jsonb_array_elements_text(${productJobRuns.resourceIdsJson}::jsonb) as resource_ids(resource_id)

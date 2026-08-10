@@ -39,6 +39,12 @@ interface SelfHostedAppDatabaseWriteProbe {
   written: boolean;
 }
 
+interface SelfHostedAppDatabaseBootProbe {
+  attempted: boolean;
+  connected: boolean;
+  error: string | null;
+}
+
 interface SelfHostedAppDatabaseReadProbe {
   found: boolean;
   value: string;
@@ -107,6 +113,13 @@ const appDatabaseReadProbeSchema: z.ZodType<SelfHostedAppDatabaseReadProbe> = z
   .object({
     found: z.boolean(),
     value: z.string(),
+  })
+  .strict();
+const appDatabaseBootProbeSchema: z.ZodType<SelfHostedAppDatabaseBootProbe> = z
+  .object({
+    attempted: z.boolean(),
+    connected: z.boolean(),
+    error: z.string().nullable(),
   })
   .strict();
 const appWhoAmIProbeSchema: z.ZodType<SelfHostedAppWhoAmIProbe> = z
@@ -239,6 +252,21 @@ export async function writeAppDatabaseValue(routeUrl: string, appSessionCookie: 
   );
 
   expect(payload).toEqual({ value, written: true });
+}
+
+/**
+ * The application opened its database connection once at boot with no retry of its own. A refusal here is the CNI
+ * denying a brand-new Pod's first packet, which is what the platform reachability gate exists to absorb.
+ */
+export async function expectAppConnectedToDatabaseAtBoot(routeUrl: string, appSessionCookie: string): Promise<void> {
+  const payload: SelfHostedAppDatabaseBootProbe = await readAppJsonWithRetry(
+    appDatabaseBootProbeSchema,
+    routeUrl,
+    appSessionCookie,
+    '/probe/db/boot',
+  );
+
+  expect(payload).toEqual({ attempted: true, connected: true, error: null });
 }
 
 export async function expectAppDatabaseValue(

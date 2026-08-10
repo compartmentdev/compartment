@@ -1,4 +1,4 @@
-import { and, eq, gt, sql } from 'drizzle-orm';
+import { and, eq, gt, sql, type SQL } from 'drizzle-orm';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { gitProviderRegistrations } from '../db/schema';
 import { requirePersistedRow } from './persisted-row.query.shared';
@@ -56,15 +56,21 @@ export async function findGitProviderRegistrationByIdWithExecutor(
   const rows: GitProviderRegistrationRow[] = await executor
     .select()
     .from(gitProviderRegistrations)
-    .where(
-      and(
-        eq(gitProviderRegistrations.id, input.registrationId),
-        eq(gitProviderRegistrations.organizationId, input.organizationId),
-      ),
-    )
+    .where(registrationInOrganization(input.registrationId, input.organizationId))
     .limit(1);
 
   return rows[0];
+}
+
+/**
+ * A registration is addressable only from the organization that owns it. Every read and write states
+ * this, so it is written once: an id alone must never select a row.
+ */
+function registrationInOrganization(registrationId: string, organizationId: string): SQL | undefined {
+  return and(
+    eq(gitProviderRegistrations.id, registrationId),
+    eq(gitProviderRegistrations.organizationId, organizationId),
+  );
 }
 
 export async function createPendingGitProviderRegistration(
@@ -106,9 +112,7 @@ export async function setGitProviderRegistrationBootstrapState(
       pendingExpiresAt,
       updatedAt: new Date(),
     })
-    .where(
-      and(eq(gitProviderRegistrations.id, registrationId), eq(gitProviderRegistrations.organizationId, organizationId)),
-    );
+    .where(registrationInOrganization(registrationId, organizationId));
 }
 
 export async function activateGitProviderRegistration(
@@ -127,11 +131,7 @@ export async function activateGitProviderRegistration(
       updatedAt: input.updatedAt,
     })
     .where(
-      and(
-        eq(gitProviderRegistrations.id, input.id),
-        eq(gitProviderRegistrations.organizationId, input.organizationId),
-        eq(gitProviderRegistrations.status, 'pending'),
-      ),
+      and(registrationInOrganization(input.id, input.organizationId), eq(gitProviderRegistrations.status, 'pending')),
     )
     .returning();
 
@@ -145,9 +145,7 @@ export async function persistGitProviderRegistrationManifestExchange(
   const [registration]: GitProviderRegistrationRow[] = await executor
     .update(gitProviderRegistrations)
     .set(buildGitProviderRegistrationManifestExchangeUpdate(input))
-    .where(
-      and(eq(gitProviderRegistrations.id, input.id), eq(gitProviderRegistrations.organizationId, input.organizationId)),
-    )
+    .where(registrationInOrganization(input.id, input.organizationId))
     .returning();
 
   return requirePersistedRow(registration, 'git provider registration');
@@ -175,8 +173,7 @@ export async function failGitProviderRegistrationWithCurrentStatus(
     })
     .where(
       and(
-        eq(gitProviderRegistrations.id, input.id),
-        eq(gitProviderRegistrations.organizationId, input.organizationId),
+        registrationInOrganization(input.id, input.organizationId),
         eq(gitProviderRegistrations.status, currentStatus),
       ),
     );

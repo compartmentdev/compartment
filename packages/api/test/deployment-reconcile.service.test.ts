@@ -96,6 +96,7 @@ describe('deployment reconcile projection', (): void => {
       candidate: {
         containerPorts: [8080, 9090],
         readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
+        resourceEndpoints: [{ port: 5432, resourceId: 'res-db', timeoutMs: 30_000 }],
         runCommand: 'npm run start:override',
       },
     });
@@ -118,6 +119,7 @@ function pair(): DeploymentReconcilePair {
       environmentId: 'env-1',
       environmentName: 'production',
       image: 'registry/app@sha256:abc',
+      resourceEndpoints: [{ port: 5432, resourceId: 'res-db', timeoutMs: 30_000 }],
       organizationId: 'org-1',
       organizationName: 'Acme',
       projectId: 'prj-1',

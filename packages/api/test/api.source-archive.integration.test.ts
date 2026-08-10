@@ -29,6 +29,7 @@ import { resolveSourceUploadArchivePath } from '../src/services/source-upload-st
 
 import {
   claimNextQueuedDeployment,
+  fetchArtifactSourceArchive,
   createExpectedRunConfig,
   createUploadedSourceArchive,
   createRawSourceArchive,
@@ -609,13 +610,10 @@ describe('Phase 0 API integration source archive', (): void => {
     await symlink(outsideArchivePath, sourceUploadArchivePath);
 
     try {
-      const sourceArchiveResponse: LightMyRequestResponse = await app.inject({
-        headers: {
-          authorization: 'Bearer test-runtime-control-token',
-        },
-        method: 'GET',
-        url: `/internal/artifacts/${claimedDeployment.artifact.id}/source-archive`,
-      });
+      const sourceArchiveResponse: LightMyRequestResponse = await fetchArtifactSourceArchive(
+        app,
+        claimedDeployment.artifact.id,
+      );
 
       expect(sourceArchiveResponse.statusCode).toBe(500);
       expect(errorResponseSchema.parse(sourceArchiveResponse.json()).error.code).toBe('internal_error');
@@ -649,13 +647,10 @@ describe('Phase 0 API integration source archive', (): void => {
     const sourceUploadArchivePath: string = resolveSourceUploadArchivePath(sourceUpload.id);
     await rm(sourceUploadArchivePath, { force: true });
 
-    const sourceArchiveResponse: LightMyRequestResponse = await app.inject({
-      headers: {
-        authorization: 'Bearer test-runtime-control-token',
-      },
-      method: 'GET',
-      url: `/internal/artifacts/${claimedDeployment.artifact.id}/source-archive`,
-    });
+    const sourceArchiveResponse: LightMyRequestResponse = await fetchArtifactSourceArchive(
+      app,
+      claimedDeployment.artifact.id,
+    );
 
     expect(sourceArchiveResponse.statusCode).toBe(200);
     expect(sourceArchiveResponse.body.length).toBeGreaterThan(0);

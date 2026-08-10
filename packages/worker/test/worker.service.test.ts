@@ -13,7 +13,7 @@ import { runAuxiliaryWorkerIteration, startNextBuild } from '../src/services/wor
 import type { WorkerConfig } from '../src/config';
 import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
 import type { WorkerDeploymentEventContext } from '../src/services/worker-deployment-event.types';
-import { testTenantSecretsKek } from './tenant-secret-test.fixtures';
+import { createArtifactRegistryTestConfig, createWorkerTestConfig } from './worker-config-test.fixtures';
 
 type AppendDeploymentStepEventSafely = (
   context: WorkerDeploymentEventContext,
@@ -332,12 +332,9 @@ describe('worker service iterations', (): void => {
   });
 });
 
-const artifactRegistry: WorkerArtifactRegistryConfig = {
+const artifactRegistry: WorkerArtifactRegistryConfig = createArtifactRegistryTestConfig({
   address: 'registry.example',
-  credentialSigningKey: 'registry-signing-key-with-at-least-32-characters',
-  internalAddress: 'registry:5000',
-  internalUrl: 'http://registry:5000',
-};
+});
 const runtime: KubeRuntime = {} as KubeRuntime;
 
 function createWorkerConfig(
@@ -345,38 +342,7 @@ function createWorkerConfig(
   runtimeControlToken: string,
   registry: WorkerArtifactRegistryConfig,
 ): WorkerConfig {
-  return {
-    apiUrl,
-    artifactRegistry: registry,
-    buildSandbox: {
-      buildKitResources: { limits: { memory: '3Gi' } },
-      gcKeepStorageMb: 1024,
-      namespace: 'compartment-build',
-      runnerImage: 'compartment-worker@sha256:runner',
-      runnerResources: { limits: { memory: '1Gi' } },
-      scheduling: { nodeSelector: {}, runtimeClassName: 'gvisor', tolerations: [] },
-      timeoutMs: 900000,
-    },
-    buildQueue: { maximumConcurrentBuilds: 2, maximumConcurrentBuildsPerOrganization: 1 },
-    customDomains: {
-      caddyServiceName: 'compartment-caddy',
-      ingressClassName: 'traefik',
-      issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
-      namespace: 'compartment',
-    },
-    deploymentInfrastructureTimeoutMs: 600_000,
-    logLevel: 'silent',
-    leaderElection: {
-      identity: 'worker-1',
-      leaseDurationMs: 15_000,
-      renewDeadlineMs: 10_000,
-      retryPeriodMs: 2_000,
-    },
-    pollIntervalMs: 1000,
-    runtimeControlToken,
-    tenantSecretsKek: testTenantSecretsKek,
-    usageMeteringIntervalMs: 60000,
-  };
+  return createWorkerTestConfig({ apiUrl, artifactRegistry: registry, runtimeControlToken });
 }
 
 function createClaimedDeployment(): WorkerClaimedDeployment {

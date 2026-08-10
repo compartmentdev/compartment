@@ -35,6 +35,7 @@ import {
   type WorkerClaimDeploymentResponse,
   type WorkerClaimedDeployment,
 } from '@compartment/contracts';
+import { issueBuildSourceArchiveCredential } from '@compartment/utils';
 import type { LightMyRequestResponse } from 'fastify';
 import type { PoolClient } from 'pg';
 import { expect } from 'vitest';
@@ -44,6 +45,7 @@ import {
   findNextDeploymentReconcilePair,
   persistDeploymentReconcileObservation,
 } from '../src/queries/deployment-reconcile.query';
+import { testRuntimeControlToken } from './api-app-test.harness';
 import type { DeploymentReconcilePair } from '../src/queries/deployment-reconcile.query.types';
 import { prepareDeploymentReconcile } from '../src/services/deployment-reconcile.service';
 import type { SourceArchiveTarEntryKind } from '../src/services/deployment-source-build-validation-archive.types';
@@ -831,6 +833,26 @@ export async function claimNextQueuedDeployment(
   expect(claimedResponse.statusCode, claimedResponse.body).toBe(200);
 
   return workerClaimDeploymentResponseSchema.parse(claimedResponse.json());
+}
+
+function issueTestBuildSourceArchiveCredential(artifactId: string): string {
+  return issueBuildSourceArchiveCredential(testRuntimeControlToken, artifactId, Math.floor(Date.now() / 1_000) + 600);
+}
+
+/**
+ * The source archive route accepts only a build credential pinned to the artifact being fetched, never the
+ * installation runtime control token every other internal worker route takes.
+ */
+export async function fetchArtifactSourceArchive(
+  apiApp: ApiApp,
+  artifactId: string,
+  credential: string = issueTestBuildSourceArchiveCredential(artifactId),
+): Promise<LightMyRequestResponse> {
+  return await apiApp.inject({
+    headers: { authorization: `Bearer ${credential}` },
+    method: 'GET',
+    url: `/internal/artifacts/${encodeURIComponent(artifactId)}/source-archive`,
+  });
 }
 
 export async function rollbackOpenTransaction(client: PoolClient): Promise<void> {

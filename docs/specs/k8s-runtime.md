@@ -137,7 +137,32 @@ opt-out; the additional I/O cost is an accepted isolation tradeoff.
 
 Network isolation follows the T2 evidence. Application Pods and product Jobs
 carrying `compartment.dev/job-class` receive resource, kube-dns, and external
-egress; resource ingress admits those two workload classes only. Secret
+egress; resource ingress admits those two workload classes only. On the
+supported CNI a denied connection surfaces to the client as a connection
+refusal, not a timeout: the policy controller ends each per-Pod firewall chain
+with `REJECT --reject-with icmp-port-unreachable`. Policy programming for a
+newly created Pod is also not synchronous with container start, because every
+peer selector is expanded into a source IP set that the new Pod's address only
+joins on a later controller sync. A Pod's first packet to a policy-protected
+peer can therefore be refused for a short interval after the Pod reaches
+Running, while node-sourced traffic such as a kubelet probe is admitted ahead of
+policy evaluation and never observes the interval.
+
+Every Pod that dials a declared resource therefore carries a reachability init container ahead of its own
+containers: application Deployments and the product Jobs that dial a resource alike. It runs the platform worker
+image, which is the image reference the worker already holds, and it exits only once each declared resource
+endpoint accepts a TCP connection from that Pod's own address. Proving reachability from the control plane cannot
+substitute: the address whose policy programming is in question is the new Pod's, which does not exist yet when
+any control-plane decision about it is made, and a Deployment scale-up or a rescheduled Pod produces one without
+any reconcile to hang that decision on. A resource that declares no readiness publishes no
+endpoint and a stopped resource is not expected to answer, so neither is waited on.
+
+Each endpoint's bound is the resource's own declared readiness timeout, measured from container start rather than
+from any control-plane instant, and clamped for a Job by that Job's remaining timeout so the wait cannot consume
+the budget the command needs. Past the bound the container fails naming the endpoint it could not reach. For an
+application the Pod stays pre-Running and the infrastructure deadline above governs the rollout; for a Job the
+failure is the Job's terminal result, read from the init container's status because the Pod's own container never
+started and has no logs to read. Secret
 projection follows the T5 no-service-account-token and checksum rollout model. Resource rows project to
 `Recreate` Deployments, internal Services, Secrets, and stable PVC references.
 Release Jobs with descriptor-owned resource output bindings remain queued until
@@ -215,6 +240,17 @@ build resource limits and the declared workspace are one contract. A build fails
 and Sentry process memory that writes into it, and unless `buildkit.gcKeepStorageMb` reserves no more than the
 memory-backed BuildKit data volume. The defaults give each build Pod a 4Gi memory limit covering a 3Gi workspace and
 1Gi of process memory, which fits the 8 GiB single-node host documented for application builds.
+
+The build Pod runs tenant-authored code, so it never carries the installation runtime control token. The worker mints
+one HMAC-signed credential per build, pinned to that build's artifact id and outliving the Job's own
+`activeDeadlineSeconds` by a fixed grace that covers the gap between minting and Job creation plus worker/API clock
+skew. The API accepts that credential only on the source archive route and only for the artifact the credential names,
+which is the source build Job's single API call; registry verification builds call nothing and carry no credential.
+The signing key is derived from the runtime control token both processes already hold, so the scheme adds no
+installation secret and no chart value. Verification is one HMAC with no database read on a route that is never
+publicly routable, so the route takes no throttle. Admission limits the runner container to a fixed set of environment
+variable names, requires each value to be projected from a Secret key, and refuses bulk `envFrom` import on both the
+runner and the BuildKit sidecar, so no other credential can be named into a build Pod.
 
 `sandboxRuntime.runtimeClassName` selects the verified gVisor RuntimeClass shared by builds and tenant workloads.
 Installation fails before Helm when a real canary does not prove the gVisor userspace kernel boundary.

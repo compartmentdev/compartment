@@ -42,7 +42,7 @@ async function recordKubeSubmission(
   if (row.kubeJobSubmittedAt !== null) {
     return true;
   }
-  const resourceIds: string[] = await readDialedResourceIds(transaction, jobClass, identityId, row.resourceIdsJson);
+  const resourceIds: string[] = await readFencedResourceIds(transaction, jobClass, identityId, row.resourceIdsJson);
   await lockResourceRuntimeClaims(transaction, resourceIds);
   if (await hasRunningResourceReconcile(transaction, resourceIds)) {
     return false;
@@ -69,7 +69,12 @@ async function readProductJobSubmissionRow(
   return row;
 }
 
-async function readDialedResourceIds(
+/**
+ * Every resource this Job holds while it runs, which is a wider set than the resources it dials: a
+ * resource operation that only mounts an artifact volume still fences the reconcile that would replace
+ * it. `readDialedResourceIds` in `product-job-resource-readiness.query` answers the narrower question.
+ */
+async function readFencedResourceIds(
   transaction: ApiDatabaseTransaction,
   jobClass: ProductJobClass,
   identityId: string,

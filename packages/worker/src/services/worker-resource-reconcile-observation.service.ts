@@ -15,7 +15,7 @@ import {
   type ResourceProjectionRow,
   type ResourceVolumeProjection,
 } from '@compartment/kube-runtime';
-import type { ObservedClaimStatus } from './worker-resource-reconcile.service.types';
+import { readLiveResourceClaims, toObservedResourceClaim } from './worker-resource-claim-observation.service';
 import { findObservedManifest, waitUntil } from './worker-resource-reconcile-wait.service';
 
 interface ObservedRollbackManifestData {
@@ -50,12 +50,8 @@ function readObservedClaims(observation: KubeObservation): ObservedResourceClaim
   return [...observation.cache.entries()]
     .filter(([key]: [string, KubeObservedManifest]): boolean => key.startsWith('persistentvolumeclaims/'))
     .map(
-      ([, claim]: [string, KubeObservedManifest]): ObservedResourceClaim => ({
-        bound: (claim.status as ObservedClaimStatus | undefined)?.phase === 'Bound',
-        claimName: claim.metadata?.name ?? '',
-        resourceVersion: claim.metadata?.resourceVersion ?? null,
-        uid: claim.metadata?.uid ?? null,
-      }),
+      ([, claim]: [string, KubeObservedManifest]): ObservedResourceClaim =>
+        toObservedResourceClaim(claim.metadata?.name ?? '', claim),
     );
 }
 
@@ -63,17 +59,7 @@ export async function readLiveClaims(
   runtime: KubeRuntime,
   row: ResourceProjectionRow,
 ): Promise<ObservedResourceClaim[]> {
-  return await Promise.all(
-    projectResourceBootstrapClaims(row).map(async (claim: KubeManifest): Promise<ObservedResourceClaim> => {
-      const observed: KubeObservedManifest | null = await runtime.read(claim);
-      return {
-        bound: (observed?.status as ObservedClaimStatus | undefined)?.phase === 'Bound',
-        claimName: claim.metadata?.name ?? '',
-        resourceVersion: observed?.metadata?.resourceVersion ?? null,
-        uid: observed?.metadata?.uid ?? null,
-      };
-    }),
-  );
+  return await readLiveResourceClaims(runtime, projectResourceBootstrapClaims(row));
 }
 
 export function assertFinalClaimState(

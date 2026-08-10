@@ -12,6 +12,7 @@ import {
   buildDeploymentEventContext,
 } from './worker-deployment-event.service';
 import type { WorkerDeploymentEventContext } from './worker-deployment-event.types';
+import { issueBuildJobSourceArchiveCredential } from '../build-source-archive-credential';
 import { readWorkerArtifactRegistryInternalHost } from '../worker-artifact-registry';
 import type { WorkerArtifactRegistryConfig } from '../worker-artifact-registry.types';
 import type { WorkerConfig } from '../config';
@@ -71,11 +72,15 @@ async function buildPreparedSourceImage(input: ReleaseImageBuildContext, build: 
     eventContext: input.eventContext,
     failureSummary: 'image build failed',
     run: async (): Promise<DockerBuildImageResult> =>
-      await runWorkerBuildJob(input.runtime, input.config.buildSandbox, {
+      await runWorkerBuildJob(input.runtime, input.config, {
         build: buildSourceJobInput(input, build),
         id: `${input.deployment.deploymentRunId}:${input.deployment.artifact.id}`,
-        internalToken: input.config.runtimeControlToken,
         onProgressLine: createBuildProgressReporter(input.eventContext),
+        sourceArchiveCredential: issueBuildJobSourceArchiveCredential(
+          input.config.runtimeControlToken,
+          input.deployment.artifact.id,
+          input.config.buildSandbox.timeoutMs,
+        ),
       }),
     startMessage: 'image build started',
     stepKey: 'building_image',

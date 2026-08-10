@@ -1,3 +1,4 @@
+import type { KubeResourceReachabilityProbe } from './kube-resource-reachability-projection.types';
 import type { KubeJobVolumeMount, KubeVolumeMount } from './kube-volume.types';
 import type { KubeWorkloadScheduling } from './kube-workload-scheduling.types';
 
@@ -20,6 +21,8 @@ export interface KubeJobSpec {
   jobClass: 'build' | 'release' | 'operation';
   labels: Readonly<Record<string, string>>;
   namespace: string;
+  /** Absent when this Job dials no resource that declares readiness, so the Pod gains no init container at all. */
+  resourceProbe?: KubeResourceReachabilityProbe | undefined;
   resources?: object | undefined;
   scheduling?: KubeWorkloadScheduling | undefined;
   securityProfile?: 'project-restricted' | 'resource-restricted' | 'restricted' | undefined;

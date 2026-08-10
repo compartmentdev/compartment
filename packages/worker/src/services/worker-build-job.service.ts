@@ -7,21 +7,28 @@ import {
   type KubeJobSpec,
   type KubeRuntime,
 } from '@compartment/kube-runtime';
-import type { WorkerBuildSandboxConfig } from '../config';
+import type { WorkerBuildConfig } from '../config';
 import { assertBuildSandboxMemoryBudget, buildSandboxVolumes } from './build-sandbox-workspace';
-import type { RunWorkerBuildJobInput, WorkerBuildJobInput, WorkerBuildJobLogRecord } from './worker-build-job.types';
+import type {
+  RunWorkerBuildJobInput,
+  WorkerBuildJobEnvironment,
+  WorkerBuildJobInput,
+  WorkerBuildJobLogRecord,
+  WorkerRegistryVerificationBuildJobInput,
+  WorkerSourceBuildJobInput,
+} from './worker-build-job.types';
 import { readBuildLogRecord, readBuildLogRecords } from './worker-build-log-record';
 
 const buildKitAddress: string = 'tcp://127.0.0.1:1234';
 const buildJobInputEnvironmentName: string = 'COMPARTMENT_BUILD_JOB_INPUT';
-const buildJobTokenEnvironmentName: string = 'COMPARTMENT_BUILD_JOB_INTERNAL_TOKEN';
+const buildJobCredentialEnvironmentName: string = 'COMPARTMENT_BUILD_JOB_SOURCE_ARCHIVE_CREDENTIAL';
 
 export async function runWorkerBuildJob(
   runtime: Pick<KubeRuntime, 'runJob'>,
-  config: WorkerBuildSandboxConfig,
+  config: WorkerBuildConfig,
   input: RunWorkerBuildJobInput,
 ): Promise<DockerBuildImageResult> {
-  assertBuildSandboxMemoryBudget(config);
+  assertBuildSandboxMemoryBudget(config.buildSandbox);
   const progress: BuildProgressStream | undefined =
     input.onProgressLine === undefined ? undefined : new BuildProgressStream(input.onProgressLine);
   const options: KubeRunJobOptions | undefined =
@@ -54,57 +61,62 @@ class WorkerBuildJobRunOptions implements KubeRunJobOptions {
   };
 }
 
-export function readWorkerBuildJobInputEnvironment(env: NodeJS.ProcessEnv): {
-  input: WorkerBuildJobInput;
-  internalToken: string;
-} {
+export function readWorkerBuildJobInputEnvironment(env: NodeJS.ProcessEnv): WorkerBuildJobEnvironment {
   const serializedInput: string | undefined = env[buildJobInputEnvironmentName];
-  const internalToken: string | undefined = env[buildJobTokenEnvironmentName];
   if (serializedInput === undefined || serializedInput === '') {
     throw new Error(`${buildJobInputEnvironmentName} is required.`);
   }
-  if (internalToken === undefined || internalToken === '') {
-    throw new Error(`${buildJobTokenEnvironmentName} is required.`);
+  const parsed: Partial<WorkerBuildJobInput> | null = JSON.parse(
+    serializedInput,
+  ) as Partial<WorkerBuildJobInput> | null;
+  if (parsed?.kind === 'registry-verification') {
+    return { input: parsed as WorkerRegistryVerificationBuildJobInput, kind: 'registry-verification' };
   }
-  return {
-    input: JSON.parse(serializedInput) as WorkerBuildJobInput,
-    internalToken,
-  };
+  if (parsed?.kind !== 'source') {
+    throw new Error(`${buildJobInputEnvironmentName} must describe a known build kind.`);
+  }
+  const sourceArchiveCredential: string | undefined = env[buildJobCredentialEnvironmentName];
+  if (sourceArchiveCredential === undefined || sourceArchiveCredential === '') {
+    throw new Error(`${buildJobCredentialEnvironmentName} is required for source builds.`);
+  }
+  return { input: parsed as WorkerSourceBuildJobInput, kind: 'source', sourceArchiveCredential };
 }
 
 export function writeWorkerBuildJobLog(record: WorkerBuildJobLogRecord): void {
   process.stdout.write(`${JSON.stringify(record)}\n`);
 }
 
-function buildKubeJobSpec(config: WorkerBuildSandboxConfig, input: RunWorkerBuildJobInput): KubeJobSpec {
+function buildKubeJobSpec(config: WorkerBuildConfig, input: RunWorkerBuildJobInput): KubeJobSpec {
   return {
     cleanupPolicy: 'delete',
     command: ['node', 'dist/build-job.js'],
     emptyDirVolumes: buildSandboxVolumes(),
     env: buildJobEnvironment(input),
     id: input.id,
-    image: config.runnerImage,
+    image: config.workerImage,
     jobClass: 'build',
     labels: { 'compartment.dev/job-class': 'build' },
-    namespace: config.namespace,
-    resources: config.runnerResources,
-    scheduling: config.scheduling,
+    namespace: config.buildSandbox.namespace,
+    resources: config.buildSandbox.runnerResources,
+    scheduling: config.buildSandbox.scheduling,
     securityProfile: 'restricted',
     sidecars: [buildKitSidecar(config)],
-    timeoutMs: config.timeoutMs,
+    timeoutMs: config.buildSandbox.timeoutMs,
   };
 }
 
 function buildJobEnvironment(input: RunWorkerBuildJobInput): Record<string, string> {
   return {
     [buildJobInputEnvironmentName]: JSON.stringify(input.build),
-    [buildJobTokenEnvironmentName]: input.internalToken,
+    ...('sourceArchiveCredential' in input
+      ? { [buildJobCredentialEnvironmentName]: input.sourceArchiveCredential }
+      : {}),
     BUILDKIT_ADDR: buildKitAddress,
     TMPDIR: '/tmp',
   };
 }
 
-function buildKitSidecar(config: WorkerBuildSandboxConfig): KubeJobSidecar {
+function buildKitSidecar(config: WorkerBuildConfig): KubeJobSidecar {
   return {
     args: [
       '--addr',
@@ -112,13 +124,13 @@ function buildKitSidecar(config: WorkerBuildSandboxConfig): KubeJobSidecar {
       '--oci-worker=true',
       '--oci-worker-binary=/usr/local/bin/buildkit-runc-gvisor',
       '--oci-worker-gc-keepstorage',
-      String(config.gcKeepStorageMb),
+      String(config.buildSandbox.gcKeepStorageMb),
     ],
     command: ['/usr/local/bin/buildkitd'],
     env: { HOME: '/tmp', TMPDIR: '/buildkit-tmp' },
-    image: config.runnerImage,
+    image: config.workerImage,
     name: 'buildkit',
-    resources: config.buildKitResources,
+    resources: config.buildSandbox.buildKitResources,
     volumeMounts: [
       { mountPath: '/var/lib/buildkit', name: 'buildkit-data' },
       { mountPath: '/run', name: 'buildkit-run' },

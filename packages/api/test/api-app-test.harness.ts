@@ -20,6 +20,7 @@ interface ApiIntegrationTestContext {
   testTempDirectory: string;
 }
 
+export const testRuntimeControlToken: string = 'test-runtime-control-token';
 export const publicIpv4Address: string = buildIpv4Address([8, 8, 8, 8]);
 export const alternatePublicIpv4Address: string = buildIpv4Address([8, 8, 4, 4]);
 export const mismatchedPublicIpv4Address: string = buildIpv4Address([1, 1, 1, 1]);
@@ -95,7 +96,7 @@ export function createApiIntegrationTestContext(databaseName: string, runtimeSlu
   process.env.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_SUBJECT_WINDOW = '10m';
   process.env.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_SUBJECT_BLOCK = '30m';
   process.env.COMPARTMENT_VARIABLES_MASTER_KEY = process.env.COMPARTMENT_VARIABLES_MASTER_KEY ?? '11'.repeat(32);
-  process.env.COMPARTMENT_RUNTIME_CONTROL_TOKEN = 'test-runtime-control-token';
+  process.env.COMPARTMENT_RUNTIME_CONTROL_TOKEN = testRuntimeControlToken;
 
   return {
     apiConfig: readApiConfig(),
