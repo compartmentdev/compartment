@@ -326,22 +326,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The validation environment is rendered from the chart rather than copied, so this job needs Helm.
       - name: Install pinned Helm
-        env:
-          HELM_SHA256: e9b88b4ee95b18c706839c28d3a0220e5bc470e9cd9262410c90793c45ff8b7c
-          HELM_VERSION: v4.2.3
-        # The validation environment is rendered from the chart rather than copied, so this job needs Helm.
-        run: |
-          helm_archive="helm-${HELM_VERSION}-linux-amd64.tar.gz"
-          curl --fail --location --show-error \
-            --retry 5 \
-            --retry-delay 3 \
-            --retry-all-errors \
-            "https://get.helm.sh/${helm_archive}" \
-            --output "/tmp/${helm_archive}"
-          echo "${HELM_SHA256}  /tmp/${helm_archive}" | sha256sum --check
-          tar -xzf "/tmp/${helm_archive}" -C /tmp
-          sudo install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
+        uses: ./.github/actions/install-pinned-helm
 
       - name: Validate the edge Caddyfile
         run: pnpm --filter @compartment/edge test:caddy-config

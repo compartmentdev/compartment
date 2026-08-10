@@ -1,6 +1,7 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parseAllDocuments } from 'yaml';
+import { parseAllDocuments, parseDocument } from 'yaml';
 import type {
   CaddyAdaptedConfig,
   CaddyCommandResult,
@@ -12,7 +13,10 @@ import type {
   CaddyServerConfig,
   CaddyValidationSetup,
   ChartContainer,
+  ChartContainerEnvEntry,
   ChartManifest,
+  WorkflowFile,
+  WorkflowJob,
 } from './caddy-config.types';
 
 const repositoryRoot: string = resolve(__dirname, '../../..');
@@ -58,6 +62,16 @@ export function readCaddyValidationSetup(): CaddyValidationSetup {
 export function readChartCaddyEnvironment(): Readonly<Record<string, string>> {
   chartCaddyEnvironmentCache ??= Object.freeze(readRenderedCaddyContainerEnvironment());
   return chartCaddyEnvironmentCache;
+}
+
+export function readWorkflowJob(workflowPath: string, jobName: string): WorkflowJob {
+  const workflow: WorkflowFile = parseDocument(readFileSync(workflowPath, 'utf8')).toJS() as WorkflowFile;
+  const job: WorkflowJob | undefined = workflow.jobs[jobName];
+  if (job === undefined) {
+    throw new Error(`Workflow ${workflowPath} has no ${jobName} job.`);
+  }
+
+  return job;
 }
 
 export function readChartCaddyEnvironmentValue(name: string): string {
@@ -192,10 +206,37 @@ function readContainerEnvironment(container: ChartContainer): Record<string, str
   const environment: Record<string, string> = {};
 
   for (const entry of container.env ?? []) {
-    environment[entry.name] = entry.value ?? renderedSecretPlaceholder;
+    environment[entry.name] = readContainerEnvironmentValue(entry);
   }
 
   return environment;
+}
+
+/**
+ * Substituting a placeholder for an unrecognized source would validate a value the container never
+ * sees, so anything beyond a literal or a secret reference has to stop the gate.
+ */
+function readContainerEnvironmentValue(entry: ChartContainerEnvEntry): string {
+  if (entry.value !== undefined) {
+    return entry.value;
+  }
+  if (entry.valueFrom?.secretKeyRef !== undefined) {
+    return renderedSecretPlaceholder;
+  }
+
+  throw new Error(
+    `The rendered chart sets ${entry.name} from ${readEnvironmentSourceKind(entry)}, which the Caddy config gate ` +
+      'cannot substitute. Teach it that source before the chart relies on it.',
+  );
+}
+
+function readEnvironmentSourceKind(entry: ChartContainerEnvEntry): string {
+  if (entry.valueFrom === undefined) {
+    return 'neither a value nor a valueFrom';
+  }
+
+  const sourceKinds: string[] = Object.keys(entry.valueFrom);
+  return sourceKinds.length === 0 ? 'an empty valueFrom' : sourceKinds.join(', ');
 }
 
 function runCaddy(args: readonly string[], caddyfile: string): CaddyCommandResult {

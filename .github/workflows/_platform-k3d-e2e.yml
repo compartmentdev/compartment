@@ -55,11 +55,12 @@ jobs:
           version: 10.6.3
           cache: true
 
+      - name: Install pinned Helm
+        uses: ./.github/actions/install-pinned-helm
+
       - name: Install pinned k3d, kubectl, Helm, and helm-unittest
         env:
           HELM_DATA_HOME: ${{ runner.temp }}/helm-data
-          HELM_SHA256: e9b88b4ee95b18c706839c28d3a0220e5bc470e9cd9262410c90793c45ff8b7c
-          HELM_VERSION: v4.2.3
           HELM_UNITTEST_VERSION: 1.1.1
           K3D_SHA256: dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e
           K3D_VERSION: v5.8.3
@@ -83,17 +84,6 @@ jobs:
             --output /tmp/kubectl
           echo "${KUBECTL_SHA256}  /tmp/kubectl" | sha256sum --check
           sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
-
-          helm_archive="helm-${HELM_VERSION}-linux-amd64.tar.gz"
-          curl --fail --location --show-error \
-            --retry 5 \
-            --retry-delay 3 \
-            --retry-all-errors \
-            "https://get.helm.sh/${helm_archive}" \
-            --output "/tmp/${helm_archive}"
-          echo "${HELM_SHA256}  /tmp/${helm_archive}" | sha256sum --check
-          tar -xzf "/tmp/${helm_archive}" -C /tmp
-          sudo install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
 
           helm plugin install https://github.com/helm-unittest/helm-unittest.git \
             --version "${HELM_UNITTEST_VERSION}" \

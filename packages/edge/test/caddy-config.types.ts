@@ -159,4 +159,42 @@ export interface ChartContainer {
 export interface ChartContainerEnvEntry {
   name: string;
   value?: string;
+  valueFrom?: ChartEnvVarSource;
+}
+
+/** Only a literal value and a secret reference can be substituted; the rest have to fail loudly. */
+export interface ChartEnvVarSource {
+  configMapKeyRef?: ChartKeyReference;
+  fieldRef?: ChartObjectFieldReference;
+  resourceFieldRef?: ChartResourceFieldReference;
+  secretKeyRef?: ChartKeyReference;
+}
+
+export interface ChartKeyReference {
+  key: string;
+  name: string;
+}
+
+export interface ChartObjectFieldReference {
+  fieldPath: string;
+}
+
+export interface ChartResourceFieldReference {
+  resource: string;
+}
+
+export interface WorkflowFile {
+  jobs: Record<string, WorkflowJob>;
+}
+
+export interface WorkflowJob {
+  env?: Record<string, string>;
+  needs?: string[];
+  steps: WorkflowStep[];
+}
+
+export interface WorkflowStep {
+  name?: string;
+  run?: string;
+  uses?: string;
 }

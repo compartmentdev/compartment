@@ -25,6 +25,8 @@ import type {
   CaddyHeaderReplacement,
   CaddyServerConfig,
   CaddyValidationSetup,
+  WorkflowJob,
+  WorkflowStep,
 } from './caddy-config.types';
 import {
   adaptCaddyfile,
@@ -35,6 +37,7 @@ import {
   readChartCaddyEnvironmentValue,
   readDeletedRequestHeaders,
   readSingleCaddyServer,
+  readWorkflowJob,
   validateCaddyfile,
 } from './caddy-config.utils';
 
@@ -44,6 +47,8 @@ const caddyfilePath: string = resolve(edgePackageRoot, 'Caddyfile');
 const syncCaddyfileScriptPath: string = resolve(edgePackageRoot, 'scripts/sync-caddyfile.mjs');
 const ciWorkflowPath: string = resolve(repositoryRoot, '.github/workflows/ci.yml');
 const mainCiWorkflowPath: string = resolve(repositoryRoot, '.github/workflows/main-ci.yml');
+const caddyValidationJobName: string = 'edge-caddy-config';
+const pinnedHelmActionPath: string = './.github/actions/install-pinned-helm';
 /** The image copies this file into /etc/caddy/Caddyfile, so every behavioral assertion reads it from disk. */
 const committedCaddyfile: string = readFileSync(caddyfilePath, 'utf8');
 const caddyValidation: CaddyValidationSetup = readCaddyValidationSetup();
@@ -55,23 +60,27 @@ describe('edge Caddyfile source', (): void => {
 });
 
 describe('edge Caddyfile validation gate', (): void => {
-  it('runs as a required CI job that cannot silently skip', (): void => {
-    const ciWorkflow: string = readFileSync(ciWorkflowPath, 'utf8');
+  it.each([
+    { workflowName: 'ci.yml', workflowPath: ciWorkflowPath },
+    { workflowName: 'main-ci.yml', workflowPath: mainCiWorkflowPath },
+  ])('runs as a job that cannot silently skip in $workflowName', ({ workflowPath }): void => {
+    const job: WorkflowJob = readWorkflowJob(workflowPath, caddyValidationJobName);
+    const stepUses: (string | undefined)[] = job.steps.map((step: WorkflowStep): string | undefined => step.uses);
+    const stepRuns: string[] = job.steps.map((step: WorkflowStep): string => step.run ?? '');
 
-    expect(ciWorkflow).toContain("COMPARTMENT_CADDY_VALIDATION_REQUIRED: '1'");
-    expect(ciWorkflow).toContain('COMPARTMENT_CADDY_VALIDATION_IMAGE: ghcr.io/compartmentdev/compartment-caddy:sha-');
-    expect(ciWorkflow).toContain('pnpm --filter @compartment/edge test:caddy-config');
-    expect(ciWorkflow).toContain('needs.edge-caddy-config.result');
+    // Without the required flag a missing Caddy build or Helm would skip the suite instead of failing.
+    expect(job.env?.COMPARTMENT_CADDY_VALIDATION_REQUIRED).toBe('1');
+    expect(job.env?.COMPARTMENT_CADDY_VALIDATION_IMAGE).toContain('compartment-caddy:sha-');
+    expect(stepUses).toContain(pinnedHelmActionPath);
+    expect(stepRuns).toContain('pnpm --filter @compartment/edge test:caddy-config');
   });
 
-  it('guards every main commit too', (): void => {
-    const mainCiWorkflow: string = readFileSync(mainCiWorkflowPath, 'utf8');
+  it('keeps the gate in the aggregate check:ci result', (): void => {
+    const aggregateJob: WorkflowJob = readWorkflowJob(ciWorkflowPath, 'check-ci');
+    const [verificationStep]: WorkflowStep[] = aggregateJob.steps;
 
-    expect(mainCiWorkflow).toContain("COMPARTMENT_CADDY_VALIDATION_REQUIRED: '1'");
-    expect(mainCiWorkflow).toContain(
-      'COMPARTMENT_CADDY_VALIDATION_IMAGE: ghcr.io/compartmentdev/compartment-caddy:sha-',
-    );
-    expect(mainCiWorkflow).toContain('pnpm --filter @compartment/edge test:caddy-config');
+    expect(aggregateJob.needs).toContain(caddyValidationJobName);
+    expect(verificationStep?.run).toContain(`needs.${caddyValidationJobName}.result`);
   });
 });
 
