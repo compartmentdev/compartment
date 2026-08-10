@@ -33,6 +33,12 @@ pnpm dev
 Install `k3d`, `kubectl`, and Helm alongside the prerequisites above. For the managed-install shard, map
 `console.managed.compartment.localhost` and `managed-domain-broker` to `127.0.0.1` in `/etc/hosts`.
 
+Verify that `kubectl` is a real `kubectl` binary. A Compartment install on the same host replaces
+`/usr/local/bin/kubectl` with a symlink to `k3s`, and that shim resolves the host cluster's own kubeconfig instead of
+the k3d one. The shard then fails with `context was not found for specified context: k3d-<cluster>` even though `k3d`
+wrote the context correctly. Install a standalone `kubectl` ahead of the shim, or run shards with `KUBECONFIG` pointed
+at the kubeconfig `k3d` updated.
+
 Run one isolated shard at a time:
 
 ```bash
