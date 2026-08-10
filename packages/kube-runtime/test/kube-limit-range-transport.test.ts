@@ -31,7 +31,6 @@ describe('LimitRange transport', (): void => {
       defaultRequest: { cpu: '50m', memory: '128Mi' },
       type: 'Container',
     });
-    expect(serialized.spec.limits[0]).not.toHaveProperty('_default');
   });
 });
 

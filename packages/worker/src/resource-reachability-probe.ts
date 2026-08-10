@@ -9,8 +9,7 @@ import {
 } from './resource-reachability-probe.types';
 import type { KubeResourceReachabilityProbe } from '@compartment/kube-runtime';
 import { kubeResourceServiceDns } from '@compartment/utils';
-
-const probeCommand: readonly string[] = ['node', 'dist/await-resources-job.js'];
+import { workerJobCommand, workerJobEntrypoints } from './worker-entrypoints';
 
 /**
  * Builds the init container that holds a tenant Pod pre-Running until the resources it dials answer.
@@ -37,7 +36,7 @@ export function resourceReachabilityProbe(
     }),
   );
   return {
-    command: [...probeCommand],
+    command: workerJobCommand(workerJobEntrypoints.awaitResources),
     env: { [resourceReachabilityTargetsEnvironmentName]: JSON.stringify(targets) },
     image: workerImage,
   };

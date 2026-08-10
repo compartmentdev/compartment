@@ -68,6 +68,7 @@ spec:
               valueFrom:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: tenant-secrets-previous-kek}
             - {name: COMPARTMENT_EDGE_NAMESPACE, value: {{ .Release.Namespace | quote }}}
+            - {name: COMPARTMENT_EDGE_POD_LABELS, value: {{ include "compartment.caddyPodLabelsJson" . | quote }}}
             - {name: COMPARTMENT_PLATFORM_NAMESPACE, value: {{ .Release.Namespace | quote }}}
             - {name: COMPARTMENT_DEPLOYMENT_INFRASTRUCTURE_TIMEOUT_MS, value: {{ .Values.worker.deploymentInfrastructureTimeoutMs | quote }}}
             - {name: COMPARTMENT_CADDY_SERVICE_NAME, value: {{ printf "%s-caddy" (include "compartment.fullname" .) | quote }}}

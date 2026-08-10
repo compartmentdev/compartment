@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
+import { runMain } from '../lib/run-main.mjs';
 
 const repoRoot = readRepositoryRoot(import.meta.url, 2);
 const cyrillicCharacter = /[\u0400-\u04FF]/u;
@@ -48,6 +48,4 @@ function main() {
   }
 }
 
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main();
-}
+runMain(import.meta.url, process.argv[1], main);

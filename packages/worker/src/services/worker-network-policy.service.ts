@@ -10,6 +10,7 @@ import { projectNetworkPolicy, type ProjectNetworkPolicyEnvironment } from '../p
 
 const networkPolicyEnvironmentSchema: z.ZodType<ProjectNetworkPolicyEnvironment> = z.object({
   COMPARTMENT_EDGE_NAMESPACE: z.string().min(1),
+  COMPARTMENT_EDGE_POD_LABELS: z.string().min(1),
   COMPARTMENT_KUBE_POD_CIDR: z.string().min(1),
   COMPARTMENT_KUBE_SERVICE_CIDR: z.string().min(1),
 });

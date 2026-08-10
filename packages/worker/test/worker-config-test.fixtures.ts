@@ -1,6 +1,16 @@
 import type { WorkerConfig } from '../src/config';
+import type { EdgePodLabels } from '../src/project-network-policy';
 import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
 import { testTenantSecretsKek } from './tenant-secret-test.fixtures';
+
+/** The Caddy Pod labels the chart renders into `COMPARTMENT_EDGE_POD_LABELS`, as the worker receives them. */
+export const testEdgePodLabels: EdgePodLabels = {
+  'app.kubernetes.io/component': 'caddy',
+  'app.kubernetes.io/instance': 'compartment',
+  'app.kubernetes.io/name': 'compartment',
+};
+
+export const testEdgePodLabelsJson: string = JSON.stringify(testEdgePodLabels);
 
 /**
  * The one worker configuration test doubles start from. Every field a test does not name is

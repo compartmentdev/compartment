@@ -13,6 +13,7 @@ import {
 import type { CompartmentRequester } from '@compartment/sdk';
 import type { Logger } from 'pino';
 import { projectProvisionerJobEnvironment } from '../project-provisioning-environment';
+import { workerJobCommand, workerJobEntrypoints } from '../worker-entrypoints';
 import type { ProjectProvisionerConfig } from '../project-provisioner.types';
 import type { ProjectProvisioningResult } from './project-provisioning-execution.service.types';
 import { cleanupProjectProvisioningAuthority } from './project-provisioning-authority-cleanup.service';
@@ -180,7 +181,7 @@ function projectProvisioningJob(
   authority: ProjectProvisioningAuthorityInput,
 ): KubeJobSpec {
   return {
-    command: ['node', 'dist/project-provisioner-job.js'],
+    command: workerJobCommand(workerJobEntrypoints.projectProvisioner),
     env: { ...projectProvisionerJobEnvironment(config, target, authority.serviceAccountName) },
     id: authority.jobId,
     image: config.image,

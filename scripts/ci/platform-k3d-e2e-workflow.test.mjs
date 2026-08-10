@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
@@ -17,6 +17,20 @@ const imageSecurityWorkflowPath = new URL(
   '../../.github/workflows/_self-hosted-image-security-gate.yml',
   import.meta.url,
 );
+const chartDirectory = '../../deploy/chart/compartment';
+const chartDirectoryPath = new URL(`${chartDirectory}/`, import.meta.url);
+const chartTestsDirectoryPath = new URL(`${chartDirectory}/tests/`, import.meta.url);
+
+async function listChartOverrideValuesFiles() {
+  const [chartFiles, testFiles] = await Promise.all([readdir(chartDirectoryPath), readdir(chartTestsDirectoryPath)]);
+
+  return [
+    ...chartFiles.filter((name) => /^values-.+\.yaml$/u.test(name)).map((name) => `./deploy/chart/compartment/${name}`),
+    ...testFiles
+      .filter((name) => name.endsWith('-values.yaml'))
+      .map((name) => `./deploy/chart/compartment/tests/${name}`),
+  ];
+}
 
 function readKubernetesMinor(version) {
   const match = /v1\.(?<minor>\d+)\./u.exec(version);
@@ -88,6 +102,23 @@ describe('platform k3d e2e workflow', () => {
     const diagnosticsStep = job.steps.find((step) => step.name === 'Upload shard diagnostics');
     expect(diagnosticsStep.with.name).toContain('${{ matrix.shard }}');
     expect(diagnosticsStep.with.path).toContain('platform-k3d-diagnostics-${{ matrix.shard }}');
+  });
+
+  it('validates the chart against every committed values file and the values contract', async () => {
+    const workflow = parse(await readFile(workflowPath, 'utf8'));
+    const validationStep = workflow.jobs['run-platform-k3d-e2e'].steps.find(
+      (step) => step.name === 'Validate Helm chart renders',
+    );
+    const overrideValuesFiles = await listChartOverrideValuesFiles();
+
+    expect(validationStep).toBeDefined();
+    expect(overrideValuesFiles.length).toBeGreaterThan(0);
+    expect(validationStep.run).toContain('node ./scripts/ci/check-helm-values-contract.mjs');
+    expect(validationStep.run).toContain('helm lint ./deploy/chart/compartment\n');
+    for (const valuesFile of overrideValuesFiles) {
+      expect(validationStep.run).toContain(`helm lint ./deploy/chart/compartment -f ${valuesFile}`);
+    }
+    expect(validationStep.run).toContain('helm unittest --strict ./deploy/chart/compartment');
   });
 
   it('keeps the reusable matrix result in the aggregate check:ci gate', async () => {
