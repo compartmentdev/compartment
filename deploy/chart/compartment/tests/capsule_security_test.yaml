@@ -165,18 +165,56 @@ tests:
 suite: Capsule hook image policy
 templates:
   - templates/capsule-admission-cleanup.yaml
+  - charts/capsule/templates/hooks/crd-lifecycle/job.yaml
+  - charts/capsule/templates/hooks/crd-lifecycle/rbac.yaml
   - charts/capsule/templates/hooks/pre-delete/job.yaml
   - charts/capsule/templates/hooks/post-install/job.yaml
 release:
   name: compartment
   namespace: compartment
 tests:
-  - it: renders no auxiliary kubectl hook images
+  - it: renders no unrelated Capsule lifecycle hooks
     template: charts/capsule/templates/hooks/pre-delete/job.yaml
     asserts:
       - hasDocuments:
           count: 0
-  - it: grants the admission cleanup hook only named webhook deletion
+  - it: installs and upgrades Capsule CRDs with the pinned kubectl image
+    template: charts/capsule/templates/hooks/crd-lifecycle/job.yaml
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: pre-install,pre-upgrade
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: docker.io/clastix/kubectl:v1.35.1@sha256:eba976b9c2e9208c7e72a19e89fb8f84519e3b749235efbc0ea0fee6cdfc2ff2
+  - it: limits CRD lifecycle mutation to Capsule CRDs
+    template: charts/capsule/templates/hooks/crd-lifecycle/rbac.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: rules[1].apiGroups
+          value: [apiextensions.k8s.io]
+      - equal:
+          path: rules[1].resources
+          value: [customresourcedefinitions]
+      - equal:
+          path: rules[1].resourceNames
+          value:
+            - capsuleconfigurations.capsule.clastix.io
+            - resourcepoolclaims.capsule.clastix.io
+            - resourcepools.capsule.clastix.io
+            - tenantresources.capsule.clastix.io
+            - globaltenantresources.capsule.clastix.io
+            - tenants.capsule.clastix.io
+            - tenantowners.capsule.clastix.io
+            - rulestatuses.capsule.clastix.io
+            - customquotas.capsule.clastix.io
+            - globalcustomquotas.capsule.clastix.io
+            - quantityledgers.capsule.clastix.io
+      - equal:
+          path: rules[1].verbs
+          value: [create, delete, get, patch, update]
+  - it: grants cleanup only for named admission and CRD hook resources
     template: templates/capsule-admission-cleanup.yaml
     documentIndex: 1
     asserts:
@@ -187,6 +225,33 @@ tests:
               resourceNames: [compartment-capsule-dynamic-webhook]
               resources: [mutatingwebhookconfigurations, validatingwebhookconfigurations]
               verbs: [delete]
+            - apiGroups: [rbac.authorization.k8s.io]
+              resourceNames: ['capsule:compartment:crds']
+              resources: [clusterroles, clusterrolebindings]
+              verbs: [delete]
+            - apiGroups: ['']
+              resourceNames: [capsule-crds]
+              resources: [serviceaccounts]
+              verbs: [delete]
+            - apiGroups: ['']
+              resourceNames:
+                - capsule-crds-capsuleconfigurations
+                - capsule-crds-customquotas
+                - capsule-crds-globalcustomquotas
+                - capsule-crds-globaltenantresources
+                - capsule-crds-quantityledgers
+                - capsule-crds-resourcepoolclaims
+                - capsule-crds-resourcepools
+                - capsule-crds-rulestatuses
+                - capsule-crds-tenantowners
+                - capsule-crds-tenantresources
+                - capsule-crds-tenants
+              resources: [configmaps]
+              verbs: [delete]
+            - apiGroups: [batch]
+              resourceNames: [capsule-crds]
+              resources: [jobs]
+              verbs: [delete]
   - it: uses the chart-owned pinned kubectl image for admission cleanup
     template: templates/capsule-admission-cleanup.yaml
     documentIndex: 3
@@ -194,3 +259,9 @@ tests:
       - matchRegex:
           path: spec.template.spec.containers[0].image
           pattern: '^registry.k8s.io/kubectl@sha256:[a-f0-9]{64}$'
+      - equal:
+          path: spec.template.spec.containers[0].args[18]
+          value: --namespace
+      - equal:
+          path: spec.template.spec.containers[0].args[19]
+          value: compartment

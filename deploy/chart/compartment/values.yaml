@@ -285,9 +285,14 @@ resources:
 
 capsule:
   crds:
-    install: false
+    install: true
   global:
     jobs:
+      kubectl:
+        image:
+          registry: docker.io
+          repository: clastix/kubectl
+          tag: 'v1.35.1@sha256:eba976b9c2e9208c7e72a19e89fb8f84519e3b749235efbc0ea0fee6cdfc2ff2'
       postInstall:
         enabled: false
       preDelete:
