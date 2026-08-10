@@ -7,7 +7,13 @@ export interface ObservedWaitingState {
   reason: string;
 }
 
+/** A container Kubernetes reports as running carries a start time and nothing this suite reads. */
+export interface ObservedRunningState {
+  startedAt?: string | undefined;
+}
+
 export interface ObservedContainerState {
+  running?: ObservedRunningState | undefined;
   terminated?: ObservedTerminatedState | undefined;
   waiting?: ObservedWaitingState | undefined;
 }
