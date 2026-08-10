@@ -90,6 +90,17 @@ describe('platform k3d e2e workflow', () => {
     expect(diagnosticsStep.with.path).toContain('platform-k3d-diagnostics-${{ matrix.shard }}');
   });
 
+  it('validates the chart against every committed values file and the values contract', async () => {
+    const workflow = parse(await readFile(workflowPath, 'utf8'));
+    const validationStep = workflow.jobs['run-platform-k3d-e2e'].steps.find(
+      (step) => step.name === 'Validate Helm chart renders',
+    );
+
+    expect(validationStep.run).toContain('node ./scripts/ci/check-helm-values-contract.mjs');
+    expect(validationStep.run).toContain('helm lint ./deploy/chart/compartment -f ./deploy/chart/compartment/tests/');
+    expect(validationStep.run).toContain('helm unittest --strict ./deploy/chart/compartment');
+  });
+
   it('keeps the reusable matrix result in the aggregate check:ci gate', async () => {
     const workflow = parse(await readFile(ciWorkflowPath, 'utf8'));
     const aggregateJob = workflow.jobs['check-ci'];

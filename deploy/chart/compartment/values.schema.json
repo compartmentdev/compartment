@@ -1,15 +1,34 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
+  "additionalProperties": false,
   "properties": {
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
     "images": {
       "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "api",
+        "worker",
+        "edge",
+        "caddy",
+        "dns01Solver",
+        "postgres",
+        "registry",
+        "kubectl",
+        "productLogAgent"
+      ],
       "properties": {
         "api": { "$ref": "#/definitions/platformImage" },
         "worker": { "$ref": "#/definitions/platformImage" },
         "edge": { "$ref": "#/definitions/platformImage" },
         "caddy": { "$ref": "#/definitions/platformImage" },
-        "dns01Solver": { "$ref": "#/definitions/platformImage" }
+        "dns01Solver": { "$ref": "#/definitions/platformImage" },
+        "postgres": { "$ref": "#/definitions/platformImage" },
+        "registry": { "$ref": "#/definitions/platformImage" },
+        "kubectl": { "$ref": "#/definitions/platformImage" },
+        "productLogAgent": { "$ref": "#/definitions/platformImage" }
       }
     },
     "ingress": {
@@ -215,6 +234,7 @@
     },
     "platform": {
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "startupStage",
         "domainGeneration",
@@ -225,7 +245,26 @@
         "publicProtocol",
         "tlsMode",
         "acmeEmail",
-        "managedDomainBrokerUrl"
+        "managedDomainBrokerUrl",
+        "logLevel",
+        "trustedOutboundHosts",
+        "workerPollIntervalMs",
+        "usageMeteringIntervalMs",
+        "usageRetentionDays",
+        "auditRetentionDays",
+        "auditCleanupCron",
+        "auditCleanupBatchSize",
+        "auditCleanupMaxBatches",
+        "auditFileSinkEnabled",
+        "auditFileSinkRotateInterval",
+        "auditFileSinkRotateSize",
+        "auditFileSinkRetentionFiles",
+        "edgeTrafficLimits",
+        "rollbackRetentionLimit",
+        "sourceArchiveMaxBytes",
+        "sessionTtl",
+        "authThrottle",
+        "rolloutMarker"
       ],
       "properties": {
         "startupStage": { "type": "string", "enum": ["foundation", "full"] },
@@ -236,8 +275,6 @@
         "baseDomain": { "type": "string" },
         "publicProtocol": { "type": "string", "enum": ["http", "https"] },
         "tlsMode": { "type": "string", "enum": ["broker-dns01", "internal", "issuer"] },
-        "acmeIssuer": false,
-        "acmeCaUrl": false,
         "acmeEmail": {
           "type": "string",
           "oneOf": [{ "const": "" }, { "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$" }]
@@ -245,11 +282,34 @@
         "managedDomainBrokerUrl": {
           "oneOf": [{ "const": "" }, { "type": "string", "pattern": "^https?://[^/?#@]+/?$" }]
         },
+        "logLevel": {
+          "type": "string",
+          "enum": ["fatal", "error", "warn", "info", "debug", "trace", "silent"]
+        },
+        "trustedOutboundHosts": {
+          "description": "Comma-separated hosts hosted applications may reach outside the cluster.",
+          "type": "string"
+        },
+        "workerPollIntervalMs": { "type": "integer", "minimum": 1 },
         "usageMeteringIntervalMs": { "type": "integer", "minimum": 1 },
         "usageRetentionDays": { "type": "integer", "minimum": 1 },
+        "auditRetentionDays": { "type": "integer", "minimum": 1 },
+        "auditCleanupCron": { "type": "string", "minLength": 1 },
+        "auditCleanupBatchSize": { "type": "integer", "minimum": 1 },
+        "auditCleanupMaxBatches": { "type": "integer", "minimum": 1 },
+        "auditFileSinkEnabled": { "type": "boolean" },
+        "auditFileSinkRotateInterval": { "type": "string", "minLength": 1 },
+        "auditFileSinkRotateSize": { "type": "string", "minLength": 1 },
+        "auditFileSinkRetentionFiles": { "type": "integer", "minimum": 1 },
         "rollbackRetentionLimit": {
           "description": "Maximum retained rollback images inherited by organizations. Leave empty for indefinite retention.",
           "oneOf": [{ "const": "" }, { "type": "integer", "minimum": 1 }]
+        },
+        "sourceArchiveMaxBytes": { "type": "integer", "minimum": 1 },
+        "sessionTtl": { "type": "string", "minLength": 1 },
+        "rolloutMarker": {
+          "description": "Opaque marker that forces a platform rollout when it changes.",
+          "type": "string"
         },
         "edgeTrafficLimits": {
           "description": "Per-replica hosted-application request and in-flight limits. Set a rate or burst to zero to disable that token bucket; set inFlight to zero to disable the cap.",
@@ -300,25 +360,71 @@
         }
       }
     },
+    "productLogs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "namespace"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "namespace": {
+          "description": "Namespace for the product log agent. Empty means the release-owned observability namespace.",
+          "type": "string"
+        }
+      }
+    },
     "secrets": {
       "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "installToken",
+        "postgresPassword",
+        "registryCredentialSigningKey",
+        "edgeToken",
+        "productLogIngestToken",
+        "runtimeControlToken",
+        "sessionSecret",
+        "systemToken",
+        "tenantSecretsKek",
+        "variablesMasterKey",
+        "managedDomainAcmeDnsToken"
+      ],
       "properties": {
         "installToken": { "type": "string" },
-        "managedDomainAcmeDnsToken": { "type": "string" },
+        "postgresPassword": { "type": "string" },
+        "registryCredentialSigningKey": {
+          "oneOf": [{ "const": "" }, { "type": "string", "minLength": 32 }]
+        },
+        "edgeToken": { "type": "string" },
+        "productLogIngestToken": { "type": "string" },
+        "runtimeControlToken": { "type": "string" },
+        "sessionSecret": { "type": "string" },
+        "systemToken": { "type": "string" },
         "tenantSecretsKek": {
           "oneOf": [{ "const": "" }, { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }]
         },
         "tenantSecretsPreviousKek": {
+          "description": "Optional previous key-encryption key. Helm drops the default null, so this key stays optional.",
           "oneOf": [{ "type": "null" }, { "const": "" }, { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }]
         },
-        "registryCredentialSigningKey": {
-          "oneOf": [{ "const": "" }, { "type": "string", "minLength": 32 }]
-        }
+        "variablesMasterKey": { "type": "string" },
+        "managedDomainAcmeDnsToken": { "type": "string" }
       }
     },
-    "service": {
+    "podSecurityContext": {
+      "description": "Pod-level security context shared by every platform workload.",
       "type": "object",
-      "additionalProperties": false
+      "additionalProperties": false,
+      "required": ["seccompProfile"],
+      "properties": {
+        "seccompProfile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": { "type": "string", "enum": ["RuntimeDefault", "Localhost", "Unconfined"] }
+          }
+        }
+      }
     },
     "nodePools": {
       "type": "object",
@@ -375,25 +481,55 @@
           }
         },
         "timeoutMs": { "type": "integer", "minimum": 1 },
-        "dnsNamespaceSelector": { "type": "object", "additionalProperties": { "type": "string" } },
-        "dnsPodSelector": { "type": "object", "additionalProperties": { "type": "string" } },
+        "dnsNamespaceSelector": { "$ref": "#/definitions/labelSelectorLabels" },
+        "dnsPodSelector": { "$ref": "#/definitions/labelSelectorLabels" },
         "podCidr": { "type": "string", "minLength": 1 },
         "serviceCidr": { "type": "string", "minLength": 1 }
       }
     },
     "resources": {
       "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "api",
+        "apiMigrate",
+        "worker",
+        "edge",
+        "caddy",
+        "caddyInit",
+        "postgres",
+        "registry",
+        "registryAuth",
+        "buildkit",
+        "buildRunner",
+        "productLogAgent",
+        "wait"
+      ],
       "properties": {
+        "api": { "$ref": "#/definitions/containerResources" },
+        "apiMigrate": { "$ref": "#/definitions/containerResources" },
+        "worker": { "$ref": "#/definitions/containerResources" },
+        "edge": { "$ref": "#/definitions/containerResources" },
+        "caddy": { "$ref": "#/definitions/containerResources" },
+        "caddyInit": { "$ref": "#/definitions/containerResources" },
+        "postgres": { "$ref": "#/definitions/containerResources" },
+        "registry": { "$ref": "#/definitions/containerResources" },
+        "registryAuth": { "$ref": "#/definitions/containerResources" },
         "buildkit": { "$ref": "#/definitions/buildContainerResources" },
-        "buildRunner": { "$ref": "#/definitions/buildContainerResources" }
+        "buildRunner": { "$ref": "#/definitions/buildContainerResources" },
+        "productLogAgent": { "$ref": "#/definitions/containerResources" },
+        "wait": { "$ref": "#/definitions/containerResources" }
       }
     },
     "edge": {
       "type": "object",
+      "additionalProperties": false,
+      "required": ["replicas", "snapshots"],
       "properties": {
         "replicas": { "type": "integer", "minimum": 1 },
         "snapshots": {
           "type": "object",
+          "additionalProperties": false,
           "required": ["enabled", "mountPath"],
           "properties": {
             "enabled": { "type": "boolean" },
@@ -404,7 +540,18 @@
     },
     "storage": {
       "type": "object",
-      "properties": { "edgeSnapshots": { "type": "string", "minLength": 1 } }
+      "additionalProperties": false,
+      "required": ["storageClass", "postgres", "registry", "edgeSnapshots", "api"],
+      "properties": {
+        "storageClass": {
+          "description": "StorageClass for every platform claim. Empty means the cluster default.",
+          "type": "string"
+        },
+        "postgres": { "$ref": "#/definitions/kubernetesQuantity" },
+        "registry": { "$ref": "#/definitions/kubernetesQuantity" },
+        "edgeSnapshots": { "$ref": "#/definitions/kubernetesQuantity" },
+        "api": { "$ref": "#/definitions/kubernetesQuantity" }
+      }
     }
   },
   "allOf": [
@@ -436,26 +583,33 @@
       "type": "string",
       "pattern": "^(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[numkMGTPE]|[KMGTPE]i|[eE][+-]?[0-9]+)?$"
     },
-    "buildContainerResources": {
+    "labelSelectorLabels": {
+      "description": "Kubernetes label selector. Operators choose the label keys, so only the value type is fixed.",
       "type": "object",
-      "required": ["limits"],
+      "additionalProperties": { "type": "string" }
+    },
+    "containerResourceQuantities": {
+      "type": "object",
+      "additionalProperties": false,
       "properties": {
-        "limits": {
-          "type": "object",
-          "required": ["cpu", "memory"],
-          "properties": {
-            "cpu": { "$ref": "#/definitions/kubernetesQuantity" },
-            "memory": { "$ref": "#/definitions/kubernetesQuantity" }
-          }
-        },
-        "requests": {
-          "type": "object",
-          "properties": {
-            "cpu": { "$ref": "#/definitions/kubernetesQuantity" },
-            "memory": { "$ref": "#/definitions/kubernetesQuantity" }
-          }
-        }
+        "cpu": { "$ref": "#/definitions/kubernetesQuantity" },
+        "memory": { "$ref": "#/definitions/kubernetesQuantity" },
+        "ephemeral-storage": { "$ref": "#/definitions/kubernetesQuantity" }
       }
+    },
+    "containerResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requests": { "$ref": "#/definitions/containerResourceQuantities" },
+        "limits": { "$ref": "#/definitions/containerResourceQuantities" }
+      }
+    },
+    "buildContainerResources": {
+      "description": "Build container resources. The worker reads the limits, so they must stay complete.",
+      "allOf": [{ "$ref": "#/definitions/containerResources" }],
+      "required": ["limits"],
+      "properties": { "limits": { "required": ["cpu", "memory"] } }
     },
     "haComponent": {
       "type": "object",
@@ -471,7 +625,11 @@
       "additionalProperties": false,
       "required": ["nodeSelector", "tolerations"],
       "properties": {
-        "nodeSelector": { "type": "object", "additionalProperties": { "type": "string" } },
+        "nodeSelector": {
+          "description": "Node labels operators choose, so only the value type is fixed.",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
         "tolerations": {
           "type": "array",
           "items": {
@@ -490,11 +648,13 @@
     },
     "platformImage": {
       "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag", "digest", "pullPolicy"],
       "properties": {
         "repository": { "type": "string", "minLength": 1 },
         "tag": { "type": "string", "minLength": 1 },
         "digest": { "type": "string", "pattern": "^$|^sha256:[a-f0-9]{64}$" },
-        "pullPolicy": { "type": "string" }
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
       }
     },
     "throttleRoute": {
