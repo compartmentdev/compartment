@@ -43,6 +43,9 @@ Keep changes small, explicit, and package-owned.
 ## Update Together
 
 - Update tests in the same change only when they protect changed behavior, contracts, migrations, CLI output, auth/org context, or meaningful integration/e2e flows; do not add tests that only mirror implementation, assert mocked forwarding or call chains, or lock in plumbing without boundary-level behavior.
+- When a change produces something a consumer outside this process reads, assert the artifact in the form that consumer receives it: the request body the Kubernetes client serializes, the rendered chart, the adapted Caddy config, the file present in the built image. Asserting the in-memory object or the source text proves nothing about what ships.
+- Derive a test expectation from the production source. A literal restated in both the test and the production path agrees with itself while production disagrees with the cluster, which is how tenant isolation shipped broken under a green suite.
+- A test that can skip itself must fail in CI when its prerequisite is missing. A silent skip reads as coverage and is not.
 - If you change a contract schema, update SDK consumers and contract tests.
 - If you change a DB schema, update migrations and affected API tests.
 - If you change CLI JSON output, update fixtures and smoke tests.

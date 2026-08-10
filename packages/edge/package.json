@@ -16,6 +16,7 @@
     "lint": "eslint . --max-warnings 0 --cache --cache-location .eslintcache",
     "typecheck": "tsc -p tsconfig.json --noEmit --rootDir ../.. && tsc -p tsconfig.test.json --noEmit --rootDir ../..",
     "test": "vitest run --config ../../vitest.config.mts",
+    "test:caddy-config": "vitest run --config ../../vitest.config.mts test/caddyfile.test.ts",
     "test:go": "go -C caddy-ratelimit test -race ./... && go -C caddy-traffic-metering test -race ./...",
     "vet:go": "go -C caddy-ratelimit vet ./... && go -C caddy-traffic-metering vet ./..."
   },

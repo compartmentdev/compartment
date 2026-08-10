@@ -15,6 +15,7 @@ import type { ProjectProvisionerConfig } from '../src/project-provisioner.types'
 import { executeProjectProvisioning } from '../src/services/project-provisioning-execution.service';
 import { waitForProjectNamespaceDeletion } from '../src/services/project-teardown-wait.service';
 import { projectProvisionerJobEnvironmentSchema } from '../src/project-provisioning-environment';
+import { testEdgePodLabels } from './worker-config-test.fixtures';
 
 describe('project provisioning execution', (): void => {
   it('does not clean bootstrap authority after its provisioning lease is lost', async (): Promise<void> => {
@@ -614,6 +615,7 @@ function config(tenantScheduling?: KubeWorkloadScheduling): ProjectProvisionerCo
       internalUrl: 'https://registry.apps.example.com',
     },
     edgeNamespace: 'compartment',
+    edgePodLabels: testEdgePodLabels,
     image: 'ghcr.io/compartmentdev/compartment-worker:test',
     installationId: 'inst_1',
     leaderElection: {

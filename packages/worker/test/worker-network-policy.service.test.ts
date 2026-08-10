@@ -13,6 +13,7 @@ import {
 } from '../src/services/worker-network-policy.service';
 import { decryptTenantProjection } from '../src/tenant-workload-projections';
 import { encryptTestTenantEnvironment, testTenantSecretsKek } from './tenant-secret-test.fixtures';
+import { testEdgePodLabels, testEdgePodLabelsJson } from './worker-config-test.fixtures';
 import type {
   ApplicationDeploymentContainerPort,
   ApplicationDeploymentSpec,
@@ -27,6 +28,7 @@ import type {
 describe('worker NetworkPolicy desired state', (): void => {
   beforeEach((): void => {
     process.env.COMPARTMENT_EDGE_NAMESPACE = 'platform';
+    process.env.COMPARTMENT_EDGE_POD_LABELS = testEdgePodLabelsJson;
     process.env.COMPARTMENT_KUBE_POD_CIDR = ['10', '42', '0', '0/16'].join('.');
     process.env.COMPARTMENT_KUBE_SERVICE_CIDR = ['10', '43', '0', '0/16'].join('.');
   });
@@ -42,7 +44,7 @@ describe('worker NetworkPolicy desired state', (): void => {
     expect(ingress[0]?._from).toEqual([
       {
         namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': 'platform' } },
-        podSelector: { matchLabels: { 'app.kubernetes.io/component': 'caddy' } },
+        podSelector: { matchLabels: testEdgePodLabels },
       },
     ]);
   });

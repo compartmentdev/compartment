@@ -9,14 +9,30 @@ results="$(mktemp)"
 
 kubectl --context "${context}" delete namespace ns-a ns-b platform-ns --ignore-not-found --wait >/dev/null
 trap 'kubectl --context "${context}" delete namespace ns-a ns-b platform-ns --ignore-not-found --wait=false >/dev/null; rm -f "${results}"' EXIT
-kubectl --context "${context}" apply -f "${dir}/network-policy-enforcement-fixtures.yaml" >/dev/null
+
+# Both the Caddy stand-in and the policy peer come from the rendered chart. The gate exists to prove the
+# peer selects the Pods the platform labels, which labels restated here would hide.
+# These scripts live in the worker package because the render calls the production projection and
+# kube-runtime must not depend on worker. Reaching them as subprocesses keeps that direction intact.
+{
+  read -r caddy_pod_labels
+  read -r edge_pod_labels
+  read -r caddy_pod_selector
+} < <(pnpm --silent --dir "${dir}/../../worker" test:network-policy:chart-labels)
+if [[ -z "${caddy_pod_labels:-}" || -z "${edge_pod_labels:-}" || -z "${caddy_pod_selector:-}" ]]; then
+  echo 'VERDICT=chart-labels-unavailable'
+  exit 1
+fi
+
+sed "s|__CADDY_POD_LABELS__|${caddy_pod_labels}|g" "${dir}/network-policy-enforcement-fixtures.yaml" |
+  kubectl --context "${context}" apply -f - >/dev/null
 for namespace in ns-a ns-b platform-ns; do
   kubectl --context "${context}" -n "${namespace}" wait deployment --all --for=condition=Available --timeout=120s >/dev/null
 done
 
 application="$(kubectl --context "${context}" -n ns-a get pod -l compartment.test/role=application -o jsonpath='{.items[0].metadata.name}')"
 release="$(kubectl --context "${context}" -n ns-a get pod -l compartment.dev/job-class=release -o jsonpath='{.items[0].metadata.name}')"
-caddy="$(kubectl --context "${context}" -n platform-ns get pod -l app.kubernetes.io/component=caddy -o jsonpath='{.items[0].metadata.name}')"
+caddy="$(kubectl --context "${context}" -n platform-ns get pod -l "${caddy_pod_selector}" -o jsonpath='{.items[0].metadata.name}')"
 platform="$(kubectl --context "${context}" -n platform-ns get pod -l app=platform -o jsonpath='{.items[0].metadata.name}')"
 from_application() { kubectl --context "${context}" -n ns-a exec "${application}" -- sh -c "$1" >/dev/null 2>&1; }
 from_release() { kubectl --context "${context}" -n ns-a exec "${release}" -- sh -c "$1" >/dev/null 2>&1; }
@@ -78,9 +94,8 @@ await_matrix() {
 : >"${results}"
 await_matrix allow
 run_matrix without-policy allow
-# The render lives in the worker package because it calls the production projection, and
-# kube-runtime must not depend on worker. Reaching it as a subprocess keeps that direction intact.
-pnpm --silent --dir "${dir}/../../worker" test:network-policy:render "${pod_cidr}" "${service_cidr}" |
+COMPARTMENT_EDGE_POD_LABELS="${edge_pod_labels}" pnpm --silent --dir "${dir}/../../worker" \
+  test:network-policy:render "${pod_cidr}" "${service_cidr}" |
   kubectl --context "${context}" apply -f - >/dev/null
 
 # A wrong production peer keeps the deny matrix from settling, so record the probes before failing;
