@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { ApiConfig } from '../src/config';
 import type { findProjectServiceByName } from '../src/queries/deployment-context.query';
 import type {
   findActiveJoinedDeployment,
@@ -20,6 +19,7 @@ import type { queueSerializedArtifactDeploymentMovement } from '../src/services/
 import { rollbackDeploymentForPrincipal } from '../src/services/deployment-movement.service';
 import type { RollbackDeploymentInput } from '../src/services/deployment-movement.service.types';
 import type { requireActiveHumanRuntimeActor } from '../src/services/runtime-actor-authorization.service';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 type FindActiveJoinedDeployment = typeof findActiveJoinedDeployment;
 type FindJoinedDeploymentByEnvironmentAndId = typeof findJoinedDeploymentByEnvironmentAndId;
@@ -251,9 +251,7 @@ describe('deployment movement service', (): void => {
 
 function mockRollbackContext(): void {
   mocks.requireActiveHumanRuntimeActor.mockResolvedValueOnce();
-  mocks.getApiConfig.mockReturnValue({
-    baseDomain: 'localhost',
-  } as ApiConfig);
+  mocks.getApiConfig.mockReturnValue(createApiTestConfig());
   mocks.resolveExistingEnvironmentContext.mockResolvedValueOnce({
     environment: {
       createdAt: new Date('2026-05-01T12:00:00.000Z'),

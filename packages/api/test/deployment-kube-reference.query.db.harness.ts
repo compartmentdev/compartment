@@ -1,7 +1,5 @@
 import type { Pool } from 'pg';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import {
@@ -16,9 +14,9 @@ import {
   projectServices,
   projects,
 } from '../src/db/schema';
-import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { upsertDeploymentKubeReference } from '../src/queries/deployment-kube-reference.query';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 export { useApiRuntimeDatabaseTestHarness };
 
@@ -162,38 +160,9 @@ export async function seedCandidate(db: Database): Promise<void> {
 }
 
 function buildApiConfig(url: string): ApiConfig {
-  return {
-    auditFileSink: defaultAuditFileSinkConfig,
+  return createApiTestConfig({
     auditRetentionCleanupBatchSize: 1,
-    auditRetentionCleanupCron: '0 3 * * *',
     auditRetentionCleanupMaxBatches: 1,
-    usageMeteringIntervalMs: 60_000,
-    usageRetentionDays: 400,
-    auditRetentionDays: 90,
-    baseDomain: 'localhost',
-    bindHost: '127.0.0.1',
-    tlsMode: 'internal',
-    controlPlaneHost: 'compartment.localhost',
     databaseUrl: url,
-    edgeToken: 'edge',
-    edgeUrl: 'http://127.0.0.1:9081',
-    logLevel: 'silent',
-    port: 9443,
-    publicHttpPort: 9080,
-    publicHttpsPort: 443,
-    publicProtocol: 'http',
-    rollbackRetentionLimit: null,
-    runtimeControlToken: 'runtime',
-    sessionSecret: 'secret',
-    sessionTtlMs: 604_800_000,
-    signupEnabled: false,
-    sourceArchiveDirectory: '/tmp/sources',
-    sourceArchiveMaxBytes: 104_857_600,
-    systemApiSocketPath: '/tmp/system.sock',
-    systemToken: 'system',
-    throttle: defaultApiAuthThrottleConfig,
-    trustedOutboundHosts: [],
-    tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
-    variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
-  };
+  });
 }

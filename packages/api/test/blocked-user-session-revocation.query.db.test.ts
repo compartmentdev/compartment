@@ -2,8 +2,6 @@ import type { Pool } from 'pg';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import {
@@ -22,10 +20,10 @@ import {
   projectServices,
   projects,
 } from '../src/db/schema';
-import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { revokeBlockedOrganizationUserAppAccessSessions } from '../src/queries/app-access.query';
 import { listActiveAuthenticationSessionIdsForBlockedOrganizationUser } from '../src/queries/blocked-organization-user-sessions.query';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 interface CreateAuthSessionInput {
   expiresAt?: Date | undefined;
@@ -45,40 +43,9 @@ interface CreateDeploymentInput {
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'blocked_user_session_revocation');
-const apiConfig: ApiConfig = {
-  baseDomain: 'localhost',
-  bindHost: '127.0.0.1',
-  tlsMode: 'internal',
-  controlPlaneHost: 'compartment.localhost',
+const apiConfig: ApiConfig = createApiTestConfig({
   databaseUrl,
-  edgeToken: 'test-edge-token',
-  edgeUrl: 'http://127.0.0.1:9081',
-  logLevel: 'silent',
-  port: 9443,
-  publicProtocol: 'http',
-  auditRetentionDays: 90,
-  auditRetentionCleanupBatchSize: 1000,
-  auditRetentionCleanupCron: '0 3 * * *',
-  auditRetentionCleanupMaxBatches: 100,
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  auditFileSink: defaultAuditFileSinkConfig,
-  rollbackRetentionLimit: null,
-  publicHttpPort: 9080,
-  publicHttpsPort: 443,
-  runtimeControlToken: 'test-runtime-control-token',
-  sessionSecret: 'test-secret',
-  sessionTtlMs: 604_800_000,
-  signupEnabled: false,
-  sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  sourceArchiveMaxBytes: 104_857_600,
-  systemApiSocketPath: '/tmp/compartment-test-system-api.sock',
-  systemToken: 'test-system-token',
-  throttle: defaultApiAuthThrottleConfig,
-  trustedOutboundHosts: [],
-  tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
-  variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
-};
+});
 const pool: Pool = createDatabasePool(databaseUrl);
 const db: Database = createDatabase(pool);
 

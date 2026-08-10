@@ -1,40 +1,11 @@
-import { defaultApiAuthThrottleConfig } from '../auth-throttle-config.fixture';
 import type { ApiConfig } from '../../src/config';
-import { defaultAuditFileSinkConfig } from '../audit-file-sink-config.fixture';
+import { createApiTestConfig } from '../api-config-test.fixtures';
 
 export function createSsoOidcApiConfig(): ApiConfig {
-  return {
-    baseDomain: 'localhost',
-    bindHost: '127.0.0.1',
-    tlsMode: 'internal',
+  return createApiTestConfig({
     controlPlaneHost: 'compartment.localhost',
-    databaseUrl: 'postgresql://localhost/compartment_test',
-    edgeToken: 'edge-token',
-    edgeUrl: 'http://edge.local',
-    logLevel: 'silent',
-    port: 3000,
     publicHttpPort: 80,
-    publicHttpsPort: 443,
     publicProtocol: 'https',
-    auditRetentionDays: 90,
-    auditRetentionCleanupBatchSize: 1000,
-    auditRetentionCleanupCron: '0 3 * * *',
-    auditRetentionCleanupMaxBatches: 100,
-    usageMeteringIntervalMs: 60_000,
-    usageRetentionDays: 400,
-    auditFileSink: defaultAuditFileSinkConfig,
-    rollbackRetentionLimit: null,
-    runtimeControlToken: 'runtime-control-token',
-    sessionSecret: 'session-secret',
     sessionTtlMs: 3_600_000,
-    signupEnabled: false,
-    sourceArchiveDirectory: '/tmp/compartment',
-    sourceArchiveMaxBytes: 104_857_600,
-    systemApiSocketPath: '/tmp/compartment/compartment-test-system-api.sock',
-    systemToken: 'system-token',
-    throttle: defaultApiAuthThrottleConfig,
-    trustedOutboundHosts: [],
-    tenantSecretsKek: Buffer.from('11'.repeat(32), 'hex'),
-    variablesMasterKey: Buffer.from('11'.repeat(32), 'hex'),
-  };
+  });
 }

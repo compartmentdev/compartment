@@ -22,7 +22,7 @@ import { buildProjectOverviewSummaries } from '../src/services/project-list-over
 import { buildProjectStatusSummaries } from '../src/services/project-list-status.service';
 import type { VisibleProjectSummary } from '../src/services/project-visibility.service';
 import type { ProjectOverviewListItem, ProjectStatusListItem } from '../src/services/projects.service.types';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 type GetApiConfig = typeof getApiConfig;
 type ListActiveCustomDeploymentRoutesForProjects = typeof listActiveCustomDeploymentRoutesForProjects;
@@ -481,20 +481,11 @@ describe('project list overview service', (): void => {
 });
 
 function createApiConfig(): ApiConfig {
-  return {
+  return createApiTestConfig({
     baseDomain: 'example.test',
     publicHttpPort: 80,
-    publicHttpsPort: 443,
     publicProtocol: 'https',
-    auditRetentionDays: 90,
-    auditRetentionCleanupBatchSize: 1000,
-    auditRetentionCleanupCron: '0 3 * * *',
-    auditRetentionCleanupMaxBatches: 100,
-    usageMeteringIntervalMs: 60_000,
-    usageRetentionDays: 400,
-    auditFileSink: defaultAuditFileSinkConfig,
-    rollbackRetentionLimit: null,
-  } as ApiConfig;
+  });
 }
 
 function createProjectRow(name: string, archivedAt: Date | null = null): ProjectRow {

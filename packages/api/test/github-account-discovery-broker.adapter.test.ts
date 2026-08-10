@@ -5,6 +5,7 @@ import {
   readGitHubAccountDiscoveryBrokerResult,
   startGitHubAccountDiscoveryBrokerSession,
 } from '../src/services/git-source/github-account-discovery-broker.adapter';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 type GetApiConfig = typeof RuntimeAccess.getApiConfig;
 type FetchBrokerHttp = (path: string, init?: RequestInit) => Promise<Response>;
@@ -153,11 +154,9 @@ function createJsonResponse(body: object): Response {
 }
 
 function createApiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
-  return {
+  return createApiTestConfig({
     managedDomainAcmeDnsToken: 'broker-token',
     managedDomainBrokerUrl: 'https://broker.example/',
-    tenantSecretsKek: Buffer.from('11'.repeat(32), 'hex'),
-    variablesMasterKey: Buffer.from('11'.repeat(32), 'hex'),
     ...overrides,
-  } as ApiConfig;
+  });
 }

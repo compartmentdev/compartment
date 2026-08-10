@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { kubeResourceServiceDns } from '@compartment/utils';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
 import type { Database } from '../src/db/client';
 import { clearApiRuntime, configureApiRuntime } from '../src/runtime/runtime';
@@ -27,6 +25,7 @@ import type { findProjectResourceByName } from '../src/queries/resources.query';
 import type { findEnvironmentById } from '../src/queries/access-scope.query';
 import type { ProjectResourceRow } from '../src/queries/resources.query.types';
 import { encryptVariableValueForStorageForTests, type TestEncryptedVariableValue } from './variables-test-crypto';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 type ListEnvironmentVariableValues = typeof listEnvironmentVariableValues;
 type ListEnvironmentResourceOutputVariableBindings = typeof listEnvironmentResourceOutputVariableBindings;
@@ -67,40 +66,10 @@ interface AccessScopeQueryModuleMock {
 
 const variablesMasterKey: Buffer = parseVariablesMasterKey('11'.repeat(32));
 
-const apiConfig: ApiConfig = {
-  bindHost: '127.0.0.1',
-  baseDomain: 'localhost',
-  tlsMode: 'internal',
-  controlPlaneHost: 'console.localhost',
-  databaseUrl: 'postgresql://postgres:postgres@127.0.0.1:5432/compartment_test',
-  edgeToken: 'edge-token',
-  edgeUrl: 'http://127.0.0.1:9081',
-  logLevel: 'silent',
-  port: 9443,
-  publicProtocol: 'http',
-  auditRetentionDays: 90,
-  auditRetentionCleanupBatchSize: 1000,
-  auditRetentionCleanupCron: '0 3 * * *',
-  auditRetentionCleanupMaxBatches: 100,
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  auditFileSink: defaultAuditFileSinkConfig,
-  rollbackRetentionLimit: null,
-  publicHttpPort: 9080,
-  publicHttpsPort: 443,
-  sessionSecret: 'session-secret',
-  sessionTtlMs: 604_800_000,
-  signupEnabled: false,
-  sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  sourceArchiveMaxBytes: 104_857_600,
-  throttle: defaultApiAuthThrottleConfig,
-  systemApiSocketPath: '/tmp/compartment/compartment-runtime-plan-system-api.sock',
-  systemToken: 'test-system-token',
-  trustedOutboundHosts: [],
+const apiConfig: ApiConfig = createApiTestConfig({
   tenantSecretsKek: variablesMasterKey,
   variablesMasterKey,
-  runtimeControlToken: 'worker-token',
-};
+});
 
 const mocks: DeploymentRuntimePlanServiceMocks = vi.hoisted(
   (): DeploymentRuntimePlanServiceMocks => ({

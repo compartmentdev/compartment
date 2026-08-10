@@ -10,7 +10,6 @@ import { createApp } from '../src/app';
 import type { ApiApp } from '../src/app.types';
 import type { ApiConfig } from '../src/config';
 import type { Database } from '../src/db/client';
-import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { clearApiRuntime, configureApiRuntime } from '../src/runtime/runtime';
 import {
   copySourceUploadArchiveFromPath,
@@ -26,8 +25,8 @@ import {
   chmodPrivateRuntimeStorageFile,
   repairPrivateRuntimeStoragePermissions,
 } from '../src/services/private-runtime-storage-permissions.service';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 const privateDirectoryMode: number = 0o700;
 const privateFileMode: number = 0o600;
@@ -187,44 +186,14 @@ function createMockPool(): Pool {
 }
 
 function createRuntimeStorageApiConfig(runtimeRoot: string): ApiConfig {
-  return {
+  return createApiTestConfig({
     auditFileSink: {
       ...defaultAuditFileSinkConfig,
       directory: join(runtimeRoot, 'audit'),
       enabled: false,
     },
-    auditRetentionCleanupBatchSize: 1000,
-    auditRetentionCleanupCron: '0 3 * * *',
-    auditRetentionCleanupMaxBatches: 100,
-    usageMeteringIntervalMs: 60_000,
-    usageRetentionDays: 400,
-    auditRetentionDays: 90,
-    baseDomain: 'localhost',
-    bindHost: '127.0.0.1',
-    tlsMode: 'internal',
-    controlPlaneHost: 'console.localhost',
-    databaseUrl: 'postgres://compartment:compartment@127.0.0.1:5432/compartment',
-    edgeToken: 'test-edge-token',
-    edgeUrl: 'http://127.0.0.1:9081',
-    logLevel: 'silent',
     managedDomainAcmeDnsToken: null,
     managedDomainBrokerUrl: null,
-    port: 9443,
-    publicHttpPort: 9080,
-    publicHttpsPort: 443,
-    publicProtocol: 'http',
-    rollbackRetentionLimit: null,
-    runtimeControlToken: 'test-runtime-control-token',
-    sessionSecret: 'test-secret',
-    sessionTtlMs: 604_800_000,
-    signupEnabled: false,
     sourceArchiveDirectory: join(runtimeRoot, 'source-archives'),
-    sourceArchiveMaxBytes: 104_857_600,
-    systemApiSocketPath: '/tmp/compartment/runtime-storage/system-api.sock',
-    systemToken: 'test-system-token',
-    throttle: defaultApiAuthThrottleConfig,
-    trustedOutboundHosts: [],
-    tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
-    variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
-  };
+  });
 }

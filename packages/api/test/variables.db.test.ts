@@ -3,8 +3,6 @@ import { eq } from 'drizzle-orm';
 import type { TenantSecretEnvironment } from '@compartment/contracts';
 import type { Pool } from 'pg';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import type { ApiDatabaseTransaction } from '../src/db/client.types';
@@ -70,6 +68,7 @@ import type {
   TenantSecretMigrationKeys,
   TenantSecretMigrationResult,
 } from '../src/services/tenant-secret-migration.service.types';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 interface VariableAuditTestMetadata {
   action: string;
@@ -83,40 +82,11 @@ const { testDatabaseUrl } = readDatabaseTestMode();
 const variablesDbDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'variables_db_query');
 const variablesMasterKey: Buffer = parseVariablesMasterKey('11'.repeat(32));
 
-const apiConfig: ApiConfig = {
-  bindHost: '127.0.0.1',
-  baseDomain: 'localhost',
-  tlsMode: 'internal',
-  controlPlaneHost: 'console.localhost',
+const apiConfig: ApiConfig = createApiTestConfig({
   databaseUrl: variablesDbDatabaseUrl,
-  edgeToken: 'test-edge-token',
-  edgeUrl: 'http://127.0.0.1:9081',
-  logLevel: 'silent',
-  port: 9443,
-  publicProtocol: 'http',
-  auditRetentionDays: 90,
-  auditRetentionCleanupBatchSize: 1000,
-  auditRetentionCleanupCron: '0 3 * * *',
-  auditRetentionCleanupMaxBatches: 100,
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  auditFileSink: defaultAuditFileSinkConfig,
-  rollbackRetentionLimit: null,
-  publicHttpPort: 9080,
-  publicHttpsPort: 443,
-  sessionSecret: 'test-secret',
-  sessionTtlMs: 604_800_000,
-  signupEnabled: false,
-  sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  sourceArchiveMaxBytes: 104_857_600,
-  throttle: defaultApiAuthThrottleConfig,
-  systemApiSocketPath: '/tmp/compartment/compartment-variables-db-system-api.sock',
-  systemToken: 'test-system-token',
-  trustedOutboundHosts: [],
   tenantSecretsKek: variablesMasterKey,
   variablesMasterKey,
-  runtimeControlToken: 'test-runtime-control-token',
-};
+});
 
 const pool: Pool = createDatabasePool(variablesDbDatabaseUrl);
 const db: Database = createDatabase(pool);

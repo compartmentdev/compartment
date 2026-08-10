@@ -5,7 +5,6 @@ import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import { cliLoginAttempts, organizations, principals, ssoOidcFlows, ssoOidcProviders } from '../src/db/schema';
-import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import {
   createCliLoginAttempt,
   deleteStaleCliLoginAttempts,
@@ -15,45 +14,13 @@ import {
 } from '../src/queries/cli-login.query';
 import type { CliLoginAttemptRow } from '../src/queries/cli-login.query.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const cliSsoDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'cli_sso_query');
-const apiConfig: ApiConfig = {
-  baseDomain: 'localhost',
-  bindHost: '127.0.0.1',
-  tlsMode: 'internal',
-  controlPlaneHost: 'compartment.localhost',
+const apiConfig: ApiConfig = createApiTestConfig({
   databaseUrl: cliSsoDatabaseUrl,
-  edgeToken: 'test-edge-token',
-  edgeUrl: 'http://127.0.0.1:9081',
-  logLevel: 'silent',
-  port: 9443,
-  publicHttpPort: 9080,
-  publicHttpsPort: 443,
-  publicProtocol: 'http',
-  auditRetentionDays: 90,
-  auditRetentionCleanupBatchSize: 1000,
-  auditRetentionCleanupCron: '0 3 * * *',
-  auditRetentionCleanupMaxBatches: 100,
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  auditFileSink: defaultAuditFileSinkConfig,
-  rollbackRetentionLimit: null,
-  runtimeControlToken: 'test-runtime-control-token',
-  sessionSecret: 'test-secret',
-  sessionTtlMs: 604_800_000,
-  signupEnabled: false,
-  sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  sourceArchiveMaxBytes: 104_857_600,
-  systemApiSocketPath: '/tmp/compartment/compartment-test-system-api.sock',
-  systemToken: 'test-system-token',
-  throttle: defaultApiAuthThrottleConfig,
-  trustedOutboundHosts: [],
-  tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
-  variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
-};
+});
 const pool: Pool = createDatabasePool(cliSsoDatabaseUrl);
 const db: Database = createDatabase(pool);
 

@@ -1,8 +1,6 @@
 import { createHash } from 'node:crypto';
 import { kubeResourceServiceDns } from '@compartment/utils';
 import { afterEach, describe, expect, it } from 'vitest';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import type { ApiConfig } from '../src/config';
 import type { Database } from '../src/db/client';
 import { createVariableValueFingerprint, parseVariablesMasterKey } from '../src/lib/variables-crypto';
@@ -15,6 +13,7 @@ import {
 } from '../src/services/resource-output-resolution.service';
 import type { EffectiveVariable } from '../src/services/effective-variables.service.types';
 import type { ResourceOutputSummaryInput } from '../src/services/resources.service.types';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 const variablesMasterKey: Buffer = parseVariablesMasterKey('11'.repeat(32));
 const namespaceId: string = 'prj-billing';
@@ -152,40 +151,11 @@ function configureResourceOutputRuntime(): void {
 }
 
 function createApiConfig(): ApiConfig {
-  return {
-    auditFileSink: defaultAuditFileSinkConfig,
-    auditRetentionCleanupBatchSize: 1000,
-    auditRetentionCleanupCron: '0 3 * * *',
-    auditRetentionCleanupMaxBatches: 100,
-    usageMeteringIntervalMs: 60_000,
-    usageRetentionDays: 400,
-    auditRetentionDays: 90,
-    baseDomain: 'localhost',
-    bindHost: '127.0.0.1',
-    tlsMode: 'internal',
-    controlPlaneHost: 'console.localhost',
-    databaseUrl: 'postgresql://postgres:postgres@127.0.0.1:5432/compartment_test',
-    edgeToken: 'edge-token',
-    edgeUrl: 'http://127.0.0.1:9081',
-    logLevel: 'silent',
-    port: 9443,
+  return createApiTestConfig({
     publicHttpPort: 80,
-    publicHttpsPort: 443,
-    publicProtocol: 'http',
-    rollbackRetentionLimit: null,
-    runtimeControlToken: 'runtime-token',
-    sessionSecret: 'test-session-secret',
-    sessionTtlMs: 604_800_000,
-    signupEnabled: false,
-    sourceArchiveDirectory: '/tmp/source-archives',
-    sourceArchiveMaxBytes: 104_857_600,
-    systemApiSocketPath: '/tmp/compartment/system-api.sock',
-    systemToken: 'system-token',
-    throttle: defaultApiAuthThrottleConfig,
-    trustedOutboundHosts: [],
     tenantSecretsKek: variablesMasterKey,
     variablesMasterKey,
-  };
+  });
 }
 
 function createProjectResourceRow(overrides: Partial<ProjectResourceRow> = {}): ProjectResourceRow {

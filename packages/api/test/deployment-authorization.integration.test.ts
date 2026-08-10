@@ -29,13 +29,10 @@ import { createApp } from '../src/app';
 import type { ApiApp } from '../src/app.types';
 import { createOrganizationMemberSession as createOrganizationMemberSessionFixture } from './api-auth-session-test.fixtures';
 import { useApiDatabaseTestHarness } from './api-db-test.harness';
-import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import { deploymentKubeReferences } from '../src/db/schema';
 import { upsertDeploymentKubeReference } from '../src/queries/deployment-kube-reference.query';
-import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import {
   claimNextQueuedDeployment,
   completeClaimedDeployment,
@@ -46,6 +43,7 @@ import {
   requireDeployResponseDeployment,
 } from './api-integration.harness';
 import { expectJsonError } from './api-route-test.harness';
+import { createApiTestConfig } from './api-config-test.fixtures';
 
 interface AppAccessEdgeServiceModule {
   invalidateEdgeAppAccessSessions: () => Promise<void>;
@@ -69,40 +67,11 @@ const deploymentAuthorizationDatabaseUrl: string = deriveProcessScopedDatabaseUr
   testDatabaseUrl,
   'api_deployment_authorization',
 );
-const apiConfig: ApiConfig = {
-  bindHost: '127.0.0.1',
-  baseDomain: 'localhost',
-  tlsMode: 'internal',
-  controlPlaneHost: 'console.localhost',
+const apiConfig: ApiConfig = createApiTestConfig({
   databaseUrl: deploymentAuthorizationDatabaseUrl,
-  edgeToken: 'test-edge-token',
-  edgeUrl: 'http://127.0.0.1:9081',
-  logLevel: 'silent',
-  port: 9443,
-  publicProtocol: 'http',
-  auditRetentionDays: 90,
-  auditRetentionCleanupBatchSize: 1000,
-  auditRetentionCleanupCron: '0 3 * * *',
-  auditRetentionCleanupMaxBatches: 100,
-  usageMeteringIntervalMs: 60_000,
-  usageRetentionDays: 400,
-  auditFileSink: defaultAuditFileSinkConfig,
-  rollbackRetentionLimit: null,
   publicHttpPort: 80,
-  publicHttpsPort: 443,
-  sessionSecret: 'test-secret',
-  sessionTtlMs: 604_800_000,
-  signupEnabled: false,
   sourceArchiveDirectory: join(tmpdir(), 'compartment-api-deployment-authorization-source-archives'),
-  sourceArchiveMaxBytes: 104_857_600,
-  throttle: defaultApiAuthThrottleConfig,
-  systemApiSocketPath: '/tmp/compartment/compartment-deployment-authorization-system-api.sock',
-  systemToken: 'test-system-token',
-  trustedOutboundHosts: [],
-  tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
-  variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
-  runtimeControlToken: 'test-runtime-control-token',
-};
+});
 const pool: Pool = createDatabasePool(deploymentAuthorizationDatabaseUrl);
 const db: Database = createDatabase(pool);
 const app: ApiApp = createApp({ config: apiConfig, pool });
