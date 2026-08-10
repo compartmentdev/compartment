@@ -121,6 +121,7 @@ export function applyApiRouteTestEnv({
   process.env.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_SUBJECT_BLOCK = '30m';
   process.env.COMPARTMENT_VARIABLES_MASTER_KEY = '11'.repeat(32);
   process.env.COMPARTMENT_BASE_DOMAIN = baseDomain;
+  process.env.COMPARTMENT_SIGNUP_ENABLED = 'false';
 }
 
 export async function withApiRouteApp<TResult>(run: (app: ApiApp) => Promise<TResult>): Promise<TResult> {

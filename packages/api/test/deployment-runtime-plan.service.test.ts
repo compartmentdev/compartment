@@ -90,6 +90,7 @@ const apiConfig: ApiConfig = {
   publicHttpsPort: 443,
   sessionSecret: 'session-secret',
   sessionTtlMs: 604_800_000,
+  signupEnabled: false,
   sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
   sourceArchiveMaxBytes: 104_857_600,
   throttle: defaultApiAuthThrottleConfig,

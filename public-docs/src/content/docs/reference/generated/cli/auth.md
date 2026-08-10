@@ -17,13 +17,15 @@ Usage: compartment auth [options] [command]
 Authentication configuration
 
 Options:
-  -h, --help      display help for command
+  -h, --help       display help for command
 
 Commands:
-  settings        Organization login settings
-  help [command]  display help for command
+  settings         Organization login settings
+  claim [options]  Bind a real email and password to the signed-in account
+  help [command]   display help for command
 ```
 
 ## Related Commands
 
 - [compartment auth settings](/reference/generated/cli/auth/settings/)
+- [compartment auth claim](/reference/generated/cli/auth/claim/)

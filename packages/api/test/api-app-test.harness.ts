@@ -97,6 +97,7 @@ export function createApiIntegrationTestContext(databaseName: string, runtimeSlu
   process.env.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_SUBJECT_BLOCK = '30m';
   process.env.COMPARTMENT_VARIABLES_MASTER_KEY = process.env.COMPARTMENT_VARIABLES_MASTER_KEY ?? '11'.repeat(32);
   process.env.COMPARTMENT_RUNTIME_CONTROL_TOKEN = testRuntimeControlToken;
+  process.env.COMPARTMENT_SIGNUP_ENABLED = 'false';
 
   return {
     apiConfig: readApiConfig(),

@@ -217,6 +217,7 @@ function createRuntimeStorageApiConfig(runtimeRoot: string): ApiConfig {
     runtimeControlToken: 'test-runtime-control-token',
     sessionSecret: 'test-secret',
     sessionTtlMs: 604_800_000,
+    signupEnabled: false,
     sourceArchiveDirectory: join(runtimeRoot, 'source-archives'),
     sourceArchiveMaxBytes: 104_857_600,
     systemApiSocketPath: '/tmp/compartment/runtime-storage/system-api.sock',

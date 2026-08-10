@@ -352,6 +352,7 @@ function createApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.
     COMPARTMENT_PUBLIC_HTTPS_PORT: '9444',
     COMPARTMENT_SESSION_SECRET: 'test-secret',
     COMPARTMENT_SESSION_TTL: '7d',
+    COMPARTMENT_SIGNUP_ENABLED: 'false',
     COMPARTMENT_SYSTEM_API_SOCKET: '/tmp/compartment/api/system-api.sock',
     COMPARTMENT_SYSTEM_TOKEN: 'system-secret',
     COMPARTMENT_TRUSTED_OUTBOUND_HOSTS: '',

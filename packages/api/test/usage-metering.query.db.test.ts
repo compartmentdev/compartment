@@ -59,6 +59,7 @@ const apiConfig: ApiConfig = {
   runtimeControlToken: 'runtime',
   sessionSecret: 'secret',
   sessionTtlMs: 1000,
+  signupEnabled: false,
   sourceArchiveDirectory: '/tmp/source',
   sourceArchiveMaxBytes: 1000,
   systemApiSocketPath: '/tmp/system.sock',

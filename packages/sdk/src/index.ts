@@ -106,6 +106,8 @@ export { listProjects } from './services/project-list.service';
 export { listUsers } from './services/users-list.service';
 export { logoutAppAccess } from './services/app-access-logout.service';
 export { logoutCompartment } from './services/logout.service';
+export { claimCompartmentAccount } from './services/claim-account.service';
+export { signUpToCompartment } from './services/signup.service';
 export { runNextScheduledResourceOperation } from './services/worker-run-scheduled-resource-operation.service';
 export { claimNextGitSourceResolutionTask } from './services/worker-claim-git-source-resolution-task.service';
 export { claimNextGitSourceSyncTask } from './services/worker-claim-git-source-sync-task.service';

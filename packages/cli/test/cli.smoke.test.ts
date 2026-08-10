@@ -709,6 +709,7 @@ function buildApiEnvironment(
     COMPARTMENT_PUBLIC_HTTPS_PORT: '443',
     COMPARTMENT_SESSION_SECRET: cliTestSessionSecret,
     COMPARTMENT_SESSION_TTL: readCliTestSessionTtlDuration(),
+    COMPARTMENT_SIGNUP_ENABLED: 'false',
     COMPARTMENT_SOURCE_ARCHIVE_DIR: join(tempDirectory, 'sa'),
     COMPARTMENT_SOURCE_ARCHIVE_MAX_BYTES: '104857600',
     COMPARTMENT_SYSTEM_API_SOCKET: join(tempDirectory, 's', `sys-${apiPort.toString()}.sock`),

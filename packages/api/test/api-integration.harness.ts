@@ -136,6 +136,7 @@ export async function installCompartment(apiApp: ApiApp): Promise<InstallRespons
     },
     url: '/v1/install',
   });
+  expect(installResponse.statusCode, `Install setup failed: ${installResponse.body}`).toBe(200);
 
   return installResponseSchema.parse(installResponse.json());
 }

@@ -1,8 +1,8 @@
 import type { Database } from '../db/client';
-import { eq, sql } from 'drizzle-orm';
+import { eq, isNull, sql } from 'drizzle-orm';
 import { localCredentials, principals } from '../db/schema';
 import { buildPrincipalEmailLookup } from './principal-email.query.helpers';
-import type { PrincipalCredentialSelection } from './principal-credentials.query.types';
+import type { PrincipalCredentialSelection, SetLocalPasswordHashInput } from './principal-credentials.query.types';
 import type { OrganizationUsersTransaction, PrincipalCredentialRow } from './organization-users.query.types';
 
 export const principalCredentialSelection: PrincipalCredentialSelection = {
@@ -39,6 +39,47 @@ export async function findPrincipalCredentialByEmailWithExecutor(
     .limit(1);
 
   return rows[0];
+}
+
+export async function updatePrincipalEmailWithExecutor(
+  executor: OrganizationUsersTransaction,
+  principalId: string,
+  email: string,
+): Promise<void> {
+  await executor.update(principals).set({ email }).where(eq(principals.id, principalId));
+}
+
+/**
+ * Claims the local credential slot for a principal that has never had a password. The `where` clause makes the upsert
+ * a no-op for an established account, so a leaked session cannot overwrite credentials somebody else already owns.
+ */
+export async function claimLocalPasswordHashWithExecutor(
+  executor: OrganizationUsersTransaction,
+  input: SetLocalPasswordHashInput,
+): Promise<boolean> {
+  const rows: { principalId: string }[] = await executor
+    .insert(localCredentials)
+    .values({
+      passwordHash: input.passwordHash,
+      principalId: input.principalId,
+      updatedAt: input.updatedAt,
+    })
+    .onConflictDoUpdate({
+      set: {
+        bootstrapTokenExpiresAt: null,
+        bootstrapTokenHash: null,
+        passwordHash: input.passwordHash,
+        passwordResetOrganizationId: null,
+        passwordResetTokenExpiresAt: null,
+        passwordResetTokenHash: null,
+        updatedAt: input.updatedAt,
+      },
+      setWhere: isNull(localCredentials.passwordHash),
+      target: localCredentials.principalId,
+    })
+    .returning({ principalId: localCredentials.principalId });
+
+  return rows.length === 1;
 }
 
 export async function clearLocalCredentialStateByPrincipalIdWithExecutor(

@@ -79,6 +79,7 @@ const apiConfig: ApiConfig = {
   rollbackRetentionLimit: null,
   sessionSecret: 'test-secret',
   sessionTtlMs: 604_800_000,
+  signupEnabled: false,
   sourceArchiveDirectory: join(tmpdir(), 'compartment-api-auth-throttle-source-archives'),
   sourceArchiveMaxBytes: 104_857_600,
   systemApiSocketPath: '/tmp/compartment/compartment-auth-throttle-system-api.sock',

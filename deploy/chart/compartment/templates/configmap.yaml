@@ -59,6 +59,7 @@ data:
   COMPARTMENT_AUDIT_FILE_SINK_RETENTION_FILES: {{ .Values.platform.auditFileSinkRetentionFiles | quote }}
   COMPARTMENT_ROLLBACK_RETENTION_LIMIT: {{ .Values.platform.rollbackRetentionLimit | quote }}
   COMPARTMENT_SESSION_TTL: {{ .Values.platform.sessionTtl | quote }}
+  COMPARTMENT_SIGNUP_ENABLED: {{ .Values.platform.signupEnabled | quote }}
   COMPARTMENT_THROTTLE_AUTH_LOGIN_ROUTE_MAX_REQUESTS: {{ .Values.platform.authThrottle.login.route.limit | quote }}
   COMPARTMENT_THROTTLE_AUTH_LOGIN_ROUTE_WINDOW: {{ .Values.platform.authThrottle.login.route.window | quote }}
   COMPARTMENT_THROTTLE_AUTH_LOGIN_SOURCE_MAX_FAILURES: {{ .Values.platform.authThrottle.login.source.limit | quote }}

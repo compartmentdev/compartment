@@ -1,4 +1,5 @@
 export type ApiBusinessErrorCode =
+  | 'account_already_claimed'
   | 'access_assignment_not_found'
   | 'access_group_name_taken'
   | 'access_group_not_found'
@@ -15,6 +16,7 @@ export type ApiBusinessErrorCode =
   | 'descriptor_service_not_found'
   | 'deployment_not_found'
   | 'edge_state_update_failed'
+  | 'email_taken'
   | 'environment_not_found'
   | 'forbidden'
   | 'git_source_bootstrap_invalid'
@@ -75,6 +77,7 @@ export type ApiBusinessErrorCode =
   | 'route_not_found'
   | 'self_admin_membership_change_forbidden'
   | 'service_not_found'
+  | 'signup_disabled'
   | 'source_and_target_environment_match'
   | 'resource_not_found'
   | 'resource_name_taken'
