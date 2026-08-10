@@ -32,6 +32,7 @@ type PendingArguments = readonly [
   DeploymentReconcileTarget,
   TenantSecretsKeyring,
   number,
+  string,
 ];
 
 export async function reconcilePendingDeployment(
@@ -40,15 +41,24 @@ export async function reconcilePendingDeployment(
   target: DeploymentReconcileTarget,
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,
+  workerImage: string,
   rolloutStarts: DeploymentRolloutStartTracker,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
-  const pendingArguments: PendingArguments = [request, runtime, target, tenantSecretsKek, infrastructureTimeoutMs];
+  const pendingArguments: PendingArguments = [
+    request,
+    runtime,
+    target,
+    tenantSecretsKek,
+    infrastructureTimeoutMs,
+    workerImage,
+  ];
   const rollout: KubeRolloutObservation | null = await readAppliedCandidateRollout(
     runtime,
     target,
     tenantSecretsKek,
     infrastructureTimeoutMs,
+    workerImage,
     rolloutStarts,
     scheduling,
   );
@@ -76,6 +86,7 @@ async function readAppliedCandidateRollout(
   target: DeploymentReconcileTarget,
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,
+  workerImage: string,
   rolloutStarts: DeploymentRolloutStartTracker,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<KubeRolloutObservation | null> {
@@ -85,6 +96,7 @@ async function readAppliedCandidateRollout(
     tenantSecretsKek,
     infrastructureTimeoutMs,
     scheduling,
+    workerImage,
   );
   hydrateRecoveryRestarted(applied, target, infrastructureTimeoutMs, rolloutStarts);
   return await readCandidateRolloutObservation(
@@ -117,17 +129,25 @@ async function handleMissingPendingDeployment(
   target: DeploymentReconcileTarget,
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,
+  workerImage: string,
   rolloutStarts: DeploymentRolloutStartTracker,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
-  const restartArguments: PendingArguments = [request, runtime, target, tenantSecretsKek, infrastructureTimeoutMs];
+  const restartArguments: PendingArguments = [
+    request,
+    runtime,
+    target,
+    tenantSecretsKek,
+    infrastructureTimeoutMs,
+    workerImage,
+  ];
   if (Date.now() < infrastructureRolloutDeadlineAt(target, infrastructureTimeoutMs).getTime()) {
     return [];
   }
   if (await restartActiveCandidate(...restartArguments, rolloutStarts, scheduling)) {
     return [];
   }
-  await recoverFailedRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling);
+  await recoverFailedRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
   const applied: boolean = (
     await persistDeploymentObservation(request, target, 'failed', 'Kubernetes rollout timed out.')
   ).applied;
@@ -141,18 +161,26 @@ async function handleRolloutStatus(
   target: DeploymentReconcileTarget,
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,
+  workerImage: string,
   status: KubeRolloutStatus,
   rolloutStarts: DeploymentRolloutStartTracker,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
-  const restartArguments: PendingArguments = [request, runtime, target, tenantSecretsKek, infrastructureTimeoutMs];
+  const restartArguments: PendingArguments = [
+    request,
+    runtime,
+    target,
+    tenantSecretsKek,
+    infrastructureTimeoutMs,
+    workerImage,
+  ];
   if (status === 'ready') {
     return await persistReadyDeployment(request, target, rolloutStarts);
   }
   if (status === 'progressing' || (await restartActiveCandidate(...restartArguments, rolloutStarts, scheduling))) {
     return [];
   }
-  await recoverFailedRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling);
+  await recoverFailedRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
   const applied: boolean = (
     await persistDeploymentObservation(request, target, 'failed', rolloutFailureMessage(status))
   ).applied;

@@ -1,4 +1,4 @@
-import type { DeploymentReconcileState } from '@compartment/contracts';
+import type { DeploymentReconcileState, ResourceReachabilityEndpoint } from '@compartment/contracts';
 import type { AuditEventRow } from './audit-events.query.types';
 
 export interface DeploymentReconcileRow {
@@ -14,12 +14,16 @@ export interface DeploymentReconcileRow {
   resolvedReadinessJson: string;
   resolvedReleaseJson: string;
   resolvedRunJson: string;
+  resourceEndpoints: ResourceReachabilityEndpoint[];
   revision: number;
   serviceId: string;
   serviceName: string;
   state: DeploymentReconcileState;
   transitionedAt: Date;
 }
+
+/** The reconcile row as the join selects it, before the resources it dials are read in the same transaction. */
+export type DeploymentReconcileSelectedRow = Omit<DeploymentReconcileRow, 'resourceEndpoints'>;
 
 export interface DeploymentReconcilePair {
   active: DeploymentReconcileRow | null;

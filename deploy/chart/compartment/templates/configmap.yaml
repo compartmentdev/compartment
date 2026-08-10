@@ -36,7 +36,7 @@ data:
   COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: {{ .Values.buildkit.gcKeepStorageMb | quote }}
   COMPARTMENT_BUILDKIT_RESOURCES: {{ .Values.resources.buildkit | toJson | quote }}
   COMPARTMENT_BUILD_NAMESPACE: {{ .Values.buildkit.namespace | quote }}
-  COMPARTMENT_BUILD_RUNNER_IMAGE: {{ include "compartment.image" .Values.images.worker | quote }}
+  COMPARTMENT_WORKER_IMAGE: {{ include "compartment.image" .Values.images.worker | quote }}
   COMPARTMENT_BUILD_RUNNER_RESOURCES: {{ .Values.resources.buildRunner | toJson | quote }}
   COMPARTMENT_BUILD_TIMEOUT_MS: {{ .Values.buildkit.timeoutMs | quote }}
   COMPARTMENT_MAX_CONCURRENT_BUILDS: {{ .Values.buildkit.maximumConcurrentBuilds | quote }}

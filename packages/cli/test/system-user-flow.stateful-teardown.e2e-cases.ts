@@ -81,6 +81,7 @@ import {
 } from './self-hosted-user-setup.e2e.harness';
 import {
   expectAppBuildMessage,
+  expectAppConnectedToDatabaseAtBoot,
   expectAppDatabaseValue,
   expectAppEnvMessage,
   expectAppForbidden,
@@ -149,6 +150,11 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
         resourceResponseSchema,
       );
       expect(resourcePayload.resource.status).toBe('running');
+
+      // This Pod booted while the resource was running, so its one no-retry connect is the case the platform
+      // reachability gate covers. Asserting it after a stop would instead read a Pod that booted with the
+      // resource scaled to zero, which is never expected to answer and so is never gated.
+      await expectAppConnectedToDatabaseAtBoot(routeUrl, adminAppSessionCookie);
 
       const resourceLogsPayload: ResourceLogsResponse = await admin.runJson(
         `resource logs --project ${app.projectName} --resource ${app.resourceName} --tail 50`,

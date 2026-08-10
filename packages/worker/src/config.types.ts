@@ -20,13 +20,14 @@ export interface WorkerLeaderElectionProcessConfig {
 
 export interface WorkerBuildConfig extends WorkerProcessConfig {
   buildSandbox: WorkerBuildSandboxConfig;
+  /** The platform image this worker itself runs, reused for every container the worker injects into a tenant Pod. */
+  workerImage: string;
 }
 
 export interface WorkerBuildSandboxConfig {
   gcKeepStorageMb: number;
   buildKitResources: WorkerBuildResourceRequirements;
   namespace: string;
-  runnerImage: string;
   runnerResources: WorkerBuildResourceRequirements;
   scheduling: WorkerBuildScheduling;
   timeoutMs: number;

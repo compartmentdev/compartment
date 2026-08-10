@@ -13,8 +13,15 @@ import {
 } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
-import type { DeploymentReconcilePair, DeploymentReconcileRow } from './deployment-reconcile.query.types';
+import type {
+  DeploymentReconcilePair,
+  DeploymentReconcileRow,
+  DeploymentReconcileSelectedRow,
+} from './deployment-reconcile.query.types';
 import { projectIsolationVersion } from './project-provisioning-policy';
+import { readReleaseResourceIds } from './product-job-release-readiness.query';
+import type { ReleaseResourceIdRow } from './product-job-release-readiness.query.types';
+import { readResourceReachabilityEndpoints } from './resource-reachability.query';
 
 const replacementDeployments: BuildAliasTable<typeof deployments, 'replacement_deployments'> = alias(
   deployments,
@@ -52,20 +59,43 @@ export async function findNextDeploymentReconcilePair(): Promise<DeploymentRecon
 }
 
 async function claimReconcilePair(tx: DeploymentTransaction): Promise<DeploymentReconcilePair | null> {
-  const candidates: DeploymentReconcileRow[] = await findCandidateReconcileRows(tx);
-  const candidate: DeploymentReconcileRow | undefined = candidates[0];
+  const candidates: DeploymentReconcileSelectedRow[] = await findCandidateReconcileRows(tx);
+  const candidate: DeploymentReconcileSelectedRow | undefined = candidates[0];
   if (candidate === undefined) {
     return null;
   }
   const revision: number = candidate.revision + 1;
   await claimCandidateRevision(tx, candidate, revision);
-  const activeRows: DeploymentReconcileRow[] = await findActiveReconcileRows(tx, candidate);
-  return { active: activeRows[0] ?? null, candidate: { ...candidate, revision } };
+  const activeRows: DeploymentReconcileSelectedRow[] = await findActiveReconcileRows(tx, candidate);
+  const active: DeploymentReconcileSelectedRow | undefined = activeRows[0];
+  return {
+    active: active === undefined ? null : await withResourceEndpoints(tx, active),
+    candidate: await withResourceEndpoints(tx, { ...candidate, revision }),
+  };
+}
+
+/**
+ * Resources this deployment's Pods dial, read in the claim transaction alongside the rows they belong to. The
+ * descriptor output bindings are the same record the release readiness fence reads, so the application Pod waits
+ * on exactly the resource set the release Job is gated on.
+ */
+async function withResourceEndpoints(
+  tx: DeploymentTransaction,
+  row: DeploymentReconcileSelectedRow,
+): Promise<DeploymentReconcileRow> {
+  const resources: ReleaseResourceIdRow[] = await readReleaseResourceIds(tx, row.deploymentId);
+  return {
+    ...row,
+    resourceEndpoints: await readResourceReachabilityEndpoints(
+      tx,
+      resources.map((resource: ReleaseResourceIdRow): string => resource.id),
+    ),
+  };
 }
 
 async function claimCandidateRevision(
   tx: DeploymentTransaction,
-  candidate: DeploymentReconcileRow,
+  candidate: DeploymentReconcileSelectedRow,
   revision: number,
 ): Promise<void> {
   await tx
@@ -76,8 +106,8 @@ async function claimCandidateRevision(
 
 async function findActiveReconcileRows(
   tx: DeploymentTransaction,
-  candidate: DeploymentReconcileRow,
-): Promise<DeploymentReconcileRow[]> {
+  candidate: DeploymentReconcileSelectedRow,
+): Promise<DeploymentReconcileSelectedRow[]> {
   return await tx
     .select(reconcileSelection())
     .from(deploymentKubeReferences)
@@ -98,7 +128,7 @@ async function findActiveReconcileRows(
     .limit(1);
 }
 
-async function findCandidateReconcileRows(tx: DeploymentTransaction): Promise<DeploymentReconcileRow[]> {
+async function findCandidateReconcileRows(tx: DeploymentTransaction): Promise<DeploymentReconcileSelectedRow[]> {
   return await Promise.resolve(
     tx
       .select(reconcileSelection())

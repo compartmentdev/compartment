@@ -25,6 +25,11 @@ reads outputs from a resource that declares `readiness`, the release also waits 
 first, and fails the deploy attempt without running the command if the resource stays unready for its declared
 `readiness.timeoutMs`.
 
+That wait is not limited to the release. Every new instance of a service connected to such a resource waits for the
+resource before the instance starts serving, on the first deploy and on every later restart or replacement. An
+instance whose resource never answers within `readiness.timeoutMs` never starts, and the deploy fails on its usual
+deploy timeout.
+
 For `kind: static`, the deploy still ends as an immutable image-backed rollout, but the service contract is narrower:
 
 - `build.outputDirectory` is required;

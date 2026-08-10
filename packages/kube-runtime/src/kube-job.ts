@@ -1,27 +1,6 @@
 import type { KubeObservation, KubeObservationEvent, KubeObservedManifest } from './kube-runtime.types';
 import { jobStatusFailed } from './kube-job-status';
-
-export interface TerminalJob {
-  exitCode: number;
-  podName: string;
-  podNames: string[];
-  succeeded: boolean;
-}
-
-interface JobStatus {
-  conditions?: JobStatusCondition[] | undefined;
-  failed?: number | undefined;
-  succeeded?: number | undefined;
-}
-
-interface JobStatusCondition {
-  status?: string | undefined;
-  type?: string | undefined;
-}
-
-interface PodStatus {
-  containerStatuses?: { state?: { terminated?: { exitCode?: number | undefined } | undefined } | undefined }[];
-}
+import type { JobStatus, PodInitFailure, PodStatus, TerminalJob } from './kube-job.types';
 
 export async function waitForTerminalJob(
   observation: KubeObservation,
@@ -86,18 +65,44 @@ function readTerminalPod(
   const terminalPods: KubeObservedManifest[] = pods.filter(
     (pod: KubeObservedManifest): boolean => readPodExitCode(pod) !== null,
   );
+  // A Job that retried can hold one Pod that ran and failed and another that never got past its gate. Taking the
+  // last of either list separately would report whichever list happened to be non-empty, not the last attempt.
+  const failedPods: KubeObservedManifest[] = pods.filter(
+    (pod: KubeObservedManifest): boolean => readPodExitCode(pod) !== null || readPodInitFailure(pod) !== null,
+  );
   const pod: KubeObservedManifest | undefined = succeeded
     ? terminalPods.find((candidate: KubeObservedManifest): boolean => readPodExitCode(candidate) === 0)
-    : terminalPods.at(-1);
+    : failedPods.at(-1);
   if (pod?.metadata?.name === undefined) {
     return null;
   }
+  const initFailure: PodInitFailure | null = readPodInitFailure(pod);
   return {
-    exitCode: readPodExitCode(pod) ?? 1,
+    exitCode: readPodExitCode(pod) ?? initFailure?.exitCode ?? 1,
+    initFailureMessage: readPodExitCode(pod) === null ? (initFailure?.message ?? null) : null,
     podName: pod.metadata.name,
     podNames: readTerminalPodNames(terminalPods),
     succeeded,
   };
+}
+
+/**
+ * A Pod whose init container failed never runs its own container, so it reports no container exit code and its
+ * logs cannot be read. Without this the Job is terminal in Kubernetes while the worker waits out the full Job
+ * timeout and reports nothing about why. The failing container's termination message is the only account of it.
+ */
+function readPodInitFailure(pod: KubeObservedManifest): PodInitFailure | null {
+  if (readPodExitCode(pod) !== null) {
+    return null;
+  }
+  const podStatus: PodStatus | undefined = pod.status;
+  for (const status of podStatus?.initContainerStatuses ?? []) {
+    const exitCode: number | undefined = status.state?.terminated?.exitCode;
+    if (exitCode !== undefined && exitCode !== 0) {
+      return { exitCode, message: status.state?.terminated?.message ?? '' };
+    }
+  }
+  return null;
 }
 
 function readTerminalPodNames(pods: KubeObservedManifest[]): string[] {

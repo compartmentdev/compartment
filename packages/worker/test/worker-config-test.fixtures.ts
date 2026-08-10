@@ -14,7 +14,6 @@ export function createWorkerTestConfig(overrides: Partial<WorkerConfig> = {}): W
       buildKitResources: { limits: { memory: '3Gi' } },
       gcKeepStorageMb: 1024,
       namespace: 'compartment-build',
-      runnerImage: 'compartment-worker@sha256:runner',
       runnerResources: { limits: { memory: '1Gi' } },
       scheduling: { nodeSelector: {}, runtimeClassName: 'gvisor', tolerations: [] },
       timeoutMs: 900_000,
@@ -38,6 +37,7 @@ export function createWorkerTestConfig(overrides: Partial<WorkerConfig> = {}): W
     runtimeControlToken: 'worker-secret',
     tenantSecretsKek: testTenantSecretsKek,
     usageMeteringIntervalMs: 60_000,
+    workerImage: 'compartment-worker@sha256:runner',
     ...overrides,
   };
 }

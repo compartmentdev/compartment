@@ -1,23 +1,25 @@
 import type {
-  KubeJobEmptyDirVolume,
   KubeJobManifest,
   KubeJobManifestSpec,
   KubeJobSpec,
   KubeJobSidecar,
-  KubeJobVolumeMount,
   KubeLiteralEnvVariable,
   KubeManifest,
   KubeObservedManifest,
-  KubePodVolume,
   KubeProjectedContainer,
+  KubeProjectedInitContainer,
   KubeProjectedSidecarContainer,
   KubeProjectedPodSpec,
   KubeSecretEnvVariable,
-  KubeVolumeMount,
 } from './kube-runtime.types';
 import { compareKubeKey } from './kube-key-order';
 import { gvisorTmpfsAnnotations } from './kube-gvisor-mount-annotations';
+import { kubeJobVolumeMounts, kubeJobVolumes } from './kube-job-volume-projection';
 import { kubeSecretName } from './kube-naming';
+import {
+  observedResourceReachabilityProbe,
+  projectResourceReachabilityInitContainer,
+} from './kube-resource-reachability-projection';
 import { secretChecksum } from './kube-secret-projection';
 import type { KubeContainerSecurityContext, KubePodSecurityContext } from './kube-security-context.types';
 import {
@@ -67,7 +69,7 @@ export function recoveredJobSpec(spec: KubeJobSpec, observed: KubeObservedManife
   if (observed === null) {
     return spec;
   }
-  const finalizationSpec: KubeJobSpec = { ...spec };
+  const finalizationSpec: KubeJobSpec = { ...spec, resourceProbe: observedResourceReachabilityProbe(observed) };
   delete finalizationSpec.scheduling;
   if (observed.kind !== 'Job' || observed.spec?.template.spec.priorityClassName !== tenantPriorityClassName) {
     return finalizationSpec;
@@ -86,12 +88,13 @@ export function recoveredJobSpec(spec: KubeJobSpec, observed: KubeObservedManife
 
 function jobSpec(spec: KubeJobSpec, labels: Record<string, string>): KubeJobManifestSpec {
   assertGvisorBuildKitSidecars(spec);
+  const initContainers: (KubeProjectedInitContainer | KubeProjectedSidecarContainer)[] = jobInitContainers(spec);
   const podSpec: KubeProjectedPodSpec = {
     automountServiceAccountToken: false,
     containers: [jobContainer(spec)],
     imagePullSecrets:
       spec.imagePullSecretId === undefined ? undefined : [{ name: kubeSecretName(spec.imagePullSecretId) }],
-    ...(spec.sidecars === undefined ? {} : { initContainers: spec.sidecars.map(projectSidecar) }),
+    ...(initContainers.length === 0 ? {} : { initContainers }),
     ...projectTenantScheduling(spec.scheduling),
     restartPolicy: 'Never',
     securityContext: jobPodSecurityContext(spec),
@@ -106,6 +109,17 @@ function jobSpec(spec: KubeJobSpec, labels: Record<string, string>): KubeJobMani
       spec: podSpec,
     },
   };
+}
+
+/**
+ * The reachability probe runs before the BuildKit sidecar starts, which costs nothing: build Jobs dial no
+ * resource and never carry a probe.
+ */
+function jobInitContainers(spec: KubeJobSpec): (KubeProjectedInitContainer | KubeProjectedSidecarContainer)[] {
+  return [
+    ...(spec.resourceProbe === undefined ? [] : [projectResourceReachabilityInitContainer(spec.resourceProbe)]),
+    ...(spec.sidecars ?? []).map(projectSidecar),
+  ];
 }
 
 function jobPodAnnotations(spec: KubeJobSpec): Record<string, string> {
@@ -185,78 +199,4 @@ function jobContainerSecurityContext(spec: KubeJobSpec): KubeContainerSecurityCo
     return restrictedContainerSecurityContext();
   }
   return undefined;
-}
-
-function kubeJobVolumes(spec: KubeJobSpec): KubePodVolume[] {
-  const persistentVolumes: KubePodVolume[] =
-    spec.volumeMounts?.map(
-      (mount: KubeJobVolumeMount): KubePodVolume => ({
-        name: mount.name,
-        persistentVolumeClaim: {
-          claimName: mount.claimName,
-          ...(mount.readOnly === undefined ? {} : { readOnly: mount.readOnly }),
-        },
-      }),
-    ) ?? [];
-  const kubeApiAccess: KubePodVolume | null = kubeApiAccessVolume(spec);
-  const emptyDirectories: KubePodVolume[] =
-    spec.emptyDirVolumes?.map(
-      ({ name, sizeLimit }: KubeJobEmptyDirVolume): KubePodVolume => ({
-        emptyDir: sizeLimit === undefined ? {} : { sizeLimit },
-        name,
-      }),
-    ) ?? [];
-  return [...persistentVolumes, ...emptyDirectories, ...(kubeApiAccess === null ? [] : [kubeApiAccess])];
-}
-
-function kubeApiAccessVolume(spec: KubeJobSpec): KubePodVolume | null {
-  if (spec.serviceAccountTokenExpirationSeconds === undefined) {
-    return null;
-  }
-  if (spec.serviceAccountName === undefined) {
-    throw new Error('Kubernetes Job token projection requires a service account name.');
-  }
-  return projectedKubeApiAccessVolume(spec.serviceAccountTokenExpirationSeconds);
-}
-
-function projectedKubeApiAccessVolume(expirationSeconds: number): KubePodVolume {
-  return {
-    name: 'kube-api-access',
-    projected: {
-      defaultMode: 420,
-      sources: [
-        { serviceAccountToken: { expirationSeconds, path: 'token' } },
-        { configMap: { items: [{ key: 'ca.crt', path: 'ca.crt' }], name: 'kube-root-ca.crt' } },
-        {
-          downwardAPI: {
-            items: [{ fieldRef: { apiVersion: 'v1', fieldPath: 'metadata.namespace' }, path: 'namespace' }],
-          },
-        },
-      ],
-    },
-  };
-}
-
-function kubeJobVolumeMounts(spec: KubeJobSpec): KubeVolumeMount[] {
-  const mounts: KubeVolumeMount[] =
-    spec.volumeMounts?.map(
-      (mount: KubeJobVolumeMount): KubeVolumeMount => ({
-        mountPath: mount.mountPath,
-        name: mount.name,
-        ...(mount.readOnly === undefined ? {} : { readOnly: mount.readOnly }),
-        ...(mount.subPath === undefined ? {} : { subPath: mount.subPath }),
-      }),
-    ) ?? [];
-  const emptyDirectoryMounts: KubeVolumeMount[] =
-    spec.emptyDirVolumes?.flatMap(
-      ({ containerMountPath, name }: { containerMountPath?: string | undefined; name: string }): KubeVolumeMount[] =>
-        containerMountPath === undefined ? [] : [{ mountPath: containerMountPath, name }],
-    ) ?? [];
-  const jobMounts: KubeVolumeMount[] = [...mounts, ...emptyDirectoryMounts];
-  return spec.serviceAccountTokenExpirationSeconds === undefined
-    ? jobMounts
-    : [
-        ...jobMounts,
-        { mountPath: '/var/run/secrets/kubernetes.io/serviceaccount', name: 'kube-api-access', readOnly: true },
-      ];
 }

@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import type { ContractSchema } from './schema.types';
+import {
+  createResourceReachabilityEndpointShape,
+  type ResourceReachabilityEndpoint,
+} from './internal-resource-reachability.contract';
 import { tenantSecretEnvironmentSchema, type TenantSecretEnvironment } from './internal-tenant-secret.contract';
 
 export type ProductJobClass = 'release' | 'resource-operation';
@@ -45,10 +49,13 @@ export type ProductJobIntent = ReleaseProductJobIntent | ResourceOperationProduc
  * Connected resource the claimed Job dials, with the instant its declared readiness budget runs out.
  * Resolved at claim time, so it reflects the resource rows as they exist now, not as they existed when
  * the Job was queued. Resources that declare no readiness are absent: there is no signal to consult.
+ *
+ * `deadlineAt` and the inherited `timeoutMs` are anchored differently on purpose. `deadlineAt` runs from the first
+ * claim and decides whether the control plane may create this Job at all. `timeoutMs` is the declared budget the
+ * Pod's own reachability probe gets once it starts, which is later and may be much later.
  */
-export interface ProductJobResourceReadiness {
+export interface ProductJobResourceReadiness extends ResourceReachabilityEndpoint {
   deadlineAt: string;
-  resourceId: string;
 }
 
 export interface WorkerClaimProductJobResponse {
@@ -171,7 +178,7 @@ export const productJobIntentSchema: ContractSchema<ProductJobIntent> = z.discri
 ]);
 
 const productJobResourceReadinessSchema: ContractSchema<ProductJobResourceReadiness> = z
-  .object({ deadlineAt: z.string().datetime(), resourceId: z.string().min(1) })
+  .object({ ...createResourceReachabilityEndpointShape(), deadlineAt: z.string().datetime() })
   .strict();
 
 export const workerClaimProductJobResponseSchema: ContractSchema<WorkerClaimProductJobResponse> = z

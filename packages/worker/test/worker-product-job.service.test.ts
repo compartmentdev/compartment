@@ -42,7 +42,7 @@ async function executeProductJob(
   intent: ProductJobIntent,
   scheduling?: KubeWorkloadScheduling,
 ): Promise<WorkerPersistProductJobResultRequest | null> {
-  return await executeProductJobWithKek(request, runtime, intent, testTenantSecretsKek, scheduling);
+  return await executeProductJobWithKek(request, runtime, intent, testTenantSecretsKek, undefined, scheduling);
 }
 
 const mocks: ProductJobSdkMocks = vi.hoisted(

@@ -5,6 +5,10 @@ import {
   type ResolvedOptionalServiceReadinessConfig,
 } from './service-readiness.contract';
 import { projectNetworkPolicyPortsSchema, type ProjectNetworkPolicyPorts } from './internal-network-policy.contract';
+import {
+  resourceReachabilityEndpointSchema,
+  type ResourceReachabilityEndpoint,
+} from './internal-resource-reachability.contract';
 import { tenantSecretEnvironmentSchema, type TenantSecretEnvironment } from './internal-tenant-secret.contract';
 
 export type DeploymentReconcileState = 'desired' | 'pending' | 'active' | 'stopping' | 'stopped';
@@ -26,6 +30,8 @@ export interface DeploymentReconcileProjection {
   readiness: ResolvedOptionalServiceReadinessConfig;
   releaseCommand: string | null;
   replicas: number;
+  /** Declared resources this service dials, resolved fresh on every claim from the descriptor output bindings. */
+  resourceEndpoints: ResourceReachabilityEndpoint[];
   runCommand: string | null;
   secretId: string;
   serviceId: string;
@@ -99,6 +105,7 @@ const deploymentReconcileProjectionSchema: ContractSchema<DeploymentReconcilePro
     readiness: resolvedOptionalServiceReadinessConfigSchema,
     releaseCommand: z.string().min(1).nullable(),
     replicas: z.number().int().positive(),
+    resourceEndpoints: z.array(resourceReachabilityEndpointSchema),
     runCommand: z.string().min(1).nullable(),
     secretId: z.string().min(1),
     serviceId: z.string().min(1),

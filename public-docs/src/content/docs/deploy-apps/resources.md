@@ -92,8 +92,12 @@ Resource fields:
 - `ports`: optional internal TCP ports.
 - `outputs`: optional derived values such as hostnames or connection strings.
 - `volumes`: optional named volume handles mapped to absolute container mount paths.
-- `readiness`: optional TCP readiness check. Declaring it also holds release, backup, and restore Jobs until the
-  resource accepts connections; `readiness.timeoutMs` is how long each Job waits before it fails.
+- `readiness`: optional TCP readiness check. Declaring it makes everything that connects to the resource wait for it
+  to start accepting connections first: release, backup, and restore commands, and every new instance of a service
+  connected to it. `readiness.timeoutMs` is the budget for that wait, per resource. A command that exhausts it fails
+  naming the resource it could not reach, and never waits longer than the command itself has left to run. A service
+  instance that exhausts it never starts serving, and the deploy then fails on its usual deploy timeout. A resource
+  you stopped is not expected to answer, so nothing waits on it.
 - `operations`: optional `backup` and `restore` commands, backup schedule, and backup retention.
 
 Use the generated schema reference for the exact current contract.

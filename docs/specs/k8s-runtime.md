@@ -146,7 +146,23 @@ peer selector is expanded into a source IP set that the new Pod's address only
 joins on a later controller sync. A Pod's first packet to a policy-protected
 peer can therefore be refused for a short interval after the Pod reaches
 Running, while node-sourced traffic such as a kubelet probe is admitted ahead of
-policy evaluation and never observes the interval. Secret
+policy evaluation and never observes the interval.
+
+Every Pod that dials a declared resource therefore carries a reachability init container ahead of its own
+containers: application Deployments and the product Jobs that dial a resource alike. It runs the platform worker
+image, which is the image reference the worker already holds, and it exits only once each declared resource
+endpoint accepts a TCP connection from that Pod's own address. Proving reachability from the control plane cannot
+substitute: the address whose policy programming is in question is the new Pod's, which does not exist yet when
+any control-plane decision about it is made, and a Deployment scale-up or a rescheduled Pod produces one without
+any reconcile to hang that decision on. A resource that declares no readiness publishes no
+endpoint and a stopped resource is not expected to answer, so neither is waited on.
+
+Each endpoint's bound is the resource's own declared readiness timeout, measured from container start rather than
+from any control-plane instant, and clamped for a Job by that Job's remaining timeout so the wait cannot consume
+the budget the command needs. Past the bound the container fails naming the endpoint it could not reach. For an
+application the Pod stays pre-Running and the infrastructure deadline above governs the rollout; for a Job the
+failure is the Job's terminal result, read from the init container's status because the Pod's own container never
+started and has no logs to read. Secret
 projection follows the T5 no-service-account-token and checksum rollout model. Resource rows project to
 `Recreate` Deployments, internal Services, Secrets, and stable PVC references.
 Release Jobs with descriptor-owned resource output bindings remain queued until
