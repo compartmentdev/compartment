@@ -231,7 +231,7 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
       await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, afterBackupValue, false);
       await expectAppEnvMessage(routeUrl, adminAppSessionCookie, appMessage);
 
-      await expectRestoreAs(admin, app.projectName, app.resourceName, backupId);
+      await expectRestoreAs(admin, app.projectName, backupId);
       context.completedCaseCount = 5;
     },
     selfHostedUserSetupTimeoutMs,
@@ -744,12 +744,7 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
   );
 }
 
-async function expectRestoreAs(
-  admin: SelfHostedUserSetupCli,
-  projectName: string,
-  resourceName: string,
-  backupId: string,
-): Promise<void> {
+async function expectRestoreAs(admin: SelfHostedUserSetupCli, projectName: string, backupId: string): Promise<void> {
   let restoreAsError: Error | undefined;
   try {
     const restoreAsPayload: ResourceRestoreAsResponse = await admin.runJson(
