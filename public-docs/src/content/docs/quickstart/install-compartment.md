@@ -143,14 +143,17 @@ resources:
 ```
 
 An update reapplies changed quotas to existing organizations and projects. Changed container defaults affect Pods
-created after the update; Kubernetes does not rewrite resources on already running Pods. The number of applications
-that can run is determined by the memory quota and container requests rather than a separate application-count value.
-Project object-count quotas remain fixed.
+created after the update; Kubernetes does not rewrite resources on already running Pods. Application capacity is
+constrained by configured resource and object-count quotas and by workload requests and limits; there is no separate
+application-count value. Project object-count quotas remain fixed.
 
 Build concurrency has separate logical and physical limits. By default, Compartment admits up to 100 in-flight build
 claims, allows two active builds per organization, and applies a build-namespace quota of 48 CPU and 64 GiB. Each
 default build Pod is limited to 2 CPU and 4 GiB, so memory limits the namespace to 16 concurrently admitted build Pods.
 Set the queue limits, namespace quota, and per-container resources together when sizing a cluster:
+
+If the values file already contains a top-level `resources` mapping, add `buildkit` and `buildRunner` to that mapping
+instead of declaring a second `resources` key.
 
 ```yaml
 buildkit:

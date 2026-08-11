@@ -15,6 +15,7 @@ import {
 } from '../src';
 import { kubeLimitRangeName, kubeResourceQuotaName, kubeSecretName } from '../src/kube-naming';
 import { projectResourceConfiguration } from './kube-resource-configuration.test.fixture';
+import { serializeManifestOnTheWire } from './kube-transport-audit.harness';
 
 interface RbacRule {
   apiGroups: string[];
@@ -140,7 +141,7 @@ describe('project namespace bootstrap provisioning', (): void => {
     });
   });
 
-  it('projects restricted Pod Security and compute, storage, and object quotas into the namespace lifecycle', (): void => {
+  it('projects restricted Pod Security and compute, storage, and object quotas into the namespace lifecycle', async (): Promise<void> => {
     const namespaceId: string = 'prj-01jz';
     const namespaceName: string = kubeNamespaceName(namespaceId);
     const bundle: ApplyBundle = projectNamespaceProvisioningBundle(
@@ -164,7 +165,7 @@ describe('project namespace bootstrap provisioning', (): void => {
       'pod-security.kubernetes.io/enforce': 'restricted',
       'pod-security.kubernetes.io/warn': 'restricted',
     });
-    expect(limitRange).toEqual({
+    expect(await serializeManifestOnTheWire(limitRange)).toEqual({
       apiVersion: 'v1',
       kind: 'LimitRange',
       metadata: {
@@ -179,14 +180,14 @@ describe('project namespace bootstrap provisioning', (): void => {
       spec: {
         limits: [
           {
-            _default: { cpu: '1', memory: '1Gi' },
+            default: { cpu: '1', memory: '1Gi' },
             defaultRequest: { cpu: '50m', memory: '256Mi' },
             type: 'Container',
           },
         ],
       },
     });
-    expect(resourceQuota).toEqual({
+    expect(await serializeManifestOnTheWire(resourceQuota)).toEqual({
       apiVersion: 'v1',
       kind: 'ResourceQuota',
       metadata: {
@@ -224,7 +225,7 @@ describe('project namespace bootstrap provisioning', (): void => {
     });
   });
 
-  it('projects operator overrides without changing object counters', (): void => {
+  it('projects operator overrides without changing object counters', async (): Promise<void> => {
     const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow('prj-overridden'), {
       containerDefaults: {
         limit: { cpu: '750m', memory: '768Mi' },
@@ -245,15 +246,19 @@ describe('project namespace bootstrap provisioning', (): void => {
       (manifest: KubeManifest): boolean => manifest.kind === 'ResourceQuota',
     )!;
 
-    expect(limitRange.spec).toMatchObject({
-      limits: [{ _default: { cpu: '750m', memory: '768Mi' }, defaultRequest: { cpu: '75m', memory: '384Mi' } }],
+    expect(await serializeManifestOnTheWire(limitRange)).toMatchObject({
+      spec: {
+        limits: [{ default: { cpu: '750m', memory: '768Mi' }, defaultRequest: { cpu: '75m', memory: '384Mi' } }],
+      },
     });
-    expect(quota.spec).toMatchObject({
-      hard: {
-        'count/services': '50',
-        'limits.cpu': '12',
-        'requests.memory': '3Gi',
-        'requests.storage': '30Gi',
+    expect(await serializeManifestOnTheWire(quota)).toMatchObject({
+      spec: {
+        hard: {
+          'count/services': '50',
+          'limits.cpu': '12',
+          'requests.memory': '3Gi',
+          'requests.storage': '30Gi',
+        },
       },
     });
   });

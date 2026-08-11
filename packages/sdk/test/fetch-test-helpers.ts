@@ -43,6 +43,13 @@ export function readRequestHeaders(call: FetchCall): Headers {
   return new Headers(call.init?.headers);
 }
 
+export function requireRequestBody(call: FetchCall): string {
+  if (typeof call.init?.body !== 'string') {
+    throw new Error('Expected a JSON request body.');
+  }
+  return call.init.body;
+}
+
 export function readRequestUrl(call: FetchCall): string {
   if (typeof call.input === 'string') {
     return call.input;

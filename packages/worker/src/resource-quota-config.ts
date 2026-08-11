@@ -4,7 +4,7 @@ import type { JsonValue } from '@compartment/utils';
 import { z } from 'zod';
 
 const kubernetesQuantityPattern: RegExp =
-  /^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[numkMGTPE]|[KMGTPE]i|[eE][+-]?[0-9]+)?$/u;
+  /^\+?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[numkMGTPE]|[KMGTPE]i|[eE][+-]?[0-9]+)?$/u;
 const kubernetesQuantitySchema: z.ZodString = z
   .string()
   .regex(kubernetesQuantityPattern, 'must be a valid non-negative Kubernetes quantity');

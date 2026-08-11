@@ -61,6 +61,19 @@ describe('readProjectProvisionerConfig', (): void => {
     );
   });
 
+  it('accepts explicitly positive Kubernetes quantities', (): void => {
+    const config: ProjectProvisionerConfig = readProjectProvisionerConfig({
+      ...projectProvisionerEnvironment(),
+      COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
+        '{"request":{"cpu":"+50m","memory":"256Mi"},"limit":{"cpu":"1","memory":"+1Gi"}}',
+    });
+
+    expect(config.resourceConfiguration.containerDefaults).toEqual({
+      limit: { cpu: '1', memory: '+1Gi' },
+      request: { cpu: '+50m', memory: '256Mi' },
+    });
+  });
+
   it('parses tenant scheduling for provisioning Jobs', (): void => {
     const config: ProjectProvisionerConfig = readProjectProvisionerConfig({
       ...projectProvisionerEnvironment(),
