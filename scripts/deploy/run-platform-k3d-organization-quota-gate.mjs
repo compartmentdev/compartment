@@ -17,6 +17,13 @@ const namespaces = ['quota-a-0', 'quota-a-1', 'quota-a-2', 'quota-b'];
 const platformNamespace = process.env.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? 'compartment';
 const buildNamespace = `${platformNamespace}-build`;
 const kubectlTimeoutMs = 130_000;
+const organizationQuotaCapacity = {
+  limitsCpu: '20',
+  limitsMemory: '20Gi',
+  requestsCpu: '20',
+  requestsMemory: '20Gi',
+  requestsStorage: '100Gi',
+};
 
 async function kubectlResult(args) {
   const command = ['--context', context, ...args];
@@ -255,8 +262,14 @@ async function runGate() {
     throw new Error('COMPARTMENT_E2E_KUBE_CONTEXT is required.');
   }
   const primaryOrganizationId = 'quota-org-a';
-  const primaryManifests = organizationGlobalCustomQuotaManifests({ organizationId: primaryOrganizationId });
-  const secondaryManifests = organizationGlobalCustomQuotaManifests({ organizationId: 'quota-org-b' });
+  const primaryManifests = organizationGlobalCustomQuotaManifests({
+    capacity: organizationQuotaCapacity,
+    organizationId: primaryOrganizationId,
+  });
+  const secondaryManifests = organizationGlobalCustomQuotaManifests({
+    capacity: organizationQuotaCapacity,
+    organizationId: 'quota-org-b',
+  });
   const fixtureQuotaNames = [...primaryManifests, ...secondaryManifests].map((manifest) => manifest.metadata.name);
   let gateError;
   let cleanupErrors = [];
