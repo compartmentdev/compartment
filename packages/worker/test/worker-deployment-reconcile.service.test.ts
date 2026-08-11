@@ -165,7 +165,7 @@ describe('deployment reconciliation', (): void => {
     expect(persistedObservation()).toMatchObject({
       deploymentId: 'dep_candidate',
       message:
-        'Project Kubernetes quota exceeded. Reduce project usage or ask an operator to increase the project quota. pods "checkout" is forbidden: exceeded quota: project-quota, requested: limits.cpu=2, used: limits.cpu=7, limited: limits.cpu=8',
+        'Kubernetes resource quota exceeded. Reduce resource usage or ask an operator to increase the tenant quota. pods "checkout" is forbidden: exceeded quota: project-quota, requested: limits.cpu=2, used: limits.cpu=7, limited: limits.cpu=8',
       observation: 'failed',
       revision: 0,
     });
@@ -353,7 +353,26 @@ describe('deployment reconciliation', (): void => {
     expect(persistedObservation()).toMatchObject({
       deploymentId: 'dep_candidate',
       message:
-        'Project Kubernetes quota exceeded. Reduce project usage or ask an operator to increase the project quota. pods "checkout" is forbidden: exceeded quota: project-quota, requested: requests.memory=256Mi, used: requests.memory=2Gi, limited: requests.memory=2Gi',
+        'Kubernetes resource quota exceeded. Reduce resource usage or ask an operator to increase the tenant quota. pods "checkout" is forbidden: exceeded quota: project-quota, requested: requests.memory=256Mi, used: requests.memory=2Gi, limited: requests.memory=2Gi',
+      observation: 'failed',
+      revision: 0,
+    });
+  });
+
+  it('fails immediately when Capsule reports exhausted organization quota', async (): Promise<void> => {
+    const namespace: string = kubeNamespaceName('prj_1');
+    const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
+    const message: string =
+      'admission webhook "calculation.custom-quotas.validating.projectcapsule.dev" denied the request: creating resource exceeds limit for GlobalCustomQuota "org-quota-limits-cpu" (requested=2, currentUsed=9, available=0, limit=8)';
+    const runtime: KubeRuntime & { read: Mock } = pendingRuntimeStub(false);
+    runtime.read.mockResolvedValue(quotaFailedDeployment(namespace, name, message));
+    const pendingTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'pending' };
+
+    await reconcileAt('2026-07-12T12:00:01.000Z', runtime, pendingTarget);
+
+    expect(persistedObservation()).toMatchObject({
+      deploymentId: 'dep_candidate',
+      message: `Kubernetes resource quota exceeded. Reduce resource usage or ask an operator to increase the tenant quota. ${message}`,
       observation: 'failed',
       revision: 0,
     });
@@ -1001,15 +1020,18 @@ function progressingDeployment(
   };
 }
 
-function quotaFailedDeployment(namespace: string, name: string): KubeManifest {
+function quotaFailedDeployment(
+  namespace: string,
+  name: string,
+  message: string = 'pods "checkout" is forbidden: exceeded quota: project-quota, requested: requests.memory=256Mi, used: requests.memory=2Gi, limited: requests.memory=2Gi',
+): KubeManifest {
   const deployment: KubeManifest = progressingDeployment(namespace, name);
   return {
     ...deployment,
     status: {
       conditions: [
         {
-          message:
-            'pods "checkout" is forbidden: exceeded quota: project-quota, requested: requests.memory=256Mi, used: requests.memory=2Gi, limited: requests.memory=2Gi',
+          message,
           reason: 'FailedCreate',
           status: 'True',
           type: 'ReplicaFailure',

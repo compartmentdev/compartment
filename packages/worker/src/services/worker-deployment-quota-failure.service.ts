@@ -2,9 +2,10 @@ import type { KubeRolloutObservation } from '@compartment/kube-runtime';
 import type { JsonValue } from '@compartment/utils';
 import type { KubernetesApiErrorShape, KubernetesStatusShape } from './worker-deployment-quota-failure.service.types';
 
-const quotaMarker: string = 'exceeded quota:';
+const kubernetesResourceQuotaMarker: string = 'exceeded quota:';
+const capsuleGlobalCustomQuotaMarker: string = 'creating resource exceeds limit for GlobalCustomQuota';
 const quotaGuidance: string =
-  'Project Kubernetes quota exceeded. Reduce project usage or ask an operator to increase the project quota.';
+  'Kubernetes resource quota exceeded. Reduce resource usage or ask an operator to increase the tenant quota.';
 
 export function readDeploymentQuotaAdmissionFailure(error: Error): string | null {
   const apiError: KubernetesApiErrorShape = error;
@@ -23,13 +24,18 @@ export function readDeploymentQuotaRolloutFailure(rollout: KubeRolloutObservatio
       candidate.type === 'ReplicaFailure' &&
       candidate.status === 'True' &&
       candidate.reason === 'FailedCreate' &&
-      candidate.message?.includes(quotaMarker) === true,
+      candidate.message !== undefined &&
+      isQuotaFailureMessage(candidate.message),
   );
   return condition?.message === undefined ? null : quotaFailureMessage(condition.message);
 }
 
 function quotaFailureMessage(message: string): string | null {
-  return message.includes(quotaMarker) ? `${quotaGuidance} ${message}` : null;
+  return isQuotaFailureMessage(message) ? `${quotaGuidance} ${message}` : null;
+}
+
+function isQuotaFailureMessage(message: string): boolean {
+  return message.includes(kubernetesResourceQuotaMarker) || message.includes(capsuleGlobalCustomQuotaMarker);
 }
 
 function readStatusCode(error: KubernetesApiErrorShape): number | null {
