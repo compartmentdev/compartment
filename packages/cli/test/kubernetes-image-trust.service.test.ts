@@ -164,6 +164,7 @@ describe('Kubernetes platform image trust', (): void => {
       expect(cosignCalls[1]?.[0].at(-1)).toBe('ghcr.io/compartmentdev/compartment-worker:0.9.2');
       expect(cosignCalls[5]?.[0]).toEqual(
         expect.arrayContaining([
+          '--new-bundle-format',
           'https://token.actions.githubusercontent.com',
           '^https://github\\.com/projectcapsule/capsule/\\.github/workflows/docker-publish\\.yml@refs/tags/v0\\.13\\.11$',
           `ghcr.io/projectcapsule/capsule:v0.13.11@${digestByImageName.capsule}`,
