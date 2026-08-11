@@ -17,6 +17,7 @@ import {
   type KubeObservation,
   type ProjectNamespaceProvisioningRow,
 } from '../src';
+import { projectResourceConfiguration as resources } from './kube-resource-configuration.test.fixture';
 import { kubeJobName, kubeSecretName } from '../src/kube-naming';
 import { kubeJobManifest } from '../src/kube-job-projection';
 import type {
@@ -701,7 +702,7 @@ describe('KubeRuntime Job primitive', (): void => {
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
     );
-    await runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-01jz')));
+    await runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-01jz'), resources));
     expect(
       objectApi.patches.find(([object]: KubePatchInvocation): boolean => object.kind === 'Namespace')?.[0].metadata
         ?.labels,
@@ -717,7 +718,7 @@ describe('KubeRuntime Job primitive', (): void => {
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
     );
 
-    await runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-retry')));
+    await runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-retry'), resources));
     expect(objectApi.deletes).toMatchObject([{ kind: 'RoleBinding' }, { kind: 'ClusterRoleBinding' }]);
   });
 
@@ -771,9 +772,9 @@ describe('KubeRuntime Job primitive', (): void => {
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
     );
-    await expect(runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-failure')))).rejects.toThrow(
-      'generated RoleBinding failure',
-    );
+    await expect(
+      runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-failure'), resources)),
+    ).rejects.toThrow('generated RoleBinding failure');
     expect(objectApi.events).toEqual([
       'create:Namespace',
       'create:RoleBinding',
@@ -783,15 +784,14 @@ describe('KubeRuntime Job primitive', (): void => {
   });
 
   it('preserves provisioning and cleanup failures together', async (): Promise<void> => {
-    objectApi.failCreateKind = 'RoleBinding';
-    objectApi.failDelete = true;
+    Object.assign(objectApi, { failCreateKind: 'RoleBinding', failDelete: true });
     const runtime: KubeRuntime = new KubeRuntime(
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
     );
     let failure: AggregateError | null = null;
     try {
-      await runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-dual-failure')));
+      await runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-dual-failure'), resources));
     } catch (error) {
       failure = error as AggregateError;
     }
@@ -820,9 +820,9 @@ describe('KubeRuntime Job primitive', (): void => {
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
     );
-    await expect(runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-conflict')))).rejects.toThrow(
-      'does not match the provisioning contract',
-    );
+    await expect(
+      runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-conflict'), resources)),
+    ).rejects.toThrow('does not match the provisioning contract');
     expect(objectApi.events.at(-1)).toBe('delete:ClusterRoleBinding');
   });
 
@@ -843,9 +843,9 @@ describe('KubeRuntime Job primitive', (): void => {
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
     );
-    await expect(runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-reordered')))).resolves.toEqual(
-      expect.arrayContaining([expect.objectContaining({ kind: 'RoleBinding' })]),
-    );
+    await expect(
+      runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-reordered'), resources)),
+    ).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'RoleBinding' })]));
   });
 
   it('captures every resource-operation attempt and selects the successful terminal Pod', async (): Promise<void> => {

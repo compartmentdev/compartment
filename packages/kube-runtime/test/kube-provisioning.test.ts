@@ -14,6 +14,8 @@ import {
   type ProjectProvisioningAuthorityInput,
 } from '../src';
 import { kubeLimitRangeName, kubeResourceQuotaName, kubeSecretName } from '../src/kube-naming';
+import { projectResourceConfiguration } from './kube-resource-configuration.test.fixture';
+import { serializeManifestOnTheWire } from './kube-transport-audit.harness';
 
 interface RbacRule {
   apiGroups: string[];
@@ -60,7 +62,10 @@ describe('project namespace bootstrap provisioning', (): void => {
   });
 
   it('projects the immutable namespace boundary and removes bootstrap authority last', (): void => {
-    const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow('prj-01jz'));
+    const bundle: ApplyBundle = projectNamespaceProvisioningBundle(
+      provisioningRow('prj-01jz'),
+      projectResourceConfiguration,
+    );
     const created: KubeManifest[] = bundle.createBeforeApply ?? [];
     const namespace: KubeManifest = created[0]!;
     const binding: KubeManifest = created[1]!;
@@ -136,10 +141,13 @@ describe('project namespace bootstrap provisioning', (): void => {
     });
   });
 
-  it('projects restricted Pod Security and compute, storage, and object quotas into the namespace lifecycle', (): void => {
+  it('projects restricted Pod Security and compute, storage, and object quotas into the namespace lifecycle', async (): Promise<void> => {
     const namespaceId: string = 'prj-01jz';
     const namespaceName: string = kubeNamespaceName(namespaceId);
-    const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow(namespaceId));
+    const bundle: ApplyBundle = projectNamespaceProvisioningBundle(
+      provisioningRow(namespaceId),
+      projectResourceConfiguration,
+    );
     const namespace: KubeManifest = (bundle.createBeforeApply ?? []).find(
       (manifest: KubeManifest): boolean => manifest.kind === 'Namespace',
     )!;
@@ -157,7 +165,7 @@ describe('project namespace bootstrap provisioning', (): void => {
       'pod-security.kubernetes.io/enforce': 'restricted',
       'pod-security.kubernetes.io/warn': 'restricted',
     });
-    expect(limitRange).toEqual({
+    expect(await serializeManifestOnTheWire(limitRange)).toEqual({
       apiVersion: 'v1',
       kind: 'LimitRange',
       metadata: {
@@ -172,14 +180,14 @@ describe('project namespace bootstrap provisioning', (): void => {
       spec: {
         limits: [
           {
-            _default: { cpu: '1', memory: '1Gi' },
-            defaultRequest: { cpu: '50m', memory: '128Mi' },
+            default: { cpu: '1', memory: '1Gi' },
+            defaultRequest: { cpu: '50m', memory: '256Mi' },
             type: 'Container',
           },
         ],
       },
     });
-    expect(resourceQuota).toEqual({
+    expect(await serializeManifestOnTheWire(resourceQuota)).toEqual({
       apiVersion: 'v1',
       kind: 'ResourceQuota',
       metadata: {
@@ -201,12 +209,12 @@ describe('project namespace bootstrap provisioning', (): void => {
           'count/secrets': '100',
           'count/serviceaccounts': '10',
           'count/services': '50',
-          'limits.cpu': '20',
-          'limits.memory': '20Gi',
+          'limits.cpu': '8',
+          'limits.memory': '8Gi',
           pods: '50',
-          'requests.cpu': '10',
-          'requests.memory': '10Gi',
-          'requests.storage': '100Gi',
+          'requests.cpu': '2',
+          'requests.memory': '2Gi',
+          'requests.storage': '20Gi',
         },
       },
     });
@@ -217,8 +225,49 @@ describe('project namespace bootstrap provisioning', (): void => {
     });
   });
 
+  it('projects operator overrides without changing object counters', async (): Promise<void> => {
+    const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow('prj-overridden'), {
+      containerDefaults: {
+        limit: { cpu: '750m', memory: '768Mi' },
+        request: { cpu: '75m', memory: '384Mi' },
+      },
+      quota: {
+        limitsCpu: '12',
+        limitsMemory: '12Gi',
+        requestsCpu: '3',
+        requestsMemory: '3Gi',
+        requestsStorage: '30Gi',
+      },
+    });
+    const limitRange: KubeManifest = bundle.objects.find(
+      (manifest: KubeManifest): boolean => manifest.kind === 'LimitRange',
+    )!;
+    const quota: KubeManifest = bundle.objects.find(
+      (manifest: KubeManifest): boolean => manifest.kind === 'ResourceQuota',
+    )!;
+
+    expect(await serializeManifestOnTheWire(limitRange)).toMatchObject({
+      spec: {
+        limits: [{ default: { cpu: '750m', memory: '768Mi' }, defaultRequest: { cpu: '75m', memory: '384Mi' } }],
+      },
+    });
+    expect(await serializeManifestOnTheWire(quota)).toMatchObject({
+      spec: {
+        hard: {
+          'count/services': '50',
+          'limits.cpu': '12',
+          'requests.memory': '3Gi',
+          'requests.storage': '30Gi',
+        },
+      },
+    });
+  });
+
   it('projects the T2 isolation matrix in deterministic policy order', (): void => {
-    const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow('prj-01jz'));
+    const bundle: ApplyBundle = projectNamespaceProvisioningBundle(
+      provisioningRow('prj-01jz'),
+      projectResourceConfiguration,
+    );
     const networkPolicies: KubeManifest[] = bundle.objects.filter(
       (manifest: KubeManifest): boolean => manifest.kind === 'NetworkPolicy',
     );
@@ -379,7 +428,10 @@ describe('project namespace bootstrap provisioning', (): void => {
   });
 
   it('grants Kubernetes roles only to explicit component ServiceAccounts', (): void => {
-    const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow('prj-rbac'));
+    const bundle: ApplyBundle = projectNamespaceProvisioningBundle(
+      provisioningRow('prj-rbac'),
+      projectResourceConfiguration,
+    );
     const bindings: KubeManifest[] = [...(bundle.createBeforeApply ?? []), ...bundle.objects].filter(
       (manifest: KubeManifest): boolean => manifest.kind === 'RoleBinding' || manifest.kind === 'ClusterRoleBinding',
     );

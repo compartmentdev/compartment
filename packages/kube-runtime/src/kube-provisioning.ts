@@ -3,7 +3,11 @@ import { projectLimitRangeManifest } from './kube-limit-range-projection';
 import { projectNetworkPolicyManifests } from './kube-network-policy-projection';
 import { projectResourceQuotaManifest } from './kube-resource-quota-projection';
 import { registryPullSecretManifest } from './kube-secret-projection';
-import type { ProjectNamespaceProvisioningRow, ProjectProvisioningServiceAccount } from './kube-provisioning.types';
+import type {
+  ProjectNamespaceProvisioningRow,
+  ProjectNamespaceResourceConfiguration,
+  ProjectProvisioningServiceAccount,
+} from './kube-provisioning.types';
 import type { ApplyBundle, KubeManifest } from './kube-runtime.types';
 
 const bootstrapBindingName: string = 'compartment-project-bootstrap';
@@ -15,7 +19,10 @@ interface ProjectProvisioningBindingSubject {
   namespace: string;
 }
 
-export function projectNamespaceProvisioningBundle(row: ProjectNamespaceProvisioningRow): ApplyBundle {
+export function projectNamespaceProvisioningBundle(
+  row: ProjectNamespaceProvisioningRow,
+  resources: ProjectNamespaceResourceConfiguration,
+): ApplyBundle {
   const namespace: string = kubeNamespaceName(row.namespaceId);
   const projectNamespace: KubeManifest = namespaceManifest(row, namespace);
   return {
@@ -32,8 +39,8 @@ export function projectNamespaceProvisioningBundle(row: ProjectNamespaceProvisio
         secretId: row.registryPullCredentials.secretId,
       }),
       applicationServiceAccountManifest(namespace, row.registryPullCredentials.secretId),
-      projectLimitRangeManifest(namespace, row.namespaceId, row.projectId),
-      projectResourceQuotaManifest(namespace, row.namespaceId, row.projectId),
+      projectLimitRangeManifest(namespace, row.namespaceId, row.projectId, resources.containerDefaults),
+      projectResourceQuotaManifest(namespace, row.namespaceId, row.projectId, resources.quota),
       ...projectNetworkPolicyManifests(namespace, row.namespaceId, row.projectId, row.networkPolicy),
       roleBindingManifest(controllerName, namespace, [row.workerServiceAccount]),
     ],

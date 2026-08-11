@@ -203,6 +203,18 @@ tests:
           value: '{"limits":{"cpu":"1750m","memory":"3Gi"},"requests":{"cpu":"250m","memory":"512Mi"}}'
         template: configmap.yaml
       - equal:
+          path: data.COMPARTMENT_PROJECT_CONTAINER_DEFAULTS
+          value: '{"limit":{"cpu":"1","memory":"1Gi"},"request":{"cpu":"50m","memory":"256Mi"}}'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_PROJECT_QUOTA
+          value: '{"limitsCpu":"8","limitsMemory":"8Gi","requestsCpu":"2","requestsMemory":"2Gi","requestsStorage":"20Gi"}'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_ORGANIZATION_QUOTA
+          value: '{"limitsCpu":"8","limitsMemory":"8Gi","requestsCpu":"2","requestsMemory":"2Gi","requestsStorage":"20Gi"}'
+        template: configmap.yaml
+      - equal:
           path: data.COMPARTMENT_BUILD_RUNNER_RESOURCES
           value: '{"limits":{"cpu":"250m","memory":"1Gi"},"requests":{"cpu":"100m","memory":"256Mi"}}'
         template: configmap.yaml
@@ -285,6 +297,51 @@ tests:
       - hasDocuments:
           count: 0
         template: product-log-agent.yaml
+
+  - it: propagates tenant resource overrides to worker and project-provisioner
+    set:
+      platform:
+        startupStage: full
+        installationId: test-resource-overrides
+        baseDomain: apps.example.com
+      resources:
+        projectContainerDefaults:
+          request: { cpu: +75m, memory: +384Mi }
+          limit: { cpu: 750m, memory: 768Mi }
+        projectQuota:
+          requestsCpu: '3'
+          requestsMemory: 3Gi
+          limitsCpu: '12'
+          limitsMemory: 12Gi
+          requestsStorage: 30Gi
+        organizationQuota:
+          requestsCpu: '4'
+          requestsMemory: 4Gi
+          limitsCpu: '16'
+          limitsMemory: 16Gi
+          requestsStorage: 40Gi
+      secrets: *normalizedSecrets
+    asserts:
+      - equal:
+          path: data.COMPARTMENT_PROJECT_CONTAINER_DEFAULTS
+          value: '{"limit":{"cpu":"750m","memory":"768Mi"},"request":{"cpu":"+75m","memory":"+384Mi"}}'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_PROJECT_QUOTA
+          value: '{"limitsCpu":"12","limitsMemory":"12Gi","requestsCpu":"3","requestsMemory":"3Gi","requestsStorage":"30Gi"}'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_ORGANIZATION_QUOTA
+          value: '{"limitsCpu":"16","limitsMemory":"16Gi","requestsCpu":"4","requestsMemory":"4Gi","requestsStorage":"40Gi"}'
+        template: configmap.yaml
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[0].configMapRef.name
+          value: compartment
+        template: worker.yaml
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[0].configMapRef.name
+          value: compartment
+        template: project-provisioner.yaml
 
   - it: projects the public new-project hosted-route default
     set:

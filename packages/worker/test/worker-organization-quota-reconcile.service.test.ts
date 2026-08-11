@@ -1,9 +1,19 @@
+import type { OrganizationQuotaReconcileTarget } from '@compartment/contracts';
 import { KubeRuntime, type KubeManifest } from '@compartment/kube-runtime';
 import { completeOrganizationQuotaReconcile, type CompartmentRequester } from '@compartment/sdk';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { executeOrganizationQuotaReconcile } from '../src/services/worker-organization-quota-reconcile.service';
+import { executeOrganizationQuotaReconcile as executeConfiguredOrganizationQuotaReconcile } from '../src/services/worker-organization-quota-reconcile.service';
+import { testOrganizationQuota } from './worker-config-test.fixtures';
 
 const complete: Mock = vi.hoisted((): Mock => vi.fn());
+
+async function executeOrganizationQuotaReconcile(
+  request: CompartmentRequester,
+  runtime: KubeRuntime,
+  target: OrganizationQuotaReconcileTarget,
+): Promise<void> {
+  await executeConfiguredOrganizationQuotaReconcile(request, runtime, target, testOrganizationQuota);
+}
 
 vi.mock('@compartment/sdk', (): object => ({ completeOrganizationQuotaReconcile: complete }));
 
@@ -59,6 +69,29 @@ describe('organization quota reconciliation', (): void => {
       organizationId: 'org_1',
       status: 'succeeded',
     });
+  });
+
+  it('applies changed capacity to an existing organization quota target', async (): Promise<void> => {
+    const methods: RuntimeMethods = runtimeMethods(
+      vi.fn().mockImplementation((manifest: KubeManifest): object => ({
+        status: {
+          conditions: [{ status: 'True', type: 'Ready' }],
+          observedGeneration: manifest.metadata?.generation,
+        },
+      })),
+    );
+    await executeConfiguredOrganizationQuotaReconcile(
+      {} as CompartmentRequester,
+      runtimeFixture(methods),
+      { leaseId: 'oql_existing', organizationId: 'org_existing' },
+      { ...testOrganizationQuota, requestsMemory: '3Gi' },
+    );
+
+    const applyInput = methods.apply.mock.calls[0]?.[0] as { objects: KubeManifest[] };
+    const requestsMemoryQuota: KubeManifest | undefined = applyInput.objects.find(
+      (object: KubeManifest): boolean => object.metadata?.name?.includes('requests-memory') === true,
+    );
+    expect(requestsMemoryQuota?.spec).toMatchObject({ limit: '3Gi' });
   });
 
   it('waits for the quota controller to publish readiness after apply', async (): Promise<void> => {

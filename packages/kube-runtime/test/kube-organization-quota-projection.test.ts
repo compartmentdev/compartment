@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { organizationGlobalCustomQuotaManifests, type KubeManifest } from '../src';
 import type { GlobalCustomQuotaSpec } from '../src/kube-organization-quota-projection.types';
+import { organizationQuotaCapacity } from './kube-resource-configuration.test.fixture';
 
 describe('organization GlobalCustomQuota projection', (): void => {
   it('projects five deterministic quotas into one immutable organization namespace pool', (): void => {
-    const input = { organizationId: 'org_01jz', reconciliationRequestedAt: '2026-08-11T10:00:00.000Z' };
+    const input = {
+      capacity: organizationQuotaCapacity,
+      organizationId: 'org_01jz',
+      reconciliationRequestedAt: '2026-08-11T10:00:00.000Z',
+    };
     const first: KubeManifest[] = organizationGlobalCustomQuotaManifests(input);
     const second: KubeManifest[] = organizationGlobalCustomQuotaManifests(input);
 
@@ -44,6 +49,14 @@ describe('organization GlobalCustomQuota projection', (): void => {
   });
 });
 
-function quotaInput(organizationId: string): { organizationId: string; reconciliationRequestedAt: string } {
-  return { organizationId, reconciliationRequestedAt: '2026-08-11T10:00:00.000Z' };
+function quotaInput(organizationId: string): {
+  capacity: typeof organizationQuotaCapacity;
+  organizationId: string;
+  reconciliationRequestedAt: string;
+} {
+  return {
+    capacity: organizationQuotaCapacity,
+    organizationId,
+    reconciliationRequestedAt: '2026-08-11T10:00:00.000Z',
+  };
 }

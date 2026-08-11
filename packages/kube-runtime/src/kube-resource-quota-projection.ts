@@ -1,8 +1,8 @@
 import { kubeResourceQuotaName } from './kube-naming';
-import type { KubeResourceQuotaSpec } from './kube-resource-quota-projection.types';
+import type { KubeResourceQuotaSpec, ProjectQuota } from './kube-resource-quota-projection.types';
 import type { KubeManifest } from './kube-runtime.types';
 
-const projectQuota: Readonly<Record<string, string>> = {
+const projectObjectQuota: Readonly<Record<string, string>> = {
   'count/configmaps': '100',
   'count/deployments.apps': '50',
   'count/jobs.batch': '100',
@@ -11,16 +11,25 @@ const projectQuota: Readonly<Record<string, string>> = {
   'count/secrets': '100',
   'count/serviceaccounts': '10',
   'count/services': '50',
-  'limits.cpu': '20',
-  'limits.memory': '20Gi',
   pods: '50',
-  'requests.cpu': '10',
-  'requests.memory': '10Gi',
-  'requests.storage': '100Gi',
 };
 
-export function projectResourceQuotaManifest(namespace: string, namespaceId: string, projectId: string): KubeManifest {
-  const spec: KubeResourceQuotaSpec = { hard: { ...projectQuota } };
+export function projectResourceQuotaManifest(
+  namespace: string,
+  namespaceId: string,
+  projectId: string,
+  quota: ProjectQuota,
+): KubeManifest {
+  const spec: KubeResourceQuotaSpec = {
+    hard: {
+      ...projectObjectQuota,
+      'limits.cpu': quota.limitsCpu,
+      'limits.memory': quota.limitsMemory,
+      'requests.cpu': quota.requestsCpu,
+      'requests.memory': quota.requestsMemory,
+      'requests.storage': quota.requestsStorage,
+    },
+  };
   return {
     apiVersion: 'v1',
     kind: 'ResourceQuota',

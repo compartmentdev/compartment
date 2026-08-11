@@ -9,6 +9,7 @@ import type { ProjectProvisioningServiceAccount } from '../src/kube-provisioning
 import { applyObject } from '../src/kube-runtime-operations';
 import { CapturingKubernetesObjectApi } from './kube-transport-capture.harness';
 import type { SerializedLimitRange } from './kube-limit-range-transport.test.types';
+import { projectResourceConfiguration } from './kube-resource-configuration.test.fixture';
 
 const podCidr: string = ['10', '42', '0', '0/16'].join('.');
 const serviceCidr: string = ['10', '43', '0', '0/16'].join('.');
@@ -17,7 +18,7 @@ const limitRangeUriPath: string = '/api/v1/namespaces/project/limitranges/projec
 
 describe('LimitRange transport', (): void => {
   it('serializes both request and limit defaults onto the Kubernetes wire contract', async (): Promise<void> => {
-    const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow());
+    const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow(), projectResourceConfiguration);
     const limitRange: KubeManifest = bundle.objects.find(
       (manifest: KubeManifest): boolean => manifest.kind === 'LimitRange',
     )!;
@@ -28,7 +29,7 @@ describe('LimitRange transport', (): void => {
     const serialized: SerializedLimitRange = JSON.parse(objectApi.body ?? '{}') as SerializedLimitRange;
     expect(serialized.spec.limits[0]).toEqual({
       default: { cpu: '1', memory: '1Gi' },
-      defaultRequest: { cpu: '50m', memory: '128Mi' },
+      defaultRequest: { cpu: '50m', memory: '256Mi' },
       type: 'Container',
     });
   });

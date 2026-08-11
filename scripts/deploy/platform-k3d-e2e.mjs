@@ -264,7 +264,7 @@ export function renderPlatformK3dValues(
   gvisorAvailable = platformEnvironment.gvisorAvailable,
   highAvailability = platformEnvironment.highAvailability,
 ) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorAvailable)}${renderHighAvailabilityValues(highAvailability)}ingress:\n  className: ${ingressClassName}\n${renderRegistryTlsValues()}platform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\nbuildkit:\n  namespace: ${platformNamespace}-build\n`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorAvailable)}${renderHighAvailabilityValues(highAvailability)}ingress:\n  className: ${ingressClassName}\n${renderRegistryTlsValues()}platform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\nbuildkit:\n  namespace: ${platformNamespace}-build\n${renderE2eTenantResourceValues()}`;
 }
 
 export function renderPreviousPlatformK3dValues() {
@@ -299,6 +299,10 @@ function renderHighAvailabilityValues(highAvailability) {
     return '';
   }
   return 'api:\n  replicas: 2\nworker:\n  replicas: 2\nprojectProvisioner:\n  replicas: 2\nedge:\n  replicas: 2\ncaddy:\n  replicas: 2\n';
+}
+
+function renderE2eTenantResourceValues() {
+  return `resources:\n  projectQuota:\n    requestsCpu: '10'\n    requestsMemory: 10Gi\n    limitsCpu: '20'\n    limitsMemory: 20Gi\n    requestsStorage: 100Gi\n  organizationQuota:\n    requestsCpu: '20'\n    requestsMemory: 20Gi\n    limitsCpu: '20'\n    limitsMemory: 20Gi\n    requestsStorage: 100Gi\n`;
 }
 function renderPlatformImageValues(imageDigestsByServiceName) {
   const imageValues = platformK3dServiceNames

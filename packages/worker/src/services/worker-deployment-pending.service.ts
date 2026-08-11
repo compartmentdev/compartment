@@ -25,6 +25,7 @@ import {
   readCandidateRolloutObservation,
 } from './worker-deployment-rollout-observation.service';
 import type { DeploymentRolloutStartTracker } from './worker-deployment-rollout-start-tracker.service';
+import { readDeploymentQuotaRolloutFailure } from './worker-deployment-quota-failure.service';
 
 type PendingArguments = readonly [
   CompartmentRequester,
@@ -71,14 +72,18 @@ async function resolvePendingRollout(
   rolloutStarts: DeploymentRolloutStartTracker,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
-  return rollout === null
-    ? await handleMissingPendingDeployment(...pendingArguments, rolloutStarts, scheduling)
-    : await handleRolloutStatus(
+  if (rollout === null) {
+    return await handleMissingPendingDeployment(...pendingArguments, rolloutStarts, scheduling);
+  }
+  const quotaFailure: string | null = readDeploymentQuotaRolloutFailure(rollout);
+  return quotaFailure === null
+    ? await handleRolloutStatus(
         ...pendingArguments,
         calculateKubeRolloutStatus(rollout, new Date()),
         rolloutStarts,
         scheduling,
-      );
+      )
+    : await failPendingDeployment(...pendingArguments, quotaFailure, rolloutStarts, scheduling);
 }
 
 async function readAppliedCandidateRollout(
@@ -180,12 +185,39 @@ async function handleRolloutStatus(
   if (status === 'progressing' || (await restartActiveCandidate(...restartArguments, rolloutStarts, scheduling))) {
     return [];
   }
+  return await failPendingDeployment(
+    request,
+    runtime,
+    target,
+    tenantSecretsKek,
+    infrastructureTimeoutMs,
+    workerImage,
+    rolloutFailureMessage(status),
+    rolloutStarts,
+    scheduling,
+  );
+}
+
+async function failPendingDeployment(
+  request: CompartmentRequester,
+  runtime: KubeRuntime,
+  target: DeploymentReconcileTarget,
+  tenantSecretsKek: TenantSecretsKeyring,
+  infrastructureTimeoutMs: number,
+  workerImage: string,
+  message: string,
+  rolloutStarts: DeploymentRolloutStartTracker,
+  scheduling: KubeWorkloadScheduling | undefined,
+): Promise<DeploymentArtifactCleanupTarget[]> {
   await recoverFailedRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
-  const applied: boolean = (
-    await persistDeploymentObservation(request, target, 'failed', rolloutFailureMessage(status))
-  ).applied;
-  clearCompletedFailedRollout(target, applied, rolloutStarts);
-  return [];
+  const persisted: WorkerObserveDeploymentReconcileResponse = await persistDeploymentObservation(
+    request,
+    target,
+    'failed',
+    message,
+  );
+  clearCompletedFailedRollout(target, persisted.applied, rolloutStarts);
+  return persisted.cleanupArtifacts;
 }
 
 async function persistReadyDeployment(

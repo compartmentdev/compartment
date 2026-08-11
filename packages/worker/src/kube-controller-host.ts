@@ -196,7 +196,7 @@ export function createKubeControllerHosts(
     ),
     new ResourceReconcileArea(request, runtime, config.tenantSecretsKek, config.tenantScheduling, config.workerImage),
     new CustomDomainReconcileArea(request, runtime, config.customDomains),
-    createOrganizationQuotaControllerHost(request, runtime),
+    createOrganizationQuotaControllerHost(request, runtime, config.organizationQuota),
   ];
 }
 

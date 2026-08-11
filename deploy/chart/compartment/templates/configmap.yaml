@@ -35,6 +35,9 @@ data:
   COMPARTMENT_USAGE_METERING_INTERVAL_MS: {{ .Values.platform.usageMeteringIntervalMs | quote }}
   COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: {{ .Values.buildkit.gcKeepStorageMb | quote }}
   COMPARTMENT_BUILDKIT_RESOURCES: {{ .Values.resources.buildkit | toJson | quote }}
+  COMPARTMENT_PROJECT_CONTAINER_DEFAULTS: {{ .Values.resources.projectContainerDefaults | toJson | quote }}
+  COMPARTMENT_PROJECT_QUOTA: {{ .Values.resources.projectQuota | toJson | quote }}
+  COMPARTMENT_ORGANIZATION_QUOTA: {{ .Values.resources.organizationQuota | toJson | quote }}
   COMPARTMENT_BUILD_NAMESPACE: {{ .Values.buildkit.namespace | quote }}
   COMPARTMENT_WORKER_IMAGE: {{ include "compartment.image" .Values.images.worker | quote }}
   COMPARTMENT_BUILD_RUNNER_RESOURCES: {{ .Values.resources.buildRunner | toJson | quote }}

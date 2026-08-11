@@ -3,6 +3,8 @@ import {
   calculateKubeRolloutStatus,
   kubeDeploymentAvailable,
   readKubeApplicationRunningStartedAt,
+  readKubeRolloutObservation,
+  type KubeDeploymentManifest,
   type KubeObservedManifest,
   type KubeRolloutObservation,
 } from '../src';
@@ -60,6 +62,36 @@ describe('rollout observation decisions', (): void => {
     expect(
       calculateKubeRolloutStatus({ ...rollout, availableReplicas: 1, observedGeneration: 4, updatedReplicas: 0 }, now),
     ).toBe('progressing');
+  });
+
+  it('preserves the Kubernetes Deployment condition message', (): void => {
+    const deployment: KubeDeploymentManifest = {
+      ...(resourceDeployment({ availableReplicas: 0 }) as KubeDeploymentManifest),
+      metadata: { generation: 4, name: 'resource-billing', namespace: 'cpt-billing', uid: 'deployment-uid' },
+    };
+    const observed: KubeObservedManifest = {
+      ...deployment,
+      status: {
+        conditions: [
+          {
+            message: 'pods is forbidden: exceeded quota: project-quota',
+            reason: 'FailedCreate',
+            status: 'True',
+            type: 'ReplicaFailure',
+          },
+        ],
+        observedGeneration: 4,
+      },
+    };
+
+    expect(readKubeRolloutObservation(observed, deployment, now)?.conditions).toEqual([
+      {
+        message: 'pods is forbidden: exceeded quota: project-quota',
+        reason: 'FailedCreate',
+        status: 'True',
+        type: 'ReplicaFailure',
+      },
+    ]);
   });
 
   it('treats a resource Deployment as available only while this generation serves a ready replica', (): void => {

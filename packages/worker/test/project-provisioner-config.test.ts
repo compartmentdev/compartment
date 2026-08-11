@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { readProjectProvisionerConfig } from '../src/project-provisioner-config';
 import type { ProjectProvisionerConfig } from '../src/project-provisioner.types';
-import { testEdgePodLabels, testEdgePodLabelsJson } from './worker-config-test.fixtures';
+import {
+  testEdgePodLabels,
+  testEdgePodLabelsJson,
+  testProjectResourceConfiguration,
+} from './worker-config-test.fixtures';
 
 const podCidr: string = ['10', '42', '0', '0/16'].join('.');
 const serviceCidr: string = ['10', '43', '0', '0/16'].join('.');
@@ -35,10 +39,87 @@ describe('readProjectProvisionerConfig', (): void => {
       podCidr,
       pollIntervalMs: 1000,
       provisioningNamespace: 'compartment-project-provisioning',
+      resourceConfiguration: testProjectResourceConfiguration,
       runtimeControlToken: 'runtime-control-token',
       serviceCidr,
       workerServiceAccountName: 'compartment-worker',
     });
+  });
+
+  it('rejects invalid project resource quantities at startup', (): void => {
+    expect(
+      (): ProjectProvisionerConfig =>
+        readProjectProvisionerConfig({
+          ...projectProvisionerEnvironment(),
+          COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
+            '{"request":{"cpu":"50m","memory":"not-a-quantity"},"limit":{"cpu":"1","memory":"1Gi"}}',
+        }),
+    ).toThrow(
+      'COMPARTMENT_PROJECT_CONTAINER_DEFAULTS request.memory must be a valid non-negative Kubernetes quantity.',
+    );
+  });
+
+  it('accepts explicitly positive Kubernetes quantities', (): void => {
+    const config: ProjectProvisionerConfig = readProjectProvisionerConfig({
+      ...projectProvisionerEnvironment(),
+      COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
+        '{"request":{"cpu":"+50m","memory":"256Mi"},"limit":{"cpu":"1","memory":"+1Gi"}}',
+    });
+
+    expect(config.resourceConfiguration.containerDefaults).toEqual({
+      limit: { cpu: '1', memory: '+1Gi' },
+      request: { cpu: '+50m', memory: '256Mi' },
+    });
+  });
+
+  it('rejects container requests that exceed their limits', (): void => {
+    expect(
+      (): ProjectProvisionerConfig =>
+        readProjectProvisionerConfig({
+          ...projectProvisionerEnvironment(),
+          COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
+            '{"request":{"cpu":"1501m","memory":"256Mi"},"limit":{"cpu":"1.5","memory":"1Gi"}}',
+        }),
+    ).toThrow('COMPARTMENT_PROJECT_CONTAINER_DEFAULTS request.cpu must not exceed limit.cpu.');
+    expect(
+      (): ProjectProvisionerConfig =>
+        readProjectProvisionerConfig({
+          ...projectProvisionerEnvironment(),
+          COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
+            '{"request":{"cpu":"50m","memory":"1025Mi"},"limit":{"cpu":"1","memory":"1Gi"}}',
+        }),
+    ).toThrow('COMPARTMENT_PROJECT_CONTAINER_DEFAULTS request.memory must not exceed limit.memory.');
+  });
+
+  it('rejects project requests that exceed their quota limits', (): void => {
+    expect(
+      (): ProjectProvisionerConfig =>
+        readProjectProvisionerConfig({
+          ...projectProvisionerEnvironment(),
+          COMPARTMENT_PROJECT_QUOTA:
+            '{"requestsCpu":"2","requestsMemory":"2Gi","limitsCpu":"1500m","limitsMemory":"3Gi","requestsStorage":"20Gi"}',
+        }),
+    ).toThrow('COMPARTMENT_PROJECT_QUOTA requestsCpu must not exceed limitsCpu.');
+    expect(
+      (): ProjectProvisionerConfig =>
+        readProjectProvisionerConfig({
+          ...projectProvisionerEnvironment(),
+          COMPARTMENT_PROJECT_QUOTA:
+            '{"requestsCpu":"2","requestsMemory":"2Gi","limitsCpu":"8","limitsMemory":"1536Mi","requestsStorage":"20Gi"}',
+        }),
+    ).toThrow('COMPARTMENT_PROJECT_QUOTA requestsMemory must not exceed limitsMemory.');
+  });
+
+  it('accepts equal cross-unit requests and limits', (): void => {
+    const config: ProjectProvisionerConfig = readProjectProvisionerConfig({
+      ...projectProvisionerEnvironment(),
+      COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
+        '{"request":{"cpu":"1e0","memory":"1024Mi"},"limit":{"cpu":"1","memory":"1Gi"}}',
+      COMPARTMENT_PROJECT_QUOTA:
+        '{"requestsCpu":"1000m","requestsMemory":"1024Mi","limitsCpu":"1","limitsMemory":"1Gi","requestsStorage":"20Gi"}',
+    });
+
+    expect(config.resourceConfiguration.quota.limitsMemory).toBe('1Gi');
   });
 
   it('parses tenant scheduling for provisioning Jobs', (): void => {
@@ -80,6 +161,10 @@ function projectProvisionerEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_LEADER_ELECTION_RETRY_PERIOD_MS: '2000',
     COMPARTMENT_PLATFORM_NAMESPACE: 'compartment',
     COMPARTMENT_PROJECT_PROVISIONER_IMAGE: 'registry.internal/compartment-worker@sha256:worker',
+    COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
+      '{"request":{"cpu":"50m","memory":"256Mi"},"limit":{"cpu":"1","memory":"1Gi"}}',
+    COMPARTMENT_PROJECT_QUOTA:
+      '{"requestsCpu":"2","requestsMemory":"2Gi","limitsCpu":"8","limitsMemory":"8Gi","requestsStorage":"20Gi"}',
     COMPARTMENT_PROVISIONING_NAMESPACE: 'compartment-project-provisioning',
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-token',
     COMPARTMENT_WORKER_POLL_INTERVAL_MS: '1000',

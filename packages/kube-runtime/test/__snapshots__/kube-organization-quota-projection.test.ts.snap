@@ -3,7 +3,7 @@
 exports[`organization GlobalCustomQuota projection > projects five deterministic quotas into one immutable organization namespace pool 1`] = `
 [
   {
-    "limit": "20",
+    "limit": "2",
     "namespaceSelectors": [
       {
         "matchLabels": {
@@ -47,7 +47,7 @@ exports[`organization GlobalCustomQuota projection > projects five deterministic
     ],
   },
   {
-    "limit": "20",
+    "limit": "8",
     "namespaceSelectors": [
       {
         "matchLabels": {
@@ -91,7 +91,7 @@ exports[`organization GlobalCustomQuota projection > projects five deterministic
     ],
   },
   {
-    "limit": "20Gi",
+    "limit": "2Gi",
     "namespaceSelectors": [
       {
         "matchLabels": {
@@ -135,7 +135,7 @@ exports[`organization GlobalCustomQuota projection > projects five deterministic
     ],
   },
   {
-    "limit": "20Gi",
+    "limit": "8Gi",
     "namespaceSelectors": [
       {
         "matchLabels": {
@@ -179,7 +179,7 @@ exports[`organization GlobalCustomQuota projection > projects five deterministic
     ],
   },
   {
-    "limit": "100Gi",
+    "limit": "20Gi",
     "namespaceSelectors": [
       {
         "matchLabels": {

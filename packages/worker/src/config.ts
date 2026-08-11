@@ -16,6 +16,7 @@ import type {
   WorkerProcessConfig,
 } from './config.types';
 import { readBuildWorkloadScheduling, readTenantWorkloadScheduling } from './tenant-workload-scheduling';
+import { readOrganizationQuota } from './resource-quota-config';
 
 export type { WorkerBuildConfig, WorkerConfig, WorkerCustomDomainConfig, WorkerProcessConfig } from './config.types';
 
@@ -60,6 +61,7 @@ interface WorkerConfigEnvironment extends WorkerBuildConfigEnvironment {
   COMPARTMENT_KUBE_TENANT_SCHEDULING?: string | undefined;
   COMPARTMENT_MAX_CONCURRENT_BUILDS: number;
   COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_ORGANIZATION: number;
+  COMPARTMENT_ORGANIZATION_QUOTA: string;
 }
 
 interface WorkerTrustedOutboundHostsEnvironment {
@@ -114,6 +116,7 @@ const workerConfigSchema: z.ZodType<WorkerConfigEnvironment> = workerBuildConfig
     COMPARTMENT_KUBE_TENANT_SCHEDULING: z.string().min(1).optional(),
     COMPARTMENT_MAX_CONCURRENT_BUILDS: z.coerce.number().int().positive(),
     COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_ORGANIZATION: z.coerce.number().int().positive(),
+    COMPARTMENT_ORGANIZATION_QUOTA: z.string().trim().min(1),
   }),
 );
 
@@ -149,6 +152,7 @@ export function readWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     buildQueue: buildWorkerBuildQueueConfig(parsed),
     customDomains: buildWorkerCustomDomainConfig(parsed),
     deploymentInfrastructureTimeoutMs: parsed.COMPARTMENT_DEPLOYMENT_INFRASTRUCTURE_TIMEOUT_MS,
+    organizationQuota: readOrganizationQuota(parsed.COMPARTMENT_ORGANIZATION_QUOTA, 'COMPARTMENT_ORGANIZATION_QUOTA'),
     ...(tenantScheduling === undefined ? {} : { tenantScheduling }),
     tenantSecretsKek: readTenantSecretsKeyring(parsed),
     usageMeteringIntervalMs: parsed.COMPARTMENT_USAGE_METERING_INTERVAL_MS,

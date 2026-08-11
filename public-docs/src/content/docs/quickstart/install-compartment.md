@@ -119,10 +119,44 @@ The value is saved on each project when that project is created. Changing it lat
 explicit service `accessMode` in `compartment.yml` overrides the saved project default. This controls hosted app
 access, not project permissions or RBAC.
 
+Tenant CPU, memory, and storage budgets are installation values. The defaults reserve 50m CPU and 256 MiB for each
+container, cap each container at 1 CPU and 1 GiB, and give each project and organization a 2 CPU / 2 GiB request budget,
+an 8 CPU / 8 GiB limit budget, and 20 GiB of requested storage. Override them together when sizing tenant capacity:
+
+```yaml
+resources:
+  projectContainerDefaults:
+    request: { cpu: 75m, memory: 384Mi }
+    limit: { cpu: '1', memory: 1Gi }
+  projectQuota:
+    requestsCpu: '3'
+    requestsMemory: 3Gi
+    limitsCpu: '12'
+    limitsMemory: 12Gi
+    requestsStorage: 30Gi
+  organizationQuota:
+    requestsCpu: '4'
+    requestsMemory: 4Gi
+    limitsCpu: '16'
+    limitsMemory: 16Gi
+    requestsStorage: 40Gi
+```
+
+Organization quota changes are applied by periodic reconciliation. Project quotas and container defaults are used when
+a project namespace is provisioned; changing these values does not requeue existing projects. Application capacity is
+constrained by configured resource and object-count quotas and by workload requests and limits; there is no separate
+application-count value. Project object-count quotas remain fixed.
+
+Each configured CPU or memory request must be less than or equal to its corresponding limit. The worker and project
+provisioner refuse to start when these values are inconsistent or are not valid Kubernetes quantities.
+
 Build concurrency has separate logical and physical limits. By default, Compartment admits up to 100 in-flight build
 claims, allows two active builds per organization, and applies a build-namespace quota of 48 CPU and 64 GiB. Each
 default build Pod is limited to 2 CPU and 4 GiB, so memory limits the namespace to 16 concurrently admitted build Pods.
 Set the queue limits, namespace quota, and per-container resources together when sizing a cluster:
+
+If the values file already contains a top-level `resources` mapping, add `buildkit` and `buildRunner` to that mapping
+instead of declaring a second `resources` key.
 
 ```yaml
 buildkit:

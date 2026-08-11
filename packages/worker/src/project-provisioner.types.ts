@@ -1,5 +1,9 @@
 import type { WorkerArtifactRegistryConfig } from './worker-artifact-registry.types';
-import type { KubeLeaderElectionConfig, KubeWorkloadScheduling } from '@compartment/kube-runtime';
+import type {
+  KubeLeaderElectionConfig,
+  KubeWorkloadScheduling,
+  ProjectNamespaceResourceConfiguration,
+} from '@compartment/kube-runtime';
 import type { EdgePodLabels } from './project-network-policy';
 
 export interface ProjectProvisionerConfig {
@@ -15,6 +19,7 @@ export interface ProjectProvisionerConfig {
   podCidr: string;
   pollIntervalMs: number;
   provisioningNamespace: string;
+  resourceConfiguration: ProjectNamespaceResourceConfiguration;
   runtimeControlToken: string;
   serviceCidr: string;
   tenantScheduling?: KubeWorkloadScheduling | undefined;

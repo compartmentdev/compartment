@@ -443,6 +443,9 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).toContain(`digest: sha256:${'a'.repeat(64)}`);
     expect(values).not.toContain('ports:\n  http: 18080');
     expect(values).not.toContain('startupStage:');
+    expect(values).toContain(
+      "resources:\n  projectQuota:\n    requestsCpu: '10'\n    requestsMemory: 10Gi\n    limitsCpu: '20'\n    limitsMemory: 20Gi\n    requestsStorage: 100Gi\n  organizationQuota:\n    requestsCpu: '20'\n    requestsMemory: 20Gi\n    limitsCpu: '20'\n    limitsMemory: 20Gi\n    requestsStorage: 100Gi",
+    );
   });
 
   it('enables two replicas only for the high-availability fixture', () => {
