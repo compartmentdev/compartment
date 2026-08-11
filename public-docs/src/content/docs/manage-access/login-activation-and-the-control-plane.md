@@ -80,8 +80,9 @@ caller that started the signup. Treat it as a secret, hold it only while the ret
 one for every signup.
 
 A key stops working 24 hours after the account was created, and it is never reusable after that: sign up again with a
-new key and a different email address. Reusing a key with a different email address or organization name is rejected as
-a conflict rather than silently returning the first account.
+new key and a different email address. Reusing a key for a different account is rejected as a conflict rather than
+silently returning the first one. Compartment compares what the request resolves to, not how it is spelled, so a retry
+may capitalize the email address differently or use an organization name that produces the same slug.
 
 For non-interactive invited-user activation, provide the new password through
 `COMPARTMENT_VIEWER_PASSWORD` and pass the email and invitation token as options:

@@ -161,7 +161,9 @@ async function createSignupOrganizations(account: SignupAccount, organizationNam
  * Two attempts under the same key can reach organization creation together, and the one that loses collides on the
  * slug. When the account already holds an organization the collision was with the one the other attempt just created
  * for this very account, which is the result both callers asked for. Every other failure, including a name somebody
- * else owns, still fails the request.
+ * else owns, still fails the request. The two attempts are not serialized across the organization transaction, so a
+ * loser that reads before the winner commits still reports the collision; the account survives it, and the next retry
+ * under the same key returns the organization.
  */
 async function recoverSignupOrganizations(account: SignupAccount, error: Error): Promise<OrganizationRow[]> {
   if (isOrganizationSlugTakenError(error)) {
@@ -179,8 +181,9 @@ async function recoverSignupOrganizations(account: SignupAccount, error: Error):
  * Discarding frees the requested email address for an immediate retry under another organization name. Only the
  * request that created the account may do it: a retry that deleted the account here would destroy the work of the
  * concurrent attempt that is still creating the organization. Cleanup must also never replace the failure the caller
- * needs to see, so a failed discard leaves the account behind rather than turning a clean business error into a 500 —
- * the key makes that leftover account recoverable by the next retry.
+ * needs to see, so a failed discard leaves the account behind rather than turning a clean business error into a 500.
+ * A repeat of the same request finishes that leftover account instead of tripping over it; changing the request is a
+ * conflict, and the caller starts over under a new key.
  */
 async function discardSignupAccount(account: SignupAccount): Promise<void> {
   if (!account.isNewAccount) {

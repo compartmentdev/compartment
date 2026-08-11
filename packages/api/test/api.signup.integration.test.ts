@@ -282,12 +282,19 @@ describe('Phase 0 API integration CLI self-service signup', (): void => {
       payload: { organizationName: 'Agent Org' },
       url: authApiSignupPathname,
     });
-    const guessableKey: LightMyRequestResponse = await injectSignup({ organizationName: 'Agent Org' }, 'agent-signup');
+    const guessableKeys: LightMyRequestResponse[] = await Promise.all(
+      ['agent-signup', '00000000-0000-0000-0000-000000000000', 'e2b1c4de-9a3f-11ee-8c90-0242ac120002'].map(
+        async (key: string): Promise<LightMyRequestResponse> =>
+          await injectSignup({ organizationName: 'Agent Org' }, key),
+      ),
+    );
 
     expect(withoutKey.statusCode).toBe(400);
     expect(errorResponseSchema.parse(withoutKey.json()).error.code).toBe('invalid_signup_idempotency_key');
-    expect(guessableKey.statusCode).toBe(400);
-    expect(errorResponseSchema.parse(guessableKey.json()).error.code).toBe('invalid_signup_idempotency_key');
+    guessableKeys.forEach((response: LightMyRequestResponse): void => {
+      expect(response.statusCode).toBe(400);
+      expect(errorResponseSchema.parse(response.json()).error.code).toBe('invalid_signup_idempotency_key');
+    });
   });
 
   it('frees the requested email and its key again when the organization name collides', async (): Promise<void> => {
