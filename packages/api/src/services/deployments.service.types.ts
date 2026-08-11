@@ -15,6 +15,7 @@ import type {
 import type { DeploymentJoinedRow, EnvironmentRow, ProjectServiceRow } from '../queries/deployments.query.types';
 import type { OrganizationRow } from '../queries/organizations.query.types';
 import type { ProjectRow } from '../queries/projects.query.types';
+import type { AuthSessionOrganizationPolicySession } from './organization-auth-settings.service.types';
 import type {
   DeploymentInspectTargetInput,
   DeploymentSummaryInput,
@@ -75,6 +76,7 @@ export interface ResolvedProjectLookupContext {
 
 export interface DeployInputContext {
   actorPrincipalId: string;
+  authSession?: AuthSessionOrganizationPolicySession | undefined;
   descriptor: CompartmentAuthoredDescriptor;
   environmentName?: string | undefined;
   label?: string | undefined;

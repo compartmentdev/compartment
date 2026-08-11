@@ -39,6 +39,7 @@ function parseDeployRouteRequest(request: FastifyRequest): DeployRequest {
 async function createDeployResponsePayload(request: FastifyRequest, input: DeployRequest): Promise<DeployResponse> {
   const result: DeployResponseInput = await createDeploymentsFromSourceUpload({
     actorPrincipalId: request.actor.principalId,
+    authSession: request.actor.authSession,
     descriptor: input.descriptor,
     environmentName: input.environmentName,
     label: input.label,

@@ -18,7 +18,7 @@ import type { DeployInputContext, DeploymentSourceProvenance } from './deploymen
 import type { ConsumeSourceUploadContext } from './source-uploads.service.types';
 import { requireEnvironmentPermission, requireProjectPermission } from './deployment-context.service.scope';
 import {
-  requireActiveHumanRuntimeActor,
+  requireActiveHumanRuntimeSessionActor,
   requireActiveSourceAutomationRuntimeActor,
 } from './runtime-actor-authorization.service';
 
@@ -27,9 +27,13 @@ export async function assertDeploymentActorAccess(
   sourceUpload: Pick<SourceUploadRow, 'createdByPrincipalId'>,
 ): Promise<void> {
   if (input.sourceProvenance === undefined) {
-    await requireActiveHumanRuntimeActor({
+    if (input.authSession === undefined) {
+      throw createForbiddenError();
+    }
+    await requireActiveHumanRuntimeSessionActor({
       organizationId: input.organizationId,
       principalId: input.actorPrincipalId,
+      session: input.authSession,
     });
     return;
   }

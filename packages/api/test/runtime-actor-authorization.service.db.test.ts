@@ -23,6 +23,7 @@ import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { clearApiRuntime, configureApiRuntime } from '../src/runtime/runtime';
 import {
   requireActiveHumanRuntimeActor,
+  requireActiveHumanRuntimeSessionActor,
   requireActiveSourceAutomationRuntimeActor,
 } from '../src/services/runtime-actor-authorization.service';
 import { runCompartmentApiMigrations as runApiMigrations } from '@compartment/test-support';
@@ -75,6 +76,51 @@ describe('runtime actor authorization service', (): void => {
       requireActiveHumanRuntimeActor({
         organizationId: 'org_123',
         principalId: 'prn_human_invited',
+      }),
+    ).rejects.toMatchObject({ code: 'forbidden' });
+  });
+
+  it('allows a passwordless human through an organization-scoped authenticated session', async (): Promise<void> => {
+    await expect(
+      requireActiveHumanRuntimeSessionActor({
+        organizationId: 'org_123',
+        principalId: 'prn_human_invited',
+        session: {
+          authMethodKind: 'password_scoped',
+          oidcProviderId: null,
+          organizationId: 'org_123',
+          principalId: 'prn_human_invited',
+        },
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('rejects a passwordless human through an organization-bound general password session', async (): Promise<void> => {
+    await expect(
+      requireActiveHumanRuntimeSessionActor({
+        organizationId: 'org_123',
+        principalId: 'prn_human_invited',
+        session: {
+          authMethodKind: 'password',
+          oidcProviderId: null,
+          organizationId: 'org_123',
+          principalId: 'prn_human_invited',
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'forbidden' });
+  });
+
+  it('rejects a passwordless human through an unbound scoped session', async (): Promise<void> => {
+    await expect(
+      requireActiveHumanRuntimeSessionActor({
+        organizationId: 'org_123',
+        principalId: 'prn_human_invited',
+        session: {
+          authMethodKind: 'password_scoped',
+          oidcProviderId: null,
+          organizationId: null,
+          principalId: 'prn_human_invited',
+        },
       }),
     ).rejects.toMatchObject({ code: 'forbidden' });
   });
