@@ -3,22 +3,11 @@ import { findOrganizationPrincipalAccessById } from '../queries/organization-use
 import type { OrganizationPrincipalAccessRow } from '../queries/organization-users.query.types';
 import { findActiveSourceByAutomationPrincipal } from '../queries/source.query';
 import type { SourceRow } from '../queries/source.query.types';
-import type { AuthSessionOrganizationPolicySession } from './organization-auth-settings.service.types';
-
-interface ActiveHumanRuntimeActorInput {
-  organizationId: string;
-  principalId: string;
-}
-
-interface ActiveHumanRuntimeSessionActorInput extends ActiveHumanRuntimeActorInput {
-  session: AuthSessionOrganizationPolicySession;
-}
-
-interface ActiveSourceAutomationRuntimeActorInput {
-  organizationId: string;
-  principalId: string;
-  sourceId: string;
-}
+import type {
+  ActiveHumanRuntimeActorInput,
+  ActiveHumanRuntimeSessionActorInput,
+  ActiveSourceAutomationRuntimeActorInput,
+} from './runtime-actor-authorization.service.types';
 
 export async function requireActiveHumanRuntimeActor(input: ActiveHumanRuntimeActorInput): Promise<void> {
   const principal: OrganizationPrincipalAccessRow | undefined = await findOrganizationPrincipalAccessById(
