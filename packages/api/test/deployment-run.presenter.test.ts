@@ -198,6 +198,7 @@ function createDeploymentJoinedRow(
     project: {
       archivedAt: null,
       createdAt: now,
+      defaultAccessMode: 'authenticated',
       id: 'prj_123',
       name: 'smoke-web',
       organizationId: 'org_123',

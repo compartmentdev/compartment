@@ -46,10 +46,6 @@ export const appRouteAccessModeSchema: ContractSchema<AppRouteAccessMode> = z.en
 
 export const defaultAppRouteAccessMode: AppRouteAccessMode = 'authenticated';
 
-export function resolveAppRouteAccessMode(accessMode: AppRouteAccessMode | undefined): AppRouteAccessMode {
-  return accessMode ?? defaultAppRouteAccessMode;
-}
-
 export function listCompartmentRolePermissions(role: CompartmentMembershipRole): PermissionKey[] {
   return [...permissionKeysByCompartmentMembershipRole[role]];
 }

@@ -1,4 +1,5 @@
 import type { ApiDatabaseTransaction } from '../db/client.types';
+import type { AppRouteAccessMode } from '@compartment/contracts';
 import type { Database } from '../db/client';
 import type { projects } from '../db/schema';
 
@@ -10,6 +11,7 @@ export type PersistedProjectRow = typeof projects.$inferSelect;
 export interface ProjectRow {
   archivedAt: Date | null;
   createdAt: Date;
+  defaultAccessMode: AppRouteAccessMode;
   id: string;
   name: string;
   organizationId: string;
@@ -17,6 +19,7 @@ export interface ProjectRow {
 }
 
 export interface CreateProjectInput {
+  defaultAccessMode: AppRouteAccessMode;
   id: string;
   name: string;
   organizationId: string;

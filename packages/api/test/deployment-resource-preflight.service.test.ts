@@ -1,5 +1,4 @@
 import {
-  resolveAppRouteAccessMode,
   resolveCompartmentServiceBuildConfig,
   resolveCompartmentServiceKind,
   resolveCompartmentServiceReleaseConfig,
@@ -55,7 +54,7 @@ describe('deployment resource preflight service', (): void => {
 
 function createService(hasRelease: boolean): ResolvedDescriptorService {
   return {
-    accessMode: resolveAppRouteAccessMode(undefined),
+    accessMode: 'authenticated',
     build: resolveCompartmentServiceBuildConfig(undefined),
     connections: {
       postgres: {

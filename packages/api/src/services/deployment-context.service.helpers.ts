@@ -1,6 +1,5 @@
 import {
   isDeployableCompartmentServiceKind,
-  resolveAppRouteAccessMode,
   resolveCompartmentServiceBuildConfig,
   resolveCompartmentEnvironmentName,
   resolveCompartmentServiceKind,
@@ -112,7 +111,6 @@ function normalizeDescriptorService(
 ): ResolvedDescriptorService {
   if (typeof service === 'string') {
     return {
-      accessMode: resolveAppRouteAccessMode(undefined),
       build: resolveCompartmentServiceBuildConfig(undefined),
       connections: {},
       kind: resolveCompartmentServiceKind(undefined),
@@ -135,7 +133,7 @@ function normalizeDescriptorServiceConfig(
   const readiness: CompartmentServiceReadinessConfig | undefined = service.readiness;
 
   return {
-    accessMode: resolveAppRouteAccessMode(service.accessMode),
+    ...(service.accessMode !== undefined ? { accessMode: service.accessMode } : {}),
     build: resolveCompartmentServiceBuildConfig(service.build),
     connections: service.connections ?? {},
     kind: requireDeployableServiceKind(service.kind),

@@ -7,6 +7,13 @@ values:
 release:
   name: compartment
 tests:
+  - it: rejects a non-boolean new-project privacy default
+    set:
+      platform:
+        newProjectsPrivateByDefault: invalid
+    asserts:
+      - failedTemplate: {}
+
   - it: requires a managed broker token
     set:
       platform: &managedPlatform

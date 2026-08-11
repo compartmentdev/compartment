@@ -41,7 +41,9 @@ export function createDeploymentKubeReferenceDatabaseTestContext(
 
 export async function seedDeployment(db: Database): Promise<void> {
   await db.insert(organizations).values({ id: 'org_kube', name: 'Kube', slug: 'kube' });
-  await db.insert(projects).values({ id: 'prj_kube', name: 'Kube', organizationId: 'org_kube' });
+  await db
+    .insert(projects)
+    .values({ defaultAccessMode: 'authenticated', id: 'prj_kube', name: 'Kube', organizationId: 'org_kube' });
   await db.insert(projectServices).values({
     id: 'svc_kube',
     kind: 'web',

@@ -29,6 +29,7 @@ import {
   findAvailableProjectByOrganizationAndName,
   hasActiveProjectState,
 } from './git-source-connect.persistence.support';
+import { resolveNewProjectDefaultAccessMode } from '../project-default-access-mode.service';
 
 export interface AdoptGitSourceBindingInput {
   actorPrincipalId: string;
@@ -163,6 +164,7 @@ async function resolveConnectProject(
   await findAvailableProjectByOrganizationAndName(transaction, organizationId, projectName);
 
   return await createOrGetProjectWithExecutor(transaction, {
+    defaultAccessMode: resolveNewProjectDefaultAccessMode(),
     id: createId('prj'),
     name: projectName,
     organizationId,

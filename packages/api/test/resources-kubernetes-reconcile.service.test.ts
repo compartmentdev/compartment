@@ -376,6 +376,7 @@ function context(): ResourceEnvironmentContext {
     project: {
       archivedAt: null,
       createdAt: new Date(),
+      defaultAccessMode: 'authenticated',
       id: 'prj',
       name: 'project',
       organizationId: 'org',

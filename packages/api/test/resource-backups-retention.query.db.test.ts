@@ -28,7 +28,12 @@ describe('resource backup retention queries', (): void => {
 
   beforeEach(async (): Promise<void> => {
     await db.insert(organizations).values({ id: 'org_retention', name: 'Acme', slug: 'acme' });
-    await db.insert(projects).values({ id: 'prj_retention', name: 'app', organizationId: 'org_retention' });
+    await db.insert(projects).values({
+      defaultAccessMode: 'authenticated',
+      id: 'prj_retention',
+      name: 'app',
+      organizationId: 'org_retention',
+    });
     await db.insert(environments).values({ id: 'env_retention', name: 'production', projectId: 'prj_retention' });
     await db.insert(projectResources).values({
       commandJson: '[]',

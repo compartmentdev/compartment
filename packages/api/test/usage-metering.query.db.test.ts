@@ -50,7 +50,9 @@ describe('usage metering persistence', (): void => {
 
   beforeEach(async (): Promise<void> => {
     await db.insert(organizations).values({ id: 'org-usage', name: 'Usage', slug: 'usage' });
-    await db.insert(projects).values({ id: 'prj-usage', name: 'usage', organizationId: 'org-usage' });
+    await db
+      .insert(projects)
+      .values({ defaultAccessMode: 'authenticated', id: 'prj-usage', name: 'usage', organizationId: 'org-usage' });
     await db.insert(environments).values({ id: 'env-usage', name: 'production', projectId: 'prj-usage' });
     await db
       .insert(projectServices)

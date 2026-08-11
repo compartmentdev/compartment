@@ -594,6 +594,7 @@ async function createQueryTestScope(): Promise<QueryTestScope> {
     slug: 'variables-org',
   });
   await db.insert(projects).values({
+    defaultAccessMode: 'authenticated',
     id: 'prj_variables',
     name: 'billing',
     organizationId,

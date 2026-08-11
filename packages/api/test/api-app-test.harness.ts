@@ -98,6 +98,7 @@ export function createApiIntegrationTestContext(databaseName: string, runtimeSlu
   process.env.COMPARTMENT_VARIABLES_MASTER_KEY = process.env.COMPARTMENT_VARIABLES_MASTER_KEY ?? '11'.repeat(32);
   process.env.COMPARTMENT_RUNTIME_CONTROL_TOKEN = testRuntimeControlToken;
   process.env.COMPARTMENT_SIGNUP_ENABLED = 'false';
+  process.env.COMPARTMENT_NEW_PROJECTS_PRIVATE_BY_DEFAULT = 'true';
 
   return {
     apiConfig: readApiConfig(),

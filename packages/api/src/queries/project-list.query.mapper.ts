@@ -28,6 +28,7 @@ function toProjectRow(row: ProjectListPageProjectQueryRow): ProjectRow {
   return {
     archivedAt: toNullableProjectPageDate(row.archivedAt),
     createdAt: toProjectPageDateValue(row.createdAt),
+    defaultAccessMode: row.defaultAccessMode,
     id: row.projectId,
     name: row.projectName,
     organizationId: row.organizationId,

@@ -288,6 +288,7 @@ function createProject(): ProjectRow {
   return {
     archivedAt: null,
     createdAt: new Date('2026-04-21T08:00:00.000Z'),
+    defaultAccessMode: 'authenticated',
     id: 'prj_billing',
     name: 'billing',
     organizationId: 'org_123',
