@@ -29,3 +29,10 @@ export async function storeSignupIdempotencyKeyWithExecutor(
 ): Promise<void> {
   await tx.insert(signupIdempotencyKeys).values(input);
 }
+
+export async function deleteSignupIdempotencyKeysForPrincipalWithExecutor(
+  tx: SignupIdempotencyTransaction,
+  principalId: string,
+): Promise<void> {
+  await tx.delete(signupIdempotencyKeys).where(eq(signupIdempotencyKeys.principalId, principalId));
+}

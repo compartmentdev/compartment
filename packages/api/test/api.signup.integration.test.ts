@@ -203,16 +203,24 @@ describe('Phase 0 API integration CLI self-service signup', (): void => {
     }
   });
 
-  it('reports the claimed address when a key is retried after the account was claimed', async (): Promise<void> => {
+  it('stops honouring the signup key once a person has claimed the account', async (): Promise<void> => {
     await installCompartment(app);
     const idempotencyKey: string = randomUUID();
     const signup: SignupResponse = await signUp({ organizationName: 'Agent Org' }, idempotencyKey);
-    await injectClaim(signup.sessionToken, { email: 'owner@example.com', password: claimedPassword });
+    expect(
+      (await injectClaim(signup.sessionToken, { email: 'owner@example.com', password: claimedPassword })).statusCode,
+    ).toBe(200);
 
-    const retry: SignupResponse = await signUp({ organizationName: 'Agent Org' }, idempotencyKey);
+    const retry: LightMyRequestResponse = await injectSignup({ organizationName: 'Agent Org' }, idempotencyKey);
+    const underAnotherName: SignupResponse = await signUp({ organizationName: 'Another Org' }, idempotencyKey);
 
-    expect(retry.principal.id).toBe(signup.principal.id);
-    expect(retry.principal.email).toBe('owner@example.com');
+    expect(retry.statusCode).toBe(409);
+    expect(errorResponseSchema.parse(retry.json()).error.code).toBe('organization_slug_taken');
+    expect(underAnotherName.principal.id).not.toBe(signup.principal.id);
+    expect(underAnotherName.organizations).not.toEqual(signup.organizations);
+    const login: LoginResponse = await logIn('owner@example.com', claimedPassword);
+    const identity: WhoAmIResponse = await readWhoAmI(login.sessionToken!, 'agent-org');
+    expect(identity.principal.id).toBe(signup.principal.id);
   });
 
   it('refuses a retry that would produce a different account', async (): Promise<void> => {
