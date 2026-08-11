@@ -328,10 +328,14 @@ Each organization receives one logical Capsule quota pool, projected as five
 across all managed project namespaces. The fixed pool permits 20 CPU requests
 and limits, 20Gi memory requests and limits, and 100Gi requested PVC storage. Capsule admission evaluates
 only Pod and PVC create and update requests in positively labeled
-project namespaces and fails closed. Platform and build namespaces are outside
-that selector. Existing workloads are not evicted when aggregate usage is over
-limit; new Pod or PVC admission remains denied until deletion or downsizing
-releases capacity. API state tracks only reconciliation readiness, never usage.
+project namespaces and fails closed. A separate fail-open delete notification
+lets Capsule release ledger capacity without making workload teardown depend on
+webhook availability. A successful durable reconciliation row becomes eligible
+for refresh after 15 minutes, behind pending and failed work, to repair accounting
+if a notification is missed. Platform and build namespaces are outside that selector.
+Existing workloads are not evicted when aggregate usage is over limit; new Pod
+or PVC admission remains denied until deletion or downsizing releases capacity.
+API state tracks only reconciliation readiness, never usage.
 That state is created transactionally for every new organization. The leader
 worker marks reconciliation successful only after it applies the quota objects.
 Every new project namespace receives the immutable organization ID on its first

@@ -196,6 +196,78 @@ describe('projects service', (): void => {
     expect(reclaimed?.leaseId).not.toBe(first.leaseId);
   });
 
+  it('periodically refreshes successful organization quotas without starving pending work', async (): Promise<void> => {
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ attempts: 7, state: 'succeeded', updatedAt: new Date() })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+    await expect(claimOrganizationQuotaReconciliation()).resolves.toBeNull();
+
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ updatedAt: new Date(0) })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+    await db
+      .insert(organizations)
+      .values({ id: 'org_quota_pending', name: 'Pending quota org', slug: 'quota-pending' });
+    await db.insert(organizationQuotaReconciliation).values({
+      organizationId: 'org_quota_pending',
+      state: 'pending',
+    });
+
+    const pendingClaim: OrganizationQuotaReconcileClaimRow | null = await claimOrganizationQuotaReconciliation();
+    expect(pendingClaim).toMatchObject({ organizationId: 'org_quota_pending' });
+    await expect(
+      completeOrganizationQuotaReconciliation({
+        failureMessage: null,
+        leaseId: pendingClaim?.leaseId ?? '',
+        organizationId: 'org_quota_pending',
+        status: 'succeeded',
+      }),
+    ).resolves.toBe(true);
+
+    const refreshClaim: OrganizationQuotaReconcileClaimRow | null = await claimOrganizationQuotaReconciliation();
+    expect(refreshClaim).toMatchObject({ organizationId: 'org_git_sources' });
+    await expect(
+      db
+        .select({ attempts: organizationQuotaReconciliation.attempts, state: organizationQuotaReconciliation.state })
+        .from(organizationQuotaReconciliation)
+        .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources')),
+    ).resolves.toEqual([{ attempts: 1, state: 'running' }]);
+    await expect(claimOrganizationQuotaReconciliation()).resolves.toBeNull();
+
+    await expect(
+      completeOrganizationQuotaReconciliation({
+        failureMessage: 'periodic quota refresh failed',
+        leaseId: refreshClaim?.leaseId ?? '',
+        organizationId: 'org_git_sources',
+        status: 'failed',
+      }),
+    ).resolves.toBe(true);
+    await expect(claimOrganizationQuotaReconciliation()).resolves.toBeNull();
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ updatedAt: new Date(0) })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+
+    const retryClaim: OrganizationQuotaReconcileClaimRow | null = await claimOrganizationQuotaReconciliation();
+    expect(retryClaim).toMatchObject({ organizationId: 'org_git_sources' });
+    await expect(
+      completeOrganizationQuotaReconciliation({
+        failureMessage: null,
+        leaseId: retryClaim?.leaseId ?? '',
+        organizationId: 'org_git_sources',
+        status: 'succeeded',
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      db
+        .select({ attempts: organizationQuotaReconciliation.attempts, state: organizationQuotaReconciliation.state })
+        .from(organizationQuotaReconciliation)
+        .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources')),
+    ).resolves.toEqual([{ attempts: 0, state: 'succeeded' }]);
+  });
+
   it('slows organization quota reconciliation retries after three attempts', async (): Promise<void> => {
     const failedAt: Date = new Date();
     await db
@@ -235,10 +307,13 @@ describe('projects service', (): void => {
     ).resolves.toBe(true);
     await expect(
       db
-        .select({ failureMessage: organizationQuotaReconciliation.failureMessage })
+        .select({
+          attempts: organizationQuotaReconciliation.attempts,
+          failureMessage: organizationQuotaReconciliation.failureMessage,
+        })
         .from(organizationQuotaReconciliation)
         .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources')),
-    ).resolves.toEqual([{ failureMessage: null }]);
+    ).resolves.toEqual([{ attempts: 0, failureMessage: null }]);
   });
 
   it('retries early organization quota failures after the short delay', async (): Promise<void> => {

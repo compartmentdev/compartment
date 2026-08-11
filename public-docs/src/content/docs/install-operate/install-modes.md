@@ -60,9 +60,11 @@ setup stops with the prerequisite and exact next commands before collecting an i
 install an ingress controller, change node container-runtime or CA-trust configuration, or take ownership of cluster
 upgrades and backups.
 
-The Helm release installs Capsule 0.13.11 and its cluster-scoped quota resources. Capsule's calculation webhook fails
-closed for Pod and persistent volume claim admission in Compartment-managed project namespaces, so those operations
-are rejected while the webhook is unavailable. Platform and build namespaces are not selected.
+The Helm release installs Capsule 0.13.11 and its cluster-scoped quota resources. Pod and persistent volume claim
+creates and updates fail closed in Compartment-managed project namespaces, so those operations are rejected while
+the webhook is unavailable. Delete notifications fail open so teardown remains available; periodic reconciliation
+repairs released-capacity accounting after Capsule recovers. A successful quota state becomes eligible for that
+refresh after 15 minutes. Platform and build namespaces are not selected.
 
 For non-interactive installation, `--target vm|kubernetes` is required. Provide the remaining owner, domain, cluster,
 and values inputs explicitly.

@@ -73,7 +73,11 @@ async function selectClaimableOrganizationQuota(
       .select()
       .from(organizationQuotaReconciliation)
       .where(organizationQuotaClaimableCondition())
-      .orderBy(asc(organizationQuotaReconciliation.createdAt))
+      .orderBy(
+        organizationQuotaClaimPriority(),
+        asc(organizationQuotaReconciliation.updatedAt),
+        asc(organizationQuotaReconciliation.createdAt),
+      )
       .limit(1)
       .for('update', { skipLocked: true })
   )[0];
@@ -98,7 +102,18 @@ function organizationQuotaClaimableCondition(): SQL | undefined {
         sql`now() - (${organizationQuotaRecoveryDelayMs} * interval '1 millisecond')`,
       ),
     ),
+    and(
+      eq(organizationQuotaReconciliation.state, 'succeeded'),
+      lt(
+        organizationQuotaReconciliation.updatedAt,
+        sql`now() - (${organizationQuotaRecoveryDelayMs} * interval '1 millisecond')`,
+      ),
+    ),
   );
+}
+
+function organizationQuotaClaimPriority(): SQL {
+  return sql`CASE WHEN ${organizationQuotaReconciliation.state} = 'succeeded' THEN 1 ELSE 0 END`;
 }
 
 async function leaseOrganizationQuota(
@@ -109,7 +124,7 @@ async function leaseOrganizationQuota(
   await transaction
     .update(organizationQuotaReconciliation)
     .set({
-      attempts: row.attempts + 1,
+      attempts: row.state === 'succeeded' ? 1 : row.attempts + 1,
       leaseExpiresAt: sql`now() + (${organizationQuotaLeaseDurationMs} * interval '1 millisecond')`,
       leaseId,
       state: 'running',
@@ -125,6 +140,7 @@ export async function completeOrganizationQuotaReconciliation(
   const rows = await getApiDatabase()
     .update(organizationQuotaReconciliation)
     .set({
+      ...(input.status === 'succeeded' ? { attempts: 0 } : {}),
       failureMessage: input.failureMessage,
       leaseExpiresAt: null,
       leaseId: null,

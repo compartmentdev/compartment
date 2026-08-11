@@ -30,6 +30,10 @@ Compartment enforces these limits when Kubernetes admits a Pod or persistent vol
 evicted if the organization is already over a limit. New or updated Pods and volume claims are denied until you delete
 or reduce workloads enough to release capacity. Platform and build workloads do not consume this pool.
 
+Deletion still succeeds while Capsule is unavailable, but released capacity can remain reported as used when the
+delete notification is missed. A successful quota state becomes eligible for periodic reconciliation after 15 minutes;
+that reconciliation repairs the accounting after Capsule recovers.
+
 If Compartment cannot reconcile the organization's quota policy, the deployment remains pending. `compartment deploy`
 and `compartment status` show the infrastructure error and next automatic retry time. Compartment retries quickly
 until it has made three attempts, then once every 15 minutes until the policy is ready.

@@ -1,5 +1,6 @@
 {{- $name := printf "%s-capsule-admission-cleanup" .Release.Name -}}
 {{- $webhookName := printf "%s-capsule-dynamic-webhook" .Release.Name -}}
+{{- $releaseWebhookName := printf "%s-capsule-quota-release-webhook" .Release.Name -}}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -26,6 +27,10 @@ rules:
   - apiGroups: [admissionregistration.k8s.io]
     resourceNames: [{{ $webhookName }}]
     resources: [mutatingwebhookconfigurations, validatingwebhookconfigurations]
+    verbs: [delete]
+  - apiGroups: [admissionregistration.k8s.io]
+    resourceNames: [{{ $releaseWebhookName }}]
+    resources: [validatingwebhookconfigurations]
     verbs: [delete]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -76,6 +81,7 @@ spec:
             - delete
             - mutatingwebhookconfiguration/{{ $webhookName }}
             - validatingwebhookconfiguration/{{ $webhookName }}
+            - validatingwebhookconfiguration/{{ $releaseWebhookName }}
             - --namespace
             - {{ .Release.Namespace }}
             - --ignore-not-found

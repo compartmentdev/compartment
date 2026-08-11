@@ -203,3 +203,39 @@ webhooks:
         scope: Namespaced
     sideEffects: NoneOnDryRun
     timeoutSeconds: 30
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ $name }}-quota-release-webhook
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ printf "%s/%s-webhook-cert" .Release.Namespace $name | quote }}
+webhooks:
+  - name: release.custom-quotas.validating.compartment.dev
+    admissionReviewVersions: [v1, v1beta1]
+    clientConfig:
+      service:
+        name: {{ $name }}-webhook-service
+        namespace: {{ .Release.Namespace }}
+        path: /custom-quotas/calculations
+        port: 9443
+    failurePolicy: Ignore
+    matchPolicy: Equivalent
+    namespaceSelector:
+      matchLabels:
+        app.kubernetes.io/managed-by: compartment
+      matchExpressions:
+        - key: compartment.dev/organization-id
+          operator: Exists
+        - key: compartment.dev/project-id
+          operator: Exists
+    rules:
+      - apiGroups: ['']
+        apiVersions: [v1]
+        operations: [DELETE]
+        resources: [pods, persistentvolumeclaims]
+        scope: Namespaced
+    sideEffects: NoneOnDryRun
+    timeoutSeconds: 30

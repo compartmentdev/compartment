@@ -124,7 +124,7 @@ tests:
       - equal:
           path: metadata.labels["projectcapsule.dev/created-by"]
           value: rbac-controller
-  - it: precreates the calculation-only validating webhook
+  - it: precreates fail-closed quota admission for creates and updates
     template: templates/capsule-manager-rbac.yaml
     documentIndex: 7
     asserts:
@@ -136,11 +136,49 @@ tests:
             path: /custom-quotas/calculations
             port: 9443
       - equal:
+          path: webhooks[0].failurePolicy
+          value: Fail
+      - equal:
           path: webhooks[0].rules
           value:
             - apiGroups: ['']
               apiVersions: [v1]
               operations: [CREATE, UPDATE]
+              resources: [pods, persistentvolumeclaims]
+              scope: Namespaced
+  - it: notifies Capsule of quota releases without blocking deletion
+    template: templates/capsule-manager-rbac.yaml
+    documentIndex: 8
+    asserts:
+      - equal:
+          path: metadata.name
+          value: compartment-capsule-quota-release-webhook
+      - equal:
+          path: webhooks[0].clientConfig.service
+          value:
+            name: compartment-capsule-webhook-service
+            namespace: compartment
+            path: /custom-quotas/calculations
+            port: 9443
+      - equal:
+          path: webhooks[0].failurePolicy
+          value: Ignore
+      - equal:
+          path: webhooks[0].namespaceSelector
+          value:
+            matchLabels:
+              app.kubernetes.io/managed-by: compartment
+            matchExpressions:
+              - key: compartment.dev/organization-id
+                operator: Exists
+              - key: compartment.dev/project-id
+                operator: Exists
+      - equal:
+          path: webhooks[0].rules
+          value:
+            - apiGroups: ['']
+              apiVersions: [v1]
+              operations: [DELETE]
               resources: [pods, persistentvolumeclaims]
               scope: Namespaced
   - it: binds the Capsule manager only to the parent-owned role
@@ -202,6 +240,10 @@ tests:
               resourceNames: [compartment-capsule-dynamic-webhook]
               resources: [mutatingwebhookconfigurations, validatingwebhookconfigurations]
               verbs: [delete]
+            - apiGroups: [admissionregistration.k8s.io]
+              resourceNames: [compartment-capsule-quota-release-webhook]
+              resources: [validatingwebhookconfigurations]
+              verbs: [delete]
   - it: uses the chart-owned pinned kubectl image for admission cleanup
     template: templates/capsule-admission-cleanup.yaml
     documentIndex: 3
@@ -211,7 +253,10 @@ tests:
           pattern: '^registry.k8s.io/kubectl@sha256:[a-f0-9]{64}$'
       - equal:
           path: spec.template.spec.containers[0].args[3]
-          value: --namespace
+          value: validatingwebhookconfiguration/compartment-capsule-quota-release-webhook
       - equal:
           path: spec.template.spec.containers[0].args[4]
+          value: --namespace
+      - equal:
+          path: spec.template.spec.containers[0].args[5]
           value: compartment
