@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { compartmentIdempotencyKeyHeaderName } from '@compartment/contracts';
 import type { LightMyRequestResponse } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ApiApp } from '../src/app.types';
@@ -101,6 +103,7 @@ async function spendSignupBudget(app: ApiApp, sourceIp: string): Promise<void> {
 async function injectSignup(app: ApiApp, sourceIp: string): Promise<LightMyRequestResponse> {
   return await injectJson(app, {
     headers: {
+      [compartmentIdempotencyKeyHeaderName]: randomUUID(),
       'x-forwarded-for': sourceIp,
     },
     method: 'POST',

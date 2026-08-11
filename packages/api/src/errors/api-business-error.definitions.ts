@@ -206,6 +206,14 @@ export const businessErrorDefinitions: Record<ApiBusinessErrorCode, ApiBusinessE
     message: 'Self-service signup is disabled on this Compartment installation.',
     statusCode: 403,
   },
+  signup_idempotency_conflict: {
+    message: 'The signup idempotency key was already used for a different account or organization.',
+    statusCode: 409,
+  },
+  signup_idempotency_key_expired: {
+    message: 'The signup idempotency key is too old to retry. Sign up again with a new key and email address.',
+    statusCode: 409,
+  },
   source_and_target_environment_match: {
     message: 'Source and target environments must be different.',
     statusCode: 409,

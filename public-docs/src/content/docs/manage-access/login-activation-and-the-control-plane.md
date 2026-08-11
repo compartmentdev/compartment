@@ -63,6 +63,30 @@ already stored, and the account can then sign in normally. Compartment does not 
 open registration and only enable it where that is acceptable. An account can be claimed once; use password reset to
 change the password afterwards.
 
+### Retrying a signup
+
+A single `compartment signup` run is safe to retry. It generates one random UUID, sends it as an `Idempotency-Key`
+header, and reuses it for up to three attempts, so a request lost on the way back does not strand the account it
+already created: the retry returns the same account and organization with a newly issued session, instead of reporting
+the email address as taken.
+
+Each run generates its own key, so running the command again after it has given up starts a fresh signup. When the
+first run created the account, that second run reports the email address as taken. Pass a different `--email`, or omit
+`--email` so Compartment generates one.
+
+`POST /v1/auth/signup` requires the `Idempotency-Key` header — this is new, and a caller that sent no header before now
+receives `400`. It must be a UUID the caller generates randomly, because the key is what proves a retry comes from the
+caller that started the signup. Treat it as a secret, hold it only while the retry is in flight, and generate a fresh
+one for every signup.
+
+A key stops working 24 hours after the account was created, and `compartment auth claim` ends it sooner: once a
+password protects the account, its signup key is discarded, so nobody can use it to sign in past that password. Either
+way the key is never reusable afterwards — sign up again with a new key and a different email address.
+
+Reusing a key for a different account is rejected as a conflict rather than silently returning the first one.
+Compartment compares what the request resolves to, not how it is spelled, so a retry may capitalize the email address
+differently or use an organization name that produces the same slug.
+
 For non-interactive invited-user activation, provide the new password through
 `COMPARTMENT_VIEWER_PASSWORD` and pass the email and invitation token as options:
 

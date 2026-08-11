@@ -17,6 +17,7 @@ import {
   CompartmentRequestError,
   createRequestSignal,
   createTransportRequestError,
+  isRetryableTransportRequestError,
   type RequestTransportFailure,
   type RequestTransportOptions,
 } from './request-error';
@@ -35,6 +36,17 @@ export function isCompartmentRequestError(
     typeof candidate.statusCode === 'number' &&
     typeof candidate.method === 'string' &&
     typeof candidate.url === 'string'
+  );
+}
+
+/**
+ * A request is worth another attempt when the transport never delivered a verdict, or when the server answered with
+ * one it invites the caller to retry.
+ */
+export function isRetryableRequestError(error: Error | null | undefined): boolean {
+  return (
+    (isCompartmentRequestError(error) && (error.statusCode === 429 || error.statusCode >= 500)) ||
+    isRetryableTransportRequestError(error)
   );
 }
 

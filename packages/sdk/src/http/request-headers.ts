@@ -1,4 +1,4 @@
-import { compartmentCurrentOrganizationHeaderName } from '@compartment/contracts';
+import { compartmentCurrentOrganizationHeaderName, compartmentIdempotencyKeyHeaderName } from '@compartment/contracts';
 import { hasText } from '@compartment/utils';
 import type { ClientOptions } from '../client.types';
 
@@ -40,7 +40,7 @@ export function createRawRequestHeaders(
     headers.set(compartmentCurrentOrganizationHeaderName, organization);
   }
   if (hasText(options.idempotencyKey)) {
-    headers.set('Idempotency-Key', options.idempotencyKey);
+    headers.set(compartmentIdempotencyKeyHeaderName, options.idempotencyKey);
   }
   return headers;
 }
