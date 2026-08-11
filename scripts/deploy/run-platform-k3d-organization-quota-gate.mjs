@@ -209,7 +209,7 @@ async function admitExactlyOneConcurrentPod() {
   throw new Error('Timed out waiting for one concurrent organization quota admission.');
 }
 
-async function readInstalledOrganizationQuota() {
+async function waitForInstalledOrganizationQuota() {
   for (let attempt = 1; attempt <= 120; attempt += 1) {
     const payload = JSON.parse(
       await captureKubectl([
@@ -235,7 +235,7 @@ async function readInstalledOrganizationQuota() {
         item.status?.conditions?.some((condition) => condition.type === 'Ready' && condition.status === 'True'),
       )
     ) {
-      return installed[0];
+      return;
     }
     await delay(500);
   }
@@ -254,26 +254,28 @@ async function runGate() {
   if (context === undefined || context === '') {
     throw new Error('COMPARTMENT_E2E_KUBE_CONTEXT is required.');
   }
+  const primaryOrganizationId = 'quota-org-a';
+  const primaryManifests = organizationGlobalCustomQuotaManifests({ organizationId: primaryOrganizationId });
   const secondaryManifests = organizationGlobalCustomQuotaManifests({ organizationId: 'quota-org-b' });
-  const secondaryQuotaNames = secondaryManifests.map((manifest) => manifest.metadata.name);
+  const fixtureQuotaNames = [...primaryManifests, ...secondaryManifests].map((manifest) => manifest.metadata.name);
   let gateError;
   let cleanupErrors = [];
   try {
-    const organizationId = await readInstalledOrganizationQuota();
-    const installedManifests = organizationGlobalCustomQuotaManifests({ organizationId });
-    const requestsCpuQuota = installedManifests.find((manifest) =>
+    await waitForInstalledOrganizationQuota();
+    const requestsCpuQuota = primaryManifests.find((manifest) =>
       manifest.spec.sources[0]?.path?.endsWith('requests.cpu'),
     );
-    const storageQuota = installedManifests.find((manifest) =>
+    const storageQuota = primaryManifests.find((manifest) =>
       manifest.spec.sources.some((source) => source.kind === 'PersistentVolumeClaim'),
     );
     if (requestsCpuQuota === undefined || storageQuota === undefined) {
-      throw new Error('Worker-reconciled quota pool does not contain the fixed CPU and storage projections.');
+      throw new Error('Organization quota projection does not contain the fixed CPU and storage quotas.');
     }
-    await createNamespace('quota-a-1', organizationId);
-    await createNamespace('quota-a-2', organizationId);
-    await createNamespace('quota-a-0', organizationId);
+    await createNamespace('quota-a-1', primaryOrganizationId);
+    await createNamespace('quota-a-2', primaryOrganizationId);
+    await createNamespace('quota-a-0', primaryOrganizationId);
     await createNamespace('quota-b', 'quota-org-b');
+    await applyProjectedOrganizationQuota(primaryManifests);
     await applyProjectedOrganizationQuota(secondaryManifests);
     await createPod('quota-a-1', 'first', '10');
     await createPod('quota-a-2', 'second', '10');
@@ -348,7 +350,7 @@ async function runGate() {
         '--ignore-not-found',
         '--timeout=120s',
       ]),
-      kubectl(['delete', 'globalcustomquota', ...secondaryQuotaNames, '--ignore-not-found', '--timeout=120s']),
+      kubectl(['delete', 'globalcustomquota', ...fixtureQuotaNames, '--ignore-not-found', '--timeout=120s']),
       kubectl(['delete', 'namespace', ...namespaces, '--ignore-not-found', '--timeout=120s']),
     ]);
     cleanupErrors = cleanupResults.filter((result) => result.status === 'rejected').map((result) => result.reason);
