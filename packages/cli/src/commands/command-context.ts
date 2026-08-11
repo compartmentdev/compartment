@@ -1,3 +1,4 @@
+import { compartmentManagedCloudControlPlaneUrl } from '@compartment/contracts';
 import { hasText } from '@compartment/utils';
 import {
   findConfiguredRemote,
@@ -11,7 +12,11 @@ import {
 } from '../services/remote-context.types';
 import type { ApiContext, AuthenticatedContext } from '../services/context.types';
 import type { CliConfig } from '../store/config.types';
-import type { AuthenticatedContextErrorCode, AuthenticatedContextErrorDetails } from './command-context.types';
+import type {
+  AuthenticatedContextErrorCode,
+  AuthenticatedContextErrorDetails,
+  LoginApiUrlResolution,
+} from './command-context.types';
 
 const defaultRemoteName: string = 'default';
 
@@ -61,14 +66,31 @@ export function resolveLoginRemoteName(config: CliConfig, explicitRemoteName?: s
   return explicitRemoteName ?? config.currentRemote ?? defaultRemoteName;
 }
 
-export function resolveLoginApiUrl(config: CliConfig, remoteName: string, explicitApiUrl?: string): string {
+export function resolveLoginApiUrl(
+  config: CliConfig,
+  remoteName: string,
+  explicitApiUrl?: string,
+): LoginApiUrlResolution {
   if (hasText(explicitApiUrl)) {
-    return explicitApiUrl;
+    return {
+      apiUrl: explicitApiUrl,
+      source: 'explicit',
+    };
   }
 
   const storedRemoteApiUrl: string | undefined = findConfiguredRemote(config, remoteName)?.apiUrl;
   if (hasText(storedRemoteApiUrl)) {
-    return storedRemoteApiUrl;
+    return {
+      apiUrl: storedRemoteApiUrl,
+      source: 'stored-remote',
+    };
+  }
+
+  if (hasText(compartmentManagedCloudControlPlaneUrl)) {
+    return {
+      apiUrl: compartmentManagedCloudControlPlaneUrl,
+      source: 'managed-cloud',
+    };
   }
 
   throw new Error(`API URL is required. Run \`compartment login --remote ${remoteName} --api-url <url>\` first.`);

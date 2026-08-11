@@ -11,6 +11,8 @@ import {
   createCliCapture,
   expectCliFailure,
   expectCliSuccess,
+  mockManagedCloudControlPlaneUrl,
+  readCliStderr,
   resetCliCommandModules,
   restoreCliCommandModules,
   runCliCommand,
@@ -71,10 +73,48 @@ describe.sequential('compartment login command', (): void => {
 
   afterEach((): void => {
     restoreCliCommandModules([
+      '@compartment/contracts',
       '../src/prompts/prompt',
       '../src/commands/auth/login.command.flow',
       '../src/store/config.store',
     ]);
+  });
+
+  it('uses and announces the managed cloud when logging in without flags', async (): Promise<void> => {
+    mockManagedCloudControlPlaneUrl('https://cloud.example.com/control-plane');
+    const response: LoginResponse = createLoginResponseFixture();
+    const mocks: LoginCommandMocks = mockLoginCommandModules({
+      config: {},
+      response,
+    });
+    const capture: CliCommandCapture = createCliCapture();
+
+    const result: CliCommandResult = await runCliCommand(['login'], capture);
+
+    expectCliSuccess(result);
+    expect(mocks.performLoginCommandFlowMock).toHaveBeenCalledWith(
+      expect.objectContaining({ io: capture.io }),
+      { apiUrl: 'https://cloud.example.com/control-plane' },
+      undefined,
+      undefined,
+      undefined,
+    );
+    expect(readCliStderr(capture)).toContain('Using Compartment Cloud at cloud.example.com.\n');
+    expect(mocks.writeCliConfigMock).toHaveBeenCalledWith({
+      currentRemote: 'default',
+      remotes: {
+        default: {
+          apiUrl: 'https://cloud.example.com/control-plane',
+          currentOrganization: {
+            id: 'org_123',
+            name: 'Acme Dev',
+            slug: 'acme-dev',
+          },
+          principalEmail: 'owner@example.com',
+          sessionToken: 'session-token',
+        },
+      },
+    });
   });
 
   it(
