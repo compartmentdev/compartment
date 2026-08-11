@@ -12,7 +12,7 @@ export const capsuleImageSignaturePolicy: KubernetesImageSignaturePolicy = {
   certificateIdentityRegexp:
     '^https://github\\.com/projectcapsule/capsule/\\.github/workflows/docker-publish\\.yml@refs/tags/v0\\.13\\.11$',
   certificateOidcIssuer: 'https://token.actions.githubusercontent.com',
-  cosignBundleFormatFlag: '--new-bundle-format=false',
+  cosignBundleFormatFlag: '--new-bundle-format',
 };
 
 interface ResolvedCapsuleImageTrust {
