@@ -1,4 +1,5 @@
 import type {
+  AppRouteAccessMode,
   ListPagination,
   ListSortDirection,
   ProjectArchiveState,
@@ -37,6 +38,7 @@ interface ProjectListPagePaginationQueryRow {
 interface ProjectListPageEmptyQueryRow {
   archivedAt: null;
   createdAt: null;
+  defaultAccessMode: null;
   organizationId: null;
   projectId: null;
   projectName: null;
@@ -46,6 +48,7 @@ interface ProjectListPageEmptyQueryRow {
 interface ProjectListPageProjectQueryRow {
   archivedAt: ProjectListPageTimestampValue | null;
   createdAt: ProjectListPageTimestampValue;
+  defaultAccessMode: AppRouteAccessMode;
   organizationId: string;
   projectId: string;
   projectName: string;

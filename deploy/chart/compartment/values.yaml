@@ -132,6 +132,7 @@ platform:
   sourceArchiveMaxBytes: 104857600
   sessionTtl: 7d
   signupEnabled: false
+  newProjectsPrivateByDefault: true
   authThrottle:
     login:
       route: { window: 1m, limit: 30 }

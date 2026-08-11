@@ -4,6 +4,7 @@ import type {
   DefaultTimestampBuilder,
   DefaultIntegerBuilder,
   RequiredIntegerBuilder,
+  RequiredEnumTextBuilder,
   OptionalIntegerBuilder,
   OptionalTextBuilder,
   OptionalTimestampBuilder,
@@ -205,6 +206,7 @@ export interface ProjectsColumnBuilders {
   id: PrimaryTextBuilder<'id'>;
   organizationId: RequiredTextBuilder<'organization_id'>;
   name: RequiredTextBuilder<'name'>;
+  defaultAccessMode: RequiredEnumTextBuilder<'default_access_mode', ['authenticated', 'public']>;
   archivedAt: OptionalTimestampBuilder<'archived_at'>;
   createdAt: DefaultTimestampBuilder<'created_at'>;
   updatedAt: DefaultTimestampBuilder<'updated_at'>;

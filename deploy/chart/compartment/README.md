@@ -17,6 +17,12 @@ existing-cluster preflight before applying it.
 
 The chart does not install or disable cluster infrastructure and does not mutate nodes.
 
+`platform.newProjectsPrivateByDefault` controls hosted-route access for projects created after the value is applied.
+It defaults to `true`, which makes services without an explicit descriptor `accessMode` require authentication. Set it
+to `false` to make omitted service access public for newly created projects. Existing projects retain the default they
+received when they were created, and an explicit per-service `accessMode` always wins. This setting does not change
+project permissions or RBAC.
+
 The registry uses its private Service ClusterIP directly in image references and requests a certificate with that IP
 address in its SAN. Public ACME issuers cannot issue certificates for private IP addresses. Installation therefore
 fails unless the configured `registry.issuerRef` selects a CA issuer whose CA is already in every node's trust store.

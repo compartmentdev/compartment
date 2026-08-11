@@ -38,6 +38,7 @@ describe('readApiConfig', (): void => {
     expect(config.edgeUrl).toBe('http://127.0.0.1:9081');
     expect(config.managedDomainAcmeDnsToken).toBeNull();
     expect(config.managedDomainBrokerUrl).toBeNull();
+    expect(config.newProjectsPrivateByDefault).toBe(true);
     expect(config.publicProtocol).toBe('http');
     expect(config.publicHttpPort).toBe(9080);
     expect(config.publicHttpsPort).toBe(9444);
@@ -52,6 +53,19 @@ describe('readApiConfig', (): void => {
     expect(config.tenantSecretsKek).toEqual(Buffer.from('22'.repeat(32), 'hex'));
     expect(config.variablesMasterKey).toEqual(Buffer.from('11'.repeat(32), 'hex'));
     expect(config.runtimeControlToken).toBe('runtime-control-secret');
+  });
+
+  it('strictly reads the new-project privacy setting', (): void => {
+    expect(
+      readApiConfig(createApiConfigEnv({ COMPARTMENT_NEW_PROJECTS_PRIVATE_BY_DEFAULT: 'false' }))
+        .newProjectsPrivateByDefault,
+    ).toBe(false);
+    expect(
+      (): ApiConfig => readApiConfig(createApiConfigEnv({ COMPARTMENT_NEW_PROJECTS_PRIVATE_BY_DEFAULT: 'TRUE' })),
+    ).toThrow('COMPARTMENT_NEW_PROJECTS_PRIVATE_BY_DEFAULT must be true or false.');
+    expect(
+      (): ApiConfig => readApiConfig(createApiConfigEnv({ COMPARTMENT_NEW_PROJECTS_PRIVATE_BY_DEFAULT: undefined })),
+    ).toThrow();
   });
 
   it('reads the owner bootstrap token as a required app boundary secret', (): void => {
@@ -343,6 +357,7 @@ function createApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.
     COMPARTMENT_EDGE_TOKEN: 'edge-secret',
     COMPARTMENT_ENV: 'dev',
     COMPARTMENT_LOG_LEVEL: 'info',
+    COMPARTMENT_NEW_PROJECTS_PRIVATE_BY_DEFAULT: 'true',
     COMPARTMENT_INSTALL_TOKEN: 'install-secret',
     COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN: '',
     COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: '',

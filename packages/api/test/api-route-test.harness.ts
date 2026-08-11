@@ -122,6 +122,7 @@ export function applyApiRouteTestEnv({
   process.env.COMPARTMENT_VARIABLES_MASTER_KEY = '11'.repeat(32);
   process.env.COMPARTMENT_BASE_DOMAIN = baseDomain;
   process.env.COMPARTMENT_SIGNUP_ENABLED = 'false';
+  process.env.COMPARTMENT_NEW_PROJECTS_PRIVATE_BY_DEFAULT = 'true';
 }
 
 export async function withApiRouteApp<TResult>(run: (app: ApiApp) => Promise<TResult>): Promise<TResult> {

@@ -238,6 +238,7 @@ async function insertProject(name: string, serviceNames: string[], archivedAt: D
 
   await db.insert(projects).values({
     archivedAt,
+    defaultAccessMode: 'authenticated',
     id: readProjectId(name),
     name,
     organizationId: 'org_project_list',

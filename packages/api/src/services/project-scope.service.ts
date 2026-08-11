@@ -18,6 +18,7 @@ import { createOrGetProject, findProjectByOrganizationAndName } from '../queries
 import type { ProjectRow } from '../queries/projects.query.types';
 import { resolveOrganizationForPrincipal } from './organizations.service';
 import { requireScopedPermission } from './access-scope.service';
+import { resolveNewProjectDefaultAccessMode } from './project-default-access-mode.service';
 import type { ProjectScopePermissionOptions, ResolvedProjectScope } from './project-scope.service.types';
 
 export async function resolveActiveProjectScope(
@@ -95,6 +96,7 @@ export async function resolveOrCreateActiveProjectScope(
   await requireProjectCreatePermission(principalId, organization.id, existingProject, options.createPermission);
   const project: ProjectRow = requireActiveProject(
     await createOrGetProject({
+      defaultAccessMode: resolveNewProjectDefaultAccessMode(),
       id: createId('prj'),
       name: projectName,
       organizationId: organization.id,

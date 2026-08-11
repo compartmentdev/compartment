@@ -191,6 +191,10 @@ tests:
           value: '100'
         template: configmap.yaml
       - equal:
+          path: data.COMPARTMENT_NEW_PROJECTS_PRIVATE_BY_DEFAULT
+          value: 'true'
+        template: configmap.yaml
+      - equal:
           path: data.COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_ORGANIZATION
           value: '2'
         template: configmap.yaml
@@ -209,6 +213,7 @@ tests:
       - hasDocuments:
           count: 2
         template: pvc.yaml
+
       - isKind:
           of: PersistentVolumeClaim
         template: pvc.yaml
@@ -280,6 +285,20 @@ tests:
       - hasDocuments:
           count: 0
         template: product-log-agent.yaml
+
+  - it: projects the public new-project hosted-route default
+    set:
+      platform:
+        startupStage: full
+        installationId: test-public-project-default
+        baseDomain: apps.example.com
+        newProjectsPrivateByDefault: false
+      secrets: *normalizedSecrets
+    asserts:
+      - equal:
+          path: data.COMPARTMENT_NEW_PROJECTS_PRIVATE_BY_DEFAULT
+          value: 'false'
+        template: configmap.yaml
 
   - it: pins default third-party runtime images by digest
     set:

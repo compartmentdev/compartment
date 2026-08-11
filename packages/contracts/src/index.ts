@@ -1,6 +1,5 @@
 export {
   defaultAppRouteAccessMode,
-  resolveAppRouteAccessMode,
   listCompartmentRolePermissions,
   listPermissionKeys,
   readFriendlyAccessSummary,

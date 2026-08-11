@@ -158,6 +158,7 @@ async function insertProjectScope(input: {
   serviceName: string;
 }): Promise<void> {
   await db.insert(projects).values({
+    defaultAccessMode: 'authenticated',
     id: input.projectId,
     name: input.projectName,
     organizationId: 'org_custom_routes',

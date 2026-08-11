@@ -35,6 +35,11 @@ services:
   web: .
 ```
 
+The shorthand service and an object service with no `accessMode` use the hosted-route default saved when the project
+was first created. Installations make that default `authenticated` unless the operator configures new projects to be
+public. Set `accessMode: authenticated` or `accessMode: public` on a service to override the project default for that
+service. Hosted-route access is separate from project permissions and RBAC.
+
 The project name `create` is reserved for the Console create-project route, so choose another slug if your repository
 or directory would otherwise derive that name.
 

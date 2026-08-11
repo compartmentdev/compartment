@@ -66,7 +66,9 @@ describe('product Job persistence', (): void => {
 
   beforeEach(async (): Promise<void> => {
     await db.insert(organizations).values({ id: 'org_job', name: 'Product Jobs', slug: 'product-jobs' });
-    await db.insert(projects).values({ id: 'prj-job', name: 'jobs', organizationId: 'org_job' });
+    await db
+      .insert(projects)
+      .values({ defaultAccessMode: 'authenticated', id: 'prj-job', name: 'jobs', organizationId: 'org_job' });
     await db.insert(projectKubeProvisioning).values({ projectId: 'prj-job', state: 'succeeded' });
     await db.insert(environments).values({ id: 'env-job', name: 'production', projectId: 'prj-job' });
     await db
