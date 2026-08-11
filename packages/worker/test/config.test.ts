@@ -175,6 +175,25 @@ describe('readWorkerConfig', (): void => {
         }),
     ).toThrow('COMPARTMENT_ORGANIZATION_QUOTA requestsCpu must be a valid non-negative Kubernetes quantity.');
   });
+
+  it('rejects organization requests that exceed their quota limits at startup', (): void => {
+    expect(
+      (): WorkerConfig =>
+        readWorkerConfig({
+          ...validEnvironment(),
+          COMPARTMENT_ORGANIZATION_QUOTA:
+            '{"requestsCpu":"2","requestsMemory":"2Gi","limitsCpu":"1500m","limitsMemory":"8Gi","requestsStorage":"20Gi"}',
+        }),
+    ).toThrow('COMPARTMENT_ORGANIZATION_QUOTA requestsCpu must not exceed limitsCpu.');
+    expect(
+      (): WorkerConfig =>
+        readWorkerConfig({
+          ...validEnvironment(),
+          COMPARTMENT_ORGANIZATION_QUOTA:
+            '{"requestsCpu":"2","requestsMemory":"2Gi","limitsCpu":"8","limitsMemory":"1536Mi","requestsStorage":"20Gi"}',
+        }),
+    ).toThrow('COMPARTMENT_ORGANIZATION_QUOTA requestsMemory must not exceed limitsMemory.');
+  });
 });
 
 const tenantSchedulingJson: string = JSON.stringify({

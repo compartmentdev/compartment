@@ -93,8 +93,6 @@ const apiConfig: ApiConfig = createApiTestConfig({
 const pool: Pool = createDatabasePool(databaseUrl);
 const db: Database = createDatabase(pool);
 
-const resourceConfigurationFingerprint: string = '0'.repeat(64);
-
 describe('projects service', (): void => {
   useApiRuntimeDatabaseTestHarness({
     apiConfig,
@@ -117,12 +115,12 @@ describe('projects service', (): void => {
       .update(organizationQuotaReconciliation)
       .set({ state: 'pending' })
       .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
-    await expect(claimPendingProjectProvisioning(resourceConfigurationFingerprint, 'provision')).resolves.toBeNull();
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toBeNull();
     await db
       .update(projectKubeProvisioning)
       .set({ state: 'teardown_pending' })
       .where(eq(projectKubeProvisioning.projectId, 'prj_ops'));
-    await expect(claimPendingProjectProvisioning(resourceConfigurationFingerprint)).resolves.toMatchObject({
+    await expect(claimPendingProjectProvisioning()).resolves.toMatchObject({
       action: 'teardown',
       projectId: 'prj_ops',
     });
@@ -156,30 +154,9 @@ describe('projects service', (): void => {
         status: 'succeeded',
       }),
     ).resolves.toBe(true);
-    await expect(claimPendingProjectProvisioning(resourceConfigurationFingerprint, 'provision')).resolves.toMatchObject(
-      {
-        organizationId: 'org_git_sources',
-      },
-    );
-  });
-
-  it('reclaims an existing project when the resource configuration fingerprint changes', async (): Promise<void> => {
-    await expect(claimPendingProjectProvisioning(resourceConfigurationFingerprint, 'provision')).resolves.toBeNull();
-
-    const changedFingerprint: string = '1'.repeat(64);
-    const claimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning(
-      changedFingerprint,
-      'provision',
-    );
-    expect(claimed).toMatchObject({ action: 'provision' });
-    if (claimed === null) {
-      throw new Error('Expected an existing project to be reclaimed for changed resource configuration.');
-    }
-    const rows: { resourceConfigurationFingerprint: string | null }[] = await db
-      .select({ resourceConfigurationFingerprint: projectKubeProvisioning.resourceConfigurationFingerprint })
-      .from(projectKubeProvisioning)
-      .where(eq(projectKubeProvisioning.projectId, claimed.projectId));
-    expect(rows[0]?.resourceConfigurationFingerprint).toBe(changedFingerprint);
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toMatchObject({
+      organizationId: 'org_git_sources',
+    });
   });
 
   it('reclaims expired quota leases, fences stale completion, and isolates organizations', async (): Promise<void> => {
@@ -299,7 +276,7 @@ describe('projects service', (): void => {
       .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
 
     await expect(claimOrganizationQuotaReconciliation()).resolves.toBeNull();
-    await expect(claimPendingProjectProvisioning(resourceConfigurationFingerprint, 'provision')).resolves.toBeNull();
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toBeNull();
     await expect(readOrganizationQuotaInfrastructureBlocker('org_git_sources')).resolves.toEqual({
       message: 'persistent quota failure',
       retryAt: new Date(failedAt.getTime() + 900_000),
@@ -436,13 +413,11 @@ describe('projects service', (): void => {
       }),
     ).resolves.toMatchObject({ id: 'prj_plain', name: 'plain-renamed' });
 
-    await expect(claimPendingProjectProvisioning(resourceConfigurationFingerprint, 'provision')).resolves.toMatchObject(
-      {
-        action: 'provision',
-        projectId: 'prj_plain',
-        projectName: 'plain-renamed',
-      },
-    );
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toMatchObject({
+      action: 'provision',
+      projectId: 'prj_plain',
+      projectName: 'plain-renamed',
+    });
   });
 
   it('reprojects a rename that races with active Kubernetes provisioning', async (): Promise<void> => {
@@ -450,10 +425,7 @@ describe('projects service', (): void => {
       .update(projectKubeProvisioning)
       .set({ isolationVersion: 0 })
       .where(eq(projectKubeProvisioning.projectId, 'prj_plain'));
-    const originalClaim: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning(
-      resourceConfigurationFingerprint,
-      'provision',
-    );
+    const originalClaim: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning('provision');
     if (originalClaim === null) {
       throw new Error('Expected the original project provisioning claim.');
     }
@@ -488,13 +460,11 @@ describe('projects service', (): void => {
       }),
     ).resolves.toBe(true);
 
-    await expect(claimPendingProjectProvisioning(resourceConfigurationFingerprint, 'provision')).resolves.toMatchObject(
-      {
-        action: 'provision',
-        projectId: 'prj_plain',
-        projectName: 'plain-renamed',
-      },
-    );
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toMatchObject({
+      action: 'provision',
+      projectId: 'prj_plain',
+      projectName: 'plain-renamed',
+    });
   });
 
   it('fails closed when an authorized organization context targets another organization project id', async (): Promise<void> => {
@@ -528,7 +498,7 @@ describe('projects service', (): void => {
         projectName: 'billing',
       }),
     ).resolves.toMatchObject({ projectName: 'billing', recoveredTerminalFailureMessage: null });
-    await expect(claimPendingProjectProvisioning(resourceConfigurationFingerprint, 'provision')).resolves.toBeNull();
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toBeNull();
     const teardown: ProjectProvisioningClaimRow = await waitForProjectTeardownClaim();
     expect(teardown).toMatchObject({ action: 'teardown', projectId: 'prj_billing' });
     expect(await db.select().from(projects).where(eq(projects.id, 'prj_billing'))).toHaveLength(1);
@@ -577,7 +547,7 @@ describe('projects service', (): void => {
         .where(eq(projectKubeProvisioning.projectId, teardown.projectId));
     }
 
-    await expect(claimPendingProjectProvisioning(resourceConfigurationFingerprint, 'teardown')).resolves.toBeNull();
+    await expect(claimPendingProjectProvisioning('teardown')).resolves.toBeNull();
     await expect(
       db
         .select({
@@ -635,7 +605,7 @@ describe('projects service', (): void => {
       .where(eq(projectKubeProvisioning.projectId, 'prj_billing'));
 
     await expect(failExhaustedProjectTeardownLeases()).resolves.toEqual(['prj_billing']);
-    await expect(claimPendingProjectProvisioning(resourceConfigurationFingerprint, 'teardown')).resolves.toBeNull();
+    await expect(claimPendingProjectProvisioning('teardown')).resolves.toBeNull();
     await expect(
       db
         .select({ failureMessage: projectKubeProvisioning.failureMessage, state: projectKubeProvisioning.state })
@@ -710,7 +680,7 @@ describe('projects service', (): void => {
       });
     });
 
-    await expect(claimPendingProjectProvisioning(resourceConfigurationFingerprint, 'teardown')).resolves.toBeNull();
+    await expect(claimPendingProjectProvisioning('teardown')).resolves.toBeNull();
     await expect(
       unarchiveProjectForPrincipal({
         organizationSlug: 'acme-dev',
@@ -1008,12 +978,9 @@ async function seedDeleteScope(): Promise<void> {
     organizationId: 'org_git_sources',
     updatedAt: new Date('2026-04-28T12:00:00.000Z'),
   });
-  await db.insert(projectKubeProvisioning).values({
-    isolationVersion: projectIsolationVersion,
-    projectId: 'prj_billing',
-    resourceConfigurationFingerprint,
-    state: 'succeeded',
-  });
+  await db
+    .insert(projectKubeProvisioning)
+    .values({ isolationVersion: projectIsolationVersion, projectId: 'prj_billing', state: 'succeeded' });
   await db.insert(projects).values({
     archivedAt: null,
     defaultAccessMode: 'authenticated',
@@ -1022,12 +989,9 @@ async function seedDeleteScope(): Promise<void> {
     organizationId: 'org_git_sources',
     updatedAt: new Date('2026-04-28T12:00:00.000Z'),
   });
-  await db.insert(projectKubeProvisioning).values({
-    isolationVersion: projectIsolationVersion,
-    projectId: 'prj_ops',
-    resourceConfigurationFingerprint,
-    state: 'succeeded',
-  });
+  await db
+    .insert(projectKubeProvisioning)
+    .values({ isolationVersion: projectIsolationVersion, projectId: 'prj_ops', state: 'succeeded' });
   await db.insert(projects).values({
     archivedAt: null,
     defaultAccessMode: 'authenticated',
@@ -1036,12 +1000,9 @@ async function seedDeleteScope(): Promise<void> {
     organizationId: 'org_git_sources',
     updatedAt: new Date('2026-04-28T12:00:00.000Z'),
   });
-  await db.insert(projectKubeProvisioning).values({
-    isolationVersion: projectIsolationVersion,
-    projectId: 'prj_plain',
-    resourceConfigurationFingerprint,
-    state: 'succeeded',
-  });
+  await db
+    .insert(projectKubeProvisioning)
+    .values({ isolationVersion: projectIsolationVersion, projectId: 'prj_plain', state: 'succeeded' });
   await db.insert(gitProviderRegistrations).values({
     appId: 'app_123',
     appName: 'Compartment GitHub App',
@@ -1204,9 +1165,7 @@ function createResolvedProjectScope(
 
 async function waitForProjectTeardownClaim(): Promise<ProjectProvisioningClaimRow> {
   for (let attempt: number = 0; attempt < 100; attempt += 1) {
-    const claimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning(
-      resourceConfigurationFingerprint,
-    );
+    const claimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
     if (claimed?.action === 'teardown') {
       return claimed;
     }

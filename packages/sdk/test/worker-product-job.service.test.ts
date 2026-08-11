@@ -3,8 +3,8 @@ import type { WorkerPersistProductJobResultRequest } from '@compartment/contract
 import { createCompartmentRequester } from '../src/http/request';
 import type { CompartmentRequester } from '../src/http/request.types';
 import { claimProductJob, persistProductJobIntent } from '../src/services/worker-product-job.service';
-import { createJsonResponse, mockFetchSequence, readRequestUrl, requireRequestBody } from './fetch-test-helpers';
-import type { FetchMockState } from './fetch-test.types';
+import { createJsonResponse, mockFetchSequence, readRequestUrl } from './fetch-test-helpers';
+import type { FetchCall, FetchMockState } from './fetch-test.types';
 
 afterEach((): void => {
   vi.unstubAllGlobals();
@@ -58,3 +58,10 @@ describe('worker product Job service', (): void => {
     expect(JSON.parse(requireRequestBody(fetchState.calls[0]!))).toEqual({ jobClass: 'resource-operation' });
   });
 });
+
+function requireRequestBody(call: FetchCall): string {
+  if (typeof call.init?.body !== 'string') {
+    throw new Error('Expected a JSON request body.');
+  }
+  return call.init.body;
+}

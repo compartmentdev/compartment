@@ -1,6 +1,7 @@
 import type { V1ObjectMeta } from '@kubernetes/client-node';
 
 export interface KubeDeploymentCondition {
+  message?: string | undefined;
   reason?: string | undefined;
   status: 'False' | 'True' | 'Unknown';
   type: string;
@@ -18,6 +19,7 @@ export interface KubeRolloutObservation {
 }
 
 export interface KubeObservedDeploymentCondition {
+  message?: string | undefined;
   reason?: string | undefined;
   status?: string | undefined;
   type?: string | undefined;

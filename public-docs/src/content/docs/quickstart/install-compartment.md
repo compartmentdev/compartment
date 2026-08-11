@@ -142,10 +142,13 @@ resources:
     requestsStorage: 40Gi
 ```
 
-An update reapplies changed quotas to existing organizations and projects. Changed container defaults affect Pods
-created after the update; Kubernetes does not rewrite resources on already running Pods. Application capacity is
+Organization quota changes are applied by periodic reconciliation. Project quotas and container defaults are used when
+a project namespace is provisioned; changing these values does not requeue existing projects. Application capacity is
 constrained by configured resource and object-count quotas and by workload requests and limits; there is no separate
 application-count value. Project object-count quotas remain fixed.
+
+Each configured CPU or memory request must be less than or equal to its corresponding limit. The worker and project
+provisioner refuse to start when these values are inconsistent or are not valid Kubernetes quantities.
 
 Build concurrency has separate logical and physical limits. By default, Compartment admits up to 100 in-flight build
 claims, allows two active builds per organization, and applies a build-namespace quota of 48 CPU and 64 GiB. Each

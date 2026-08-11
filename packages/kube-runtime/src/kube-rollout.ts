@@ -133,6 +133,7 @@ export function calculateKubeRolloutStatus(observed: KubeRolloutObservation, now
 
 function projectDeploymentCondition(condition: KubeObservedDeploymentCondition): KubeDeploymentCondition {
   return {
+    ...(condition.message === undefined ? {} : { message: condition.message }),
     reason: condition.reason ?? '',
     status: condition.status === 'False' || condition.status === 'True' ? condition.status : 'Unknown',
     type: condition.type ?? '',

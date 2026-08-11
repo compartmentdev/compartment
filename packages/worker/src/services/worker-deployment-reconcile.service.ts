@@ -23,6 +23,7 @@ import { retargetWorkerDeploymentArtifactImages } from '../worker-artifact-regis
 import type { DeploymentRolloutStartTracker } from './worker-deployment-rollout-start-tracker.service';
 import { applyApplication, deleteApplication } from './worker-deployment-application.service';
 import { reconcilePendingDeployment } from './worker-deployment-pending.service';
+import { readDeploymentQuotaAdmissionFailure } from './worker-deployment-quota-failure.service';
 
 const releaseTimeoutMs: number = 600_000;
 const activeReadinessCheckCount: number = 6;
@@ -48,6 +49,39 @@ export async function reconcileDeploymentTarget(
   scheduling?: KubeWorkloadScheduling,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
   target = retargetWorkerDeploymentArtifactImages(target, artifactRegistry);
+  try {
+    return await reconcileDeploymentTargetUnchecked(
+      request,
+      runtime,
+      target,
+      tenantSecretsKek,
+      infrastructureTimeoutMs,
+      workerImage,
+      rolloutStarts,
+      scheduling,
+    );
+  } catch (error) {
+    const message: string | null =
+      (target.state === 'desired' || target.state === 'pending') && error instanceof Error
+        ? readDeploymentQuotaAdmissionFailure(error)
+        : null;
+    if (message === null) {
+      throw error;
+    }
+    return (await persistDeploymentObservation(request, target, 'failed', message)).cleanupArtifacts;
+  }
+}
+
+async function reconcileDeploymentTargetUnchecked(
+  request: CompartmentRequester,
+  runtime: KubeRuntime,
+  target: DeploymentReconcileTarget,
+  tenantSecretsKek: TenantSecretsKeyring,
+  infrastructureTimeoutMs: number,
+  workerImage: string,
+  rolloutStarts: DeploymentRolloutStartTracker,
+  scheduling: KubeWorkloadScheduling | undefined,
+): Promise<DeploymentArtifactCleanupTarget[]> {
   const reconcileArguments: ReconcileArguments = [
     request,
     runtime,

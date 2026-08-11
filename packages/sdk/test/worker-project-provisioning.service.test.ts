@@ -5,7 +5,7 @@ import {
   claimProjectProvisioningV2,
   completeProjectProvisioningV2,
 } from '../src/services/worker-project-provisioning.service';
-import { createJsonResponse, mockFetchSequence, readRequestUrl, requireRequestBody } from './fetch-test-helpers';
+import { createJsonResponse, mockFetchSequence, readRequestUrl } from './fetch-test-helpers';
 import type { FetchCall, FetchMockState } from './fetch-test.types';
 
 afterEach((): void => {
@@ -14,7 +14,6 @@ afterEach((): void => {
 
 describe('worker project provisioning service', (): void => {
   it('uses the internal claim and completion contracts', async (): Promise<void> => {
-    const resourceConfigurationFingerprint: string = '0'.repeat(64);
     const fetchState: FetchMockState = mockFetchSequence([
       createJsonResponse({ target: null }),
       createJsonResponse({ applied: true }),
@@ -24,7 +23,7 @@ describe('worker project provisioning service', (): void => {
       internalToken: 'worker-token',
     });
 
-    await claimProjectProvisioningV2(request, { resourceConfigurationFingerprint });
+    await claimProjectProvisioningV2(request);
     await completeProjectProvisioningV2(request, {
       action: 'provision',
       isolationVersion: 1,
@@ -37,6 +36,5 @@ describe('worker project provisioning service', (): void => {
       'https://console.example/internal/kube-projects/v2/claim-next',
       'https://console.example/internal/kube-projects/v2/complete',
     ]);
-    expect(JSON.parse(requireRequestBody(fetchState.calls[0]!))).toEqual({ resourceConfigurationFingerprint });
   });
 });

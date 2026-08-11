@@ -635,7 +635,6 @@ function config(tenantScheduling?: KubeWorkloadScheduling): ProjectProvisionerCo
     pollIntervalMs: 1_000,
     provisioningNamespace: 'compartment-project-provisioning',
     resourceConfiguration: testProjectResourceConfiguration,
-    resourceConfigurationFingerprint: '0'.repeat(64),
     runtimeControlToken: 'runtime-token',
     serviceCidr,
     ...(tenantScheduling === undefined ? {} : { tenantScheduling }),

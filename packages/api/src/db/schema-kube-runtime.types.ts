@@ -182,7 +182,6 @@ interface ProjectKubeProvisioningColumnBuilders {
   failureMessage: OptionalTextBuilder<'failure_message'>;
   attempts: DefaultIntegerBuilder<'attempts'>;
   isolationVersion: RuntimeDefaultIntegerBuilder<'isolation_version'>;
-  resourceConfigurationFingerprint: OptionalTextBuilder<'resource_configuration_fingerprint'>;
   createdAt: DefaultTimestampBuilder<'created_at'>;
   updatedAt: DefaultTimestampBuilder<'updated_at'>;
 }

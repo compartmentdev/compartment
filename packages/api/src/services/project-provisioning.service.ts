@@ -12,14 +12,9 @@ import type {
   ProjectProvisioningClaim,
 } from './project-provisioning.service.types';
 
-export async function claimProjectProvisioningV2(
-  resourceConfigurationFingerprint: string,
-): Promise<ProjectProvisioningClaim> {
+export async function claimProjectProvisioningV2(): Promise<ProjectProvisioningClaim> {
   const terminalFailureProjectIds: string[] = await failExhaustedProjectTeardownLeases();
-  return {
-    target: await claimPendingProjectProvisioning(resourceConfigurationFingerprint),
-    terminalFailureProjectIds,
-  };
+  return { target: await claimPendingProjectProvisioning(), terminalFailureProjectIds };
 }
 
 export async function acknowledgeProjectProvisioningV2(

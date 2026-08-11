@@ -1,1 +1,0 @@
-ALTER TABLE "project_kube_provisioning" ADD COLUMN "resource_configuration_fingerprint" text;

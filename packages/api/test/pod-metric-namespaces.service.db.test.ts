@@ -25,8 +25,6 @@ const apiConfig: ApiConfig = createApiTestConfig({
   databaseUrl,
 });
 
-const resourceConfigurationFingerprint: string = '0'.repeat(64);
-
 describe('Pod metric namespace scope', (): void => {
   useApiRuntimeDatabaseTestHarness({ apiConfig, databaseUrl, db, pool });
 
@@ -56,10 +54,7 @@ describe('Pod metric namespace scope', (): void => {
       .insert(projectKubeProvisioning)
       .values({ isolationVersion: 0, projectId: 'prj_upgrade', state: 'succeeded' });
 
-    const target: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning(
-      resourceConfigurationFingerprint,
-      'provision',
-    );
+    const target: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning('provision');
     expect(target).toMatchObject({ isolationVersion: 1, projectId: 'prj_upgrade' });
     await expect(
       completeProjectProvisioning({
@@ -82,7 +77,7 @@ describe('Pod metric namespace scope', (): void => {
       }),
     ).resolves.toBe(true);
 
-    await expect(claimPendingProjectProvisioning(resourceConfigurationFingerprint, 'provision')).resolves.toBeNull();
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toBeNull();
   });
 
   it('starts isolation-upgrade retry accounting in the new generation', async (): Promise<void> => {
@@ -95,10 +90,7 @@ describe('Pod metric namespace scope', (): void => {
       .insert(projectKubeProvisioning)
       .values({ attempts: 3, isolationVersion: 0, projectId: 'prj_retry', state: 'succeeded' });
 
-    const first: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning(
-      resourceConfigurationFingerprint,
-      'provision',
-    );
+    const first: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning('provision');
     await expect(
       completeProjectProvisioning({
         action: 'provision',
@@ -114,12 +106,10 @@ describe('Pod metric namespace scope', (): void => {
       .set({ updatedAt: new Date(0) })
       .where(eq(projectKubeProvisioning.projectId, 'prj_retry'));
 
-    await expect(claimPendingProjectProvisioning(resourceConfigurationFingerprint, 'provision')).resolves.toMatchObject(
-      {
-        isolationVersion: 1,
-        projectId: 'prj_retry',
-      },
-    );
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toMatchObject({
+      isolationVersion: 1,
+      projectId: 'prj_retry',
+    });
   });
 });
 

@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, isNull, lt, ne, or, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 import type { ProjectProvisioningAction } from '@compartment/contracts';
 import { organizationQuotaReconciliation, projectKubeProvisioning, projects } from '../db/schema';
 import { createId } from '../lib/tokens';
@@ -12,11 +12,6 @@ import {
   projectProvisioningRetryDelayMs,
   projectTeardownTerminalFailure,
 } from './project-provisioning-policy';
-import {
-  nextProjectProvisioningAttempts,
-  projectProvisioningClaim,
-  readProjectProvisioningAction,
-} from './project-provisioning-claim';
 import type {
   ProjectKubeProvisioningState,
   ProjectProvisioningClaimPhase,
@@ -25,27 +20,25 @@ import type {
 } from './project-provisioning.query.types';
 
 export async function claimPendingProjectProvisioning(
-  resourceConfigurationFingerprint: string,
   action: ProjectProvisioningAction | 'any' = 'any',
 ): Promise<ProjectProvisioningClaimRow | null> {
   return await getApiDatabase().transaction(
     async (transaction: DeploymentTransaction): Promise<ProjectProvisioningClaimRow | null> =>
-      await claimPendingProjectProvisioningWithTransaction(transaction, resourceConfigurationFingerprint, action),
+      await claimPendingProjectProvisioningWithTransaction(transaction, action),
   );
 }
 
 async function claimPendingProjectProvisioningWithTransaction(
   transaction: DeploymentTransaction,
-  resourceConfigurationFingerprint: string,
   action: ProjectProvisioningAction | 'any',
 ): Promise<ProjectProvisioningClaimRow | null> {
   const now: Date = new Date();
   return await claimSelectedRow(
     transaction,
     async (tx: DeploymentTransaction): Promise<ProjectProvisioningClaimSelection | undefined> =>
-      await selectClaimableRow(tx, now, resourceConfigurationFingerprint, action),
+      await selectClaimableRow(tx, now, action),
     async (tx: DeploymentTransaction, row: ProjectProvisioningClaimSelection): Promise<ProjectProvisioningClaimRow> =>
-      await leaseProjectProvisioning(tx, row, now, resourceConfigurationFingerprint),
+      await leaseProjectProvisioning(tx, row, now),
     null,
   );
 }
@@ -100,7 +93,6 @@ async function failExhaustedProjectTeardownLeasesWithTransaction(
 async function selectClaimableRow(
   transaction: DeploymentTransaction,
   now: Date,
-  resourceConfigurationFingerprint: string,
   action: ProjectProvisioningAction | 'any',
 ): Promise<ProjectProvisioningClaimSelection | undefined> {
   const rows: ProjectProvisioningClaimSelection[] = await transaction
@@ -112,12 +104,7 @@ async function selectClaimableRow(
     .from(projectKubeProvisioning)
     .innerJoin(projects, eq(projects.id, projectKubeProvisioning.projectId))
     .innerJoin(organizationQuotaReconciliation, organizationQuotaJoinCondition())
-    .where(
-      and(
-        organizationQuotaReadinessCondition(action),
-        provisioningClaimableCondition(now, resourceConfigurationFingerprint, action),
-      ),
-    )
+    .where(and(organizationQuotaReadinessCondition(action), provisioningClaimableCondition(now, action)))
     .orderBy(asc(projectKubeProvisioning.createdAt))
     .limit(1)
     .for('update', { skipLocked: true });
@@ -142,21 +129,13 @@ function organizationQuotaReadinessCondition(action: ProjectProvisioningAction |
   );
 }
 
-function provisioningClaimableCondition(
-  now: Date,
-  resourceConfigurationFingerprint: string,
-  action: ProjectProvisioningAction | 'any',
-): SQL | undefined {
+function provisioningClaimableCondition(now: Date, action: ProjectProvisioningAction | 'any'): SQL | undefined {
   return or(
     action === 'teardown'
       ? undefined
       : and(
           eq(projectKubeProvisioning.state, 'succeeded'),
-          or(
-            lt(projectKubeProvisioning.isolationVersion, projectIsolationVersion),
-            isNull(projectKubeProvisioning.resourceConfigurationFingerprint),
-            ne(projectKubeProvisioning.resourceConfigurationFingerprint, resourceConfigurationFingerprint),
-          ),
+          lt(projectKubeProvisioning.isolationVersion, projectIsolationVersion),
         ),
     claimableStateCondition(action, 'pending'),
     claimableFailedCondition(action, now),
@@ -222,7 +201,6 @@ async function leaseProjectProvisioning(
   transaction: DeploymentTransaction,
   selection: ProjectProvisioningClaimSelection,
   now: Date,
-  resourceConfigurationFingerprint: string,
 ): Promise<ProjectProvisioningClaimRow> {
   const row: typeof projectKubeProvisioning.$inferSelect = selection.provisioning;
   const leaseId: string = createId('kpl');
@@ -230,11 +208,9 @@ async function leaseProjectProvisioning(
   await transaction
     .update(projectKubeProvisioning)
     .set({
-      attempts: nextProjectProvisioningAttempts(row),
+      attempts: nextProvisioningAttempts(row),
       failureMessage: null,
       isolationVersion: action === 'provision' ? projectIsolationVersion : row.isolationVersion,
-      resourceConfigurationFingerprint:
-        action === 'provision' ? resourceConfigurationFingerprint : row.resourceConfigurationFingerprint,
       leaseExpiresAt: new Date(now.getTime() + projectProvisioningLeaseDuration(action)),
       leaseId,
       state: action === 'provision' ? 'running' : 'teardown_running',
@@ -242,4 +218,36 @@ async function leaseProjectProvisioning(
     })
     .where(eq(projectKubeProvisioning.projectId, row.projectId));
   return projectProvisioningClaim(action, leaseId, row.projectId, selection.organizationId, selection.projectName);
+}
+
+function nextProvisioningAttempts(row: typeof projectKubeProvisioning.$inferSelect): SQL {
+  if (row.state === 'succeeded') {
+    return sql`1`;
+  }
+  if (row.state === 'running' || row.state === 'teardown_running') {
+    return sql`${row.attempts}`;
+  }
+  return sql`${projectKubeProvisioning.attempts} + 1`;
+}
+
+function projectProvisioningClaim(
+  action: ProjectProvisioningAction,
+  leaseId: string,
+  projectId: string,
+  organizationId: string,
+  projectName: string,
+): ProjectProvisioningClaimRow {
+  return {
+    action,
+    isolationVersion: projectIsolationVersion,
+    leaseId,
+    namespaceId: projectId,
+    organizationId,
+    projectId,
+    projectName,
+  };
+}
+
+function readProjectProvisioningAction(state: ProjectKubeProvisioningState): ProjectProvisioningAction {
+  return state.startsWith('teardown_') ? 'teardown' : 'provision';
 }

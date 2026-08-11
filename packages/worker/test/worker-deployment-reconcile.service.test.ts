@@ -3,6 +3,7 @@ import type {
   DeploymentReconcileProjection,
   DeploymentReconcileTarget,
   ProjectNetworkPolicyPorts,
+  WorkerObserveDeploymentReconcileRequest,
   WorkerPersistProductJobResultRequest,
 } from '@compartment/contracts';
 import {
@@ -148,6 +149,38 @@ describe('deployment reconciliation', (): void => {
     expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ observation: 'pending', revision: 0 }),
+    );
+  });
+
+  it('persists a clear failure when Kubernetes rejects apply because project quota is exhausted', async (): Promise<void> => {
+    const runtime: KubeRuntime & { apply: Mock } = runtimeStub();
+    runtime.apply.mockRejectedValue(
+      kubernetesForbiddenError(
+        'pods "checkout" is forbidden: exceeded quota: project-quota, requested: limits.cpu=2, used: limits.cpu=7, limited: limits.cpu=8',
+      ),
+    );
+
+    await reconcileDeploymentTarget(requester(), runtime, target(projection(null)));
+
+    expect(persistedObservation()).toMatchObject({
+      deploymentId: 'dep_candidate',
+      message:
+        'Project Kubernetes quota exceeded. Reduce project usage or ask an operator to increase the project quota. pods "checkout" is forbidden: exceeded quota: project-quota, requested: limits.cpu=2, used: limits.cpu=7, limited: limits.cpu=8',
+      observation: 'failed',
+      revision: 0,
+    });
+  });
+
+  it('does not misclassify an arbitrary Kubernetes forbidden error as quota exhaustion', async (): Promise<void> => {
+    const runtime: KubeRuntime & { apply: Mock } = runtimeStub();
+    const error: Error = kubernetesForbiddenError('deployments.apps "checkout" is forbidden: RBAC denied');
+    runtime.apply.mockRejectedValue(error);
+
+    await expect(reconcileDeploymentTarget(requester(), runtime, target(projection(null)))).rejects.toBe(error);
+
+    expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ observation: 'failed' }),
     );
   });
 
@@ -306,6 +339,24 @@ describe('deployment reconciliation', (): void => {
       expect.any(Function),
       expect.objectContaining({ observation: 'failed', revision: 0 }),
     );
+  });
+
+  it('fails immediately when the Deployment controller reports exhausted project quota', async (): Promise<void> => {
+    const namespace: string = kubeNamespaceName('prj_1');
+    const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
+    const runtime: KubeRuntime & { read: Mock } = pendingRuntimeStub(false);
+    runtime.read.mockResolvedValue(quotaFailedDeployment(namespace, name));
+    const pendingTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'pending' };
+
+    await reconcileAt('2026-07-12T12:00:01.000Z', runtime, pendingTarget);
+
+    expect(persistedObservation()).toMatchObject({
+      deploymentId: 'dep_candidate',
+      message:
+        'Project Kubernetes quota exceeded. Reduce project usage or ask an operator to increase the project quota. pods "checkout" is forbidden: exceeded quota: project-quota, requested: requests.memory=256Mi, used: requests.memory=2Gi, limited: requests.memory=2Gi',
+      observation: 'failed',
+      revision: 0,
+    });
   });
 
   it('starts a fresh application window after restarting an unhealthy active Deployment', async (): Promise<void> => {
@@ -774,6 +825,19 @@ function runtimeStub(): KubeRuntime & { apply: Mock } {
   } as never;
 }
 
+function kubernetesForbiddenError(message: string): Error {
+  return Object.assign(new Error(message), { body: JSON.stringify({ message, reason: 'Forbidden' }), code: 403 });
+}
+
+function persistedObservation(): WorkerObserveDeploymentReconcileRequest {
+  const observation: WorkerObserveDeploymentReconcileRequest | undefined =
+    mocks.observeDeploymentReconcile.mock.calls.at(-1)?.[1] as WorkerObserveDeploymentReconcileRequest | undefined;
+  if (observation === undefined) {
+    throw new Error('Expected a persisted deployment observation.');
+  }
+  return observation;
+}
+
 function activeRuntimeStub(
   ready: boolean = true,
   progressDeadlineExceeded: boolean = false,
@@ -932,6 +996,25 @@ function progressingDeployment(
       conditions: progressDeadlineExceeded
         ? [{ reason: 'ProgressDeadlineExceeded', status: 'False', type: 'Progressing' }]
         : [],
+      observedGeneration: 1,
+    },
+  };
+}
+
+function quotaFailedDeployment(namespace: string, name: string): KubeManifest {
+  const deployment: KubeManifest = progressingDeployment(namespace, name);
+  return {
+    ...deployment,
+    status: {
+      conditions: [
+        {
+          message:
+            'pods "checkout" is forbidden: exceeded quota: project-quota, requested: requests.memory=256Mi, used: requests.memory=2Gi, limited: requests.memory=2Gi',
+          reason: 'FailedCreate',
+          status: 'True',
+          type: 'ReplicaFailure',
+        },
+      ],
       observedGeneration: 1,
     },
   };

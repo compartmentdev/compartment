@@ -20,7 +20,6 @@ export interface ProjectProvisionerConfig {
   pollIntervalMs: number;
   provisioningNamespace: string;
   resourceConfiguration: ProjectNamespaceResourceConfiguration;
-  resourceConfigurationFingerprint: string;
   runtimeControlToken: string;
   serviceCidr: string;
   tenantScheduling?: KubeWorkloadScheduling | undefined;

@@ -1,21 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  workerClaimProjectProvisioningV2RequestSchema,
   workerClaimProjectProvisioningV2ResponseSchema,
   workerCompleteProjectProvisioningV2RequestSchema,
 } from '../src';
 
 describe('project provisioning contracts', (): void => {
-  it('requires a canonical resource configuration fingerprint for claims', (): void => {
-    expect(
-      workerClaimProjectProvisioningV2RequestSchema.safeParse({ resourceConfigurationFingerprint: '0'.repeat(64) })
-        .success,
-    ).toBe(true);
-    expect(
-      workerClaimProjectProvisioningV2RequestSchema.safeParse({ resourceConfigurationFingerprint: 'not-a-hash' })
-        .success,
-    ).toBe(false);
-  });
   it('accepts one leased project target or an empty claim', (): void => {
     expect(
       workerClaimProjectProvisioningV2ResponseSchema.safeParse({

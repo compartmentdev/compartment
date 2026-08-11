@@ -281,7 +281,6 @@ describe('internal worker routes', (): void => {
       const response: LightMyRequestResponse = await injectApiRoute(app, {
         headers: { accept: 'application/json', authorization: 'Bearer test-edge-token' },
         method: 'POST',
-        payload: { resourceConfigurationFingerprint: '0'.repeat(64) },
         timeoutMs: 1000,
         url: workerClaimProjectProvisioningV2Pathname,
       });
@@ -306,14 +305,12 @@ describe('internal worker routes', (): void => {
       const response: LightMyRequestResponse = await injectApiRoute(app, {
         headers: { accept: 'application/json', authorization: 'Bearer test-runtime-control-token' },
         method: 'POST',
-        payload: { resourceConfigurationFingerprint: '0'.repeat(64) },
         timeoutMs: 1000,
         url: workerClaimProjectProvisioningV2Pathname,
       });
 
       expect(response.statusCode).toBe(200);
       expect(workerClaimProjectProvisioningV2ResponseSchema.parse(response.json())).toEqual({ target: null });
-      expect(mocks.claimProjectProvisioningV2).toHaveBeenCalledWith('0'.repeat(64));
       expect(errorLog).toHaveBeenCalledWith(
         { projectId: 'prj_expired' },
         'Project Kubernetes teardown reached its terminal retry limit after the final lease expired.',

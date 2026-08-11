@@ -77,8 +77,6 @@ const db: Database = createDatabase(pool, resourceOperationPool);
 
 const unclaimedJob: ClaimedProductJobQueryResult = { intent: null, persistedResult: null, resourceReadiness: [] };
 
-const resourceConfigurationFingerprint: string = '0'.repeat(64);
-
 describe('resource backup queries', (): void => {
   useApiRuntimeDatabaseTestHarness({
     apiConfig,
@@ -1023,9 +1021,7 @@ describe('resource backup queries', (): void => {
       organizationId: 'org_resource_backups',
       updatedAt: new Date(),
     });
-    const target: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning(
-      resourceConfigurationFingerprint,
-    );
+    const target: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
     expect(target).toMatchObject({ namespaceId: project.id, projectId: project.id });
     await expect(
       completeProjectProvisioning({
@@ -1050,7 +1046,7 @@ describe('resource backup queries', (): void => {
     await expect(
       db.select().from(projectKubeProvisioning).where(eq(projectKubeProvisioning.projectId, project.id)),
     ).resolves.toMatchObject([{ state: 'succeeded' }]);
-    await expect(claimPendingProjectProvisioning(resourceConfigurationFingerprint)).resolves.toBeNull();
+    await expect(claimPendingProjectProvisioning()).resolves.toBeNull();
   });
 
   it('dead-letters project provisioning after three failures and fails waiting resource work', async (): Promise<void> => {
@@ -1066,9 +1062,7 @@ describe('resource backup queries', (): void => {
     });
 
     for (let attempt: number = 1; attempt <= 3; attempt += 1) {
-      const claimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning(
-        resourceConfigurationFingerprint,
-      );
+      const claimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
       expect(claimed?.projectId).toBe('prj_internal_tools');
       await expect(
         completeProjectProvisioning({
@@ -1086,7 +1080,7 @@ describe('resource backup queries', (): void => {
         .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
     }
 
-    await expect(claimPendingProjectProvisioning(resourceConfigurationFingerprint)).resolves.toBeNull();
+    await expect(claimPendingProjectProvisioning()).resolves.toBeNull();
     const [provisioning] = await db
       .select()
       .from(projectKubeProvisioning)
@@ -1166,7 +1160,7 @@ describe('resource backup queries', (): void => {
       type: 'bootstrap',
     });
 
-    await expect(claimPendingProjectProvisioning(resourceConfigurationFingerprint)).resolves.toMatchObject({
+    await expect(claimPendingProjectProvisioning()).resolves.toMatchObject({
       projectId: 'prj_internal_tools',
     });
     const [provisioning] = await db
@@ -1202,9 +1196,7 @@ describe('resource backup queries', (): void => {
         status: 'running',
       }),
     ).resolves.toBe(false);
-    const reclaimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning(
-      resourceConfigurationFingerprint,
-    );
+    const reclaimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
     expect(reclaimed?.projectId).toBe('prj_internal_tools');
     await expect(
       completeProjectProvisioning({
@@ -1430,9 +1422,7 @@ async function seedResourceBackupScope(): Promise<void> {
     name: 'internal-tools',
     organizationId: 'org_resource_backups',
   });
-  await db
-    .insert(projectKubeProvisioning)
-    .values({ projectId: 'prj_internal_tools', resourceConfigurationFingerprint, state: 'succeeded' });
+  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_internal_tools', state: 'succeeded' });
   await db.insert(environments).values({
     id: 'env_production',
     name: 'production',

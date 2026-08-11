@@ -12,11 +12,7 @@ import {
 import type { ProjectProvisionerConfig } from './project-provisioner.types';
 import { readEdgePodLabels } from './project-network-policy';
 import { readTenantWorkloadScheduling } from './tenant-workload-scheduling';
-import {
-  projectResourceConfigurationFingerprint,
-  readProjectContainerDefaults,
-  readProjectQuota,
-} from './resource-quota-config';
+import { readProjectContainerDefaults, readProjectQuota } from './resource-quota-config';
 
 interface ProjectProvisionerEnvironment extends ProjectProvisioningEnvironment {
   COMPARTMENT_KUBE_TENANT_SCHEDULING?: string | undefined;
@@ -55,10 +51,6 @@ export function readProjectProvisionerConfig(env: NodeJS.ProcessEnv = process.en
     platformNamespace: parsed.COMPARTMENT_PLATFORM_NAMESPACE,
     provisioningNamespace: parsed.COMPARTMENT_PROVISIONING_NAMESPACE,
     resourceConfiguration,
-    resourceConfigurationFingerprint: projectResourceConfigurationFingerprint(
-      resourceConfiguration.containerDefaults,
-      resourceConfiguration.quota,
-    ),
     podCidr: parsed.COMPARTMENT_KUBE_POD_CIDR,
     pollIntervalMs: worker.pollIntervalMs,
     runtimeControlToken: worker.runtimeControlToken,
