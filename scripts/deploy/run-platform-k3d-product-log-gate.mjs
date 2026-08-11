@@ -115,7 +115,7 @@ async function runPlatformK3dProductLogGate() {
     );
     loadTarget = await startLoadPods();
     const bufferBytes = await waitForBoundedRetainedWindow(loadTarget.containerName);
-    await assertPlatformHealthy();
+    await assertPlatformHealthy(loadTarget);
     process.stdout.write(
       `product_log_gate retained_lines=${retainedLinesPerApp} buffer_bytes=${bufferBytes} buffer_max_bytes=${configuredBufferMaxBytes} status=ok\n`,
     );
@@ -317,7 +317,7 @@ function readProductLogBufferBytes(agentPod) {
   return parseProductLogBufferBytes(metrics);
 }
 
-async function assertPlatformHealthy() {
+async function assertPlatformHealthy(loadTarget) {
   runCommand('kubectl', ['--context', context, '--request-timeout=5s', 'get', '--raw=/readyz'], repositoryRoot);
   runCommand(
     'kubectl',
@@ -333,6 +333,26 @@ async function assertPlatformHealthy() {
     ],
     repositoryRoot,
   );
+  for (const podName of loadTarget.podNames) {
+    const ready = captureCommand(
+      'kubectl',
+      [
+        '--context',
+        context,
+        '--namespace',
+        loadTarget.namespace,
+        'get',
+        'pod',
+        podName,
+        '--output',
+        'jsonpath={.status.containerStatuses[0].ready}',
+      ],
+      repositoryRoot,
+    );
+    if (ready !== 'true') {
+      throw new Error(`Product-log load pod ${podName} is not Ready.`);
+    }
+  }
   let degradedDeployments = [];
   for (let attempt = 1; attempt <= productDeploymentHealthAttempts; attempt += 1) {
     const deployments = captureCommand(
