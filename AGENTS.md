@@ -55,9 +55,9 @@ Keep changes small, explicit, and package-owned.
 
 ## Validation
 
-- Before finishing, run the narrowest relevant checks in the owning package: `pnpm lint`, `pnpm typecheck`, and `pnpm test`.
+- Before finishing, run the narrowest relevant checks in the owning package: `pnpm lint`, `pnpm typecheck`, and tests changed by the diff or likely to regress. Do not run unrelated full suites by default.
 - When editing root `scripts/`, run `pnpm lint:scripts`, `pnpm typecheck:scripts`, and `pnpm test:scripts`.
-- Run `pnpm test:db` only for DB-backed API integration or CLI smoke changes.
+- Run targeted DB tests for DB-backed changes. Run the full `pnpm test:db` only when shared DB/test infrastructure, migrations, or broad integration behavior may regress, or when explicitly required.
 - Run the focused k3d e2e suite only for deploy, build, or runtime changes.
 - Run `pnpm check:ci` only when the user explicitly asks for CI-parity validation or the task explicitly requires it.
 - `git commit` already runs `pnpm lint-staged`, `pnpm check`, and `pnpm check:duplicates`. Do not run broad repo checks by default.
