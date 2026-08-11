@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   claimAccountResponseSchema,
   compartmentIdempotencyKeyHeaderName,
+  compartmentOrganizationsPathname,
   compartmentWhoAmIPathname,
   errorResponseSchema,
   listCompartmentRolePermissions,
@@ -29,6 +30,8 @@ import { resolveOrganizationSlug } from '../src/services/organization-slug.servi
 import { authApiClaimPathname, authApiLoginPathname, authApiSignupPathname } from '../src/routes/auth/auth-api-paths';
 import {
   buildOrganizationAuthorizationHeaders,
+  injectDeployRequest,
+  injectSourceUploadRequest,
   installCompartment,
   rollbackOpenTransaction,
   waitForConcurrentDatabaseWork,
@@ -124,6 +127,30 @@ describe('Phase 0 API integration CLI self-service signup', (): void => {
     const identity: WhoAmIResponse = await readWhoAmI(signup.sessionToken, 'agent-org');
     expect(identity.principal.id).toBe(signup.principal.id);
     expect(identity.currentOrganization?.slug).toBe('agent-org');
+    const sourceUploadResponse: LightMyRequestResponse = await injectSourceUploadRequest(
+      app,
+      signup.sessionToken,
+      'agent-org',
+      Buffer.from('not-a-gzip', 'utf8'),
+    );
+    expect(sourceUploadResponse.statusCode).toBe(400);
+    expect(errorResponseSchema.parse(sourceUploadResponse.json()).error.code).toBe('invalid_source_upload');
+    expect((await injectDeployRequest(app, signup.sessionToken, 'agent-org')).statusCode).toBe(200);
+    const secondOrganizationResponse: LightMyRequestResponse = await app.inject({
+      headers: { authorization: `Bearer ${signup.sessionToken}` },
+      method: 'POST',
+      payload: { name: 'Second Org' },
+      url: compartmentOrganizationsPathname,
+    });
+    expect(secondOrganizationResponse.statusCode).toBe(200);
+    const crossOrganizationUploadResponse: LightMyRequestResponse = await injectSourceUploadRequest(
+      app,
+      signup.sessionToken,
+      'second-org',
+      Buffer.from('not-a-gzip', 'utf8'),
+    );
+    expect(crossOrganizationUploadResponse.statusCode).toBe(404);
+    expect(errorResponseSchema.parse(crossOrganizationUploadResponse.json()).error.code).toBe('organization_not_found');
   });
 
   it('creates a usable account when the caller omits an email', async (): Promise<void> => {
@@ -164,6 +191,14 @@ describe('Phase 0 API integration CLI self-service signup', (): void => {
     expect(retry.sessionToken).not.toBe(lost.sessionToken);
     const identity: WhoAmIResponse = await readWhoAmI(retry.sessionToken, 'agent-org');
     expect(identity.principal.id).toBe(lost.principal.id);
+    const sourceUploadResponse: LightMyRequestResponse = await injectSourceUploadRequest(
+      app,
+      retry.sessionToken,
+      'agent-org',
+      Buffer.from('not-a-gzip', 'utf8'),
+    );
+    expect(sourceUploadResponse.statusCode).toBe(400);
+    expect(errorResponseSchema.parse(sourceUploadResponse.json()).error.code).toBe('invalid_source_upload');
   });
 
   it('keeps the generated address stable when an unattended signup is retried', async (): Promise<void> => {

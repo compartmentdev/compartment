@@ -40,7 +40,7 @@ import {
   toSourceUploadValidationError,
 } from './source-uploads.service.support';
 import {
-  requireActiveHumanRuntimeActor,
+  requireActiveHumanRuntimeSessionActor,
   requireActiveSourceAutomationRuntimeActor,
 } from './runtime-actor-authorization.service';
 
@@ -49,9 +49,10 @@ export { SourceUploadArchiveTooLargeError } from './source-uploads.service.suppo
 
 export async function createSourceUploadFromStream(input: CreateSourceUploadStreamInput): Promise<CreatedSourceUpload> {
   const now: Date = new Date();
-  await requireActiveHumanRuntimeActor({
+  await requireActiveHumanRuntimeSessionActor({
     organizationId: input.organizationId,
     principalId: input.actorPrincipalId,
+    session: input.authSession,
   });
   const preparedArchive: PreparedSourceUploadArchive = await prepareSourceUploadArchive(input, now);
   await validatePreparedSourceUploadForPersist(input, preparedArchive);

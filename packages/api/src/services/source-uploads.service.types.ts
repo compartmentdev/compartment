@@ -1,5 +1,6 @@
 import type { SourceUploadCreateQuery } from '@compartment/contracts';
 import type { SourceUploadRow } from '../queries/source-uploads.query.types';
+import type { AuthSessionOrganizationPolicySession } from './organization-auth-settings.service.types';
 import type { StoredSourceUploadArchive } from './source-upload-storage.service.types';
 
 export interface SourceUploadScope {
@@ -10,6 +11,7 @@ export interface SourceUploadScope {
 
 export interface CreateSourceUploadStreamInput {
   actorPrincipalId: string;
+  authSession: AuthSessionOrganizationPolicySession;
   isTruncated?: (() => boolean) | undefined;
   organizationId: string;
   scope: SourceUploadScope;
