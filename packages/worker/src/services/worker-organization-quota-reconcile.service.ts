@@ -24,8 +24,8 @@ export async function executeOrganizationQuotaReconcile(
       organizationId: target.organizationId,
       reconciliationRequestedAt: new Date().toISOString(),
     });
-    await runtime.apply({ objects: manifests });
-    await assertOrganizationQuotaReady(runtime, manifests);
+    const appliedManifests: KubeManifest[] = await runtime.apply({ objects: manifests });
+    await assertOrganizationQuotaReady(runtime, appliedManifests);
   } catch (error) {
     const message: string = readErrorMessage(typeof error === 'object' ? error : null);
     await completeReconciliation(request, target, 'failed', message);
@@ -72,14 +72,26 @@ async function waitForOrganizationQuotaReady(
   manifest: KubeManifest,
   deadline: number,
 ): Promise<void> {
+  const appliedGeneration: number | undefined = manifest.metadata?.generation;
+  if (appliedGeneration === undefined) {
+    throw new Error(`Organization quota ${manifest.metadata?.name ?? 'unknown'} has no applied generation.`);
+  }
   while (Date.now() < deadline) {
     const observed: OrganizationQuotaObservedManifest | null = await runtime.read(manifest);
     const reconciliationPending: boolean =
       observed?.metadata?.annotations?.[reconcileRequestedAtAnnotation] !== undefined;
-    if (!reconciliationPending && observed?.status?.conditions?.some(isReadyCondition) === true) {
+    if (
+      !reconciliationPending &&
+      observed?.status?.observedGeneration === appliedGeneration &&
+      observed.status.conditions?.some(isReadyCondition) === true
+    ) {
       return;
     }
-    if (!reconciliationPending && observed?.status?.conditions?.some(isFailedReadyCondition) === true) {
+    if (
+      !reconciliationPending &&
+      observed?.status?.observedGeneration === appliedGeneration &&
+      observed.status.conditions?.some(isFailedReadyCondition) === true
+    ) {
       break;
     }
     await delay(quotaReadinessPollIntervalMs);

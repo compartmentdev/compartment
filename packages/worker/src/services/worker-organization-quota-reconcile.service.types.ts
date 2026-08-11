@@ -13,4 +13,5 @@ export interface OrganizationQuotaObservedManifest extends OrganizationQuotaObse
 
 export interface OrganizationQuotaStatus {
   conditions?: OrganizationQuotaStatusCondition[] | undefined;
+  observedGeneration?: number | undefined;
 }
