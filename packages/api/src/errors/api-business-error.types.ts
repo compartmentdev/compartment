@@ -78,6 +78,8 @@ export type ApiBusinessErrorCode =
   | 'self_admin_membership_change_forbidden'
   | 'service_not_found'
   | 'signup_disabled'
+  | 'signup_idempotency_conflict'
+  | 'signup_idempotency_key_expired'
   | 'source_and_target_environment_match'
   | 'resource_not_found'
   | 'resource_name_taken'

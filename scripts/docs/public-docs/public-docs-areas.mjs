@@ -243,7 +243,7 @@ export const publicDocsAreas = [
     label: 'Custom Domains',
   },
   {
-    cliRoots: ['login', 'activate', 'logout', 'whoami', 'auth', 'remote'],
+    cliRoots: ['login', 'activate', 'logout', 'whoami', 'auth', 'remote', 'signup'],
     generatedDocPrefixes: [
       'public-docs/src/content/docs/reference/generated/cli/login',
       'public-docs/src/content/docs/reference/generated/cli/activate',
@@ -251,6 +251,7 @@ export const publicDocsAreas = [
       'public-docs/src/content/docs/reference/generated/cli/whoami',
       'public-docs/src/content/docs/reference/generated/cli/auth',
       'public-docs/src/content/docs/reference/generated/cli/remote',
+      'public-docs/src/content/docs/reference/generated/cli/signup',
     ],
     generatedSourcePatterns: [
       /^packages\/cli\/src\/commands\/auth\//u,
@@ -275,6 +276,9 @@ export const publicDocsAreas = [
       /^packages\/api\/src\/services\/login/u,
       /^packages\/api\/src\/services\/logout/u,
       /^packages\/api\/src\/services\/organization-auth-settings/u,
+      /^packages\/api\/src\/services\/signup/u,
+      /^packages\/cli\/src\/services\/signup/u,
+      /^packages\/sdk\/src\/services\/signup/u,
       /^packages\/contracts\/src\/contracts\/auth/u,
       /^packages\/contracts\/src\/contracts\/password-reset/u,
       /^packages\/contracts\/src\/contracts\/organization-auth\.contract\.ts$/u,

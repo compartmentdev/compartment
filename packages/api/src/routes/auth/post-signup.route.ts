@@ -1,10 +1,13 @@
 import {
   buildFastifyResponseSchemas,
+  compartmentIdempotencyKeyHeaderName,
+  signupIdempotencyKeySchema,
   signupRequestSchema,
   signupResponseSchema,
   type SignupRequest,
   type SignupResponse,
 } from '@compartment/contracts';
+import { readHeaderValue } from '@compartment/utils';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiApp } from '../../app.types';
 import { parseRequestValue } from '../../http/validation';
@@ -32,9 +35,11 @@ export function registerPostSignupRoute(app: ApiApp): void {
 
 async function handlePostSignup(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   await requireInstalledCompartment();
+  const idempotencyKey: string = readSignupIdempotencyKey(request);
   const requestBody: SignupRequest = parseRequestValue(signupRequestSchema, request.body, 'invalid_signup_request');
   const result: SignupResult = await signUp({
     email: requestBody.email,
+    idempotencyKey,
     organizationName: requestBody.organizationName,
   });
   const response: SignupResponse = signupResponseSchema.parse({
@@ -43,4 +48,17 @@ async function handlePostSignup(request: FastifyRequest, reply: FastifyReply): P
   });
 
   return await reply.send(response);
+}
+
+/**
+ * The key is required rather than optional because a caller without one cannot recover a lost signup response, which
+ * is the whole failure this route exists to survive.
+ */
+function readSignupIdempotencyKey(request: FastifyRequest): string {
+  return parseRequestValue(
+    signupIdempotencyKeySchema,
+    readHeaderValue(request.headers[compartmentIdempotencyKeyHeaderName]),
+    'invalid_signup_idempotency_key',
+    'A random UUID Idempotency-Key header is required so a retried signup returns the original account instead of creating another one.',
+  );
 }

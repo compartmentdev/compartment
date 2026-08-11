@@ -88,6 +88,14 @@ export function createSignupDisabledError(): ApiBusinessError {
   return new ApiBusinessError('signup_disabled');
 }
 
+export function createSignupIdempotencyConflictError(): ApiBusinessError {
+  return new ApiBusinessError('signup_idempotency_conflict');
+}
+
+export function createSignupIdempotencyKeyExpiredError(): ApiBusinessError {
+  return new ApiBusinessError('signup_idempotency_key_expired');
+}
+
 export function createSourceAndTargetEnvironmentMatchError(): ApiBusinessError {
   return new ApiBusinessError('source_and_target_environment_match');
 }

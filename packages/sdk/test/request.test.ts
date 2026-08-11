@@ -11,7 +11,11 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ClientOptions } from '../src/client.types';
-import { createCompartmentBinaryRequester, createCompartmentRequester } from '../src/http/request';
+import {
+  createCompartmentBinaryRequester,
+  createCompartmentRequester,
+  isRetryableRequestError,
+} from '../src/http/request';
 import {
   createTransportRequestError,
   isRetryableTransportRequestError,
@@ -565,6 +569,19 @@ describe('compartment requester', (): void => {
     ).toBe(true);
   });
 
+  it('treats overload answers as worth retrying and refusals as final', async (): Promise<void> => {
+    mockFetchSequence([
+      createJsonResponse(createErrorResponse('api_rate_limit_exceeded', 'Too many requests.'), 429),
+      createJsonResponse(createErrorResponse('internal_error', 'Something broke.'), 503),
+      createJsonResponse(createErrorResponse('email_taken', 'Already registered.'), 409),
+    ]);
+    const request: CompartmentRequester = createCompartmentRequester({ apiUrl: 'https://console.example' });
+
+    expect(isRetryableRequestError(await captureRequestError(request))).toBe(true);
+    expect(isRetryableRequestError(await captureRequestError(request))).toBe(true);
+    expect(isRetryableRequestError(await captureRequestError(request))).toBe(false);
+  });
+
   it('fails when the response body does not match the declared schema', async (): Promise<void> => {
     const defaults: ClientOptions = {
       apiUrl: 'https://console.example',
@@ -588,6 +605,20 @@ describe('compartment requester', (): void => {
     ).rejects.toThrow();
   });
 });
+
+async function captureRequestError(request: CompartmentRequester): Promise<Error> {
+  try {
+    await request<OrganizationListResponse, undefined>({
+      method: 'GET',
+      path: '/v1/orgs',
+      schema: organizationListResponseSchema,
+    });
+  } catch (error) {
+    return error as Error;
+  }
+
+  throw new Error('Expected the request to fail.');
+}
 
 async function expectTransportRequestFailure(
   promise: Promise<OrganizationListResponse>,
