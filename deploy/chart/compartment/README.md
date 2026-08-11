@@ -15,10 +15,17 @@ existing-cluster preflight before applying it.
 - gVisor installed on every node eligible for build or tenant workloads, with a working RuntimeClass
 - installer access to the namespaced and cluster-scoped resources rendered by the chart
 
-The chart installs Capsule 0.13.11 and enables its fail-closed calculation admission webhook only for Pods and PVCs in
-Compartment-managed project namespaces. Platform and build namespaces are excluded by the positive namespace labels.
+The chart installs Capsule 0.13.11 and enables fail-closed calculation admission for Pod and PVC creates and updates in
+Compartment-managed project namespaces. Delete notifications fail open so teardown remains available; periodic quota
+reconciliation repairs missed notifications. Platform and build namespaces are excluded by the positive namespace labels.
 
 The chart does not install or disable cluster infrastructure and does not mutate nodes.
+
+`platform.newProjectsPrivateByDefault` controls hosted-route access for projects created after the value is applied.
+It defaults to `true`, which makes services without an explicit descriptor `accessMode` require authentication. Set it
+to `false` to make omitted service access public for newly created projects. Existing projects retain the default they
+received when they were created, and an explicit per-service `accessMode` always wins. This setting does not change
+project permissions or RBAC.
 
 The registry uses its private Service ClusterIP directly in image references and requests a certificate with that IP
 address in its SAN. Public ACME issuers cannot issue certificates for private IP addresses. Installation therefore

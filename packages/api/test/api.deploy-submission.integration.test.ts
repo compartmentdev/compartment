@@ -49,6 +49,7 @@ import {
   operations,
   organizationMemberships,
   principals,
+  projects,
   projectResources,
   sourceUploads,
   environmentVariableValues,
@@ -637,6 +638,47 @@ describe('Phase 0 API integration deploy submission', (): void => {
         targetType: 'deployment',
       }),
     );
+  });
+  it('keeps the saved project route default after the install flag changes', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    defaultApiConfig.newProjectsPrivateByDefault = false;
+    try {
+      const firstSourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
+        app,
+        installPayload.sessionToken,
+        'acme-dev',
+      );
+      expect(
+        (
+          await injectJsonDeployRequest(app, installPayload.sessionToken, 'acme-dev', {
+            sourceUploadId: firstSourceUpload.id,
+          })
+        ).statusCode,
+      ).toBe(200);
+
+      defaultApiConfig.newProjectsPrivateByDefault = true;
+      const secondSourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
+        app,
+        installPayload.sessionToken,
+        'acme-dev',
+      );
+      expect(
+        (
+          await injectJsonDeployRequest(app, installPayload.sessionToken, 'acme-dev', {
+            sourceUploadId: secondSourceUpload.id,
+          })
+        ).statusCode,
+      ).toBe(200);
+
+      expect(await db.select({ defaultAccessMode: projects.defaultAccessMode }).from(projects)).toEqual([
+        { defaultAccessMode: 'public' },
+      ]);
+      expect(
+        (await db.select({ accessMode: deployments.accessMode }).from(deployments)).map(({ accessMode }) => accessMode),
+      ).toEqual(['public', 'public']);
+    } finally {
+      defaultApiConfig.newProjectsPrivateByDefault = true;
+    }
   });
   it.each([
     [

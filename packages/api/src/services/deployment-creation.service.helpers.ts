@@ -1,7 +1,6 @@
 import {
   buildCompartmentArtifactImageRepository,
   defaultApplicationPorts,
-  defaultAppRouteAccessMode,
   resolveCompartmentServiceBuildConfig,
   resolveCompartmentServiceReleaseConfig,
   resolveCompartmentServiceRunConfig,
@@ -84,7 +83,7 @@ export function buildPreparedQueuedDeploymentState(
   buildEnvSnapshot: BuildEnvSnapshot,
 ): PreparedQueuedDeploymentState {
   return {
-    accessMode: resolveDescriptorServiceAccessMode(context.descriptorService),
+    accessMode: resolveDescriptorServiceAccessMode(context),
     artifactId: createId('art'),
     buildEnvSnapshot,
     context,
@@ -96,10 +95,8 @@ export function buildPreparedQueuedDeploymentState(
   };
 }
 
-function resolveDescriptorServiceAccessMode(
-  descriptorService: ResolvedDescriptorService | undefined,
-): AppRouteAccessMode {
-  return descriptorService?.accessMode ?? defaultAppRouteAccessMode;
+function resolveDescriptorServiceAccessMode(context: ResolvedProjectContext): AppRouteAccessMode {
+  return context.descriptorService?.accessMode ?? context.project.defaultAccessMode;
 }
 
 function buildQueuedDeploymentInput(

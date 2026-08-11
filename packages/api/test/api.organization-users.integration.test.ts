@@ -714,6 +714,7 @@ describe('Phase 0 API integration organization users', (): void => {
     const deployerRoleId: string = await readOrganizationRoleId(organizationId, 'deployer');
 
     await db.insert(projects).values({
+      defaultAccessMode: 'authenticated',
       id: 'prj_billing',
       name: 'billing',
       organizationId,

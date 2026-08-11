@@ -149,6 +149,7 @@ export async function seedProject(
   input: { id: string; name: string; organizationId: string },
 ): Promise<void> {
   await harness.db.insert(projects).values({
+    defaultAccessMode: 'authenticated',
     id: input.id,
     name: input.name,
     organizationId: input.organizationId,

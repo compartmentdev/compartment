@@ -225,6 +225,7 @@ function createProjectRow(name: string, archivedAt: Date | null = null): Project
   return {
     archivedAt,
     createdAt: new Date('2026-04-25T10:00:00.000Z'),
+    defaultAccessMode: 'authenticated',
     id: `prj_${name.replace('-', '_')}`,
     name,
     organizationId: 'org_123',

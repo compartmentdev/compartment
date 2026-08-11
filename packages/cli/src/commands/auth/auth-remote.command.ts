@@ -5,6 +5,7 @@ import { findConfiguredRemote, listConfiguredRemoteNames } from '../../services/
 import type { CliConfig, CliRemoteConfig } from '../../store/config.types';
 import type { OutputFormat } from '../../output/output.types';
 import { resolveLoginApiUrl, resolveLoginRemoteName } from '../command-context';
+import type { LoginApiUrlResolution } from '../command-context.types';
 
 export interface ResolvedLoginRemote {
   apiUrl: string;
@@ -29,8 +30,13 @@ export async function resolveLoginRemote(
     return await resolveConflictingLoginRemote(io, config, output, remoteName, existingRemote.apiUrl, explicitApiUrl);
   }
 
+  const apiUrlResolution: LoginApiUrlResolution = resolveLoginApiUrl(config, remoteName, explicitApiUrl);
+  if (apiUrlResolution.source === 'managed-cloud') {
+    io.stderr(`Using Compartment Cloud at ${new URL(apiUrlResolution.apiUrl).host}.\n`);
+  }
+
   return {
-    apiUrl: resolveLoginApiUrl(config, remoteName, explicitApiUrl),
+    apiUrl: apiUrlResolution.apiUrl,
     remoteName,
   };
 }

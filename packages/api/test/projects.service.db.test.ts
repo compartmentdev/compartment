@@ -972,6 +972,7 @@ async function seedDeleteScope(): Promise<void> {
   });
   await db.insert(projects).values({
     archivedAt: new Date('2026-04-28T12:00:00.000Z'),
+    defaultAccessMode: 'authenticated',
     id: 'prj_billing',
     name: 'billing',
     organizationId: 'org_git_sources',
@@ -982,6 +983,7 @@ async function seedDeleteScope(): Promise<void> {
     .values({ isolationVersion: projectIsolationVersion, projectId: 'prj_billing', state: 'succeeded' });
   await db.insert(projects).values({
     archivedAt: null,
+    defaultAccessMode: 'authenticated',
     id: 'prj_ops',
     name: 'ops',
     organizationId: 'org_git_sources',
@@ -992,6 +994,7 @@ async function seedDeleteScope(): Promise<void> {
     .values({ isolationVersion: projectIsolationVersion, projectId: 'prj_ops', state: 'succeeded' });
   await db.insert(projects).values({
     archivedAt: null,
+    defaultAccessMode: 'authenticated',
     id: 'prj_plain',
     name: 'plain',
     organizationId: 'org_git_sources',
@@ -1130,6 +1133,7 @@ function createResolvedProjectScope(
   project: {
     archivedAt: Date | null;
     createdAt: Date;
+    defaultAccessMode: 'authenticated';
     id: string;
     name: string;
     organizationId: string;
@@ -1150,6 +1154,7 @@ function createResolvedProjectScope(
     project: {
       archivedAt: options.archivedAt ?? new Date('2026-04-28T12:00:00.000Z'),
       createdAt: new Date('2026-04-28T11:00:00.000Z'),
+      defaultAccessMode: 'authenticated',
       id: options.projectId ?? 'prj_billing',
       name: options.projectName ?? 'billing',
       organizationId: options.organizationId ?? 'org_git_sources',

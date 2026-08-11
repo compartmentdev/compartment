@@ -237,6 +237,7 @@ async function seedRestoreAsScope(): Promise<void> {
     principalId: 'prn_restore_as',
   });
   await db.insert(projects).values({
+    defaultAccessMode: 'authenticated',
     id: 'prj_restore_as',
     name: 'database',
     organizationId: 'org_restore_as',

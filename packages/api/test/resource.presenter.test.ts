@@ -91,6 +91,7 @@ function createProject(): ProjectRow {
   return {
     archivedAt: null,
     createdAt: now,
+    defaultAccessMode: 'authenticated',
     id: 'prj_internal_tools',
     name: 'internal-tools',
     organizationId: 'org_acme',

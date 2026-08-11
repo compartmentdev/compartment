@@ -107,6 +107,18 @@ nodePools:
 An empty build pool uses the system pool. Pass the file to `compartment install` with `--values
 compartment-values.yaml`.
 
+New projects require authentication for hosted application routes by default. To make omitted service access public
+for projects created after installation or upgrade, set the following Helm value:
+
+```yaml
+platform:
+  newProjectsPrivateByDefault: false
+```
+
+The value is saved on each project when that project is created. Changing it later affects only new projects. An
+explicit service `accessMode` in `compartment.yml` overrides the saved project default. This controls hosted app
+access, not project permissions or RBAC.
+
 Build concurrency has separate logical and physical limits. By default, Compartment admits up to 100 in-flight build
 claims, allows two active builds per organization, and applies a build-namespace quota of 48 CPU and 64 GiB. Each
 default build Pod is limited to 2 CPU and 4 GiB, so memory limits the namespace to 16 concurrently admitted build Pods.

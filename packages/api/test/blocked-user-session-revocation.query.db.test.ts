@@ -160,6 +160,7 @@ async function createAuthSession(input: CreateAuthSessionInput): Promise<void> {
 
 async function createDeployment(input: CreateDeploymentInput): Promise<void> {
   await db.insert(projects).values({
+    defaultAccessMode: 'authenticated',
     id: `prj_${input.prefix}`,
     name: input.prefix,
     organizationId: input.organizationId,

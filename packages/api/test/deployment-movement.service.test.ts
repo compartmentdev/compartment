@@ -268,6 +268,7 @@ function mockRollbackContext(): void {
     project: {
       archivedAt: null,
       createdAt: new Date('2026-05-01T12:00:00.000Z'),
+      defaultAccessMode: 'authenticated',
       id: 'prj_123',
       name: 'billing',
       organizationId: 'org_123',
@@ -390,6 +391,7 @@ function createDeployment(
     project: {
       archivedAt: null,
       createdAt,
+      defaultAccessMode: 'authenticated',
       id: 'prj_123',
       name: 'billing',
       organizationId: 'org_123',

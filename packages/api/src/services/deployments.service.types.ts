@@ -25,7 +25,7 @@ import type {
 } from './presenter.types';
 
 export interface ResolvedDescriptorService {
-  accessMode: AppRouteAccessMode;
+  accessMode?: AppRouteAccessMode | undefined;
   build: ResolvedCompartmentServiceBuildConfig;
   connections: CompartmentServiceConnections;
   kind: CompartmentServiceKind;

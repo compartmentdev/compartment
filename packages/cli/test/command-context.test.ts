@@ -2,11 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  createAuthenticatedContext,
-  resolveLoginApiUrl,
-  resolveLoginRemoteName,
-} from '../src/commands/command-context';
+import { createAuthenticatedContext, resolveLoginRemoteName } from '../src/commands/command-context';
 import { createCliConfigFixture } from './cli-test.fixtures';
 
 const createdDirectories: string[] = [];
@@ -30,24 +26,6 @@ describe('command context helpers', (): void => {
 
   it('uses the default remote name when no current remote is selected', (): void => {
     expect(resolveLoginRemoteName({})).toBe('default');
-  });
-
-  it('prefers the explicit API URL over the stored remote API URL', (): void => {
-    expect(resolveLoginApiUrl(createCliConfigFixture(), 'default', 'https://explicit.example.com')).toBe(
-      'https://explicit.example.com',
-    );
-  });
-
-  it('uses the stored remote API URL when no explicit API URL is provided', (): void => {
-    expect(resolveLoginApiUrl(createCliConfigFixture({ apiUrl: 'https://stored.example.com' }), 'default')).toBe(
-      'https://stored.example.com',
-    );
-  });
-
-  it('throws when no API URL can be resolved for the selected remote', (): void => {
-    expect((): void => {
-      resolveLoginApiUrl({}, 'lab');
-    }).toThrow('API URL is required. Run `compartment login --remote lab --api-url <url>` first.');
   });
 
   it('throws the first-login guidance when no remote is configured', async (): Promise<void> => {

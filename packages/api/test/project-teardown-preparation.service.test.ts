@@ -60,6 +60,7 @@ function project(): ProjectRow {
   return {
     archivedAt: new Date(),
     createdAt: new Date(),
+    defaultAccessMode: 'authenticated',
     id: 'project',
     name: 'demo',
     organizationId: 'org',

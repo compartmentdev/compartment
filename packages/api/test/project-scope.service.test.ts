@@ -11,6 +11,7 @@ import type { ProjectRow } from '../src/queries/projects.query.types';
 import {
   findActiveProjectScope,
   resolveActiveProjectScope,
+  resolveOrCreateActiveProjectScope,
   resolveOrCreateEnvironment,
 } from '../src/services/project-scope.service';
 import type { resolveOrganizationForPrincipal } from '../src/services/organizations.service';
@@ -21,6 +22,7 @@ type FindEnvironmentByProjectAndName = typeof findEnvironmentByProjectAndName;
 type FindProjectByOrganizationAndName = typeof findProjectByOrganizationAndName;
 type FindProjectServiceByName = typeof findProjectServiceByName;
 type ResolveOrganizationForPrincipal = typeof resolveOrganizationForPrincipal;
+type ResolveNewProjectDefaultAccessMode = () => 'authenticated' | 'public';
 
 interface ProjectScopeServiceTestMocks {
   createOrGetEnvironment: Mock<CreateOrGetEnvironment>;
@@ -29,6 +31,7 @@ interface ProjectScopeServiceTestMocks {
   findProjectByOrganizationAndName: Mock<FindProjectByOrganizationAndName>;
   findProjectServiceByName: Mock<FindProjectServiceByName>;
   resolveOrganizationForPrincipal: Mock<ResolveOrganizationForPrincipal>;
+  resolveNewProjectDefaultAccessMode: Mock<ResolveNewProjectDefaultAccessMode>;
 }
 
 interface DeploymentContextQueryModuleMock {
@@ -54,6 +57,7 @@ const mocks: ProjectScopeServiceTestMocks = vi.hoisted(
     findProjectByOrganizationAndName: vi.fn<FindProjectByOrganizationAndName>(),
     findProjectServiceByName: vi.fn<FindProjectServiceByName>(),
     resolveOrganizationForPrincipal: vi.fn<ResolveOrganizationForPrincipal>(),
+    resolveNewProjectDefaultAccessMode: vi.fn<ResolveNewProjectDefaultAccessMode>(),
   }),
 );
 
@@ -65,6 +69,10 @@ vi.mock(
     findProjectServiceByName: mocks.findProjectServiceByName,
   }),
 );
+
+vi.mock('../src/services/project-default-access-mode.service', () => ({
+  resolveNewProjectDefaultAccessMode: mocks.resolveNewProjectDefaultAccessMode,
+}));
 
 vi.mock(
   '../src/queries/projects.query',
@@ -89,6 +97,7 @@ const organization: OrganizationRow = {
 const activeProject: ProjectRow = {
   archivedAt: null,
   createdAt: new Date('2026-04-07T12:00:00.000Z'),
+  defaultAccessMode: 'authenticated',
   id: 'prj_123',
   name: 'billing',
   organizationId: organization.id,
@@ -117,6 +126,7 @@ const projectService: ProjectServiceRow = {
 describe('project scope service', (): void => {
   beforeEach((): void => {
     mocks.resolveOrganizationForPrincipal.mockResolvedValue(organization);
+    mocks.resolveNewProjectDefaultAccessMode.mockReturnValue('authenticated');
     mocks.findProjectByOrganizationAndName.mockResolvedValue(activeProject);
     mocks.findEnvironmentByProjectAndName.mockResolvedValue(environment);
     mocks.findProjectServiceByName.mockResolvedValue(projectService);
@@ -151,6 +161,21 @@ describe('project scope service', (): void => {
         projectId: 'prj_123',
         updatedAt: now,
       }),
+    );
+  });
+
+  it('persists the resolved install default when normal deploy creates a project', async (): Promise<void> => {
+    const now: Date = new Date('2026-04-10T12:00:00.000Z');
+    const publicProject: ProjectRow = { ...activeProject, defaultAccessMode: 'public' };
+    mocks.findProjectByOrganizationAndName.mockResolvedValueOnce(undefined);
+    mocks.resolveNewProjectDefaultAccessMode.mockReturnValueOnce('public');
+    mocks.createOrGetProject.mockResolvedValueOnce(publicProject);
+
+    await expect(resolveOrCreateActiveProjectScope('prn_123', 'acme-dev', 'billing', now)).resolves.toMatchObject({
+      project: publicProject,
+    });
+    expect(mocks.createOrGetProject).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultAccessMode: 'public', name: 'billing', updatedAt: now }),
     );
   });
 });

@@ -213,6 +213,7 @@ async function createQueryTestScope(): Promise<void> {
     slug: 'custom-domains-org',
   });
   await db.insert(projects).values({
+    defaultAccessMode: 'authenticated',
     id: 'prj_custom_domains',
     name: 'billing',
     organizationId: 'org_custom_domains',

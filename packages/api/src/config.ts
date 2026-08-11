@@ -5,14 +5,11 @@ import {
   parseOptionalTrustedOutboundHostList,
 } from '@compartment/utils';
 import { z } from 'zod';
-import {
-  auditFileSinkConfigEnvSchema,
-  readAuditFileSinkConfig,
-  type AuditFileSinkConfig,
-} from './audit-file-sink-config';
+import { auditFileSinkConfigEnvSchema } from './audit-file-sink-config';
 import { readApiAuthThrottleConfig, type ApiAuthThrottleConfig } from './auth-throttle-config';
+import { readApiRuntimeConfig, type ApiRuntimeConfig } from './api-runtime-config';
 import type { ApiConfigEnv } from './config-env.types';
-import { parseOptionalAbsoluteUrl, parseOptionalPositiveInt, readRequiredCronExpression } from './config-parsers';
+import { parseOptionalAbsoluteUrl } from './config-parsers';
 import { parseTenantSecretsKek, parseVariablesMasterKey } from './lib/variables-crypto';
 import { normalizeApiHostValue, parseSessionTtl, readOptionalConfigText, readRequiredBoolean } from './config-value';
 import { assertValidSystemApiSocketPath } from './system-api-socket-path';
@@ -33,6 +30,7 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_EDGE_TOKEN: z.string().min(1),
   COMPARTMENT_ENV: z.enum(['dev', 'self-hosted']).optional(),
   COMPARTMENT_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
+  COMPARTMENT_NEW_PROJECTS_PRIVATE_BY_DEFAULT: z.string().min(1),
   COMPARTMENT_INSTALL_TOKEN: installTokenSchema,
   COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN: z.string(),
   COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: z.string(),
@@ -63,8 +61,7 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_RUNTIME_CONTROL_TOKEN: z.string().min(1),
 });
 
-export interface ApiConfig {
-  auditFileSink: AuditFileSinkConfig;
+export interface ApiConfig extends ApiRuntimeConfig {
   baseDomain: string;
   bindHost: string;
   tlsMode: 'broker-dns01' | 'internal' | 'issuer';
@@ -84,13 +81,6 @@ export interface ApiConfig {
   publicHttpPort: number;
   publicHttpsPort: number;
   productLogIngestToken?: string | null;
-  auditRetentionDays: number;
-  auditRetentionCleanupBatchSize: number;
-  auditRetentionCleanupCron: string;
-  auditRetentionCleanupMaxBatches: number;
-  rollbackRetentionLimit: number | null;
-  sourceArchiveDirectory: string;
-  sourceArchiveMaxBytes: number;
   throttle: ApiAuthThrottleConfig;
   systemApiSocketPath: string;
   systemToken: string;
@@ -98,9 +88,6 @@ export interface ApiConfig {
   tenantSecretsPreviousKek?: Buffer | undefined;
   variablesMasterKey: Buffer;
   runtimeControlToken: string;
-  usageMeteringIntervalMs: number;
-  usageRetentionDays: number;
-  workerImageRef?: string | null;
 }
 
 type ApiCoreConfig = Pick<
@@ -113,20 +100,6 @@ type ApiIntegrationConfig = Pick<
   'managedDomainAcmeDnsToken' | 'managedDomainBrokerUrl' | 'trustedOutboundHosts'
 >;
 type ApiPublicConfig = Pick<ApiConfig, 'publicProtocol' | 'publicHttpPort' | 'publicHttpsPort'>;
-type ApiRuntimeConfig = Pick<
-  ApiConfig,
-  | 'auditFileSink'
-  | 'auditRetentionDays'
-  | 'auditRetentionCleanupBatchSize'
-  | 'auditRetentionCleanupCron'
-  | 'auditRetentionCleanupMaxBatches'
-  | 'rollbackRetentionLimit'
-  | 'sourceArchiveDirectory'
-  | 'sourceArchiveMaxBytes'
-  | 'workerImageRef'
-  | 'usageMeteringIntervalMs'
-  | 'usageRetentionDays'
->;
 type ApiSecretConfig = Pick<
   ApiConfig,
   | 'productLogIngestToken'
@@ -219,28 +192,6 @@ function readApiPublicConfig(parsed: ApiConfigEnv): ApiPublicConfig {
     publicProtocol: parsed.COMPARTMENT_PUBLIC_PROTOCOL,
     publicHttpPort: parsed.COMPARTMENT_PUBLIC_HTTP_PORT,
     publicHttpsPort: parsed.COMPARTMENT_PUBLIC_HTTPS_PORT,
-  };
-}
-
-function readApiRuntimeConfig(parsed: ApiConfigEnv): ApiRuntimeConfig {
-  return {
-    auditFileSink: readAuditFileSinkConfig(parsed),
-    auditRetentionCleanupBatchSize: parsed.COMPARTMENT_AUDIT_RETENTION_CLEANUP_BATCH_SIZE,
-    auditRetentionCleanupCron: readRequiredCronExpression(
-      parsed.COMPARTMENT_AUDIT_RETENTION_CLEANUP_CRON,
-      'COMPARTMENT_AUDIT_RETENTION_CLEANUP_CRON',
-    ),
-    auditRetentionCleanupMaxBatches: parsed.COMPARTMENT_AUDIT_RETENTION_CLEANUP_MAX_BATCHES,
-    auditRetentionDays: parsed.COMPARTMENT_AUDIT_RETENTION_DAYS,
-    usageMeteringIntervalMs: parsed.COMPARTMENT_USAGE_METERING_INTERVAL_MS,
-    usageRetentionDays: parsed.COMPARTMENT_USAGE_RETENTION_DAYS,
-    rollbackRetentionLimit: parseOptionalPositiveInt(
-      parsed.COMPARTMENT_ROLLBACK_RETENTION_LIMIT,
-      'COMPARTMENT_ROLLBACK_RETENTION_LIMIT',
-    ),
-    sourceArchiveDirectory: parsed.COMPARTMENT_SOURCE_ARCHIVE_DIR,
-    sourceArchiveMaxBytes: parsed.COMPARTMENT_SOURCE_ARCHIVE_MAX_BYTES,
-    workerImageRef: readOptionalConfigText(parsed.COMPARTMENT_WORKER_IMAGE),
   };
 }
 

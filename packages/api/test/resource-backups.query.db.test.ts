@@ -1015,6 +1015,7 @@ describe('resource backup queries', (): void => {
 
   it('creates, leases, and acknowledges the project provisioning companion row', async (): Promise<void> => {
     const project: ProjectRow = await createOrGetProject({
+      defaultAccessMode: 'authenticated',
       id: 'prj_new_provisioning',
       name: 'new-provisioning',
       organizationId: 'org_resource_backups',
@@ -1416,6 +1417,7 @@ async function seedResourceBackupScope(): Promise<void> {
     type: 'user',
   });
   await db.insert(projects).values({
+    defaultAccessMode: 'authenticated',
     id: 'prj_internal_tools',
     name: 'internal-tools',
     organizationId: 'org_resource_backups',

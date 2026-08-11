@@ -9,6 +9,8 @@ import {
   createCliCapture,
   expectCliFailure,
   expectCliSuccess,
+  mockManagedCloudControlPlaneUrl,
+  readCliStderr,
   readCliStdout,
   resetCliCommandModules,
   restoreCliCommandModules,
@@ -28,6 +30,7 @@ interface SignupCommandMocks {
 }
 
 interface SignupCommandMocksInput {
+  config?: CliConfig | undefined;
   error?: Error | undefined;
   response?: SignupResponse | undefined;
 }
@@ -38,19 +41,49 @@ describe.sequential('compartment signup command', (): void => {
   });
 
   afterEach((): void => {
-    restoreCliCommandModules(['../src/prompts/prompt', '../src/services/signup.service', '../src/store/config.store']);
+    restoreCliCommandModules([
+      '@compartment/contracts',
+      '../src/prompts/prompt',
+      '../src/services/signup.service',
+      '../src/store/config.store',
+    ]);
   });
 
-  it('stores the returned session and reports the new organization slug', async (): Promise<void> => {
-    const mocks: SignupCommandMocks = mockSignupCommandModules({ response: createSignupResponse() });
+  it('prefers an explicit API URL without announcing the managed cloud', async (): Promise<void> => {
+    mockManagedCloudControlPlaneUrl('https://cloud.example.com');
+    const mocks: SignupCommandMocks = mockSignupCommandModules({
+      config: {
+        currentRemote: 'default',
+        remotes: {
+          default: {
+            apiUrl: 'https://stored.example.com',
+          },
+        },
+      },
+      response: createSignupResponse(),
+    });
     const capture: CliCommandCapture = createCliCapture();
 
     const result: CliCommandResult = await runCliCommand(
-      ['signup', '--api-url', 'https://api.example', '--email', 'agent@example.com', '--organization', 'Agent Org'],
+      [
+        'signup',
+        '--api-url',
+        'https://api.example',
+        '--remote',
+        'default',
+        '--email',
+        'agent@example.com',
+        '--organization',
+        'Agent Org',
+      ],
       capture,
     );
 
     expectCliSuccess(result);
+    expect(mocks.signUpMock).toHaveBeenCalledWith(
+      { apiUrl: 'https://api.example' },
+      { email: 'agent@example.com', organizationName: 'Agent Org' },
+    );
     expect(mocks.writeCliConfigMock).toHaveBeenCalledWith({
       currentRemote: 'default',
       remotes: {
@@ -62,7 +95,62 @@ describe.sequential('compartment signup command', (): void => {
         },
       },
     });
+    expect(readCliStderr(capture)).not.toContain('Using Compartment Cloud');
     expect(readCliStdout(capture)).toContain('agent-org');
+  });
+
+  it('uses the selected stored remote without announcing the managed cloud', async (): Promise<void> => {
+    mockManagedCloudControlPlaneUrl('https://cloud.example.com');
+    const mocks: SignupCommandMocks = mockSignupCommandModules({
+      config: {
+        currentRemote: 'lab',
+        remotes: {
+          lab: {
+            apiUrl: 'https://stored.example.com',
+          },
+        },
+      },
+      response: createSignupResponse(),
+    });
+    const capture: CliCommandCapture = createCliCapture();
+
+    const result: CliCommandResult = await runCliCommand(['signup'], capture);
+
+    expectCliSuccess(result);
+    expect(mocks.signUpMock).toHaveBeenCalledWith(
+      { apiUrl: 'https://stored.example.com' },
+      { organizationName: 'Agent Org' },
+    );
+    expect(readCliStderr(capture)).not.toContain('Using Compartment Cloud');
+  });
+
+  it('uses and announces the managed cloud when no API URL is configured', async (): Promise<void> => {
+    mockManagedCloudControlPlaneUrl('https://cloud.example.com/control-plane');
+    const mocks: SignupCommandMocks = mockSignupCommandModules({ response: createSignupResponse() });
+    const capture: CliCommandCapture = createCliCapture();
+
+    const result: CliCommandResult = await runCliCommand(['signup'], capture);
+
+    expectCliSuccess(result);
+    expect(mocks.signUpMock).toHaveBeenCalledWith(
+      { apiUrl: 'https://cloud.example.com/control-plane' },
+      { organizationName: 'Agent Org' },
+    );
+    expect(readCliStderr(capture)).toBe('Using Compartment Cloud at cloud.example.com.\n');
+  });
+
+  it('keeps the API URL guidance when the managed cloud URL is unset', async (): Promise<void> => {
+    mockManagedCloudControlPlaneUrl(undefined);
+    const mocks: SignupCommandMocks = mockSignupCommandModules({ response: createSignupResponse() });
+
+    const result: CliCommandResult = await runCliCommand(
+      ['signup', '--remote', 'lab', '--organization', 'Agent Org'],
+      createCliCapture(),
+    );
+
+    expectCliFailure(result, 'API URL is required. Run `compartment login --remote lab --api-url <url>` first.');
+    expect(mocks.signUpMock).not.toHaveBeenCalled();
+    expect(mocks.writeCliConfigMock).not.toHaveBeenCalled();
   });
 
   it('stores the generated address when the agent signs up without an email', async (): Promise<void> => {
@@ -112,7 +200,7 @@ function mockSignupCommandModules(input: SignupCommandMocksInput): SignupCommand
   const promptOrganizationNameMock: Mock<PromptOrganizationName> = vi
     .fn<PromptOrganizationName>()
     .mockResolvedValue('Agent Org');
-  const readCliConfigMock: Mock<ReadCliConfig> = vi.fn<ReadCliConfig>().mockResolvedValue({});
+  const readCliConfigMock: Mock<ReadCliConfig> = vi.fn<ReadCliConfig>().mockResolvedValue(input.config ?? {});
   const writeCliConfigMock: Mock<WriteCliConfig> = vi.fn<WriteCliConfig>().mockResolvedValue(undefined);
   const signUpMock: Mock<SignUp> =
     input.error === undefined

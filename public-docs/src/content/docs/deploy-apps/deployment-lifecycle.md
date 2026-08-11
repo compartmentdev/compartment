@@ -21,7 +21,7 @@ activates runtime state only after the candidate starts successfully.
 
 ## Organization resource limits
 
-On installations created with organization quotas enabled, all projects in an organization share fixed Kubernetes
+On current Compartment installations, all projects in an organization share fixed Kubernetes
 capacity: 20 CPU requests and limits, 20Gi memory requests and limits, and 100Gi requested persistent storage. A
 workload in one project consumes the same organization pool as workloads in every other project. Projects in another
 organization use a separate pool.

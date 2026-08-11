@@ -1,7 +1,10 @@
 import { PassThrough } from 'node:stream';
+import type * as Contracts from '@compartment/contracts';
 import type { JsonValue } from '@compartment/utils';
 import { expect, vi } from 'vitest';
 import type { CliIo } from '../src/app.types';
+
+type ContractsModule = typeof Contracts;
 
 export interface CliCommandCapture {
   io: CliIo;
@@ -114,4 +117,14 @@ export function restoreCliCommandModules(modulePaths: readonly string[]): void {
   for (const modulePath of modulePaths) {
     vi.doUnmock(modulePath);
   }
+}
+
+export function mockManagedCloudControlPlaneUrl(apiUrl: string | undefined): void {
+  vi.doMock('@compartment/contracts', async (importOriginal): Promise<ContractsModule> => {
+    const contracts: ContractsModule = await importOriginal<ContractsModule>();
+    return {
+      ...contracts,
+      compartmentManagedCloudControlPlaneUrl: apiUrl,
+    };
+  });
 }

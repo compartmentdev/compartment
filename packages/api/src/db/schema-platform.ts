@@ -59,6 +59,7 @@ export const projects: PlatformSchemaTypes.ProjectsTable = pgTable(
       .notNull()
       .references((): typeof organizations.id => organizations.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
+    defaultAccessMode: text('default_access_mode', { enum: ['authenticated', 'public'] }).notNull(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

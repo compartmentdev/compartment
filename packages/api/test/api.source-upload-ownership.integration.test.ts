@@ -367,6 +367,7 @@ async function createDeployerSession(installPayload: InstallResponse): Promise<s
 
 async function createProject(id: string, name: string, organizationId: string): Promise<void> {
   await db.insert(projects).values({
+    defaultAccessMode: 'authenticated',
     id,
     name,
     organizationId,

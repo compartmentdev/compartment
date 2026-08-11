@@ -26,6 +26,7 @@ const projectListPageSelect: SQL = sql`select
   pagination_state.total_pages as "totalPages",
   ranked_projects.project_id as "projectId",
   ranked_projects.project_name as "projectName",
+  ranked_projects.default_access_mode as "defaultAccessMode",
   ranked_projects.organization_id as "organizationId",
   ranked_projects.archived_at as "archivedAt",
   ranked_projects.created_at as "createdAt",
@@ -39,6 +40,7 @@ order by ranked_projects.list_rank`;
 const scopedProjectsSelect: SQL = sql`select
   ${projects.id} as project_id,
   ${projects.name} as project_name,
+  ${projects.defaultAccessMode} as default_access_mode,
   ${projects.organizationId} as organization_id,
   ${projects.archivedAt} as archived_at,
   ${projects.createdAt} as created_at,

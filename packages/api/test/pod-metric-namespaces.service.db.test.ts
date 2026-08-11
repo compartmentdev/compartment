@@ -44,7 +44,12 @@ describe('Pod metric namespace scope', (): void => {
   it('reclaims pre-isolation succeeded projects and rejects stale-generation completion', async (): Promise<void> => {
     await db.insert(organizations).values({ id: 'org_upgrade', name: 'Upgrade', slug: 'upgrade' });
     await seedOrganizationQuota('org_upgrade');
-    await db.insert(projects).values({ id: 'prj_upgrade', name: 'upgrade', organizationId: 'org_upgrade' });
+    await db.insert(projects).values({
+      defaultAccessMode: 'authenticated',
+      id: 'prj_upgrade',
+      name: 'upgrade',
+      organizationId: 'org_upgrade',
+    });
     await db
       .insert(projectKubeProvisioning)
       .values({ isolationVersion: 0, projectId: 'prj_upgrade', state: 'succeeded' });
@@ -78,7 +83,9 @@ describe('Pod metric namespace scope', (): void => {
   it('starts isolation-upgrade retry accounting in the new generation', async (): Promise<void> => {
     await db.insert(organizations).values({ id: 'org_retry', name: 'Retry', slug: 'retry' });
     await seedOrganizationQuota('org_retry');
-    await db.insert(projects).values({ id: 'prj_retry', name: 'retry', organizationId: 'org_retry' });
+    await db
+      .insert(projects)
+      .values({ defaultAccessMode: 'authenticated', id: 'prj_retry', name: 'retry', organizationId: 'org_retry' });
     await db
       .insert(projectKubeProvisioning)
       .values({ attempts: 3, isolationVersion: 0, projectId: 'prj_retry', state: 'succeeded' });
@@ -115,6 +122,12 @@ async function seedProject(
   state: ProjectKubeProvisioningState,
   archivedAt: Date | null = null,
 ): Promise<void> {
-  await db.insert(projects).values({ archivedAt, id: projectId, name: projectId, organizationId: 'org_metrics' });
+  await db.insert(projects).values({
+    archivedAt,
+    defaultAccessMode: 'authenticated',
+    id: projectId,
+    name: projectId,
+    organizationId: 'org_metrics',
+  });
   await db.insert(projectKubeProvisioning).values({ projectId, state });
 }

@@ -525,6 +525,7 @@
         "sourceArchiveMaxBytes",
         "sessionTtl",
         "signupEnabled",
+        "newProjectsPrivateByDefault",
         "authThrottle",
         "rolloutMarker"
       ],
@@ -570,6 +571,7 @@
         "sourceArchiveMaxBytes": { "type": "integer", "minimum": 1 },
         "sessionTtl": { "type": "string", "minLength": 1 },
         "signupEnabled": { "type": "boolean" },
+        "newProjectsPrivateByDefault": { "type": "boolean" },
         "rolloutMarker": {
           "description": "Opaque marker that forces a platform rollout when it changes.",
           "type": "string"

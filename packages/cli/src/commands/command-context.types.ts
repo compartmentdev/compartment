@@ -8,3 +8,10 @@ export type AuthenticatedContextErrorCode =
 export interface AuthenticatedContextErrorDetails {
   remoteName?: string | undefined;
 }
+
+export type LoginApiUrlResolutionSource = 'explicit' | 'managed-cloud' | 'stored-remote';
+
+export interface LoginApiUrlResolution {
+  apiUrl: string;
+  source: LoginApiUrlResolutionSource;
+}

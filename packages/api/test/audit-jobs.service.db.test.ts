@@ -248,6 +248,7 @@ async function seedResourceAuditScope(): Promise<void> {
     tokenHash: 'resource-audit-token-hash',
   });
   await db.insert(projects).values({
+    defaultAccessMode: 'authenticated',
     id: 'prj_resource_audit',
     name: 'database',
     organizationId: 'org_resource_audit',

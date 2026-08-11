@@ -17,6 +17,7 @@ import {
   organizations,
   organizationMemberships,
   principals,
+  projects,
   sourceBindings,
   sourceEvents,
   sourceResolutionTasks,
@@ -79,6 +80,42 @@ describe('git source runtime service', (): void => {
     setup: async (): Promise<void> => {
       await createRuntimeScope();
     },
+  });
+
+  it('snapshots the install default when Git adoption creates each project', async (): Promise<void> => {
+    apiConfig.newProjectsPrivateByDefault = false;
+    try {
+      await connectRuntimeSource([createBinding('public-app', 'apps/public/compartment.yml')]);
+      apiConfig.newProjectsPrivateByDefault = true;
+      const [source]: SourceRow[] = await db.select().from(sources);
+      if (source === undefined) {
+        throw new Error('Expected connected Git source.');
+      }
+      await db.transaction(async (transaction: SourceMutationTransaction): Promise<void> => {
+        await adoptGitSourceBinding(
+          transaction,
+          {
+            actorPrincipalId: 'prn_git_runtime',
+            binding: createBinding('private-app', 'apps/private/compartment.yml'),
+            organizationId: 'org_git_runtime',
+            sourceId: source.id,
+            watchPathsJson: '[]',
+          },
+          new Date('2026-04-29T10:00:00.000Z'),
+        );
+      });
+
+      const rows = await db
+        .select({ defaultAccessMode: projects.defaultAccessMode, name: projects.name })
+        .from(projects)
+        .orderBy(projects.name);
+      expect(rows).toEqual([
+        { defaultAccessMode: 'authenticated', name: 'private-app' },
+        { defaultAccessMode: 'public', name: 'public-app' },
+      ]);
+    } finally {
+      apiConfig.newProjectsPrivateByDefault = true;
+    }
   });
 
   it('creates a source event and only matching resolution tasks for a verified push', async (): Promise<void> => {

@@ -1,6 +1,5 @@
 export {
   defaultAppRouteAccessMode,
-  resolveAppRouteAccessMode,
   listCompartmentRolePermissions,
   listPermissionKeys,
   readFriendlyAccessSummary,
@@ -15,6 +14,7 @@ export {
   type PermissionKey,
 } from './contracts/access.contract';
 export { compartmentCliLoginAttemptCookieName } from './contracts/app-access-protocol.contract';
+export { compartmentManagedCloudControlPlaneUrl } from './contracts/managed-cloud.contract';
 export {
   type AppAccessGrantState,
   type AppAccessProxyRouteAvailableTargetState,
