@@ -1,5 +1,6 @@
 export interface OrganizationQuotaProjection {
   organizationId: string;
+  reconciliationRequestedAt: string;
 }
 
 export interface OrganizationQuotaCapacity {

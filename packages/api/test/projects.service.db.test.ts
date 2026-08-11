@@ -1,7 +1,5 @@
 import type { ExistingProjectRemoteState } from '@compartment/contracts';
-import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-import type { Pool, PoolClient, QueryResult } from 'pg';
+import type { Pool } from 'pg';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
@@ -26,6 +24,7 @@ import { claimProductJob } from '../src/queries/product-job-runs.query';
 import {
   claimOrganizationQuotaReconciliation,
   completeOrganizationQuotaReconciliation,
+  readOrganizationQuotaInfrastructureBlocker,
 } from '../src/queries/organization-quota-reconciliation.query';
 import type { OrganizationQuotaReconcileClaimRow } from '../src/queries/organization-quota-reconciliation.query.types';
 import { completeProjectProvisioning } from '../src/queries/project-provisioning-completion.query';
@@ -69,11 +68,6 @@ interface ProjectScopeServiceModule {
 interface ProjectScopeMocks {
   resolveActiveProjectScope: Mock<ResolveActiveProjectScope>;
   resolveRequiredProjectScope: Mock<ResolveRequiredProjectScope>;
-}
-
-interface OrganizationQuotaBackfillRow {
-  attempts: number;
-  state: string;
 }
 
 const mocks: ProjectScopeMocks = vi.hoisted(
@@ -151,7 +145,7 @@ describe('projects service', (): void => {
     if (claimed === undefined) {
       throw new Error('Expected one organization quota claim.');
     }
-    expect(claimed.namespaceIds).toContain('prj_ops');
+    expect(claimed.organizationId).toBe('org_git_sources');
     await expect(
       completeOrganizationQuotaReconciliation({
         failureMessage: null,
@@ -192,22 +186,88 @@ describe('projects service', (): void => {
       }),
     ).resolves.toBe(false);
 
+    await expect(claimOrganizationQuotaReconciliation()).resolves.toBeNull();
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ updatedAt: new Date(0) })
+      .where(eq(organizationQuotaReconciliation.organizationId, first.organizationId));
     const reclaimed: OrganizationQuotaReconcileClaimRow | null = await claimOrganizationQuotaReconciliation();
     expect(reclaimed).toMatchObject({ organizationId: first.organizationId });
     expect(reclaimed?.leaseId).not.toBe(first.leaseId);
   });
 
-  it('stops retrying organization quota reconciliation after three attempts', async (): Promise<void> => {
+  it('slows organization quota reconciliation retries after three attempts', async (): Promise<void> => {
+    const failedAt: Date = new Date();
     await db
       .update(organizationQuotaReconciliation)
-      .set({ attempts: 3, failureMessage: 'terminal quota failure', state: 'failed', updatedAt: new Date(0) })
+      .set({ attempts: 3, failureMessage: 'persistent quota failure', state: 'failed', updatedAt: failedAt })
       .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
 
     await expect(claimOrganizationQuotaReconciliation()).resolves.toBeNull();
     await expect(claimPendingProjectProvisioning('provision')).resolves.toBeNull();
+    await expect(readOrganizationQuotaInfrastructureBlocker('org_git_sources')).resolves.toEqual({
+      message: 'persistent quota failure',
+      retryAt: new Date(failedAt.getTime() + 900_000),
+    });
+
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ updatedAt: new Date(0) })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+    const recoveryClaim: OrganizationQuotaReconcileClaimRow | null = await claimOrganizationQuotaReconciliation();
+    expect(recoveryClaim).toMatchObject({
+      organizationId: 'org_git_sources',
+    });
+    await expect(
+      db
+        .select({ attempts: organizationQuotaReconciliation.attempts })
+        .from(organizationQuotaReconciliation)
+        .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources')),
+    ).resolves.toEqual([{ attempts: 4 }]);
+    await expect(readOrganizationQuotaInfrastructureBlocker('org_git_sources')).resolves.toBeNull();
+    await expect(
+      completeOrganizationQuotaReconciliation({
+        failureMessage: null,
+        leaseId: recoveryClaim?.leaseId ?? '',
+        organizationId: 'org_git_sources',
+        status: 'succeeded',
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      db
+        .select({ failureMessage: organizationQuotaReconciliation.failureMessage })
+        .from(organizationQuotaReconciliation)
+        .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources')),
+    ).resolves.toEqual([{ failureMessage: null }]);
   });
 
-  it('terminalizes an expired final organization quota lease', async (): Promise<void> => {
+  it('retries early organization quota failures after the short delay', async (): Promise<void> => {
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ attempts: 2, failureMessage: 'transient quota failure', state: 'failed', updatedAt: new Date() })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+
+    await expect(claimOrganizationQuotaReconciliation()).resolves.toBeNull();
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ updatedAt: new Date(0) })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+    const retryClaim: OrganizationQuotaReconcileClaimRow | null = await claimOrganizationQuotaReconciliation();
+    expect(retryClaim).toMatchObject({ organizationId: 'org_git_sources' });
+    await expect(
+      completeOrganizationQuotaReconciliation({
+        failureMessage: 'persistent quota failure',
+        leaseId: retryClaim?.leaseId ?? '',
+        organizationId: 'org_git_sources',
+        status: 'failed',
+      }),
+    ).resolves.toBe(true);
+    await expect(readOrganizationQuotaInfrastructureBlocker('org_git_sources')).resolves.toMatchObject({
+      message: 'persistent quota failure',
+    });
+  });
+
+  it('moves an expired organization quota lease into the slow retry schedule', async (): Promise<void> => {
     await db
       .update(organizationQuotaReconciliation)
       .set({ attempts: 3, leaseExpiresAt: new Date(0), leaseId: 'oql_final', state: 'running' })
@@ -224,30 +284,10 @@ describe('projects service', (): void => {
         .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources')),
     ).resolves.toEqual([
       {
-        failureMessage: 'Organization quota reconciliation failed after 3 attempts: the final lease expired.',
+        failureMessage: 'Organization quota reconciliation lease expired.',
         state: 'failed',
       },
     ]);
-  });
-
-  it('backfills exactly one durable quota row for an existing organization', async (): Promise<void> => {
-    const client: PoolClient = await pool.connect();
-    const migration: string = readOrganizationQuotaMigration().replaceAll('--> statement-breakpoint', '');
-    try {
-      await client.query('BEGIN');
-      await client.query('DROP TABLE organization_quota_reconciliation');
-      await client.query(migration);
-      const backfillStatement: string = /INSERT INTO[\s\S]*?DO NOTHING;/.exec(migration)?.[0] ?? 'SELECT 1';
-      await client.query(backfillStatement);
-      const result: QueryResult<OrganizationQuotaBackfillRow> = await client.query<OrganizationQuotaBackfillRow>(
-        'SELECT attempts, state FROM organization_quota_reconciliation WHERE organization_id = $1',
-        ['org_git_sources'],
-      );
-      expect(result.rows).toEqual([{ attempts: 0, state: 'pending' }]);
-    } finally {
-      await client.query('ROLLBACK');
-      client.release();
-    }
   });
 
   it('blocks renaming projects while an active git binding exists', async (): Promise<void> => {
@@ -1054,20 +1094,4 @@ async function waitForProjectTeardownClaim(): Promise<ProjectProvisioningClaimRo
     });
   }
   throw new Error('Timed out waiting for project teardown claim.');
-}
-
-/**
- * Located by the table it creates rather than by filename, so renumbering the migration behind a
- * migration that lands on main first cannot silently skip this backfill assertion.
- */
-function readOrganizationQuotaMigration(): string {
-  const migrationDirectory: string = join(process.cwd(), 'packages/api/drizzle');
-  const migrations: string[] = readdirSync(migrationDirectory)
-    .filter((entry: string): boolean => entry.endsWith('.sql'))
-    .map((entry: string): string => readFileSync(join(migrationDirectory, entry), 'utf8'))
-    .filter((contents: string): boolean => contents.includes('CREATE TABLE "organization_quota_reconciliation"'));
-  if (migrations.length !== 1) {
-    throw new Error(`Expected exactly one organization quota migration, found ${migrations.length.toString()}.`);
-  }
-  return migrations[0]!;
 }

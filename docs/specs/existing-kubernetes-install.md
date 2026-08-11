@@ -128,7 +128,7 @@ and prerequisite configuration, then call this same service.
 
 The operator must provide:
 
-- local `helm` version 4.0.0 or newer and `kubectl` version 1.35.0 or newer on `PATH`, with the `kubectl` client
+- local `helm` version 4.0.0 or newer and `kubectl` version 1.30.0 or newer on `PATH`, with the `kubectl` client
   compatible with the target Kubernetes server;
 - a supported Kubernetes version;
 - a working kube context;

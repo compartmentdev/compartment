@@ -37,28 +37,6 @@ export async function applyObject(
   return await objectApi.patch(object, undefined, undefined, fieldManager, force, PatchStrategy.ServerSideApply);
 }
 
-export async function mergePatchExistingObject(
-  objectApi: KubernetesObjectApi,
-  object: KubeManifest,
-): Promise<KubeManifest | null> {
-  try {
-    return await objectApi.patch(object, undefined, undefined, undefined, undefined, PatchStrategy.MergePatch);
-  } catch (error) {
-    if (isNotFoundError(typeof error === 'object' ? error : null)) {
-      return null;
-    }
-    throw error;
-  }
-}
-
-function isNotFoundError(error: object | null): boolean {
-  if (error === null) {
-    return false;
-  }
-  const kubeError: KubeHttpError = error as KubeHttpError;
-  return kubeError.code === 404 || kubeError.statusCode === 404;
-}
-
 export async function deleteObjectsPreservingPrimary(
   objectApi: KubernetesObjectApi | null,
   objects: KubeManifest[],

@@ -11,6 +11,7 @@ import {
   type DeploymentInspectRuntimeSummary,
   type DeploymentInspectResponse,
   type DeploymentInspectTarget,
+  type DeploymentInfrastructureBlocker,
   type DeploymentReadEnvironmentSummary,
   type DeploymentReadOperationSummary,
   type DeploymentReadProjectSummary,
@@ -53,6 +54,7 @@ interface BuildDeploymentStatusResponseInput {
   activeDeployments?: DeploymentReadSummary[];
   deployments?: DeploymentReadSummary[];
   environment?: DeploymentReadEnvironmentSummary;
+  infrastructureBlocker?: DeploymentInfrastructureBlocker | null;
   project?: DeploymentReadProjectSummary;
 }
 
@@ -212,6 +214,7 @@ export function buildDeploymentStatusResponse(
     activeDeployments: input.activeDeployments ?? [deployment],
     deployments: input.deployments ?? [deployment],
     environment: input.environment ?? { name: 'production' },
+    infrastructureBlocker: input.infrastructureBlocker ?? null,
     project: input.project ?? { name: 'smoke-web' },
   };
 }

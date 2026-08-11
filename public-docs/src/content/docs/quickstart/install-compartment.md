@@ -46,7 +46,7 @@ Do not put the password on the command line.
 
 ## Use an existing Kubernetes cluster
 
-The existing-Kubernetes path remains available for operator-managed clusters. Compartment requires Kubernetes 1.35
+The existing-Kubernetes path remains available for operator-managed clusters. Compartment requires Kubernetes 1.30
 or newer and verifies the required APIs and runtime capabilities before installation. The exact managed k3s version
 is an installation pin, not an upper compatibility limit for existing clusters.
 
@@ -56,7 +56,7 @@ workloads scheduled on that node.
 Before installation, also provide:
 
 - `helm` 4.0.0 or newer on `PATH` (`helm version --short`);
-- `kubectl` 1.35.0 or newer on `PATH` and within one minor version of the target Kubernetes API server
+- `kubectl` 1.30.0 or newer on `PATH` and within one minor version of the target Kubernetes API server
   (`kubectl version --client`);
 - an Issuer or ClusterIssuer for operator-owned public domains;
 - a separate cert-manager CA Issuer or ClusterIssuer for the private registry, with its CA already trusted by every

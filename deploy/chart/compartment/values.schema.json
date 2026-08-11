@@ -3,7 +3,267 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "capsule": { "type": "object" },
+    "capsule": {
+      "type": "object",
+      "properties": {
+        "crds": {
+          "type": "object",
+          "properties": {
+            "install": { "const": false },
+            "inline": { "const": false },
+            "exclusive": { "const": false },
+            "createConfig": { "const": false },
+            "createRBAC": { "const": false },
+            "createDiagnostics": { "const": false }
+          }
+        },
+        "extraManifests": { "type": "array", "maxItems": 0 },
+        "customAnnotations": { "const": {} },
+        "customLabels": { "const": {} },
+        "imagePullSecrets": { "type": "array", "maxItems": 0 },
+        "jobs": { "const": {} },
+        "podAnnotations": { "const": {} },
+        "podLabels": { "const": {} },
+        "conversions": {
+          "type": "object",
+          "properties": {
+            "service": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "url": { "const": "" },
+                "caBundle": { "const": "" },
+                "name": { "const": "" },
+                "namespace": { "const": "" },
+                "port": { "type": "null" }
+              }
+            }
+          }
+        },
+        "certManager": {
+          "type": "object",
+          "properties": {
+            "generateCertificates": { "const": true },
+            "additionalSANS": { "type": "array", "maxItems": 0 }
+          }
+        },
+        "global": {
+          "type": "object",
+          "properties": {
+            "jobs": {
+              "type": "object",
+              "properties": {
+                "postInstall": {
+                  "type": "object",
+                  "properties": { "enabled": { "const": false } }
+                },
+                "preDelete": {
+                  "type": "object",
+                  "properties": { "enabled": { "const": false } }
+                }
+              }
+            }
+          }
+        },
+        "manager": {
+          "type": "object",
+          "properties": {
+            "apiPriorityAndFairness": {
+              "type": "object",
+              "properties": { "enabled": { "const": false } }
+            },
+            "env": { "type": "array", "maxItems": 0 },
+            "extraArgs": { "type": "array", "maxItems": 0 },
+            "hostNetwork": { "const": false },
+            "hostPID": { "const": false },
+            "image": {
+              "type": "object",
+              "properties": {
+                "registry": { "const": "ghcr.io" },
+                "repository": { "const": "projectcapsule/capsule" },
+                "pullPolicy": { "const": "IfNotPresent" },
+                "tag": {
+                  "const": "v0.13.11@sha256:d55bef9a0753259dddbe84a84a5a8d1ee0ebecf23de44ea2056072e08c41338c"
+                }
+              }
+            },
+            "kind": { "const": "Deployment" },
+            "options": {
+              "type": "object",
+              "properties": {
+                "administrators": { "type": "array", "maxItems": 0 },
+                "allowServiceAccountPromotion": { "const": false },
+                "createConfiguration": { "const": true },
+                "tracing": {
+                  "type": "object",
+                  "properties": { "enabled": { "const": false } }
+                },
+                "users": { "type": "array", "maxItems": 0 },
+                "ignoreUserWithGroups": { "type": "array", "maxItems": 0 },
+                "userNames": { "type": "array", "maxItems": 0 },
+                "capsuleUserGroups": { "type": "array", "maxItems": 0 }
+              }
+            },
+            "rbac": {
+              "type": "object",
+              "properties": {
+                "create": { "const": false },
+                "strict": { "const": true },
+                "role": {
+                  "type": "object",
+                  "properties": { "extraResources": { "type": "array", "maxItems": 0 } }
+                },
+                "clusterRole": {
+                  "type": "object",
+                  "properties": { "extraResources": { "type": "array", "maxItems": 0 } }
+                }
+              },
+              "additionalProperties": { "type": "array", "maxItems": 0 }
+            },
+            "securityContext": { "const": {} },
+            "volumeMounts": { "type": "array", "maxItems": 0 },
+            "volumes": { "type": "array", "maxItems": 0 }
+          }
+        },
+        "podSecurityContext": {
+          "const": {
+            "enabled": true,
+            "seccompProfile": { "type": "RuntimeDefault" },
+            "runAsGroup": 1002,
+            "runAsNonRoot": true,
+            "runAsUser": 1002
+          }
+        },
+        "proxy": {
+          "type": "object",
+          "properties": { "enabled": { "const": false } }
+        },
+        "rbac": {
+          "type": "object",
+          "properties": {
+            "resources": {
+              "type": "object",
+              "properties": { "create": { "const": false } }
+            },
+            "resourcepoolclaims": {
+              "type": "object",
+              "properties": { "create": { "const": false } }
+            }
+          }
+        },
+        "replicaCount": { "const": 2 },
+        "securityContext": {
+          "const": {
+            "enabled": true,
+            "capabilities": { "drop": ["ALL"] },
+            "allowPrivilegeEscalation": false,
+            "readOnlyRootFilesystem": true
+          }
+        },
+        "serviceAccount": {
+          "type": "object",
+          "properties": {
+            "annotations": { "const": {} },
+            "create": { "const": true },
+            "imagePullSecrets": { "type": "array", "maxItems": 0 },
+            "name": { "const": "" }
+          }
+        },
+        "tls": {
+          "type": "object",
+          "properties": {
+            "enableController": { "const": false },
+            "create": { "const": false },
+            "name": { "const": "" }
+          }
+        },
+        "webhooks": {
+          "type": "object",
+          "properties": {
+            "exclusive": { "const": false },
+            "matchConditions": { "type": "array", "maxItems": 0 },
+            "service": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "url": { "const": "" },
+                "caBundle": { "const": "" },
+                "name": { "const": "" },
+                "namespace": { "const": "" },
+                "port": { "type": "null" }
+              }
+            },
+            "hooks": {
+              "type": "object",
+              "properties": {
+                "calculations": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": { "const": true },
+                    "failurePolicy": { "const": "Fail" },
+                    "matchConditions": { "type": "array", "maxItems": 0 },
+                    "matchPolicy": { "const": "Equivalent" },
+                    "objectSelector": { "const": {} },
+                    "opts": { "const": {} },
+                    "namespaceSelector": {
+                      "const": {
+                        "matchLabels": { "app.kubernetes.io/managed-by": "compartment" },
+                        "matchExpressions": [
+                          { "key": "compartment.dev/organization-id", "operator": "Exists" },
+                          { "key": "compartment.dev/project-id", "operator": "Exists" }
+                        ]
+                      }
+                    },
+                    "rules": {
+                      "const": [
+                        {
+                          "apiGroups": [""],
+                          "apiVersions": ["v1"],
+                          "operations": ["CREATE", "UPDATE"],
+                          "resources": ["pods", "persistentvolumeclaims"],
+                          "scope": "Namespaced"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "config": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "cordoning": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "customquotas": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "customresources": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "devices": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "gateways": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "generic": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "globalcustomquotas": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "ingresses": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "managed": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "metadata": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "namespaces": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "namespaceOwnerReference": { "const": {} },
+                "nodes": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "owners": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "persistentvolumeclaims": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "pods": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "replications": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "resourcepools": {
+                  "type": "object",
+                  "properties": {
+                    "claims": { "$ref": "#/definitions/disabledCapsuleHook" },
+                    "pools": { "$ref": "#/definitions/disabledCapsuleHook" }
+                  }
+                },
+                "rulestatus": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "serviceaccounts": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "services": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "tenants": { "$ref": "#/definitions/disabledCapsuleHook" },
+                "tenantResourceObjects": { "const": {} },
+                "defaults": { "const": { "ingress": {}, "pvc": {}, "pods": {} } }
+              }
+            }
+          }
+        }
+      }
+    },
     "nameOverride": { "type": "string" },
     "fullnameOverride": { "type": "string" },
     "images": {
@@ -583,6 +843,10 @@
     }
   ],
   "definitions": {
+    "disabledCapsuleHook": {
+      "type": "object",
+      "properties": { "enabled": { "const": false } }
+    },
     "kubernetesQuantity": {
       "type": "string",
       "pattern": "^(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[numkMGTPE]|[KMGTPE]i|[eE][+-]?[0-9]+)?$"

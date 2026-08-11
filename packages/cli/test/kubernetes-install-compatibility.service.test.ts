@@ -11,8 +11,8 @@ import type { KubernetesInstallCompatibility } from '../src/services/kubernetes-
 describe('Kubernetes install compatibility', (): void => {
   it('accepts Kubernetes from the minimum onward without an upper minor ceiling', (): void => {
     expect(isSupportedKubernetesVersion('v1.29.9')).toBe(false);
-    expect(isSupportedKubernetesVersion('v1.35.0')).toBe(true);
-    expect(isSupportedKubernetesVersion('v1.35.0-eks.1')).toBe(true);
+    expect(isSupportedKubernetesVersion('v1.30.0')).toBe(true);
+    expect(isSupportedKubernetesVersion('v1.30.0-eks.1')).toBe(true);
     expect(isSupportedKubernetesVersion('v1.40.0')).toBe(true);
   });
 

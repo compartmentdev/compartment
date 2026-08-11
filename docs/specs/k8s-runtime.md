@@ -298,7 +298,7 @@ cache import and export use the project/service-scoped cache repository for both
 
 The bootstrap role and controller role are derived from the immutable T5 artifacts. No
 production or seeded Compartment principal receives either role by default.
-Fresh installs require Kubernetes 1.35 or newer and install a fail-closed
+Fresh installs require Kubernetes 1.30 or newer and install a fail-closed
 `ValidatingAdmissionPolicy`. Every short-lived bootstrap ServiceAccount is
 named after its immutable `cpt-*` target namespace. Admission permits that
 identity to create the namespace and canonical controller RoleBindings only
@@ -323,20 +323,23 @@ operations and resource reconcile runs instead of leaving them unclaimable.
 Existing project controller RoleBindings remain unchanged; new projects and
 explicit retries use the target-bound bootstrap identity.
 
-Each organization receives one Capsule `GlobalCustomQuota` pool selected by
-its immutable organization label across all managed project namespaces. The
-fixed pool permits 20 CPU requests and limits, 20Gi memory requests and limits,
-and 100Gi requested PVC storage. Capsule admission evaluates
-only Pod and PVC create, update, and delete requests in positively labeled
+Each organization receives one logical Capsule quota pool, projected as five
+`GlobalCustomQuota` resources and selected by its immutable organization label
+across all managed project namespaces. The fixed pool permits 20 CPU requests
+and limits, 20Gi memory requests and limits, and 100Gi requested PVC storage. Capsule admission evaluates
+only Pod and PVC create and update requests in positively labeled
 project namespaces and fails closed. Platform and build namespaces are outside
 that selector. Existing workloads are not evicted when aggregate usage is over
 limit; new Pod or PVC admission remains denied until deletion or downsizing
 releases capacity. API state tracks only reconciliation readiness, never usage.
-That state is created in the organization transaction and backfilled for
-existing organizations. The leader worker marks reconciliation successful only
-after it applies the quota objects and labels every existing project namespace
-with the immutable organization ID. Project namespace provisioning waits for
-that infrastructure readiness, not for available quota usage.
+That state is created transactionally for every new organization. The leader
+worker marks reconciliation successful only after it applies the quota objects.
+Every new project namespace receives the immutable organization ID on its first
+projection. Project namespace provisioning waits for that infrastructure
+readiness, not for available quota usage. Reconciliation failures retry after
+five seconds until the third attempt and every 15 minutes after that.
+Deployment status reports the persisted infrastructure failure and next retry
+time while the project remains pending.
 
 ## Migration and deletion
 

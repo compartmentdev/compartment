@@ -8,6 +8,7 @@ import type {
 import type { KubeManifest } from './kube-runtime.types';
 
 const organizationLabel: string = 'compartment.dev/organization-id';
+const reconcileRequestedAtAnnotation: string = 'reconcile.projectcapsule.dev/requestedAt';
 const activePodSelectors: string[] = ['.status.phase!=Succeeded', '.status.phase!=Failed', '.status.phase!=Unknown'];
 
 interface OrganizationQuotaDefinition {
@@ -50,6 +51,7 @@ export function organizationGlobalCustomQuotaManifests(input: OrganizationQuotaP
       apiVersion: 'capsule.clastix.io/v1beta2',
       kind: 'GlobalCustomQuota',
       metadata: {
+        annotations: { [reconcileRequestedAtAnnotation]: input.reconciliationRequestedAt },
         labels: { 'app.kubernetes.io/managed-by': 'compartment', [organizationLabel]: input.organizationId },
         name: kubeOrganizationQuotaName(input.organizationId, definition.resource),
       },

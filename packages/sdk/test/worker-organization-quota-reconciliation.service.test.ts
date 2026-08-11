@@ -15,7 +15,7 @@ afterEach((): void => {
 describe('worker organization quota reconciliation service', (): void => {
   it('uses the private claim and lease-fenced completion paths', async (): Promise<void> => {
     const fetchState: FetchMockState = mockFetchSequence([
-      createJsonResponse({ target: { leaseId: 'oql_1', namespaceIds: ['prj_1'], organizationId: 'org_1' } }),
+      createJsonResponse({ target: { leaseId: 'oql_1', organizationId: 'org_1' } }),
       createJsonResponse({ applied: true }),
     ]);
     const request: CompartmentRequester = createCompartmentRequester({

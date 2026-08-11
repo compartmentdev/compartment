@@ -95,7 +95,7 @@ describe('install command boundary', (): void => {
 
     expect(exitCode).toBe(1);
     expect(readCliStderr(capture)).toBe(
-      '✗ kubeconfig: No usable Kubernetes cluster found.\n\nCompartment installs into an existing Kubernetes cluster.\n\nInstall a supported cluster or set KUBECONFIG to an existing one.\n\nAlso required: kubectl >= 1.35 and Helm >= 4.\n',
+      '✗ kubeconfig: No usable Kubernetes cluster found.\n\nCompartment installs into an existing Kubernetes cluster.\n\nInstall a supported cluster or set KUBECONFIG to an existing one.\n\nAlso required: kubectl >= 1.30 and Helm >= 4.\n',
     );
     expect(mocks.assertLocalTools).not.toHaveBeenCalled();
   });

@@ -14,11 +14,7 @@ import {
 import type { ProjectProvisioningAuthorityInput } from '../src/kube-project-provisioning-authority.types';
 import { projectApplicationManifests } from '../src/kube-projections';
 import type { ApplicationProjectionRow } from '../src/kube-application-projection.types';
-import {
-  projectNamespaceDeleteTarget,
-  projectNamespaceOrganizationLabelManifest,
-  projectNamespaceProvisioningBundle,
-} from '../src/kube-provisioning';
+import { projectNamespaceDeleteTarget, projectNamespaceProvisioningBundle } from '../src/kube-provisioning';
 import type { ProjectNamespaceProvisioningRow } from '../src/kube-provisioning.types';
 import {
   projectResourceBootstrapClaims,
@@ -99,7 +95,11 @@ const transportAuditRegistry: readonly TransportAuditCase[] = [
     projection: 'projectResourceQuotaManifest',
   },
   {
-    manifests: (): KubeManifest[] => organizationGlobalCustomQuotaManifests({ organizationId: 'org-01jz' }),
+    manifests: (): KubeManifest[] =>
+      organizationGlobalCustomQuotaManifests({
+        organizationId: 'org-01jz',
+        reconciliationRequestedAt: '2026-08-11T10:00:00.000Z',
+      }),
     projection: 'organizationGlobalCustomQuotaManifests',
   },
   {
@@ -109,10 +109,6 @@ const transportAuditRegistry: readonly TransportAuditCase[] = [
   {
     manifests: (): KubeManifest[] => [projectNamespaceDeleteTarget(namespaceId)],
     projection: 'projectNamespaceDeleteTarget',
-  },
-  {
-    manifests: (): KubeManifest[] => [projectNamespaceOrganizationLabelManifest(namespaceId, 'org-01jz')],
-    projection: 'projectNamespaceOrganizationLabelManifest',
   },
   {
     manifests: (): KubeManifest[] => bundleManifests(projectProvisioningAuthorityBundle(authorityInput())),

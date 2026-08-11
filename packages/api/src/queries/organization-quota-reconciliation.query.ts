@@ -1,10 +1,11 @@
-import { and, asc, eq, gt, lt, or, sql, type SQL } from 'drizzle-orm';
-import { organizationQuotaReconciliation, projects } from '../db/schema';
+import { and, asc, eq, gt, gte, isNotNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { organizationQuotaReconciliation } from '../db/schema';
 import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { claimSelectedRow } from './claim-row.query.shared';
 import type {
   CompleteOrganizationQuotaReconcileInput,
+  OrganizationQuotaInfrastructureBlockerRow,
   OrganizationQuotaReconcileClaimRow,
   OrganizationQuotaTransaction,
 } from './organization-quota-reconciliation.query.types';
@@ -12,6 +13,7 @@ import type {
 const organizationQuotaLeaseDurationMs: number = 300_000;
 const organizationQuotaRetryDelayMs: number = 5_000;
 const organizationQuotaReconciliationAttemptLimit: number = 3;
+const organizationQuotaRecoveryDelayMs: number = 900_000;
 
 export async function createOrganizationQuotaReconciliationWithExecutor(
   transaction: OrganizationQuotaTransaction,
@@ -30,7 +32,7 @@ export async function claimOrganizationQuotaReconciliation(): Promise<Organizati
 async function claimOrganizationQuotaWithTransaction(
   transaction: OrganizationQuotaTransaction,
 ): Promise<OrganizationQuotaReconcileClaimRow | null> {
-  await failExhaustedOrganizationQuotaLease(transaction);
+  await failExpiredOrganizationQuotaLease(transaction);
   return await claimSelectedRow(
     transaction,
     async (
@@ -45,11 +47,11 @@ async function claimOrganizationQuotaWithTransaction(
   );
 }
 
-async function failExhaustedOrganizationQuotaLease(transaction: OrganizationQuotaTransaction): Promise<void> {
+async function failExpiredOrganizationQuotaLease(transaction: OrganizationQuotaTransaction): Promise<void> {
   await transaction
     .update(organizationQuotaReconciliation)
     .set({
-      failureMessage: `Organization quota reconciliation failed after ${organizationQuotaReconciliationAttemptLimit} attempts: the final lease expired.`,
+      failureMessage: 'Organization quota reconciliation lease expired.',
       leaseExpiresAt: null,
       leaseId: null,
       state: 'failed',
@@ -58,7 +60,6 @@ async function failExhaustedOrganizationQuotaLease(transaction: OrganizationQuot
     .where(
       and(
         eq(organizationQuotaReconciliation.state, 'running'),
-        gt(organizationQuotaReconciliation.attempts, organizationQuotaReconciliationAttemptLimit - 1),
         lt(organizationQuotaReconciliation.leaseExpiresAt, sql`now()`),
       ),
     );
@@ -90,9 +91,12 @@ function organizationQuotaClaimableCondition(): SQL | undefined {
       ),
     ),
     and(
-      eq(organizationQuotaReconciliation.state, 'running'),
-      lt(organizationQuotaReconciliation.attempts, organizationQuotaReconciliationAttemptLimit),
-      lt(organizationQuotaReconciliation.leaseExpiresAt, sql`now()`),
+      eq(organizationQuotaReconciliation.state, 'failed'),
+      gte(organizationQuotaReconciliation.attempts, organizationQuotaReconciliationAttemptLimit),
+      lt(
+        organizationQuotaReconciliation.updatedAt,
+        sql`now() - (${organizationQuotaRecoveryDelayMs} * interval '1 millisecond')`,
+      ),
     ),
   );
 }
@@ -106,17 +110,13 @@ async function leaseOrganizationQuota(
     .update(organizationQuotaReconciliation)
     .set({
       attempts: row.attempts + 1,
-      failureMessage: null,
       leaseExpiresAt: sql`now() + (${organizationQuotaLeaseDurationMs} * interval '1 millisecond')`,
       leaseId,
       state: 'running',
       updatedAt: sql`now()`,
     })
     .where(eq(organizationQuotaReconciliation.organizationId, row.organizationId));
-  const namespaceIds: string[] = (
-    await transaction.select({ id: projects.id }).from(projects).where(eq(projects.organizationId, row.organizationId))
-  ).map(({ id }): string => id);
-  return { leaseId, namespaceIds, organizationId: row.organizationId };
+  return { leaseId, organizationId: row.organizationId };
 }
 
 export async function completeOrganizationQuotaReconciliation(
@@ -141,4 +141,32 @@ export async function completeOrganizationQuotaReconciliation(
     )
     .returning({ organizationId: organizationQuotaReconciliation.organizationId });
   return rows.length === 1;
+}
+
+export async function readOrganizationQuotaInfrastructureBlocker(
+  organizationId: string,
+): Promise<OrganizationQuotaInfrastructureBlockerRow | null> {
+  const row = (
+    await getApiDatabase()
+      .select({
+        message: organizationQuotaReconciliation.failureMessage,
+        updatedAt: organizationQuotaReconciliation.updatedAt,
+      })
+      .from(organizationQuotaReconciliation)
+      .where(
+        and(
+          eq(organizationQuotaReconciliation.organizationId, organizationId),
+          eq(organizationQuotaReconciliation.state, 'failed'),
+          gte(organizationQuotaReconciliation.attempts, organizationQuotaReconciliationAttemptLimit),
+          isNotNull(organizationQuotaReconciliation.failureMessage),
+        ),
+      )
+      .limit(1)
+  )[0];
+  return row?.message === undefined || row.message === null
+    ? null
+    : {
+        message: row.message,
+        retryAt: new Date(row.updatedAt.getTime() + organizationQuotaRecoveryDelayMs),
+      };
 }

@@ -811,11 +811,17 @@ describe('contract schemas deployment and app access', (): void => {
       buildDeploymentStatusResponse({
         activeDeployments: [deployment],
         deployments: [deployment],
+        infrastructureBlocker: {
+          code: 'organization_quota_reconciliation_failed',
+          message: 'Capsule quota controller is unavailable.',
+          retryAt: '2026-08-11T10:15:00.000Z',
+        },
       }),
     );
 
     expect(expectPresent(result.activeDeployments[0], 'active deployment').serviceName).toBe('web');
     expect(expectPresent(result.activeDeployments[0], 'active deployment').accessProtected).toBe(false);
+    expect(result.infrastructureBlocker?.retryAt).toBe('2026-08-11T10:15:00.000Z');
   });
 
   it('rejects deployment status payloads without rollback availability', (): void => {

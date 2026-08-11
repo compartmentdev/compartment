@@ -5,12 +5,14 @@ import { formatDeploymentLabelTag } from '../../services/deployment-label-output
 export function createDeploymentProgressSignature(
   deployments: DeploymentReadSummary[],
   liveProgressTime: number | null,
+  infrastructureBlockerSignature: string,
 ): string {
-  return deployments
+  const deploymentSignature: string = deployments
     .map((deployment: DeploymentReadSummary): string =>
       createSingleDeploymentProgressSignature(deployment, liveProgressTime),
     )
     .join('|');
+  return `${deploymentSignature}|${infrastructureBlockerSignature}`;
 }
 
 export function buildDeploymentProgressMessage(
@@ -18,13 +20,19 @@ export function buildDeploymentProgressMessage(
   deployments: DeploymentReadSummary[],
   now: number,
 ): string {
+  const blockerText: string = buildInfrastructureBlockerProgressText(response);
   if (deployments.length === 1) {
-    return buildSingleDeploymentProgressMessage(response, deployments[0]!, now);
+    return `${buildSingleDeploymentProgressMessage(response, deployments[0]!, now)}${blockerText}`;
   }
 
   return `Deploy ${response.project.name}/${response.environment.name}: ${deployments
     .map((deployment: DeploymentReadSummary): string => formatDeploymentProgressPart(deployment, now))
-    .join('; ')}.`;
+    .join('; ')}.${blockerText}`;
+}
+
+function buildInfrastructureBlockerProgressText(response: DeploymentStatusResponse): string {
+  const blocker = response.infrastructureBlocker;
+  return blocker === null ? '' : ` Infrastructure blocked: ${blocker.message} Automatic retry at ${blocker.retryAt}.`;
 }
 
 function createSingleDeploymentProgressSignature(

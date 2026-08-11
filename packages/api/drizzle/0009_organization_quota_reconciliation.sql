@@ -9,9 +9,5 @@ CREATE TABLE "organization_quota_reconciliation" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-INSERT INTO "organization_quota_reconciliation" ("organization_id")
-SELECT "id" FROM "organizations"
-ON CONFLICT ("organization_id") DO NOTHING;
---> statement-breakpoint
 ALTER TABLE "organization_quota_reconciliation" ADD CONSTRAINT "organization_quota_reconciliation_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "organization_quota_reconciliation_state_lease_idx" ON "organization_quota_reconciliation" USING btree ("state","lease_expires_at");

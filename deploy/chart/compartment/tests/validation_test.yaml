@@ -249,3 +249,188 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: resources.buildRunner.limits.memory.*pattern
+
+  - it: rejects Capsule cluster-admin RBAC generation
+    set:
+      capsule:
+        manager:
+          rbac:
+            create: true
+            strict: false
+    asserts:
+      - failedTemplate:
+          errorPattern: capsule/manager/rbac/create.*value must be false
+
+  - it: rejects enabling the write-capable Capsule CRD lifecycle hook
+    set:
+      capsule:
+        crds:
+          install: true
+    asserts:
+      - failedTemplate:
+          errorPattern: capsule/crds/install.*value must be false
+
+  - it: rejects disabling the canonical Capsule configuration
+    set:
+      capsule:
+        manager:
+          options:
+            createConfiguration: false
+    asserts:
+      - failedTemplate:
+          errorPattern: capsule/manager/options/createConfiguration.*value must be true
+
+  - it: rejects disabling Capsule webhook certificates
+    set:
+      capsule:
+        certManager:
+          generateCertificates: false
+    asserts:
+      - failedTemplate:
+          errorPattern: capsule/certManager/generateCertificates.*value must be true
+
+  - it: rejects enabling an unmanaged Capsule webhook
+    set:
+      capsule:
+        webhooks:
+          hooks:
+            pods:
+              enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: capsule/webhooks/hooks/pods/enabled.*value must be false
+
+  - it: rejects making the organization quota webhook fail open
+    set:
+      capsule:
+        webhooks:
+          hooks:
+            calculations:
+              failurePolicy: Ignore
+    asserts:
+      - failedTemplate:
+          errorPattern: capsule/webhooks/hooks/calculations/failurePolicy.*value must be 'Fail'
+
+  - it: rejects bypassing organization quota admission with a match condition
+    set:
+      capsule:
+        webhooks:
+          hooks:
+            calculations:
+              matchConditions:
+                - name: bypass
+                  expression: 'false'
+    asserts:
+      - failedTemplate:
+          errorPattern: capsule.webhooks.hooks.calculations.matchConditions.*maxItems
+
+  - it: rejects redirecting Capsule admission to an external service
+    set:
+      capsule:
+        webhooks:
+          service:
+            url: https://attacker.example
+    asserts:
+      - failedTemplate:
+          errorPattern: capsule/webhooks/service/url.*value must be ''
+
+  - it: rejects arbitrary Capsule manifests
+    set:
+      capsule:
+        extraManifests:
+          - apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: injected
+    asserts:
+      - failedTemplate:
+          errorPattern: capsule.extraManifests.*maxItems
+
+  - it: rejects Capsule users outside the canonical integration
+    set:
+      capsule:
+        manager:
+          options:
+            users:
+              - kind: Group
+                name: administrators
+    asserts:
+      - failedTemplate:
+          errorPattern: capsule.manager.options.users.*maxItems
+
+  - it: rejects enabling Capsule tracing and external Secret injection
+    set:
+      capsule:
+        manager:
+          options:
+            tracing:
+              enabled: true
+              endpoint: attacker.example:4317
+              basicAuth:
+                existingSecret:
+                  name: compartment-internal
+    asserts:
+      - failedTemplate:
+          errorPattern: capsule.manager.options.tracing.enabled
+
+  - it: rejects global annotations on the Capsule ServiceAccount
+    set:
+      capsule:
+        customAnnotations:
+          eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/admin
+    asserts:
+      - failedTemplate:
+          errorPattern: capsule.customAnnotations
+
+  - it: rejects global labels that can trigger admission sidecars
+    set:
+      capsule:
+        customLabels:
+          sidecar.istio.io/inject: 'true'
+    asserts:
+      - failedTemplate:
+          errorPattern: capsule.customLabels
+
+  - it: rejects replacing the verified Capsule manager image
+    set:
+      capsule:
+        manager:
+          image:
+            repository: example/capsule
+    asserts:
+      - failedTemplate:
+          errorPattern: capsule/manager/image/repository.*value must be 'projectcapsule/capsule'
+
+  - it: rejects the deprecated Capsule hook image override
+    set:
+      capsule:
+        jobs:
+          image:
+            registry: docker.io
+            repository: library/busybox
+            tag: latest
+    asserts:
+      - failedTemplate:
+          errorPattern: capsule.jobs.*const
+
+  - it: rejects optional Capsule API priority and fairness resources
+    set:
+      capsule:
+        manager:
+          apiPriorityAndFairness:
+            enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: capsule/manager/apiPriorityAndFairness/enabled.*value must be false
+
+  - it: rejects deprecated Capsule webhook aliases
+    set:
+      capsule:
+        webhooks:
+          hooks:
+            defaults:
+              pods:
+                enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: capsule.webhooks.hooks.defaults.*const

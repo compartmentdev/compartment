@@ -165,7 +165,7 @@ describe('managed VM install command boundary', (): void => {
 
       expect(await runCli(['install', ...ownerInstallArgs().slice(3)], capture.io)).toBe(1);
       expect(readCliStderr(capture)).toContain('No usable Kubernetes cluster detected.');
-      expect(readCliStderr(capture)).toContain('Kubernetes 1.35 or newer with the required APIs');
+      expect(readCliStderr(capture)).toContain('Kubernetes 1.30 or newer with the required APIs');
       expect(readCliStderr(capture)).toContain('Install managed Kubernetes on this VM? [Y/n]:');
       expect(readCliStderr(capture)).toContain('cancelled before host changes');
     } finally {

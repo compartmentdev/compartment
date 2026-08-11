@@ -141,7 +141,6 @@ describe('internal worker routes', (): void => {
     applyApiRouteTestEnv();
     mocks.claimNextOrganizationQuotaReconciliation.mockResolvedValueOnce({
       leaseId: 'oql_123',
-      namespaceIds: [],
       organizationId: 'org_123',
     });
     await withApiRouteApp(async (app: ApiApp): Promise<void> => {
@@ -153,7 +152,7 @@ describe('internal worker routes', (): void => {
       });
       expect(response.statusCode).toBe(200);
       expect(workerClaimOrganizationQuotaReconcileResponseSchema.parse(response.json())).toEqual({
-        target: { leaseId: 'oql_123', namespaceIds: [], organizationId: 'org_123' },
+        target: { leaseId: 'oql_123', organizationId: 'org_123' },
       });
     });
   });

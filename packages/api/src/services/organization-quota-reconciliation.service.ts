@@ -12,7 +12,6 @@ export async function claimNextOrganizationQuotaReconciliation(): Promise<Organi
   }
   return {
     leaseId: row.leaseId,
-    namespaceIds: row.namespaceIds,
     organizationId: row.organizationId,
   };
 }

@@ -236,6 +236,7 @@ function createDeploymentStatusResponse(): DeploymentStatusResponse {
     environment: {
       name: 'production',
     },
+    infrastructureBlocker: null,
     project: {
       name: 'smoke-web',
     },

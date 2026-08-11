@@ -61,7 +61,7 @@ describe('existing Kubernetes non-persistent preflight', (): void => {
     input.install.owner.email = 'operator@service.test';
 
     await expect(runKubernetesExistingClusterPreflight(input)).resolves.toEqual({
-      kubernetesVersion: 'v1.35.2',
+      kubernetesVersion: 'v1.33.2',
     });
   });
 
@@ -91,11 +91,11 @@ describe('existing Kubernetes non-persistent preflight', (): void => {
 
   it('rejects an unsupported Kubernetes version before later checks', async (): Promise<void> => {
     const fixture: PreflightFixture = passingFixture();
-    fixture.version = 'v1.34.9';
+    fixture.version = 'v1.29.9';
     installFixture(fixture);
 
     await expect(runKubernetesExistingClusterPreflight(preflightInput())).rejects.toThrow(
-      'Kubernetes 1.35 or newer is required; detected v1.34.9.',
+      'Kubernetes 1.30 or newer is required; detected v1.29.9.',
     );
   });
 
@@ -282,7 +282,7 @@ describe('existing Kubernetes non-persistent preflight', (): void => {
     installFixture(fixture);
 
     await expect(runKubernetesExistingClusterPreflight(preflightInput())).resolves.toEqual({
-      kubernetesVersion: 'v1.35.2',
+      kubernetesVersion: 'v1.33.2',
     });
     expect(mockedRunCommandWithInput).toHaveBeenCalledTimes(1);
     expect(mockedRunCommandWithInput.mock.calls[0]?.[0]).toContain('--dry-run=server');
@@ -440,7 +440,7 @@ function passingFixture(): PreflightFixture {
         },
       },
     ],
-    version: 'v1.35.2',
+    version: 'v1.33.2',
     webhookConfigurations: [
       {
         webhooks: [

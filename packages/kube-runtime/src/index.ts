@@ -31,11 +31,7 @@ export {
   resourcePodsFullyTerminated,
 } from './kube-resource-projection';
 export type { ProjectNetworkPolicyProjection } from './kube-network-policy-projection.types';
-export {
-  projectNamespaceDeleteTarget,
-  projectNamespaceOrganizationLabelManifest,
-  projectNamespaceProvisioningBundle,
-} from './kube-provisioning';
+export { projectNamespaceDeleteTarget, projectNamespaceProvisioningBundle } from './kube-provisioning';
 export {
   projectProvisioningAuthorityBundle,
   projectProvisioningAuthorityCleanup,

@@ -24,6 +24,14 @@ export function buildDeploymentReadStatusResponse(result: DeploymentStatusLookup
     activeDeployments: result.activeDeployments.map(buildDeploymentReadSummary),
     deployments: result.deployments.map(buildDeploymentReadSummary),
     environment: buildDeploymentReadEnvironmentSummary(result.environment),
+    infrastructureBlocker:
+      result.infrastructureBlocker === null
+        ? null
+        : {
+            code: result.infrastructureBlocker.code,
+            message: result.infrastructureBlocker.message,
+            retryAt: result.infrastructureBlocker.retryAt.toISOString(),
+          },
     project: buildDeploymentReadProjectSummary(result.project),
   };
 }

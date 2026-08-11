@@ -2,8 +2,8 @@
 
 Owns:
 
-- the nine Kubernetes transport primitives: `apply`, `mergePatchExisting`, `observe`, `read`, `delete`,
-  `observePodMetrics`, `logs`, `runJob`, and namespaced Lease leader election; only `apply`, `mergePatchExisting`,
+- the eight Kubernetes transport primitives: `apply`, `observe`, `read`, `delete`, `observePodMetrics`, `logs`,
+  `runJob`, and namespaced Lease leader election; only `apply`,
   `delete`, `runJob`, and leader election write Kubernetes state;
 - server-side apply through `@kubernetes/client-node` with field manager `compartment`;
 - label-scoped informer caches and their reconnect, relist, health, and observed-at lifecycle;
@@ -21,7 +21,7 @@ Must not:
 - own deployment workflow orchestration;
 - expose raw client-node clients, raw watches, client-side diffing, or `KubeXxxService` wrappers;
 - accept mutable names as canonical selectors or identifiers;
-- add runtime primitives beyond the nine documented operations without updating this boundary and its tests.
+- add runtime primitives beyond the eight documented operations without updating this boundary and its tests.
 
 Change checklist:
 

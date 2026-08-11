@@ -50,7 +50,7 @@ describe('Pod metric namespace scope', (): void => {
       .values({ isolationVersion: 0, projectId: 'prj_upgrade', state: 'succeeded' });
 
     const target: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning('provision');
-    expect(target).toMatchObject({ isolationVersion: 2, projectId: 'prj_upgrade' });
+    expect(target).toMatchObject({ isolationVersion: 1, projectId: 'prj_upgrade' });
     await expect(
       completeProjectProvisioning({
         action: 'provision',
@@ -65,7 +65,7 @@ describe('Pod metric namespace scope', (): void => {
       completeProjectProvisioning({
         action: 'provision',
         failureMessage: null,
-        isolationVersion: target?.isolationVersion ?? 2,
+        isolationVersion: target?.isolationVersion ?? 1,
         leaseId: target?.leaseId ?? '',
         projectId: 'prj_upgrade',
         status: 'succeeded',
@@ -88,7 +88,7 @@ describe('Pod metric namespace scope', (): void => {
       completeProjectProvisioning({
         action: 'provision',
         failureMessage: 'retry upgrade',
-        isolationVersion: first?.isolationVersion ?? 2,
+        isolationVersion: first?.isolationVersion ?? 1,
         leaseId: first?.leaseId ?? '',
         projectId: 'prj_retry',
         status: 'failed',
@@ -100,7 +100,7 @@ describe('Pod metric namespace scope', (): void => {
       .where(eq(projectKubeProvisioning.projectId, 'prj_retry'));
 
     await expect(claimPendingProjectProvisioning('provision')).resolves.toMatchObject({
-      isolationVersion: 2,
+      isolationVersion: 1,
       projectId: 'prj_retry',
     });
   });

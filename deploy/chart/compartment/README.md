@@ -5,7 +5,7 @@ existing-cluster preflight before applying it.
 
 ## Requirements
 
-- Kubernetes 1.35.0 or newer
+- Kubernetes 1.30.0 or newer
 - Helm 4.x
 - an existing Ingress Controller
 - cert-manager

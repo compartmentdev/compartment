@@ -195,7 +195,7 @@ webhooks:
     rules:
       - apiGroups: ['']
         apiVersions: [v1]
-        operations: [CREATE, UPDATE, DELETE]
+        operations: [CREATE, UPDATE]
         resources: [pods, persistentvolumeclaims]
         scope: Namespaced
     sideEffects: NoneOnDryRun

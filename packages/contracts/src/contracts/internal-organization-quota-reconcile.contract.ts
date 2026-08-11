@@ -3,7 +3,6 @@ import type { ContractSchema } from './schema.types';
 
 export interface OrganizationQuotaReconcileTarget {
   leaseId: string;
-  namespaceIds: string[];
   organizationId: string;
 }
 
@@ -26,7 +25,7 @@ export const workerClaimOrganizationQuotaReconcilePathname: string = '/internal/
 export const workerCompleteOrganizationQuotaReconcilePathname: string = '/internal/organization-quotas/complete';
 
 const organizationQuotaReconcileTargetSchema: ContractSchema<OrganizationQuotaReconcileTarget> = z
-  .object({ leaseId: z.string().min(1), namespaceIds: z.array(z.string().min(1)), organizationId: z.string().min(1) })
+  .object({ leaseId: z.string().min(1), organizationId: z.string().min(1) })
   .strict();
 
 export const workerClaimOrganizationQuotaReconcileResponseSchema: ContractSchema<WorkerClaimOrganizationQuotaReconcileResponse> =

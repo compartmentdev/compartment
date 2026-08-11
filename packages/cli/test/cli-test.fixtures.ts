@@ -181,6 +181,7 @@ export function createDeploymentStatusResponseFixture(
     activeDeployments: input.activeDeployments,
     deployments: input.deployments,
     environment: createDeploymentReadEnvironmentSummaryFixture(input.environment),
+    infrastructureBlocker: null,
     project: createDeploymentReadProjectSummaryFixture(input.project),
   };
 }

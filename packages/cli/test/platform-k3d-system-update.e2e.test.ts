@@ -9,7 +9,6 @@ import {
   type WhoAmICommandResponse,
 } from '@compartment/contracts';
 import { readSocketSafeTempRootDirectory } from '@compartment/test-support';
-import { immutableKubeName } from '@compartment/utils';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parse, stringify } from 'yaml';
 import { buildSelfHostedUserSetupClientEnv } from './self-hosted-user-setup-client-env.harness';
@@ -79,8 +78,6 @@ const supersededBuildResourceMemory: Readonly<Record<string, string>> = {
 };
 const tempRootDirectory: string = readSocketSafeTempRootDirectory('pk3u-', 'system-api.sock');
 const createdDirectories: string[] = [];
-const legacyProjectId: string = 'prj_system_update_v1';
-const legacyProjectNamespace: string = immutableKubeName('cpt', legacyProjectId);
 
 describe.sequential('production Kubernetes system update', (): void => {
   if (process.env[platformModeEnvName] !== 'k3d') {
@@ -115,17 +112,11 @@ describe.sequential('production Kubernetes system update', (): void => {
       const plantedOperatorValues: ReleaseConfigValues = await readOperatorValuesExceptImages();
       const previousRevision: number = await readHelmRevision();
       const previousApiImage: string = await readApiImage();
-      const restoreControllersAfterUpdateFailure: () => Promise<void> = await prepareLegacyQuotaFixture();
-      let update: KubernetesSystemUpdateResponse;
-      try {
-        update = await cli.runJson(
-          `system update --values ${updateValuesPath} --version ${updateVersion} --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name ${releaseName}`,
-          kubernetesSystemUpdateResponseSchema,
-        );
-      } catch (error) {
-        await restoreControllersAfterUpdateFailure();
-        throw error;
-      }
+
+      const update: KubernetesSystemUpdateResponse = await cli.runJson(
+        `system update --values ${updateValuesPath} --version ${updateVersion} --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name ${releaseName}`,
+        kubernetesSystemUpdateResponseSchema,
+      );
 
       expect(update.updated).toBe(true);
       expect(update.version).toBe(updateVersion);
@@ -138,7 +129,6 @@ describe.sequential('production Kubernetes system update', (): void => {
       const updatedApiImage: string = await readApiImage();
       expect(updatedApiImage).not.toBe(previousApiImage);
       expect(updatedApiImage).toBe(await readTargetApiImage());
-      await expectQuotaBackfillCompleted();
 
       const ownerEmail: string = requireEnvironment('COMPARTMENT_E2E_SEED_ADMIN_EMAIL');
       const ownerPassword: string = requireEnvironment('COMPARTMENT_E2E_SEED_ADMIN_PASSWORD');
@@ -280,150 +270,6 @@ async function readHelmRevision(): Promise<number> {
     throw new Error('Expected Helm to report a numeric release revision.');
   }
   return revision;
-}
-
-async function prepareLegacyQuotaFixture(): Promise<() => Promise<void>> {
-  const stoppedComponents: string[] = [];
-  try {
-    for (const component of ['worker', 'project-provisioner']) {
-      await runRequired([
-        'kubectl',
-        '--context',
-        platformKubeContext,
-        '--namespace',
-        platformNamespace,
-        'scale',
-        `deployment/${releaseName}-${component}`,
-        '--replicas=0',
-      ]);
-      stoppedComponents.push(component);
-      await runRequired([
-        'kubectl',
-        '--context',
-        platformKubeContext,
-        '--namespace',
-        platformNamespace,
-        'wait',
-        '--for=delete',
-        'pod',
-        `--selector=app.kubernetes.io/component=${component}`,
-        '--timeout=120s',
-      ]);
-    }
-    const organizationId: string = (
-      await runPostgresQuery('select id from organizations order by created_at limit 1')
-    ).trim();
-    if (organizationId === '') {
-      throw new Error('Expected an installed organization for the isolation v1 update fixture.');
-    }
-    await runPostgresQuery(
-      `insert into projects (id, organization_id, name) values ('${legacyProjectId}', '${organizationId}', 'system-update-v1'); ` +
-        `insert into project_kube_provisioning (project_id, state, attempts, isolation_version) values ('${legacyProjectId}', 'succeeded', 1, 1); ` +
-        `update organization_quota_reconciliation set attempts = 0, failure_message = null, lease_expires_at = null, lease_id = null, state = 'pending' where organization_id = '${organizationId}'`,
-    );
-    await runRequired(['kubectl', '--context', platformKubeContext, 'create', 'namespace', legacyProjectNamespace]);
-    await runRequired([
-      'kubectl',
-      '--context',
-      platformKubeContext,
-      'label',
-      'namespace',
-      legacyProjectNamespace,
-      'app.kubernetes.io/managed-by=compartment',
-      `compartment.dev/namespace-id=${legacyProjectId}`,
-      `compartment.dev/project-id=${legacyProjectId}`,
-    ]);
-    return async (): Promise<void> => await restoreLegacyControllers(stoppedComponents);
-  } catch (error) {
-    await restoreLegacyControllers(stoppedComponents);
-    throw error;
-  }
-}
-
-async function restoreLegacyControllers(components: readonly string[]): Promise<void> {
-  await Promise.allSettled(
-    components.map(
-      async (component: string): Promise<SelfHostedUserSetupCommandResult> =>
-        await runRequired([
-          'kubectl',
-          '--context',
-          platformKubeContext,
-          '--namespace',
-          platformNamespace,
-          'scale',
-          `deployment/${releaseName}-${component}`,
-          '--replicas=1',
-        ]),
-    ),
-  );
-}
-
-async function expectQuotaBackfillCompleted(): Promise<void> {
-  await runRequired([
-    'kubectl',
-    '--context',
-    platformKubeContext,
-    '--namespace',
-    platformNamespace,
-    'rollout',
-    'status',
-    `deployment/${releaseName}-worker`,
-    '--timeout=120s',
-  ]);
-  let state: string = '';
-  let organizationLabel: string = '';
-  for (let attempt: number = 0; attempt < 120; attempt += 1) {
-    state = (
-      await runPostgresQuery(
-        `select state || ':' || isolation_version from project_kube_provisioning where project_id = '${legacyProjectId}'`,
-      )
-    ).trim();
-    organizationLabel = (
-      await runRequired([
-        'kubectl',
-        '--context',
-        platformKubeContext,
-        'get',
-        'namespace',
-        legacyProjectNamespace,
-        '--output=jsonpath={.metadata.labels.compartment\\.dev/organization-id}',
-      ])
-    ).stdout.trim();
-    if (state === 'succeeded:2' && organizationLabel !== '') {
-      return;
-    }
-    await new Promise<void>((resolveDelay: () => void): NodeJS.Timeout => setTimeout(resolveDelay, 1_000));
-  }
-  const quotaState: string = (
-    await runPostgresQuery(
-      `select q.state || ':' || q.attempts || ':' || coalesce(q.failure_message, '') from organization_quota_reconciliation q inner join projects p on p.organization_id = q.organization_id where p.id = '${legacyProjectId}'`,
-    )
-  ).trim();
-  throw new Error(
-    `System update did not backfill the isolation v1 project namespace and quota infrastructure: state=${state}, organizationLabel=${organizationLabel}, quotaState=${quotaState}.`,
-  );
-}
-
-async function runPostgresQuery(query: string): Promise<string> {
-  return (
-    await runRequired([
-      'kubectl',
-      '--context',
-      platformKubeContext,
-      '--namespace',
-      platformNamespace,
-      'exec',
-      `deployment/${releaseName}-postgres`,
-      '--',
-      'psql',
-      '--username=postgres',
-      '--dbname=compartment',
-      '--tuples-only',
-      '--no-align',
-      '--command',
-      query,
-    ])
-  ).stdout;
 }
 
 async function expectMigrationCompleted(revision: number): Promise<void> {

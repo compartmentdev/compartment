@@ -58,17 +58,6 @@ export function projectNamespaceDeleteTarget(namespaceId: string): KubeManifest 
   };
 }
 
-export function projectNamespaceOrganizationLabelManifest(namespaceId: string, organizationId: string): KubeManifest {
-  return {
-    apiVersion: 'v1',
-    kind: 'Namespace',
-    metadata: {
-      labels: { 'compartment.dev/organization-id': organizationId },
-      name: kubeNamespaceName(namespaceId),
-    },
-  };
-}
-
 function namespaceManifest(row: ProjectNamespaceProvisioningRow, namespace: string): KubeManifest {
   return {
     apiVersion: 'v1',

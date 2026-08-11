@@ -1,7 +1,5 @@
 {{- $name := printf "%s-capsule-admission-cleanup" .Release.Name -}}
 {{- $webhookName := printf "%s-capsule-dynamic-webhook" .Release.Name -}}
-{{- $crdHookName := "capsule-crds" -}}
-{{- $crdHookRbacName := printf "capsule:%s:crds" .Release.Name -}}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -28,25 +26,6 @@ rules:
   - apiGroups: [admissionregistration.k8s.io]
     resourceNames: [{{ $webhookName }}]
     resources: [mutatingwebhookconfigurations, validatingwebhookconfigurations]
-    verbs: [delete]
-  - apiGroups: [rbac.authorization.k8s.io]
-    resourceNames: [{{ $crdHookRbacName }}]
-    resources: [clusterroles, clusterrolebindings]
-    verbs: [delete]
-  - apiGroups: ['']
-    resourceNames: [{{ $crdHookName }}]
-    resources: [serviceaccounts]
-    verbs: [delete]
-  - apiGroups: ['']
-    resourceNames:
-      {{- range $path, $_ := .Subcharts.capsule.Files.Glob "crds/**.yaml" }}
-      - {{ printf "%s-%s" $crdHookName ($path | base | trimSuffix ".yaml" | regexFind "[^_]+$") }}
-      {{- end }}
-    resources: [configmaps]
-    verbs: [delete]
-  - apiGroups: [batch]
-    resourceNames: [{{ $crdHookName }}]
-    resources: [jobs]
     verbs: [delete]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -97,13 +76,6 @@ spec:
             - delete
             - mutatingwebhookconfiguration/{{ $webhookName }}
             - validatingwebhookconfiguration/{{ $webhookName }}
-            - clusterrole/{{ $crdHookRbacName }}
-            - clusterrolebinding/{{ $crdHookRbacName }}
-            - job/{{ $crdHookName }}
-            - serviceaccount/{{ $crdHookName }}
-            {{- range $path, $_ := .Subcharts.capsule.Files.Glob "crds/**.yaml" }}
-            - {{ printf "configmap/%s-%s" $crdHookName ($path | base | trimSuffix ".yaml" | regexFind "[^_]+$") }}
-            {{- end }}
             - --namespace
             - {{ .Release.Namespace }}
             - --ignore-not-found
