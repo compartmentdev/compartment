@@ -119,6 +119,34 @@ The value is saved on each project when that project is created. Changing it lat
 explicit service `accessMode` in `compartment.yml` overrides the saved project default. This controls hosted app
 access, not project permissions or RBAC.
 
+Tenant CPU, memory, and storage budgets are installation values. The defaults reserve 50m CPU and 256 MiB for each
+container, cap each container at 1 CPU and 1 GiB, and give each project and organization a 2 CPU / 2 GiB request budget,
+an 8 CPU / 8 GiB limit budget, and 20 GiB of requested storage. Override them together when sizing tenant capacity:
+
+```yaml
+resources:
+  projectContainerDefaults:
+    request: { cpu: 75m, memory: 384Mi }
+    limit: { cpu: '1', memory: 1Gi }
+  projectQuota:
+    requestsCpu: '3'
+    requestsMemory: 3Gi
+    limitsCpu: '12'
+    limitsMemory: 12Gi
+    requestsStorage: 30Gi
+  organizationQuota:
+    requestsCpu: '4'
+    requestsMemory: 4Gi
+    limitsCpu: '16'
+    limitsMemory: 16Gi
+    requestsStorage: 40Gi
+```
+
+An update reapplies changed quotas to existing organizations and projects. Changed container defaults affect Pods
+created after the update; Kubernetes does not rewrite resources on already running Pods. The number of applications
+that can run is determined by the memory quota and container requests rather than a separate application-count value.
+Project object-count quotas remain fixed.
+
 Build concurrency has separate logical and physical limits. By default, Compartment admits up to 100 in-flight build
 claims, allows two active builds per organization, and applies a build-namespace quota of 48 CPU and 64 GiB. Each
 default build Pod is limited to 2 CPU and 4 GiB, so memory limits the namespace to 16 concurrently admitted build Pods.

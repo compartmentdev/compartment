@@ -769,7 +769,10 @@
         "buildkit",
         "buildRunner",
         "productLogAgent",
-        "wait"
+        "wait",
+        "projectContainerDefaults",
+        "projectQuota",
+        "organizationQuota"
       ],
       "properties": {
         "api": { "$ref": "#/definitions/containerResources" },
@@ -784,7 +787,18 @@
         "buildkit": { "$ref": "#/definitions/buildContainerResources" },
         "buildRunner": { "$ref": "#/definitions/buildContainerResources" },
         "productLogAgent": { "$ref": "#/definitions/containerResources" },
-        "wait": { "$ref": "#/definitions/containerResources" }
+        "wait": { "$ref": "#/definitions/containerResources" },
+        "projectContainerDefaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["request", "limit"],
+          "properties": {
+            "request": { "$ref": "#/definitions/requiredComputeResources" },
+            "limit": { "$ref": "#/definitions/requiredComputeResources" }
+          }
+        },
+        "projectQuota": { "$ref": "#/definitions/tenantQuota" },
+        "organizationQuota": { "$ref": "#/definitions/tenantQuota" }
       }
     },
     "edge": {
@@ -852,6 +866,27 @@
     "kubernetesQuantity": {
       "type": "string",
       "pattern": "^(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[numkMGTPE]|[KMGTPE]i|[eE][+-]?[0-9]+)?$"
+    },
+    "requiredComputeResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpu", "memory"],
+      "properties": {
+        "cpu": { "$ref": "#/definitions/kubernetesQuantity" },
+        "memory": { "$ref": "#/definitions/kubernetesQuantity" }
+      }
+    },
+    "tenantQuota": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestsCpu", "requestsMemory", "limitsCpu", "limitsMemory", "requestsStorage"],
+      "properties": {
+        "requestsCpu": { "$ref": "#/definitions/kubernetesQuantity" },
+        "requestsMemory": { "$ref": "#/definitions/kubernetesQuantity" },
+        "limitsCpu": { "$ref": "#/definitions/kubernetesQuantity" },
+        "limitsMemory": { "$ref": "#/definitions/kubernetesQuantity" },
+        "requestsStorage": { "$ref": "#/definitions/kubernetesQuantity" }
+      }
     },
     "labelSelectorLabels": {
       "description": "Kubernetes label selector. Operators choose the label keys, so only the value type is fixed.",

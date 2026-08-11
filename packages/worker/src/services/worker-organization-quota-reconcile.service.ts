@@ -3,7 +3,12 @@ import type {
   OrganizationQuotaReconcileTarget,
   WorkerCompleteOrganizationQuotaReconcileResponse,
 } from '@compartment/contracts';
-import { organizationGlobalCustomQuotaManifests, type KubeManifest, type KubeRuntime } from '@compartment/kube-runtime';
+import {
+  organizationGlobalCustomQuotaManifests,
+  type KubeManifest,
+  type KubeRuntime,
+  type OrganizationQuotaCapacity,
+} from '@compartment/kube-runtime';
 import { completeOrganizationQuotaReconcile, type CompartmentRequester } from '@compartment/sdk';
 import type {
   OrganizationQuotaObservedManifest,
@@ -18,9 +23,11 @@ export async function executeOrganizationQuotaReconcile(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   target: OrganizationQuotaReconcileTarget,
+  capacity: OrganizationQuotaCapacity,
 ): Promise<void> {
   try {
     const manifests: KubeManifest[] = organizationGlobalCustomQuotaManifests({
+      capacity,
       organizationId: target.organizationId,
       reconciliationRequestedAt: new Date().toISOString(),
     });

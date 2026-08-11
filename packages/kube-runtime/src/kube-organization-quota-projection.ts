@@ -19,27 +19,8 @@ interface OrganizationQuotaDefinition {
 
 type PodQuotaResource = 'limits-cpu' | 'limits-memory' | 'requests-cpu' | 'requests-memory';
 
-const organizationQuotaCapacity: OrganizationQuotaCapacity = {
-  limitsCpu: '20',
-  limitsMemory: '20Gi',
-  requestsCpu: '20',
-  requestsMemory: '20Gi',
-  requestsStorage: '100Gi',
-};
-
-const definitions: OrganizationQuotaDefinition[] = [
-  podDefinition('requests-cpu', organizationQuotaCapacity.requestsCpu),
-  podDefinition('limits-cpu', organizationQuotaCapacity.limitsCpu),
-  podDefinition('requests-memory', organizationQuotaCapacity.requestsMemory),
-  podDefinition('limits-memory', organizationQuotaCapacity.limitsMemory),
-  {
-    limit: organizationQuotaCapacity.requestsStorage,
-    resource: 'pvc-storage',
-    sources: [{ apiVersion: 'v1', kind: 'PersistentVolumeClaim', path: '.spec.resources.requests.storage' }],
-  },
-];
-
 export function organizationGlobalCustomQuotaManifests(input: OrganizationQuotaProjection): KubeManifest[] {
+  const definitions: OrganizationQuotaDefinition[] = organizationQuotaDefinitions(input.capacity);
   return definitions.map((definition: OrganizationQuotaDefinition): KubeManifest => {
     const spec: GlobalCustomQuotaSpec = {
       limit: definition.limit,
@@ -58,6 +39,20 @@ export function organizationGlobalCustomQuotaManifests(input: OrganizationQuotaP
       spec,
     };
   });
+}
+
+function organizationQuotaDefinitions(capacity: OrganizationQuotaCapacity): OrganizationQuotaDefinition[] {
+  return [
+    podDefinition('requests-cpu', capacity.requestsCpu),
+    podDefinition('limits-cpu', capacity.limitsCpu),
+    podDefinition('requests-memory', capacity.requestsMemory),
+    podDefinition('limits-memory', capacity.limitsMemory),
+    {
+      limit: capacity.requestsStorage,
+      resource: 'pvc-storage',
+      sources: [{ apiVersion: 'v1', kind: 'PersistentVolumeClaim', path: '.spec.resources.requests.storage' }],
+    },
+  ];
 }
 
 function podDefinition(resource: PodQuotaResource, limit: string): OrganizationQuotaDefinition {

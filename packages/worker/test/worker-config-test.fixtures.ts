@@ -1,4 +1,5 @@
 import type { WorkerConfig } from '../src/config';
+import type { OrganizationQuotaCapacity, ProjectNamespaceResourceConfiguration } from '@compartment/kube-runtime';
 import type { EdgePodLabels } from '../src/project-network-policy';
 import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
 import { testTenantSecretsKek } from './tenant-secret-test.fixtures';
@@ -11,6 +12,22 @@ export const testEdgePodLabels: EdgePodLabels = {
 };
 
 export const testEdgePodLabelsJson: string = JSON.stringify(testEdgePodLabels);
+
+export const testOrganizationQuota: OrganizationQuotaCapacity = {
+  limitsCpu: '8',
+  limitsMemory: '8Gi',
+  requestsCpu: '2',
+  requestsMemory: '2Gi',
+  requestsStorage: '20Gi',
+};
+
+export const testProjectResourceConfiguration: ProjectNamespaceResourceConfiguration = {
+  containerDefaults: {
+    limit: { cpu: '1', memory: '1Gi' },
+    request: { cpu: '50m', memory: '256Mi' },
+  },
+  quota: testOrganizationQuota,
+};
 
 /**
  * The one worker configuration test doubles start from. Every field a test does not name is
@@ -36,6 +53,7 @@ export function createWorkerTestConfig(overrides: Partial<WorkerConfig> = {}): W
       namespace: 'compartment',
     },
     deploymentInfrastructureTimeoutMs: 600_000,
+    organizationQuota: testOrganizationQuota,
     logLevel: 'silent',
     leaderElection: {
       identity: 'worker-1',

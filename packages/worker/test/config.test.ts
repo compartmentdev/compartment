@@ -31,6 +31,13 @@ describe('readWorkerConfig', (): void => {
       namespace: 'compartment',
     });
     expect(config.deploymentInfrastructureTimeoutMs).toBe(600_000);
+    expect(config.organizationQuota).toEqual({
+      limitsCpu: '8',
+      limitsMemory: '8Gi',
+      requestsCpu: '2',
+      requestsMemory: '2Gi',
+      requestsStorage: '20Gi',
+    });
     expect(config.pollIntervalMs).toBe(1000);
     expect(config.runtimeControlToken).toBe('runtime-control-token');
     expect(config.tenantSecretsKek).toEqual({ current: Buffer.from('11'.repeat(32), 'hex') });
@@ -157,6 +164,17 @@ describe('readWorkerConfig', (): void => {
 
     expect((): WorkerConfig => readWorkerConfig(environment)).toThrow();
   });
+
+  it('rejects invalid organization quota quantities at startup', (): void => {
+    expect(
+      (): WorkerConfig =>
+        readWorkerConfig({
+          ...validEnvironment(),
+          COMPARTMENT_ORGANIZATION_QUOTA:
+            '{"requestsCpu":"-1","requestsMemory":"2Gi","limitsCpu":"8","limitsMemory":"8Gi","requestsStorage":"20Gi"}',
+        }),
+    ).toThrow('COMPARTMENT_ORGANIZATION_QUOTA requestsCpu must be a valid non-negative Kubernetes quantity.');
+  });
 });
 
 const tenantSchedulingJson: string = JSON.stringify({
@@ -178,6 +196,8 @@ function validEnvironment(): NodeJS.ProcessEnv {
       '{"nodeSelector":{"compartment.dev/node-pool":"build"},"runtimeClassName":"gvisor","tolerations":[]}',
     COMPARTMENT_MAX_CONCURRENT_BUILDS: '2',
     COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_ORGANIZATION: '1',
+    COMPARTMENT_ORGANIZATION_QUOTA:
+      '{"requestsCpu":"2","requestsMemory":"2Gi","limitsCpu":"8","limitsMemory":"8Gi","requestsStorage":"20Gi"}',
     COMPARTMENT_API_INTERNAL_HOST: '127.0.0.1',
     COMPARTMENT_API_PORT: '9443',
     COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY: 'registry-signing-key-with-at-least-32-characters',

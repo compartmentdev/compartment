@@ -189,6 +189,8 @@ async function installCompartment(targetApp: ApiApp): Promise<InstallResponse> {
   return response;
 }
 
+const resourceConfigurationFingerprint: string = '0'.repeat(64);
+
 describe('Phase 0 API integration project lifecycle', (): void => {
   useApiDatabaseTestHarness(apiIntegrationDatabaseUrl);
 
@@ -1032,7 +1034,9 @@ async function deleteArchivedProject(sessionToken: string): Promise<LightMyReque
 
 async function waitForProjectTeardownClaim(): Promise<ProjectProvisioningClaimRow> {
   for (let attempt: number = 0; attempt < 100; attempt += 1) {
-    const claimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
+    const claimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning(
+      resourceConfigurationFingerprint,
+    );
     if (claimed?.action === 'teardown') {
       return claimed;
     }

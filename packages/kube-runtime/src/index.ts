@@ -13,6 +13,9 @@ export {
   kubeResourceVolumeName,
 } from './kube-naming';
 export { organizationGlobalCustomQuotaManifests } from './kube-organization-quota-projection';
+export type { OrganizationQuotaCapacity } from './kube-organization-quota-projection.types';
+export type { ProjectContainerDefaults } from './kube-limit-range-projection.types';
+export type { ProjectQuota } from './kube-resource-quota-projection.types';
 export { observeCustomDomainProjection, projectCustomDomainManifests } from './kube-custom-domain-projection';
 export type {
   CustomDomainProjectionObservation,
@@ -37,7 +40,7 @@ export {
   projectProvisioningAuthorityCleanup,
 } from './kube-project-provisioning-authority';
 export type { ProjectProvisioningAuthorityInput } from './kube-project-provisioning-authority.types';
-export type { ProjectNamespaceProvisioningRow } from './kube-provisioning.types';
+export type { ProjectNamespaceProvisioningRow, ProjectNamespaceResourceConfiguration } from './kube-provisioning.types';
 export {
   calculateKubeRolloutStatus,
   kubeDeploymentAvailable,

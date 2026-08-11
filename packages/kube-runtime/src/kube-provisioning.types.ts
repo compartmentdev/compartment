@@ -1,4 +1,11 @@
 import type { ProjectNetworkPolicyProjection } from './kube-network-policy-projection.types';
+import type { ProjectContainerDefaults } from './kube-limit-range-projection.types';
+import type { ProjectQuota } from './kube-resource-quota-projection.types';
+
+export interface ProjectNamespaceResourceConfiguration {
+  containerDefaults: ProjectContainerDefaults;
+  quota: ProjectQuota;
+}
 
 export interface ProjectNamespaceProvisioningRow {
   bootstrapServiceAccount: ProjectProvisioningServiceAccount;

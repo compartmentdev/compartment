@@ -17,6 +17,12 @@ import type { ApplicationProjectionRow } from '../src/kube-application-projectio
 import { projectNamespaceDeleteTarget, projectNamespaceProvisioningBundle } from '../src/kube-provisioning';
 import type { ProjectNamespaceProvisioningRow } from '../src/kube-provisioning.types';
 import {
+  organizationQuotaCapacity,
+  projectContainerDefaults,
+  projectQuota,
+  projectResourceConfiguration,
+} from './kube-resource-configuration.test.fixture';
+import {
   projectResourceBootstrapClaims,
   projectResourceClaimDeleteTargets,
   projectResourceManifests,
@@ -87,23 +93,27 @@ const transportAuditRegistry: readonly TransportAuditCase[] = [
     projection: 'projectNetworkPolicyManifests',
   },
   {
-    manifests: (): KubeManifest[] => [projectLimitRangeManifest(namespace, namespaceId, projectId)],
+    manifests: (): KubeManifest[] => [
+      projectLimitRangeManifest(namespace, namespaceId, projectId, projectContainerDefaults),
+    ],
     projection: 'projectLimitRangeManifest',
   },
   {
-    manifests: (): KubeManifest[] => [projectResourceQuotaManifest(namespace, namespaceId, projectId)],
+    manifests: (): KubeManifest[] => [projectResourceQuotaManifest(namespace, namespaceId, projectId, projectQuota)],
     projection: 'projectResourceQuotaManifest',
   },
   {
     manifests: (): KubeManifest[] =>
       organizationGlobalCustomQuotaManifests({
+        capacity: organizationQuotaCapacity,
         organizationId: 'org-01jz',
         reconciliationRequestedAt: '2026-08-11T10:00:00.000Z',
       }),
     projection: 'organizationGlobalCustomQuotaManifests',
   },
   {
-    manifests: (): KubeManifest[] => bundleManifests(projectNamespaceProvisioningBundle(provisioningRow())),
+    manifests: (): KubeManifest[] =>
+      bundleManifests(projectNamespaceProvisioningBundle(provisioningRow(), projectResourceConfiguration)),
     projection: 'projectNamespaceProvisioningBundle',
   },
   {

@@ -1,4 +1,8 @@
-import type { KubeLeaderElectionConfig, KubeWorkloadScheduling } from '@compartment/kube-runtime';
+import type {
+  KubeLeaderElectionConfig,
+  KubeWorkloadScheduling,
+  ProjectNamespaceResourceConfiguration,
+} from '@compartment/kube-runtime';
 import { z } from 'zod';
 import { readWorkerProcessConfig, workerLeaderElectionConfig, type WorkerProcessConfig } from './config';
 import {
@@ -8,6 +12,11 @@ import {
 import type { ProjectProvisionerConfig } from './project-provisioner.types';
 import { readEdgePodLabels } from './project-network-policy';
 import { readTenantWorkloadScheduling } from './tenant-workload-scheduling';
+import {
+  projectResourceConfigurationFingerprint,
+  readProjectContainerDefaults,
+  readProjectQuota,
+} from './resource-quota-config';
 
 interface ProjectProvisionerEnvironment extends ProjectProvisioningEnvironment {
   COMPARTMENT_KUBE_TENANT_SCHEDULING?: string | undefined;
@@ -27,6 +36,13 @@ export function readProjectProvisionerConfig(env: NodeJS.ProcessEnv = process.en
   const parsed: ProjectProvisionerEnvironment = projectProvisionerEnvironmentSchema.parse(env);
   const tenantScheduling: KubeWorkloadScheduling | undefined = readProjectTenantScheduling(parsed);
   const leaderElection: KubeLeaderElectionConfig = readProjectLeaderElection(worker, parsed);
+  const resourceConfiguration: ProjectNamespaceResourceConfiguration = {
+    containerDefaults: readProjectContainerDefaults(
+      parsed.COMPARTMENT_PROJECT_CONTAINER_DEFAULTS,
+      'COMPARTMENT_PROJECT_CONTAINER_DEFAULTS',
+    ),
+    quota: readProjectQuota(parsed.COMPARTMENT_PROJECT_QUOTA, 'COMPARTMENT_PROJECT_QUOTA'),
+  };
   return {
     apiUrl: worker.apiUrl,
     artifactRegistry: worker.artifactRegistry,
@@ -38,6 +54,11 @@ export function readProjectProvisionerConfig(env: NodeJS.ProcessEnv = process.en
     logLevel: worker.logLevel,
     platformNamespace: parsed.COMPARTMENT_PLATFORM_NAMESPACE,
     provisioningNamespace: parsed.COMPARTMENT_PROVISIONING_NAMESPACE,
+    resourceConfiguration,
+    resourceConfigurationFingerprint: projectResourceConfigurationFingerprint(
+      resourceConfiguration.containerDefaults,
+      resourceConfiguration.quota,
+    ),
     podCidr: parsed.COMPARTMENT_KUBE_POD_CIDR,
     pollIntervalMs: worker.pollIntervalMs,
     runtimeControlToken: worker.runtimeControlToken,

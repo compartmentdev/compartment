@@ -3,6 +3,11 @@ export interface KubeLimitRangeResources {
   memory: string;
 }
 
+export interface ProjectContainerDefaults {
+  limit: KubeLimitRangeResources;
+  request: KubeLimitRangeResources;
+}
+
 export interface KubeLimitRangeItem {
   _default: KubeLimitRangeResources;
   defaultRequest: KubeLimitRangeResources;

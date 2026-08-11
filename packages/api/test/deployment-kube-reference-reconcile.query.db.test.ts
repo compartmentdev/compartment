@@ -44,6 +44,8 @@ const { apiConfig, databaseUrl, db, pool } = createDeploymentKubeReferenceDataba
   'deployment_kube_reference_reconcile',
 );
 
+const resourceConfigurationFingerprint: string = '0'.repeat(64);
+
 describe('deployment Kubernetes transition persistence', (): void => {
   useApiRuntimeDatabaseTestHarness({
     apiConfig,
@@ -405,7 +407,9 @@ describe('deployment Kubernetes transition persistence', (): void => {
     await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'pending' });
 
     for (let attempt: number = 1; attempt <= 3; attempt += 1) {
-      const claimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
+      const claimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning(
+        resourceConfigurationFingerprint,
+      );
       expect(claimed).toMatchObject({ projectId: 'prj_kube', projectName: 'Kube' });
       await completeProjectProvisioning({
         action: 'provision',
@@ -421,7 +425,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
         .where(eq(projectKubeProvisioning.projectId, 'prj_kube'));
     }
 
-    await expect(claimPendingProjectProvisioning()).resolves.toBeNull();
+    await expect(claimPendingProjectProvisioning(resourceConfigurationFingerprint)).resolves.toBeNull();
     const [deployment] = await db.select().from(deployments).where(eq(deployments.id, 'dep_kube'));
     const [operation] = await db.select().from(operations).where(eq(operations.id, 'op_kube'));
     expect(deployment).toMatchObject({ health: 'unhealthy', status: 'failed' });

@@ -23,7 +23,7 @@ describe('worker project provisioning service', (): void => {
       internalToken: 'worker-token',
     });
 
-    await claimProjectProvisioningV2(request);
+    await claimProjectProvisioningV2(request, { resourceConfigurationFingerprint: '0'.repeat(64) });
     await completeProjectProvisioningV2(request, {
       action: 'provision',
       isolationVersion: 1,

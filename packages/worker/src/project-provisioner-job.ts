@@ -9,6 +9,7 @@ import {
   type ProjectProvisionerJobEnvironment,
 } from './project-provisioning-environment';
 import { projectNetworkPolicy } from './project-network-policy';
+import { readProjectContainerDefaults, readProjectQuota } from './resource-quota-config';
 
 async function main(): Promise<void> {
   const environment: ProjectProvisionerJobEnvironment = projectProvisionerJobEnvironmentSchema.parse(process.env);
@@ -16,7 +17,13 @@ async function main(): Promise<void> {
 }
 
 function projectProvisioningBundle(environment: ProjectProvisionerJobEnvironment): ApplyBundle {
-  return projectNamespaceProvisioningBundle(projectProvisioningRow(environment));
+  return projectNamespaceProvisioningBundle(projectProvisioningRow(environment), {
+    containerDefaults: readProjectContainerDefaults(
+      environment.COMPARTMENT_PROJECT_CONTAINER_DEFAULTS,
+      'COMPARTMENT_PROJECT_CONTAINER_DEFAULTS',
+    ),
+    quota: readProjectQuota(environment.COMPARTMENT_PROJECT_QUOTA, 'COMPARTMENT_PROJECT_QUOTA'),
+  });
 }
 
 function projectProvisioningRow(environment: ProjectProvisionerJobEnvironment): ProjectNamespaceProvisioningRow {

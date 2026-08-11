@@ -26,6 +26,10 @@ export interface WorkerClaimProjectProvisioningV2Response {
   target: ProjectProvisioningTargetV2 | null;
 }
 
+export interface WorkerClaimProjectProvisioningV2Request {
+  resourceConfigurationFingerprint: string;
+}
+
 export interface WorkerCompleteProjectProvisioningResponse {
   applied: boolean;
 }
@@ -43,6 +47,10 @@ const projectProvisioningTargetV2Schema: ContractSchema<ProjectProvisioningTarge
     projectId: z.string().min(1),
     projectName: z.string().min(1),
   })
+  .strict();
+
+export const workerClaimProjectProvisioningV2RequestSchema: ContractSchema<WorkerClaimProjectProvisioningV2Request> = z
+  .object({ resourceConfigurationFingerprint: z.string().regex(/^[0-9a-f]{64}$/u) })
   .strict();
 
 export const workerClaimProjectProvisioningV2ResponseSchema: ContractSchema<WorkerClaimProjectProvisioningV2Response> =

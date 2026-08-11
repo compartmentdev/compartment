@@ -15,7 +15,7 @@ import type { ProjectProvisionerConfig } from '../src/project-provisioner.types'
 import { executeProjectProvisioning } from '../src/services/project-provisioning-execution.service';
 import { waitForProjectNamespaceDeletion } from '../src/services/project-teardown-wait.service';
 import { projectProvisionerJobEnvironmentSchema } from '../src/project-provisioning-environment';
-import { testEdgePodLabels } from './worker-config-test.fixtures';
+import { testEdgePodLabels, testProjectResourceConfiguration } from './worker-config-test.fixtures';
 
 describe('project provisioning execution', (): void => {
   it('does not clean bootstrap authority after its provisioning lease is lost', async (): Promise<void> => {
@@ -261,7 +261,9 @@ describe('project provisioning execution', (): void => {
     expect(projectProvisionerJobEnvironmentSchema.parse(job.env)).toEqual(job.env);
     expect(job.env).toMatchObject({
       COMPARTMENT_INSTALLATION_ID: 'inst_1',
+      COMPARTMENT_PROJECT_CONTAINER_DEFAULTS: JSON.stringify(testProjectResourceConfiguration.containerDefaults),
       COMPARTMENT_PROJECT_NAME: 'payments',
+      COMPARTMENT_PROJECT_QUOTA: JSON.stringify(testProjectResourceConfiguration.quota),
     });
   });
 
@@ -632,6 +634,8 @@ function config(tenantScheduling?: KubeWorkloadScheduling): ProjectProvisionerCo
     podCidr,
     pollIntervalMs: 1_000,
     provisioningNamespace: 'compartment-project-provisioning',
+    resourceConfiguration: testProjectResourceConfiguration,
+    resourceConfigurationFingerprint: '0'.repeat(64),
     runtimeControlToken: 'runtime-token',
     serviceCidr,
     ...(tenantScheduling === undefined ? {} : { tenantScheduling }),

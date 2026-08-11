@@ -78,6 +78,13 @@
       "when": 1786459642575,
       "tag": "0010_kind_dark_beast",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1786468293965,
+      "tag": "0011_tan_midnight",
+      "breakpoints": true
     }
   ]
 }

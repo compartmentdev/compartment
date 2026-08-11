@@ -242,6 +242,7 @@ export const projectKubeProvisioning: KubeRuntimeSchemaTypes.ProjectKubeProvisio
       .default(0)
       .$defaultFn((): number => 1)
       .notNull(),
+    resourceConfigurationFingerprint: text('resource_configuration_fingerprint'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

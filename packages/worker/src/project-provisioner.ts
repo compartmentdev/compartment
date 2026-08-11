@@ -47,7 +47,11 @@ async function runProjectProvisioningLoop(
 ): Promise<void> {
   while (!signal.aborted) {
     try {
-      const claimed: ProjectProvisioningTargetV2 | null = (await claimProjectProvisioningV2(request)).target;
+      const claimed: ProjectProvisioningTargetV2 | null = (
+        await claimProjectProvisioningV2(request, {
+          resourceConfigurationFingerprint: config.resourceConfigurationFingerprint,
+        })
+      ).target;
       if (claimed === null) {
         await waitForAbortOrTimeout(config.pollIntervalMs, signal);
         continue;

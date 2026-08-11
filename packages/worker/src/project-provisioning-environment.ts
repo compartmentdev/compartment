@@ -12,6 +12,8 @@ export interface ProjectProvisioningEnvironment {
   COMPARTMENT_KUBE_POD_CIDR: string;
   COMPARTMENT_KUBE_SERVICE_CIDR: string;
   COMPARTMENT_PLATFORM_NAMESPACE: string;
+  COMPARTMENT_PROJECT_CONTAINER_DEFAULTS: string;
+  COMPARTMENT_PROJECT_QUOTA: string;
   COMPARTMENT_PROVISIONING_NAMESPACE: string;
   COMPARTMENT_WORKER_SERVICE_ACCOUNT_NAME: string;
 }
@@ -23,6 +25,8 @@ export const projectProvisioningEnvironmentSchema: z.ZodType<ProjectProvisioning
   COMPARTMENT_KUBE_POD_CIDR: z.string().min(1),
   COMPARTMENT_KUBE_SERVICE_CIDR: z.string().min(1),
   COMPARTMENT_PLATFORM_NAMESPACE: z.string().min(1),
+  COMPARTMENT_PROJECT_CONTAINER_DEFAULTS: z.string().trim().min(1),
+  COMPARTMENT_PROJECT_QUOTA: z.string().trim().min(1),
   COMPARTMENT_PROVISIONING_NAMESPACE: z.string().min(1),
   COMPARTMENT_WORKER_SERVICE_ACCOUNT_NAME: z.string().min(1),
 });
@@ -68,6 +72,8 @@ export function projectProvisionerJobEnvironment(
     COMPARTMENT_KUBE_SERVICE_CIDR: config.serviceCidr,
     COMPARTMENT_INSTALLATION_ID: config.installationId,
     COMPARTMENT_PLATFORM_NAMESPACE: config.platformNamespace,
+    COMPARTMENT_PROJECT_CONTAINER_DEFAULTS: JSON.stringify(config.resourceConfiguration.containerDefaults),
+    COMPARTMENT_PROJECT_QUOTA: JSON.stringify(config.resourceConfiguration.quota),
     COMPARTMENT_ORGANIZATION_ID: target.organizationId,
     COMPARTMENT_PROJECT_ID: target.projectId,
     COMPARTMENT_PROJECT_NAME: target.projectName,

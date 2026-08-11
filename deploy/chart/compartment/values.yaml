@@ -242,6 +242,21 @@ podSecurityContext:
     type: RuntimeDefault
 
 resources:
+  projectContainerDefaults:
+    request: { cpu: 50m, memory: 256Mi }
+    limit: { cpu: '1', memory: 1Gi }
+  projectQuota:
+    requestsCpu: '2'
+    requestsMemory: 2Gi
+    limitsCpu: '8'
+    limitsMemory: 8Gi
+    requestsStorage: 20Gi
+  organizationQuota:
+    requestsCpu: '2'
+    requestsMemory: 2Gi
+    limitsCpu: '8'
+    limitsMemory: 8Gi
+    requestsStorage: 20Gi
   api:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { cpu: '1', memory: 768Mi }
