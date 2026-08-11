@@ -1,0 +1,262 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: Capsule security and availability
+templates:
+  - templates/capsule-manager-rbac.yaml
+  - templates/capsule-pdb.yaml
+release:
+  name: compartment
+  namespace: compartment
+tests:
+  - it: grants no wildcard, Secret, or unrestricted RBAC authority
+    template: templates/capsule-manager-rbac.yaml
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: rules
+          value:
+            - apiGroups: ['']
+              resources:
+                - limitranges
+                - namespaces
+                - persistentvolumeclaims
+                - persistentvolumes
+                - pods
+                - resourcequotas
+                - serviceaccounts
+                - services
+              verbs: [get, list, watch]
+            - apiGroups: [admissionregistration.k8s.io]
+              resources: [mutatingwebhookconfigurations]
+              verbs: [get, list, watch]
+            - apiGroups: [apiextensions.k8s.io]
+              resources: [customresourcedefinitions]
+              verbs: [get, list, watch]
+            - apiGroups: [capsule.clastix.io]
+              resources:
+                - capsuleconfigurations
+                - customquotas
+                - globalcustomquotas
+                - globaltenantresources
+                - quantityledgers
+                - resourcepoolclaims
+                - resourcepools
+                - rulestatuses
+                - tenantowners
+                - tenantresources
+                - tenants
+              verbs: [get, list, watch]
+            - apiGroups: [networking.k8s.io]
+              resources: [ingresses, networkpolicies]
+              verbs: [get, list, watch]
+            - apiGroups: [discovery.k8s.io]
+              resources: [endpointslices]
+              verbs: [get, list, watch]
+            - apiGroups: [gateway.networking.k8s.io]
+              resources: [gatewayclasses]
+              verbs: [get, list, watch]
+            - apiGroups: [node.k8s.io]
+              resources: [runtimeclasses]
+              verbs: [get, list, watch]
+            - apiGroups: [resource.k8s.io]
+              resources: [deviceclasses]
+              verbs: [get, list, watch]
+            - apiGroups: [scheduling.k8s.io]
+              resources: [priorityclasses]
+              verbs: [get, list, watch]
+            - apiGroups: [storage.k8s.io]
+              resources: [storageclasses]
+              verbs: [get, list, watch]
+            - apiGroups: [capsule.clastix.io]
+              resources: [capsuleconfigurations/status, globalcustomquotas/status, quantityledgers/status]
+              verbs: [get, patch, update]
+            - apiGroups: [capsule.clastix.io]
+              resources: [globalcustomquotas]
+              verbs: [patch]
+            - apiGroups: [capsule.clastix.io]
+              resources: [quantityledgers]
+              verbs: [create, patch, update, delete]
+            - apiGroups: [events.k8s.io]
+              resources: [events]
+              verbs: [create, patch]
+            - apiGroups: [admissionregistration.k8s.io]
+              resources: [validatingwebhookconfigurations]
+              verbs: [list, watch]
+            - apiGroups: [admissionregistration.k8s.io]
+              resourceNames: [compartment-capsule-dynamic-webhook]
+              resources: [validatingwebhookconfigurations]
+              verbs: [get, patch, update]
+            - apiGroups: [rbac.authorization.k8s.io]
+              resources: [clusterroles, clusterrolebindings, rolebindings]
+              verbs: [list, watch]
+            - apiGroups: [rbac.authorization.k8s.io]
+              resourceNames: [capsule-namespace-deleter, capsule-namespace-provisioner]
+              resources: [clusterroles]
+              verbs: [get, patch, update]
+            - apiGroups: [rbac.authorization.k8s.io]
+              resourceNames: [capsule-namespace-provisioner]
+              resources: [clusterrolebindings]
+              verbs: [get, patch, update]
+  - it: grants leader election without Secret API access
+    template: templates/capsule-manager-rbac.yaml
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [coordination.k8s.io]
+              resources: [leases]
+              verbs: [get, list, watch, create, patch, update]
+            - apiGroups: ['']
+              resources: [events]
+              verbs: [create, patch]
+  - it: precreates only the canonical Capsule aggregate RBAC objects
+    template: templates/capsule-manager-rbac.yaml
+    documentIndex: 6
+    asserts:
+      - equal:
+          path: metadata.name
+          value: capsule-namespace-provisioner
+      - equal:
+          path: roleRef.name
+          value: capsule-namespace-provisioner
+      - isNull:
+          path: subjects
+      - equal:
+          path: metadata.labels["projectcapsule.dev/created-by"]
+          value: rbac-controller
+  - it: precreates fail-closed quota admission for creates and updates
+    template: templates/capsule-manager-rbac.yaml
+    documentIndex: 7
+    asserts:
+      - equal:
+          path: webhooks[0].clientConfig.service
+          value:
+            name: compartment-capsule-webhook-service
+            namespace: compartment
+            path: /custom-quotas/calculations
+            port: 9443
+      - equal:
+          path: webhooks[0].failurePolicy
+          value: Fail
+      - equal:
+          path: webhooks[0].rules
+          value:
+            - apiGroups: ['']
+              apiVersions: [v1]
+              operations: [CREATE, UPDATE]
+              resources: [pods, persistentvolumeclaims]
+              scope: Namespaced
+  - it: notifies Capsule of quota releases without blocking deletion
+    template: templates/capsule-manager-rbac.yaml
+    documentIndex: 8
+    asserts:
+      - equal:
+          path: metadata.name
+          value: compartment-capsule-quota-release-webhook
+      - equal:
+          path: webhooks[0].clientConfig.service
+          value:
+            name: compartment-capsule-webhook-service
+            namespace: compartment
+            path: /custom-quotas/calculations
+            port: 9443
+      - equal:
+          path: webhooks[0].failurePolicy
+          value: Ignore
+      - equal:
+          path: webhooks[0].namespaceSelector
+          value:
+            matchLabels:
+              app.kubernetes.io/managed-by: compartment
+            matchExpressions:
+              - key: compartment.dev/organization-id
+                operator: Exists
+              - key: compartment.dev/project-id
+                operator: Exists
+      - equal:
+          path: webhooks[0].rules
+          value:
+            - apiGroups: ['']
+              apiVersions: [v1]
+              operations: [DELETE]
+              resources: [pods, persistentvolumeclaims]
+              scope: Namespaced
+  - it: binds the Capsule manager only to the parent-owned role
+    template: templates/capsule-manager-rbac.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: roleRef
+          value:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: compartment-capsule-manager
+      - notEqual:
+          path: roleRef.name
+          value: cluster-admin
+  - it: protects one Capsule replica during voluntary disruption
+    template: templates/capsule-pdb.yaml
+    asserts:
+      - equal:
+          path: spec.maxUnavailable
+          value: 1
+
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: Capsule hook image policy
+templates:
+  - templates/capsule-admission-cleanup.yaml
+  - charts/capsule/templates/hooks/crd-lifecycle/job.yaml
+  - charts/capsule/templates/hooks/crd-lifecycle/rbac.yaml
+  - charts/capsule/templates/hooks/pre-delete/job.yaml
+  - charts/capsule/templates/hooks/post-install/job.yaml
+release:
+  name: compartment
+  namespace: compartment
+tests:
+  - it: renders no unrelated Capsule lifecycle hooks
+    template: charts/capsule/templates/hooks/pre-delete/job.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: uses Helm native CRDs without a write-capable lifecycle hook
+    template: charts/capsule/templates/hooks/crd-lifecycle/job.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: renders no CRD lifecycle RBAC
+    template: charts/capsule/templates/hooks/crd-lifecycle/rbac.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: grants cleanup only for named admission resources
+    template: templates/capsule-admission-cleanup.yaml
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [admissionregistration.k8s.io]
+              resourceNames: [compartment-capsule-dynamic-webhook]
+              resources: [mutatingwebhookconfigurations, validatingwebhookconfigurations]
+              verbs: [delete]
+            - apiGroups: [admissionregistration.k8s.io]
+              resourceNames: [compartment-capsule-quota-release-webhook]
+              resources: [validatingwebhookconfigurations]
+              verbs: [delete]
+  - it: uses the chart-owned pinned kubectl image for admission cleanup
+    template: templates/capsule-admission-cleanup.yaml
+    documentIndex: 3
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^registry.k8s.io/kubectl@sha256:[a-f0-9]{64}$'
+      - equal:
+          path: spec.template.spec.containers[0].args[3]
+          value: validatingwebhookconfiguration/compartment-capsule-quota-release-webhook
+      - equal:
+          path: spec.template.spec.containers[0].args[4]
+          value: --namespace
+      - equal:
+          path: spec.template.spec.containers[0].args[5]
+          value: compartment

@@ -25,6 +25,7 @@ export function buildAggregatedDeploymentStatus(
     activeDeployments,
     deployments,
     environment: firstStatus.environment,
+    infrastructureBlocker: firstStatus.infrastructureBlocker,
     project: firstStatus.project,
   };
 }

@@ -113,6 +113,7 @@ function createDeploymentStatusResponse(deployments: DeploymentReadSummary[]): D
     environment: {
       name: 'production',
     },
+    infrastructureBlocker: null,
     project: {
       name: 'billing',
     },

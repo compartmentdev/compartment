@@ -74,6 +74,7 @@ import {
 } from '@compartment/contracts';
 
 import type { SelfHostedUserSetupCommandResult } from './self-hosted-user-setup-command.harness';
+import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import { expectDeploymentRuntimeImageProjection } from './self-hosted-user-setup-runtime-projection.harness';
 import {
   expectSelfHostedUserSetupStepCompleted,
@@ -230,20 +231,7 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
       await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, afterBackupValue, false);
       await expectAppEnvMessage(routeUrl, adminAppSessionCookie, appMessage);
 
-      const restoreAsPayload: ResourceRestoreAsResponse = await admin.runJson(
-        `resource backup restore --project ${app.projectName} --backup ${backupId} --as ${restoredResourceName}`,
-        resourceRestoreAsResponseSchema,
-      );
-      expect(restoreAsPayload.success).toBe(true);
-      expect(restoreAsPayload.resource.name).toBe(restoredResourceName);
-      expect(restoreAsPayload.resource.status).toBe('running');
-
-      const deleteRestoredResourcePayload: ResourceDeleteResponse = await admin.runJson(
-        `resource delete --project ${app.projectName} --resource ${restoredResourceName} --delete-data --yes`,
-        resourceDeleteResponseSchema,
-      );
-      expect(deleteRestoredResourcePayload.success).toBe(true);
-      expect(deleteRestoredResourcePayload.retainedVolumes).toEqual([]);
+      await expectRestoreAs(admin, app.projectName, backupId);
       context.completedCaseCount = 5;
     },
     selfHostedUserSetupTimeoutMs,
@@ -754,4 +742,36 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
     },
     selfHostedUserSetupTimeoutMs,
   );
+}
+
+async function expectRestoreAs(admin: SelfHostedUserSetupCli, projectName: string, backupId: string): Promise<void> {
+  let restoreAsError: Error | undefined;
+  try {
+    const restoreAsPayload: ResourceRestoreAsResponse = await admin.runJson(
+      `resource backup restore --project ${projectName} --backup ${backupId} --as ${restoredResourceName}`,
+      resourceRestoreAsResponseSchema,
+    );
+    expect(restoreAsPayload.success).toBe(true);
+    expect(restoreAsPayload.resource.name).toBe(restoredResourceName);
+    expect(restoreAsPayload.resource.status).toBe('running');
+  } catch (error) {
+    restoreAsError = error instanceof Error ? error : new Error(String(error));
+  }
+  let restoredResourceDeleteError: Error | undefined;
+  try {
+    const deleteRestoredResourcePayload: ResourceDeleteResponse = await admin.runJson(
+      `resource delete --project ${projectName} --resource ${restoredResourceName} --delete-data --yes`,
+      resourceDeleteResponseSchema,
+    );
+    expect(deleteRestoredResourcePayload.success).toBe(true);
+    expect(deleteRestoredResourcePayload.retainedVolumes).toEqual([]);
+  } catch (error) {
+    restoredResourceDeleteError = error instanceof Error ? error : new Error(String(error));
+  }
+  if (restoreAsError !== undefined) {
+    throw restoreAsError;
+  }
+  if (restoredResourceDeleteError !== undefined) {
+    throw restoredResourceDeleteError;
+  }
 }

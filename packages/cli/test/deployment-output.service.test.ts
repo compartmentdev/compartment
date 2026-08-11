@@ -359,6 +359,32 @@ describe('deployment output service', (): void => {
 
     expect(stderr).toEqual(['Deploy smoke-web/production web: running (release), elapsed 3.0s.\n']);
   });
+
+  it('shows the organization quota blocker and automatic retry time', (): void => {
+    const response: DeploymentStatusView = createDeploymentStatusResponse({
+      completedAt: null,
+      createdAt: '2026-08-11T10:00:00.000Z',
+      operationCompletedAt: null,
+      operationCreatedAt: '2026-08-11T10:00:00.000Z',
+      routeUrl: null,
+      status: 'queued',
+    });
+    response.infrastructureBlocker = {
+      code: 'organization_quota_reconciliation_failed',
+      message: 'Capsule quota controller is unavailable.',
+      retryAt: '2026-08-11T10:15:00.000Z',
+    };
+
+    expect(createStatusResultMessage(response)).toContain(
+      'Infrastructure blocked: Capsule quota controller is unavailable.\nAutomatic retry: 2026-08-11T10:15:00.000Z',
+    );
+    const stderr: string[] = [];
+    const reporter: DeploymentStatusReporter = createDeploymentProgressReporter({
+      progress: createTestCommandProgress(stderr),
+    });
+    reporter(response);
+    expect(stderr.join('\n')).toContain('Automatic retry at 2026-08-11T10:15:00.000Z');
+  });
 });
 
 interface CreateDeploymentStatusResponseInput {
@@ -529,6 +555,7 @@ function createAggregateDeploymentStatusResponse(): DeploymentStatusView {
     environment: {
       name: 'production',
     },
+    infrastructureBlocker: null,
     metrics: { observedAt: null, pods: [], state: 'unavailable' },
     project: {
       name: 'smoke-web',

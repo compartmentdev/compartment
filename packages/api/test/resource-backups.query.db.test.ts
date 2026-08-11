@@ -7,7 +7,6 @@ import { createDatabase, createDatabasePool, type Database } from '../src/db/cli
 import {
   environments,
   operations,
-  organizations,
   principals,
   projectResources,
   projectKubeProvisioning,
@@ -64,6 +63,7 @@ import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisi
 import type { ProjectRow } from '../src/queries/projects.query.types';
 import { parseStoredResourceOperations } from '../src/services/resources.service.storage';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
+import { seedOrganizationWithReadyQuota } from './organization-quota-test.fixture';
 import { createApiTestConfig } from './api-config-test.fixtures';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
@@ -1410,7 +1410,7 @@ function resourceOperationProductJobIntent(operationId: string): ProductJobInten
 }
 
 async function seedResourceBackupScope(): Promise<void> {
-  await db.insert(organizations).values({ id: 'org_resource_backups', name: 'Acme Dev', slug: 'acme-dev' });
+  await seedOrganizationWithReadyQuota(db, 'org_resource_backups', 'Acme Dev', 'acme-dev');
   await db.insert(principals).values({
     email: 'admin@example.com',
     id: 'prn_resource_backups',

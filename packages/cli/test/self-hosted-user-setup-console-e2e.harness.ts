@@ -77,6 +77,11 @@ interface ConsoleE2eProxyRouteFixture {
   readonly routeUrl: string;
 }
 
+interface ConsoleE2eProxyRouteSource {
+  readonly directory: string;
+  readonly projectName: string;
+}
+
 interface ConsoleE2ePreparedFixture {
   readonly account: ConsoleE2eAccountFixture;
   readonly deployment: ConsoleE2eDeploymentFixture;
@@ -128,11 +133,17 @@ export const consoleE2eCommandTimeoutMs: number = consoleE2eGvisorEnabled ? 90 *
 
 export async function expectConsoleE2e(runtime: SelfHostedUserSetupRuntime): Promise<void> {
   const tempDirectories: string[] = [];
+  const projectNames: string[] = [];
+  let admin: SelfHostedUserSetupCli | undefined;
   let ingressProxy: ConsoleE2eIngressProxy | undefined;
+  let primaryError: Error | undefined;
   try {
+    const createdAdmin: SelfHostedUserSetupCli = await createConsoleE2eCli(tempDirectories);
+    admin = createdAdmin;
     const fixture: ConsoleE2ePreparedFixture = await runTimedStep(
       'console e2e setup',
-      async (): Promise<ConsoleE2ePreparedFixture> => await prepareConsoleE2eFixture(runtime, tempDirectories),
+      async (): Promise<ConsoleE2ePreparedFixture> =>
+        await prepareConsoleE2eFixture(runtime, tempDirectories, projectNames, createdAdmin),
     );
     const startedIngressProxy: ConsoleE2eIngressProxy = await startConsoleE2eIngressProxy(runtime.compartmentUrl);
     ingressProxy = startedIngressProxy;
@@ -147,24 +158,37 @@ export async function expectConsoleE2e(runtime: SelfHostedUserSetupRuntime): Pro
     );
 
     expectSuccessfulCommand(result, 'console e2e');
-  } finally {
-    await ingressProxy?.close();
-    await cleanupConsoleE2eTempDirectories(tempDirectories);
+  } catch (error) {
+    primaryError = error instanceof Error ? error : new Error(String(error));
+  }
+
+  const cleanupErrors: Error[] = await cleanupConsoleE2e(admin, projectNames, ingressProxy, tempDirectories);
+  if (primaryError !== undefined) {
+    throw primaryError;
+  }
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(cleanupErrors, 'Console e2e cleanup failed.');
   }
 }
 
 async function prepareConsoleE2eFixture(
   runtime: SelfHostedUserSetupRuntime,
   tempDirectories: string[],
+  projectNames: string[],
+  admin: SelfHostedUserSetupCli,
 ): Promise<ConsoleE2ePreparedFixture> {
   const app: SelfHostedUserSetupAppFixture = await createConsoleE2eAppFixture(tempDirectories);
-  const admin: SelfHostedUserSetupCli = await createConsoleE2eCli(tempDirectories);
   const viewer: SelfHostedUserSetupCli = await createConsoleE2eCli(tempDirectories);
 
   await loginConsoleE2eAdmin(admin, runtime);
 
+  projectNames.push(app.projectName);
   const deployment: ConsoleE2eDeploymentFixture = await deployConsoleE2eFixture(admin, app);
-  const proxyRoute: ConsoleE2eProxyRouteFixture = await deployConsoleE2eProxyRouteFixture(admin, tempDirectories);
+  const proxyRoute: ConsoleE2eProxyRouteFixture = await deployConsoleE2eProxyRouteFixture(
+    admin,
+    tempDirectories,
+    projectNames,
+  );
   const account: ConsoleE2eAccountFixture = await provisionConsoleE2eLoginPrincipal(admin, viewer, runtime);
   return { account, deployment, proxyRoute };
 }
@@ -245,10 +269,12 @@ function requireDeploymentRouteUrl(deployment: DeploymentReadSummary, serviceNam
 async function deployConsoleE2eProxyRouteFixture(
   admin: SelfHostedUserSetupCli,
   tempDirectories: string[],
+  projectNames: string[],
 ): Promise<ConsoleE2eProxyRouteFixture> {
-  const directory: string = await createConsoleE2eProxyRouteFixture(tempDirectories);
+  const source: ConsoleE2eProxyRouteSource = await createConsoleE2eProxyRouteFixture(tempDirectories);
+  projectNames.push(source.projectName);
   const deployPayload: SelfHostedDeployCommandResponse = await admin.runJson('deploy', deployCommandResponseParser, {
-    cwd: directory,
+    cwd: source.directory,
   });
 
   return {
@@ -257,19 +283,18 @@ async function deployConsoleE2eProxyRouteFixture(
   };
 }
 
-async function createConsoleE2eProxyRouteFixture(tempDirectories: string[]): Promise<string> {
+async function createConsoleE2eProxyRouteFixture(tempDirectories: string[]): Promise<ConsoleE2eProxyRouteSource> {
   const directory: string = await mkdtemp(join(consoleE2eTempRootDirectory, 'edge-route-auth-'));
+  const projectName: string = `console-e2e-edge-auth-${randomUUID().replaceAll('-', '').slice(0, 12)}`;
   tempDirectories.push(directory);
 
   await cp(consoleE2eMultiServiceSourceDirectory, directory, { recursive: true });
-  await writeFile(join(directory, 'compartment.yml'), createConsoleE2eProxyRouteDescriptor(), 'utf8');
+  await writeFile(join(directory, 'compartment.yml'), createConsoleE2eProxyRouteDescriptor(projectName), 'utf8');
 
-  return directory;
+  return { directory, projectName };
 }
 
-function createConsoleE2eProxyRouteDescriptor(): string {
-  const projectName: string = `console-e2e-edge-auth-${randomUUID().replaceAll('-', '').slice(0, 12)}`;
-
+function createConsoleE2eProxyRouteDescriptor(projectName: string): string {
   return `name: ${projectName}
 
 services:
@@ -547,6 +572,35 @@ async function closeServer(server: Server, tunnelSockets: Set<Duplex>): Promise<
       socket.destroy();
     }
   });
+}
+
+async function cleanupConsoleE2e(
+  admin: SelfHostedUserSetupCli | undefined,
+  projectNames: string[],
+  ingressProxy: ConsoleE2eIngressProxy | undefined,
+  tempDirectories: string[],
+): Promise<Error[]> {
+  const tasks: Promise<void>[] =
+    admin === undefined
+      ? []
+      : projectNames.map(async (projectName: string): Promise<void> => {
+          await admin.run(`project stop --project ${projectName}`);
+        });
+  if (ingressProxy !== undefined) {
+    tasks.push(ingressProxy.close());
+  }
+  const results: PromiseSettledResult<void>[] = await Promise.allSettled(tasks);
+  const errors: Error[] = results.flatMap((result: PromiseSettledResult<void>): Error[] =>
+    result.status === 'rejected'
+      ? [result.reason instanceof Error ? result.reason : new Error(String(result.reason))]
+      : [],
+  );
+  try {
+    await cleanupConsoleE2eTempDirectories(tempDirectories);
+  } catch (error) {
+    errors.push(error instanceof Error ? error : new Error(String(error)));
+  }
+  return errors;
 }
 
 async function cleanupConsoleE2eTempDirectories(tempDirectories: string[]): Promise<void> {

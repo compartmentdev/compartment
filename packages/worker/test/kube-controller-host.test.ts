@@ -9,6 +9,7 @@ const unreadyDeadline: string = new Date(Date.now() + 300_000).toISOString();
 const claimDeployment: Mock = vi.hoisted((): Mock => vi.fn());
 const claimCustomDomain: Mock = vi.hoisted((): Mock => vi.fn());
 const claimProductJob: Mock = vi.hoisted((): Mock => vi.fn());
+const claimOrganizationQuota: Mock = vi.hoisted((): Mock => vi.fn());
 const claimResource: Mock = vi.hoisted((): Mock => vi.fn());
 const executeResource: Mock = vi.hoisted((): Mock => vi.fn());
 const executeProductJob: Mock = vi.hoisted((): Mock => vi.fn());
@@ -24,6 +25,7 @@ vi.mock('@compartment/sdk', (): object => ({
   claimCustomDomainReconcile: claimCustomDomain,
   claimDeploymentReconcile: claimDeployment,
   claimProductJob,
+  claimOrganizationQuotaReconcile: claimOrganizationQuota,
   claimResourceReconcile: claimResource,
   createCompartmentRequester: vi.fn((): object => ({})),
   persistProductJobResult,
@@ -43,6 +45,9 @@ vi.mock('../src/services/worker-pod-metrics.service', (): object => ({ collectAn
 vi.mock('../src/services/worker-custom-domain-reconcile.service', (): object => ({
   executeCustomDomainReconcile: vi.fn(),
 }));
+vi.mock('../src/services/worker-organization-quota-reconcile.service', (): object => ({
+  executeOrganizationQuotaReconcile: vi.fn(),
+}));
 
 const originalKubeServiceHost: string | undefined = process.env.KUBERNETES_SERVICE_HOST;
 const originalKubeconfig: string | undefined = process.env.KUBECONFIG;
@@ -54,6 +59,7 @@ describe('createKubeControllerHosts', (): void => {
     claimDeployment.mockResolvedValue({ target: null });
     claimCustomDomain.mockResolvedValue({ leaseId: null, target: null });
     claimProductJob.mockResolvedValue({ job: null, resourceReadiness: [], result: null });
+    claimOrganizationQuota.mockResolvedValue({ target: null });
     claimResource.mockResolvedValue({ intent: null });
     reconcileDeployment.mockResolvedValue([]);
   });
@@ -88,7 +94,7 @@ describe('createKubeControllerHosts', (): void => {
       hosts.map(async (host: KubeControllerHost): Promise<boolean> => await host.reconcile()),
     );
 
-    expect(results).toEqual([true, true, true, false]);
+    expect(results).toEqual([true, true, true, false, false]);
     expect(claimResource).toHaveBeenCalledOnce();
     expect(executeResource).toHaveBeenCalledOnce();
     expect(claimProductJob).toHaveBeenCalledWith(expect.anything(), { jobClass: 'release' });
@@ -111,7 +117,7 @@ describe('createKubeControllerHosts', (): void => {
       logger,
     );
 
-    expect(hosts).toHaveLength(4);
+    expect(hosts).toHaveLength(5);
     await expect(hosts[3]!.reconcile()).resolves.toBe(false);
     expect(claimCustomDomain).toHaveBeenCalledOnce();
   });

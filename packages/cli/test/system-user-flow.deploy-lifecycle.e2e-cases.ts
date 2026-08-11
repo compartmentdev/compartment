@@ -610,14 +610,32 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
       );
       expect(bootstrapPayload.resource.name).toBe(app.resourceName);
       await waitForRunningResource(admin, app.projectName, app.resourceName);
-      await enableSelfHostedUserSetupResourceRelease(app);
-      const resourceReleaseDeployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
-        'deploy',
-        deployCommandResponseParser,
-        { cwd: app.directory },
-      );
-      expect(requireSingleActiveDeployment(resourceReleaseDeployPayload, app.serviceName).status).toBe('succeeded');
-      await disableSelfHostedUserSetupResourceRelease(app);
+      const restoreResourceReleaseDescriptor = async (): Promise<void> =>
+        await disableSelfHostedUserSetupResourceRelease(app);
+      let resourceReleaseDeployError: Error | undefined;
+      try {
+        await enableSelfHostedUserSetupResourceRelease(app);
+        const resourceReleaseDeployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
+          'deploy',
+          deployCommandResponseParser,
+          { cwd: app.directory },
+        );
+        expect(requireSingleActiveDeployment(resourceReleaseDeployPayload, app.serviceName).status).toBe('succeeded');
+      } catch (error) {
+        resourceReleaseDeployError = error instanceof Error ? error : new Error(String(error));
+      }
+      let descriptorRestoreError: Error | undefined;
+      try {
+        await restoreResourceReleaseDescriptor();
+      } catch (error) {
+        descriptorRestoreError = error instanceof Error ? error : new Error(String(error));
+      }
+      if (resourceReleaseDeployError !== undefined) {
+        throw resourceReleaseDeployError;
+      }
+      if (descriptorRestoreError !== undefined) {
+        throw descriptorRestoreError;
+      }
       const statusPayload: DeploymentStatusResponse = await admin.runJson(
         `status --project ${app.projectName}`,
         deploymentStatusCommandResponseParser,

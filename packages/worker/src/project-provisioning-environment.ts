@@ -32,6 +32,7 @@ export interface ProjectProvisionerJobEnvironment extends ProjectProvisioningEnv
   COMPARTMENT_ARTIFACT_REGISTRY_PORT: string;
   COMPARTMENT_ARTIFACT_REGISTRY_PULL_DOCKER_CONFIG_JSON: string;
   COMPARTMENT_BOOTSTRAP_SERVICE_ACCOUNT_NAME: string;
+  COMPARTMENT_ORGANIZATION_ID: string;
   COMPARTMENT_PROJECT_ID: string;
   COMPARTMENT_PROJECT_NAME: string;
 }
@@ -43,6 +44,7 @@ export const projectProvisionerJobEnvironmentSchema: z.ZodType<ProjectProvisione
       COMPARTMENT_ARTIFACT_REGISTRY_PORT: z.string().regex(/^[1-9]\d*$/u),
       COMPARTMENT_ARTIFACT_REGISTRY_PULL_DOCKER_CONFIG_JSON: z.string().min(1),
       COMPARTMENT_BOOTSTRAP_SERVICE_ACCOUNT_NAME: z.string().min(1),
+      COMPARTMENT_ORGANIZATION_ID: z.string().min(1),
       COMPARTMENT_PROJECT_ID: z.string().min(1),
       COMPARTMENT_PROJECT_NAME: z.string().min(1),
     }),
@@ -66,6 +68,7 @@ export function projectProvisionerJobEnvironment(
     COMPARTMENT_KUBE_SERVICE_CIDR: config.serviceCidr,
     COMPARTMENT_INSTALLATION_ID: config.installationId,
     COMPARTMENT_PLATFORM_NAMESPACE: config.platformNamespace,
+    COMPARTMENT_ORGANIZATION_ID: target.organizationId,
     COMPARTMENT_PROJECT_ID: target.projectId,
     COMPARTMENT_PROJECT_NAME: target.projectName,
     COMPARTMENT_PROVISIONING_NAMESPACE: config.provisioningNamespace,

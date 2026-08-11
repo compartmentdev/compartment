@@ -284,3 +284,80 @@ resources:
   wait:
     requests: { cpu: 10m, memory: 32Mi }
     limits: { cpu: 100m, memory: 128Mi }
+
+capsule:
+  crds:
+    install: false
+  global:
+    jobs:
+      postInstall:
+        enabled: false
+      preDelete:
+        enabled: false
+  replicaCount: 2
+  priorityClassName: system-cluster-critical
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            topologyKey: kubernetes.io/hostname
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: capsule
+  manager:
+    image:
+      registry: ghcr.io
+      repository: projectcapsule/capsule
+      tag: 'v0.13.11@sha256:d55bef9a0753259dddbe84a84a5a8d1ee0ebecf23de44ea2056072e08c41338c'
+    rbac:
+      create: false
+      strict: true
+    options:
+      users: []
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+  webhooks:
+    hooks:
+      customquotas: { enabled: false }
+      globalcustomquotas: { enabled: false }
+      calculations:
+        enabled: true
+        failurePolicy: Fail
+        namespaceSelector:
+          matchLabels:
+            app.kubernetes.io/managed-by: compartment
+          matchExpressions:
+            - key: compartment.dev/organization-id
+              operator: Exists
+            - key: compartment.dev/project-id
+              operator: Exists
+        rules:
+          - apiGroups: ['']
+            apiVersions: ['v1']
+            operations: [CREATE, UPDATE]
+            resources: [pods, persistentvolumeclaims]
+            scope: Namespaced
+      rulestatus: { enabled: false }
+      metadata: { enabled: false }
+      generic: { enabled: false }
+      resourcepools:
+        pools: { enabled: false }
+        claims: { enabled: false }
+      customresources: { enabled: false }
+      namespaces: { enabled: false }
+      cordoning: { enabled: false }
+      gateways: { enabled: false }
+      ingresses: { enabled: false }
+      devices: { enabled: false }
+      pods: { enabled: false }
+      persistentvolumeclaims: { enabled: false }
+      tenants: { enabled: false }
+      owners: { enabled: false }
+      config: { enabled: false }
+      managed: { enabled: false }
+      replications: { enabled: false }
+      services: { enabled: false }
+      nodes: { enabled: false }
+      serviceaccounts: { enabled: false }

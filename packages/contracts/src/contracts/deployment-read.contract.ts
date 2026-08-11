@@ -59,10 +59,17 @@ export interface DeploymentStatusQuery {
   serviceName?: string | undefined;
 }
 
+export interface DeploymentInfrastructureBlocker {
+  code: 'organization_quota_reconciliation_failed';
+  message: string;
+  retryAt: string;
+}
+
 export interface DeploymentStatusResponse {
   activeDeployments: DeploymentReadSummary[];
   deployments: DeploymentReadSummary[];
   environment: DeploymentReadEnvironmentSummary;
+  infrastructureBlocker: DeploymentInfrastructureBlocker | null;
   project: DeploymentReadProjectSummary;
 }
 
@@ -156,6 +163,14 @@ export const deploymentStatusResponseSchema: ContractSchema<DeploymentStatusResp
     activeDeployments: z.array(deploymentReadSummarySchema),
     deployments: z.array(deploymentReadSummarySchema),
     environment: deploymentReadEnvironmentSummarySchema,
+    infrastructureBlocker: z
+      .object({
+        code: z.literal('organization_quota_reconciliation_failed'),
+        message: z.string().min(1),
+        retryAt: z.string().datetime(),
+      })
+      .strict()
+      .nullable(),
     project: deploymentReadProjectSummarySchema,
   })
   .strict();

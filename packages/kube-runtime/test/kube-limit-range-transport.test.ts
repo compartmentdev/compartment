@@ -50,6 +50,7 @@ function provisioningRow(): ProjectNamespaceProvisioningRow {
       resourcePorts: [5432],
       serviceCidr,
     },
+    organizationId: 'org_1',
     projectId: 'project',
     projectName: 'payments',
     registryPullCredentials: { dockerConfigJson: '{}', secretId: 'pull-secret' },

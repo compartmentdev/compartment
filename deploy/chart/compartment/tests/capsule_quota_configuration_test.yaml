@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: Capsule organization quota admission
+templates:
+  - charts/capsule/templates/configuration.yaml
+release:
+  name: compartment
+  namespace: compartment
+tests:
+  - it: enables only fail-closed Pod and PVC calculation admission in managed project namespaces
+    asserts:
+      - isKind:
+          of: CapsuleConfiguration
+      - equal:
+          path: spec.admission.validating.webhooks[0].name
+          value: calculation.custom-quotas.validating.projectcapsule.dev
+      - equal:
+          path: spec.admission.validating.webhooks[0].failurePolicy
+          value: Fail
+      - equal:
+          path: spec.admission.validating.webhooks[0].namespaceSelector
+          value:
+            matchLabels:
+              app.kubernetes.io/managed-by: compartment
+            matchExpressions:
+              - key: compartment.dev/organization-id
+                operator: Exists
+              - key: compartment.dev/project-id
+                operator: Exists
+      - equal:
+          path: spec.admission.validating.webhooks[0].rules
+          value:
+            - apiGroups: ['']
+              apiVersions: [v1]
+              operations: [CREATE, UPDATE]
+              resources: [pods, persistentvolumeclaims]
+              scope: Namespaced
+
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: Capsule image pin
+templates:
+  - charts/capsule/templates/deployment.yaml
+release:
+  name: compartment
+  namespace: compartment
+tests:
+  - it: pins Capsule manager 0.13.11 by digest and runs it highly available
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/projectcapsule/capsule:v0.13.11@sha256:d55bef9a0753259dddbe84a84a5a8d1ee0ebecf23de44ea2056072e08c41338c
+      - equal:
+          path: spec.replicas
+          value: 2
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: system-cluster-critical
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests
+          value: { cpu: 100m, memory: 128Mi }

@@ -19,6 +19,25 @@ compartment deployment logs --follow
 Compartment queues deployments per selected service, runs the service build path, stores immutable image references, and
 activates runtime state only after the candidate starts successfully.
 
+## Organization resource limits
+
+On current Compartment installations, all projects in an organization share fixed Kubernetes
+capacity: 20 CPU requests and limits, 20Gi memory requests and limits, and 100Gi requested persistent storage. A
+workload in one project consumes the same organization pool as workloads in every other project. Projects in another
+organization use a separate pool.
+
+Compartment enforces these limits when Kubernetes admits a Pod or persistent volume claim. Existing workloads are not
+evicted if the organization is already over a limit. New or updated Pods and volume claims are denied until you delete
+or reduce workloads enough to release capacity. Platform and build workloads do not consume this pool.
+
+Deletion still succeeds while Capsule is unavailable, but released capacity can remain reported as used when the
+delete notification is missed. A successful quota state becomes eligible for periodic reconciliation after 15 minutes;
+that reconciliation repairs the accounting after Capsule recovers.
+
+If Compartment cannot reconcile the organization's quota policy, the deployment remains pending. `compartment deploy`
+and `compartment status` show the infrastructure error and next automatic retry time. Compartment retries quickly
+until it has made three attempts, then once every 15 minutes until the policy is ready.
+
 If a service declares `release.command`, it runs once before the candidate starts and routes switch. A non-zero exit or
 10-minute timeout fails that deploy attempt and leaves the previous active deployment serving traffic. When the service
 reads outputs from a resource that declares `readiness`, the release also waits for that resource to accept connections

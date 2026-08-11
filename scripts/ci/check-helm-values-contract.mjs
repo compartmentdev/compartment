@@ -78,6 +78,9 @@ export function readChartValueReads(chartRoot) {
   for (const [path, source] of dynamicComponentReads) {
     addValueRead(reads, path, `${chartDirectory}/${source}`);
   }
+  for (const path of readChartDependencyValuePaths(readFileSync(join(chartRoot, 'Chart.yaml'), 'utf8'))) {
+    addValueRead(reads, path, `${chartDirectory}/Chart.yaml`);
+  }
   for (const sourcePath of listChartSourcePaths(chartRoot)) {
     const source = readFileSync(join(chartRoot, sourcePath), 'utf8');
     const displayPath = `${chartDirectory}/${sourcePath}`;
@@ -90,6 +93,10 @@ export function readChartValueReads(chartRoot) {
     }
   }
   return reads;
+}
+
+export function readChartDependencyValuePaths(chartSource) {
+  return (parse(chartSource).dependencies ?? []).map((dependency) => dependency.alias ?? dependency.name);
 }
 
 export function readSourceValuePaths(source) {

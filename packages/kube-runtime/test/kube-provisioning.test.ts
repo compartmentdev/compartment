@@ -152,6 +152,7 @@ describe('project namespace bootstrap provisioning', (): void => {
 
     expect(namespace.metadata?.name).toBe(namespaceName);
     expect(namespace.metadata?.labels).toMatchObject({
+      'compartment.dev/organization-id': 'org_1',
       'pod-security.kubernetes.io/audit': 'restricted',
       'pod-security.kubernetes.io/enforce': 'restricted',
       'pod-security.kubernetes.io/warn': 'restricted',
@@ -444,6 +445,7 @@ function provisioningRow(namespaceId: string): ProjectNamespaceProvisioningRow {
       resourcePorts: [5432],
       serviceCidr,
     },
+    organizationId: 'org_1',
     projectId: namespaceId,
     projectName: 'payments',
     registryPullCredentials: {

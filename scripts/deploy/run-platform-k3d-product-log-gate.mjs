@@ -199,39 +199,45 @@ async function startLoadPods() {
   }
   const podNames = Array.from({ length: loadPodCount }, (_, index) => `p7-buffer-load-${index}`);
   const overrides = JSON.stringify(createLoadPodOverrides(containerName));
-  for (const podName of podNames) {
-    runCommand(
-      'kubectl',
-      [
-        '--context',
-        context,
-        '--namespace',
-        namespace,
-        'run',
-        podName,
-        `--image=${loadPodImage}`,
-        '--restart=Never',
-        `--overrides=${overrides}`,
-      ],
-      repositoryRoot,
-    );
-    runCommand(
-      'kubectl',
-      [
-        '--context',
-        context,
-        '--namespace',
-        namespace,
-        'wait',
-        `pod/${podName}`,
-        '--for=condition=Ready',
-        `--timeout=${kubernetesReadinessTimeout}`,
-      ],
-      repositoryRoot,
-    );
-    await delay(10_000);
+  const loadTarget = { containerName, namespace, podNames };
+  try {
+    for (const podName of podNames) {
+      runCommand(
+        'kubectl',
+        [
+          '--context',
+          context,
+          '--namespace',
+          namespace,
+          'run',
+          podName,
+          `--image=${loadPodImage}`,
+          '--restart=Never',
+          `--overrides=${overrides}`,
+        ],
+        repositoryRoot,
+      );
+      runCommand(
+        'kubectl',
+        [
+          '--context',
+          context,
+          '--namespace',
+          namespace,
+          'wait',
+          `pod/${podName}`,
+          '--for=condition=Ready',
+          `--timeout=${kubernetesReadinessTimeout}`,
+        ],
+        repositoryRoot,
+      );
+      await delay(10_000);
+    }
+  } catch (error) {
+    cleanup(loadTarget);
+    throw error;
   }
-  return { containerName, namespace, podNames };
+  return loadTarget;
 }
 
 /**

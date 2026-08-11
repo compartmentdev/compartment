@@ -67,6 +67,7 @@ function namespaceManifest(row: ProjectNamespaceProvisioningRow, namespace: stri
       labels: {
         'app.kubernetes.io/managed-by': 'compartment',
         'compartment.dev/namespace-id': row.namespaceId,
+        'compartment.dev/organization-id': row.organizationId,
         'compartment.dev/project-id': row.projectId,
         'compartment.dev/installation-id': row.installationId,
         'pod-security.kubernetes.io/audit': 'restricted',

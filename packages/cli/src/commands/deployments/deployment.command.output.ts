@@ -3,9 +3,7 @@ import type {
   DeploymentLogLine,
   DeploymentReadSummary,
   DeploymentLogsResponse,
-  PodResourceMetric,
   DeploymentStatusResponse,
-  ResourceSummary,
   DeploymentSummary,
 } from '@compartment/contracts';
 import { appendDeploymentAccessProtectionMessage } from '../../services/deployment-access-output.service';
@@ -15,6 +13,7 @@ import { buildNoDeploymentsFoundMessage } from '../../services/deployment-empty-
 import { formatDeploymentLabelTag } from '../../services/deployment-label-output.service';
 import { buildVerboseDeploymentDetails } from './deployment.command.details';
 import { buildDeploymentProgressMessage, createDeploymentProgressSignature } from './deployment.command.progress';
+import { appendPodMetrics, appendResourceSummary } from './deployment.command.resource-output';
 import type {
   DeploymentFormatOptions,
   DeploymentProgressReporterOptions,
@@ -36,14 +35,14 @@ export function createDeployResultMessage(
 ): string {
   const deployments: DeploymentReadSummary[] = readDisplayedDeployments(response);
   if (deployments.length === 0) {
-    return buildNoDeploymentsMessage(response);
+    return appendInfrastructureBlocker(buildNoDeploymentsMessage(response), response);
   }
   const baseMessage: string =
     deployments.length > 1
       ? buildMultiDeploymentDeployMessage(response)
       : buildSingleDeploymentDeployMessage(deployments[0]!, options.now);
   const message: string = appendResourceSummary(appendVerboseDetails(baseMessage, response, options.verbose), response);
-  return appendDeploymentAccessProtectionMessage(message, deployments);
+  return appendInfrastructureBlocker(appendDeploymentAccessProtectionMessage(message, deployments), response);
 }
 
 function buildSingleDeploymentDeployMessage(deployment: DeploymentReadSummary, now: number | undefined): string {
@@ -70,11 +69,14 @@ export function createStatusResultMessage(
 ): string {
   const deployments: DeploymentReadSummary[] = readDisplayedDeployments(response);
   if (deployments.length === 0) {
-    return buildNoDeploymentsMessage(response);
+    return appendInfrastructureBlocker(buildNoDeploymentsMessage(response), response);
   }
   const baseMessage: string = buildStatusBaseMessage(response, deployments, options.now);
-  return appendPodMetrics(
-    appendVerboseDetails(appendFailedDeploymentGuidance(baseMessage, deployments), response, options.verbose),
+  return appendInfrastructureBlocker(
+    appendPodMetrics(
+      appendVerboseDetails(appendFailedDeploymentGuidance(baseMessage, deployments), response, options.verbose),
+      response,
+    ),
     response,
   );
 }
@@ -95,27 +97,6 @@ function buildStatusBaseMessage(
     response,
     deployment,
   )}`;
-}
-
-function appendPodMetrics(baseMessage: string, response: DeploymentStatusView): string {
-  if (response.metrics.state === 'unavailable') {
-    return `${baseMessage}\nPod metrics: unavailable.`;
-  }
-  const freshness: string = response.metrics.state === 'stale' ? ' (stale)' : '';
-  if (response.metrics.pods.length === 0) {
-    return `${baseMessage}\nPod metrics${freshness}: no product Pod samples.`;
-  }
-  const lines: string = response.metrics.pods
-    .map(
-      (pod: PodResourceMetric): string =>
-        `${pod.serviceName}/${pod.podName}: ${pod.cpuMillicores.toFixed(3)}m CPU, ${formatMemoryMiB(pod.memoryBytes)} MiB RAM`,
-    )
-    .join('\n');
-  return `${baseMessage}\nPod metrics${freshness}:\n${lines}`;
-}
-
-function formatMemoryMiB(memoryBytes: number): string {
-  return (memoryBytes / 1_048_576).toFixed(2);
 }
 
 export function createLogsResultMessage(
@@ -151,6 +132,9 @@ export function createDeploymentProgressReporter(options: DeploymentProgressRepo
     const signature: string = createDeploymentProgressSignature(
       deployments,
       options.progress.mode === 'live' ? now : null,
+      status.infrastructureBlocker === null
+        ? ''
+        : `${status.infrastructureBlocker.message}:${status.infrastructureBlocker.retryAt}`,
     );
     if (signature === state.lastSignature) {
       return;
@@ -171,6 +155,13 @@ function appendVerboseDetails(
   }
 
   return `${baseMessage}\n${buildVerboseDetails(response)}`;
+}
+
+function appendInfrastructureBlocker(baseMessage: string, response: DeploymentStatusResponse): string {
+  const blocker = response.infrastructureBlocker;
+  return blocker === null
+    ? baseMessage
+    : `${baseMessage}\nInfrastructure blocked: ${blocker.message}\nAutomatic retry: ${blocker.retryAt}`;
 }
 
 function buildNoDeploymentsMessage(response: DeploymentStatusResponse): string {
@@ -269,21 +260,4 @@ function createDeploymentLogsFollowUpCommand(response: DeployResponse): string {
 
 function readSingleActiveDeployment(response: DeploymentStatusResponse): DeploymentReadSummary | null {
   return response.activeDeployments.length === 1 ? response.activeDeployments[0]! : null;
-}
-
-function appendResourceSummary(baseMessage: string, response: DeploymentStatusResponse): string {
-  const resources: ResourceSummary[] | undefined = readDeployResources(response);
-  if (resources === undefined || resources.length === 0) {
-    return baseMessage;
-  }
-
-  return `${baseMessage}\n${resources
-    .map((resource: ResourceSummary): string => `Resource ${resource.name} is ${resource.status}.`)
-    .join('\n')}`;
-}
-
-function readDeployResources(response: DeploymentStatusResponse): ResourceSummary[] | undefined {
-  return 'resources' in response && Array.isArray(response.resources)
-    ? (response.resources as ResourceSummary[])
-    : undefined;
 }

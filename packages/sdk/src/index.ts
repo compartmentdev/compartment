@@ -161,6 +161,10 @@ export {
   claimProjectProvisioningV2,
   completeProjectProvisioningV2,
 } from './services/worker-project-provisioning.service';
+export {
+  claimOrganizationQuotaReconcile,
+  completeOrganizationQuotaReconcile,
+} from './services/worker-organization-quota-reconciliation.service';
 export { acknowledgeResourceReconcile, claimResourceReconcile } from './services/worker-resource-reconcile.service';
 export {
   claimCustomDomainReconcile,

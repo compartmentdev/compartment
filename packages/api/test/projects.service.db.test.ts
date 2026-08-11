@@ -8,6 +8,7 @@ import { createDatabase, createDatabasePool, type Database } from '../src/db/cli
 import {
   gitProviderRegistrations,
   organizationMemberships,
+  organizationQuotaReconciliation,
   organizations,
   principals,
   productJobRuns,
@@ -20,7 +21,14 @@ import {
   sources,
 } from '../src/db/schema';
 import { claimProductJob } from '../src/queries/product-job-runs.query';
+import {
+  claimOrganizationQuotaReconciliation,
+  completeOrganizationQuotaReconciliation,
+  readOrganizationQuotaInfrastructureBlocker,
+} from '../src/queries/organization-quota-reconciliation.query';
+import type { OrganizationQuotaReconcileClaimRow } from '../src/queries/organization-quota-reconciliation.query.types';
 import { completeProjectProvisioning } from '../src/queries/project-provisioning-completion.query';
+import { projectIsolationVersion } from '../src/queries/project-provisioning-policy';
 import {
   claimPendingProjectProvisioning,
   failExhaustedProjectTeardownLeases,
@@ -96,6 +104,265 @@ describe('projects service', (): void => {
       mocks.resolveActiveProjectScope.mockReset();
       mocks.resolveRequiredProjectScope.mockResolvedValue(createResolvedProjectScope());
     },
+  });
+
+  it('serializes organization quota claims and gates namespace provisioning on infrastructure only', async (): Promise<void> => {
+    await db
+      .update(projectKubeProvisioning)
+      .set({ isolationVersion: projectIsolationVersion - 1 })
+      .where(eq(projectKubeProvisioning.projectId, 'prj_ops'));
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ state: 'pending' })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toBeNull();
+    await db
+      .update(projectKubeProvisioning)
+      .set({ state: 'teardown_pending' })
+      .where(eq(projectKubeProvisioning.projectId, 'prj_ops'));
+    await expect(claimPendingProjectProvisioning()).resolves.toMatchObject({
+      action: 'teardown',
+      projectId: 'prj_ops',
+    });
+    await db
+      .update(projectKubeProvisioning)
+      .set({ attempts: 0, leaseExpiresAt: null, leaseId: null, state: 'succeeded' })
+      .where(eq(projectKubeProvisioning.projectId, 'prj_ops'));
+
+    const claims: (OrganizationQuotaReconcileClaimRow | null)[] = await Promise.all([
+      claimOrganizationQuotaReconciliation(),
+      claimOrganizationQuotaReconciliation(),
+    ]);
+    const claimed: OrganizationQuotaReconcileClaimRow | undefined = claims.find(
+      (claim: OrganizationQuotaReconcileClaimRow | null): claim is OrganizationQuotaReconcileClaimRow => claim !== null,
+    );
+    expect(
+      claims.filter(
+        (claim: OrganizationQuotaReconcileClaimRow | null): claim is OrganizationQuotaReconcileClaimRow =>
+          claim !== null,
+      ),
+    ).toHaveLength(1);
+    if (claimed === undefined) {
+      throw new Error('Expected one organization quota claim.');
+    }
+    expect(claimed.organizationId).toBe('org_git_sources');
+    await expect(
+      completeOrganizationQuotaReconciliation({
+        failureMessage: null,
+        leaseId: claimed.leaseId,
+        organizationId: claimed.organizationId,
+        status: 'succeeded',
+      }),
+    ).resolves.toBe(true);
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toMatchObject({
+      organizationId: 'org_git_sources',
+    });
+  });
+
+  it('reclaims expired quota leases, fences stale completion, and isolates organizations', async (): Promise<void> => {
+    await db.insert(organizations).values({ id: 'org_quota_other', name: 'Other quota org', slug: 'quota-other' });
+    await db.insert(organizationQuotaReconciliation).values({ organizationId: 'org_quota_other', state: 'pending' });
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ state: 'pending' })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+
+    const first: OrganizationQuotaReconcileClaimRow | null = await claimOrganizationQuotaReconciliation();
+    if (first === null) {
+      throw new Error('Expected the first organization quota claim.');
+    }
+    const second: OrganizationQuotaReconcileClaimRow | null = await claimOrganizationQuotaReconciliation();
+    expect(second?.organizationId).not.toBe(first.organizationId);
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ leaseExpiresAt: new Date('2020-01-01T00:00:00.000Z') })
+      .where(eq(organizationQuotaReconciliation.organizationId, first.organizationId));
+    await expect(
+      completeOrganizationQuotaReconciliation({
+        failureMessage: null,
+        leaseId: first.leaseId,
+        organizationId: first.organizationId,
+        status: 'succeeded',
+      }),
+    ).resolves.toBe(false);
+
+    await expect(claimOrganizationQuotaReconciliation()).resolves.toBeNull();
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ updatedAt: new Date(0) })
+      .where(eq(organizationQuotaReconciliation.organizationId, first.organizationId));
+    const reclaimed: OrganizationQuotaReconcileClaimRow | null = await claimOrganizationQuotaReconciliation();
+    expect(reclaimed).toMatchObject({ organizationId: first.organizationId });
+    expect(reclaimed?.leaseId).not.toBe(first.leaseId);
+  });
+
+  it('periodically refreshes successful organization quotas without starving pending work', async (): Promise<void> => {
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ attempts: 7, state: 'succeeded', updatedAt: new Date() })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+    await expect(claimOrganizationQuotaReconciliation()).resolves.toBeNull();
+
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ updatedAt: new Date(0) })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+    await db
+      .insert(organizations)
+      .values({ id: 'org_quota_pending', name: 'Pending quota org', slug: 'quota-pending' });
+    await db.insert(organizationQuotaReconciliation).values({
+      organizationId: 'org_quota_pending',
+      state: 'pending',
+    });
+
+    const pendingClaim: OrganizationQuotaReconcileClaimRow | null = await claimOrganizationQuotaReconciliation();
+    expect(pendingClaim).toMatchObject({ organizationId: 'org_quota_pending' });
+    await expect(
+      completeOrganizationQuotaReconciliation({
+        failureMessage: null,
+        leaseId: pendingClaim?.leaseId ?? '',
+        organizationId: 'org_quota_pending',
+        status: 'succeeded',
+      }),
+    ).resolves.toBe(true);
+
+    const refreshClaim: OrganizationQuotaReconcileClaimRow | null = await claimOrganizationQuotaReconciliation();
+    expect(refreshClaim).toMatchObject({ organizationId: 'org_git_sources' });
+    await expect(
+      db
+        .select({ attempts: organizationQuotaReconciliation.attempts, state: organizationQuotaReconciliation.state })
+        .from(organizationQuotaReconciliation)
+        .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources')),
+    ).resolves.toEqual([{ attempts: 1, state: 'running' }]);
+    await expect(claimOrganizationQuotaReconciliation()).resolves.toBeNull();
+
+    await expect(
+      completeOrganizationQuotaReconciliation({
+        failureMessage: 'periodic quota refresh failed',
+        leaseId: refreshClaim?.leaseId ?? '',
+        organizationId: 'org_git_sources',
+        status: 'failed',
+      }),
+    ).resolves.toBe(true);
+    await expect(claimOrganizationQuotaReconciliation()).resolves.toBeNull();
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ updatedAt: new Date(0) })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+
+    const retryClaim: OrganizationQuotaReconcileClaimRow | null = await claimOrganizationQuotaReconciliation();
+    expect(retryClaim).toMatchObject({ organizationId: 'org_git_sources' });
+    await expect(
+      completeOrganizationQuotaReconciliation({
+        failureMessage: null,
+        leaseId: retryClaim?.leaseId ?? '',
+        organizationId: 'org_git_sources',
+        status: 'succeeded',
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      db
+        .select({ attempts: organizationQuotaReconciliation.attempts, state: organizationQuotaReconciliation.state })
+        .from(organizationQuotaReconciliation)
+        .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources')),
+    ).resolves.toEqual([{ attempts: 0, state: 'succeeded' }]);
+  });
+
+  it('slows organization quota reconciliation retries after three attempts', async (): Promise<void> => {
+    const failedAt: Date = new Date();
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ attempts: 3, failureMessage: 'persistent quota failure', state: 'failed', updatedAt: failedAt })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+
+    await expect(claimOrganizationQuotaReconciliation()).resolves.toBeNull();
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toBeNull();
+    await expect(readOrganizationQuotaInfrastructureBlocker('org_git_sources')).resolves.toEqual({
+      message: 'persistent quota failure',
+      retryAt: new Date(failedAt.getTime() + 900_000),
+    });
+
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ updatedAt: new Date(0) })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+    const recoveryClaim: OrganizationQuotaReconcileClaimRow | null = await claimOrganizationQuotaReconciliation();
+    expect(recoveryClaim).toMatchObject({
+      organizationId: 'org_git_sources',
+    });
+    await expect(
+      db
+        .select({ attempts: organizationQuotaReconciliation.attempts })
+        .from(organizationQuotaReconciliation)
+        .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources')),
+    ).resolves.toEqual([{ attempts: 4 }]);
+    await expect(readOrganizationQuotaInfrastructureBlocker('org_git_sources')).resolves.toBeNull();
+    await expect(
+      completeOrganizationQuotaReconciliation({
+        failureMessage: null,
+        leaseId: recoveryClaim?.leaseId ?? '',
+        organizationId: 'org_git_sources',
+        status: 'succeeded',
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      db
+        .select({
+          attempts: organizationQuotaReconciliation.attempts,
+          failureMessage: organizationQuotaReconciliation.failureMessage,
+        })
+        .from(organizationQuotaReconciliation)
+        .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources')),
+    ).resolves.toEqual([{ attempts: 0, failureMessage: null }]);
+  });
+
+  it('retries early organization quota failures after the short delay', async (): Promise<void> => {
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ attempts: 2, failureMessage: 'transient quota failure', state: 'failed', updatedAt: new Date() })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+
+    await expect(claimOrganizationQuotaReconciliation()).resolves.toBeNull();
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ updatedAt: new Date(0) })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+    const retryClaim: OrganizationQuotaReconcileClaimRow | null = await claimOrganizationQuotaReconciliation();
+    expect(retryClaim).toMatchObject({ organizationId: 'org_git_sources' });
+    await expect(
+      completeOrganizationQuotaReconciliation({
+        failureMessage: 'persistent quota failure',
+        leaseId: retryClaim?.leaseId ?? '',
+        organizationId: 'org_git_sources',
+        status: 'failed',
+      }),
+    ).resolves.toBe(true);
+    await expect(readOrganizationQuotaInfrastructureBlocker('org_git_sources')).resolves.toMatchObject({
+      message: 'persistent quota failure',
+    });
+  });
+
+  it('moves an expired organization quota lease into the slow retry schedule', async (): Promise<void> => {
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({ attempts: 3, leaseExpiresAt: new Date(0), leaseId: 'oql_final', state: 'running' })
+      .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources'));
+
+    await expect(claimOrganizationQuotaReconciliation()).resolves.toBeNull();
+    await expect(
+      db
+        .select({
+          failureMessage: organizationQuotaReconciliation.failureMessage,
+          state: organizationQuotaReconciliation.state,
+        })
+        .from(organizationQuotaReconciliation)
+        .where(eq(organizationQuotaReconciliation.organizationId, 'org_git_sources')),
+    ).resolves.toEqual([
+      {
+        failureMessage: 'Organization quota reconciliation lease expired.',
+        state: 'failed',
+      },
+    ]);
   });
 
   it('blocks renaming projects while an active git binding exists', async (): Promise<void> => {
@@ -689,6 +956,7 @@ async function seedDeleteScope(): Promise<void> {
     name: 'Git Sources Org',
     slug: 'acme-dev',
   });
+  await db.insert(organizationQuotaReconciliation).values({ organizationId: 'org_git_sources', state: 'succeeded' });
   await db.insert(organizationMemberships).values({
     id: 'mem_git_sources',
     organizationId: 'org_git_sources',
@@ -710,7 +978,9 @@ async function seedDeleteScope(): Promise<void> {
     organizationId: 'org_git_sources',
     updatedAt: new Date('2026-04-28T12:00:00.000Z'),
   });
-  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_billing', state: 'succeeded' });
+  await db
+    .insert(projectKubeProvisioning)
+    .values({ isolationVersion: projectIsolationVersion, projectId: 'prj_billing', state: 'succeeded' });
   await db.insert(projects).values({
     archivedAt: null,
     defaultAccessMode: 'authenticated',
@@ -719,7 +989,9 @@ async function seedDeleteScope(): Promise<void> {
     organizationId: 'org_git_sources',
     updatedAt: new Date('2026-04-28T12:00:00.000Z'),
   });
-  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_ops', state: 'succeeded' });
+  await db
+    .insert(projectKubeProvisioning)
+    .values({ isolationVersion: projectIsolationVersion, projectId: 'prj_ops', state: 'succeeded' });
   await db.insert(projects).values({
     archivedAt: null,
     defaultAccessMode: 'authenticated',
@@ -728,7 +1000,9 @@ async function seedDeleteScope(): Promise<void> {
     organizationId: 'org_git_sources',
     updatedAt: new Date('2026-04-28T12:00:00.000Z'),
   });
-  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_plain', state: 'succeeded' });
+  await db
+    .insert(projectKubeProvisioning)
+    .values({ isolationVersion: projectIsolationVersion, projectId: 'prj_plain', state: 'succeeded' });
   await db.insert(gitProviderRegistrations).values({
     appId: 'app_123',
     appName: 'Compartment GitHub App',

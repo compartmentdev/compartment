@@ -44,6 +44,7 @@ import {
   auditEvents,
   authSessions,
   localCredentials,
+  organizationQuotaReconciliation,
   organizationMemberships,
   organizations,
   principals,
@@ -177,6 +178,28 @@ describe('Phase 0 API integration organization users', (): void => {
     hasInitializedApiIntegrationRuntime = false;
     await cleanupApiIntegrationRuntime(app, systemApp, pool);
   });
+  it('creates one pending quota reconciliation row for installation and organization creation', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    expect(await db.select().from(organizationQuotaReconciliation)).toMatchObject([
+      { organizationId: installPayload.organization.id, state: 'pending' },
+    ]);
+
+    const response: LightMyRequestResponse = await app.inject({
+      headers: { authorization: `Bearer ${installPayload.sessionToken}` },
+      method: 'POST',
+      payload: { name: 'Beta Dev', slug: 'beta-dev' },
+      url: '/v1/organizations',
+    });
+    expect(response.statusCode).toBe(200);
+    const created: CreateOrganizationResponse = createOrganizationResponseSchema.parse(response.json());
+    expect(
+      await db
+        .select()
+        .from(organizationQuotaReconciliation)
+        .where(eq(organizationQuotaReconciliation.organizationId, created.organization.id)),
+    ).toMatchObject([{ organizationId: created.organization.id, state: 'pending' }]);
+  });
+
   it('rejects expired password reset tokens', async (): Promise<void> => {
     await installCompartment(app);
     const issueResponse: LightMyRequestResponse = await systemApp.inject({

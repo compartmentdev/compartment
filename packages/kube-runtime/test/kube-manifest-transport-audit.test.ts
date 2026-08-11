@@ -6,6 +6,7 @@ import { projectLimitRangeManifest } from '../src/kube-limit-range-projection';
 import { kubeResourceVolumeName } from '../src/kube-naming';
 import { projectNetworkPolicyManifests } from '../src/kube-network-policy-projection';
 import type { ProjectNetworkPolicyProjection } from '../src/kube-network-policy-projection.types';
+import { organizationGlobalCustomQuotaManifests } from '../src/kube-organization-quota-projection';
 import {
   projectProvisioningAuthorityBundle,
   projectProvisioningAuthorityCleanup,
@@ -92,6 +93,14 @@ const transportAuditRegistry: readonly TransportAuditCase[] = [
   {
     manifests: (): KubeManifest[] => [projectResourceQuotaManifest(namespace, namespaceId, projectId)],
     projection: 'projectResourceQuotaManifest',
+  },
+  {
+    manifests: (): KubeManifest[] =>
+      organizationGlobalCustomQuotaManifests({
+        organizationId: 'org-01jz',
+        reconciliationRequestedAt: '2026-08-11T10:00:00.000Z',
+      }),
+    projection: 'organizationGlobalCustomQuotaManifests',
   },
   {
     manifests: (): KubeManifest[] => bundleManifests(projectNamespaceProvisioningBundle(provisioningRow())),
@@ -267,6 +276,7 @@ function provisioningRow(): ProjectNamespaceProvisioningRow {
     installationId: 'inst-01jz',
     namespaceId,
     networkPolicy: networkPolicy(),
+    organizationId: 'org-01jz',
     projectId,
     projectName: 'Checkout',
     registryPullCredentials: { dockerConfigJson: '{"auths":{}}', secretId: 'pull-01jz' },

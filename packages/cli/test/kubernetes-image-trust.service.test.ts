@@ -37,6 +37,7 @@ const digestByImageName: Readonly<Record<string, string>> = Object.freeze({
   'dns01-solver': `sha256:${'e'.repeat(64)}`,
   edge: `sha256:${'c'.repeat(64)}`,
   worker: `sha256:${'b'.repeat(64)}`,
+  capsule: `sha256:${'f'.repeat(64)}`,
 });
 
 describe('Kubernetes platform image trust', (): void => {
@@ -144,6 +145,9 @@ describe('Kubernetes platform image trust', (): void => {
         await readFile(outputPath, 'utf8'),
       ) as KubernetesVerifiedPlatformImageValues;
       expect(values).toEqual({
+        capsule: {
+          manager: { image: { tag: `v0.13.11@${digestByImageName.capsule}` } },
+        },
         images: {
           api: { digest: digestByImageName.api },
           caddy: { digest: digestByImageName.caddy },
@@ -155,9 +159,16 @@ describe('Kubernetes platform image trust', (): void => {
       const cosignCalls: RunCommandCall[] = mocks.runCommand.mock.calls.filter(
         (call: RunCommandCall): boolean => call[0][1] === 'verify',
       );
-      expect(cosignCalls).toHaveLength(5);
+      expect(cosignCalls).toHaveLength(6);
       expect(cosignCalls[0]?.[0]).toContain('registry.example/compartment-api:sha-release');
       expect(cosignCalls[1]?.[0].at(-1)).toBe('ghcr.io/compartmentdev/compartment-worker:0.9.2');
+      expect(cosignCalls[5]?.[0]).toEqual(
+        expect.arrayContaining([
+          'https://token.actions.githubusercontent.com',
+          '^https://github\\.com/projectcapsule/capsule/\\.github/workflows/docker-publish\\.yml@refs/tags/v0\\.13\\.11$',
+          `ghcr.io/projectcapsule/capsule:v0.13.11@${digestByImageName.capsule}`,
+        ]),
+      );
       expect(cosignCalls[0]?.[0]).toEqual(
         expect.arrayContaining([
           selfHostedRuntimeImageSignaturePolicy.certificateOidcIssuer,
@@ -199,6 +210,34 @@ describe('Kubernetes platform image trust', (): void => {
       expect(JSON.parse(await readFile(outputPath, 'utf8'))).toMatchObject({
         images: { api: { digest: digestByImageName.api } },
       });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it('fails before activation when the Capsule manager signature cannot be verified', async (): Promise<void> => {
+    const directory: string = await createTemporaryDirectory();
+    try {
+      const operatorValuesPath: string = resolve(directory, 'values.yaml');
+      await writeFile(operatorValuesPath, '{}');
+      const verificationHandler: RunCommand = createVerificationHandler();
+      mocks.runCommand.mockImplementation(async (command: readonly string[]): Promise<CommandResult> => {
+        if (command[1] === 'verify' && command.at(-1)?.includes('projectcapsule/capsule') === true) {
+          return { exitCode: 1, stderr: 'capsule signature mismatch', stdout: '' };
+        }
+        return await verificationHandler(command);
+      });
+
+      await expect(
+        writeVerifiedKubernetesInstallImageValues({
+          chartPath: resolve(directory, 'chart'),
+          overrideValuesPaths: [operatorValuesPath],
+          outputPath: resolve(directory, 'verified.json'),
+        }),
+      ).rejects.toThrow('capsule signature mismatch');
+      expect(
+        mocks.runCommand.mock.calls.filter((call: RunCommandCall): boolean => call[0][1] === 'verify'),
+      ).toHaveLength(6);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
@@ -285,6 +324,9 @@ describe('Kubernetes platform image trust', (): void => {
 
       await expect(deployAndWaitForKubernetesInstall(input)).rejects.toThrow('activation sentinel');
       expect(captured.trustValues).toEqual({
+        capsule: {
+          manager: { image: { tag: `v0.13.11@${digestByImageName.capsule}` } },
+        },
         images: {
           api: { digest: digestByImageName.api },
           caddy: { digest: digestByImageName.caddy },
@@ -316,7 +358,10 @@ function createVerificationHandler(): RunCommand {
       return await Promise.resolve(successfulResult(chartImageValues()));
     }
     const imageRef: string | undefined = command.at(-1);
-    const imageName: string | undefined = imageRef?.match(/compartment-(api|worker|edge|caddy|dns01-solver)/u)?.[1];
+    const imageName: string | undefined =
+      imageRef?.includes('projectcapsule/capsule') === true
+        ? 'capsule'
+        : imageRef?.match(/compartment-(api|worker|edge|caddy|dns01-solver)/u)?.[1];
     const digest: string | undefined = imageName === undefined ? undefined : digestByImageName[imageName];
     if (digest === undefined) {
       throw new Error(`Unexpected verification command: ${command.join(' ')}`);
@@ -383,7 +428,10 @@ function readLastOptionValue(command: readonly string[], option: string): string
 }
 
 function chartImageValues(): string {
-  return `images:
+  return `capsule:
+  manager:
+    image: { registry: ghcr.io, repository: projectcapsule/capsule, tag: 'v0.13.11@${digestByImageName.capsule}' }
+images:
   api: { repository: ghcr.io/compartmentdev/compartment-api, tag: latest, digest: '' }
   worker: { repository: ghcr.io/compartmentdev/compartment-worker, tag: latest, digest: '' }
   edge: { repository: ghcr.io/compartmentdev/compartment-edge, tag: latest, digest: '' }
@@ -394,6 +442,15 @@ function chartImageValues(): string {
 
 function releaseImageValues(): object {
   return {
+    capsule: {
+      manager: {
+        image: {
+          registry: 'ghcr.io',
+          repository: 'projectcapsule/capsule',
+          tag: `v0.13.11@${digestByImageName.capsule}`,
+        },
+      },
+    },
     images: {
       api: {
         digest: `sha256:${'e'.repeat(64)}`,

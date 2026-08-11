@@ -13,6 +13,7 @@ describe('project provisioning contracts', (): void => {
           isolationVersion: 1,
           leaseId: 'kpl_1',
           namespaceId: 'prj_1',
+          organizationId: 'org_1',
           projectId: 'prj_1',
           projectName: 'payments',
         },

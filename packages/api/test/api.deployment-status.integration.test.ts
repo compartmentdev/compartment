@@ -39,7 +39,14 @@ import { eq } from 'drizzle-orm';
 import type { ApiApp } from '../src/app.types';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 
-import { buildArtifacts, deployments, environments, projectServices, projects } from '../src/db/schema';
+import {
+  buildArtifacts,
+  deployments,
+  environments,
+  organizationQuotaReconciliation,
+  projectServices,
+  projects,
+} from '../src/db/schema';
 import { ingestDeploymentProductLogs } from '../src/services/deployment-product-logs.service';
 import { persistDeploymentReconcileObservation } from '../src/queries/deployment-reconcile.query';
 import { prepareDeploymentReconcile } from '../src/services/deployment-reconcile.service';
@@ -266,6 +273,41 @@ describe('Phase 0 API integration deployment status', (): void => {
     expect(logsResponse.statusCode).toBe(400);
     expect(errorResponseSchema.parse(logsResponse.json()).error.code).toBe('missing_current_organization');
   });
+
+  it('reports a durable organization quota blocker without failing the deployment', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    const deployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+    expect(deployResponse.statusCode).toBe(200);
+    const failedAt: Date = new Date('2026-08-11T10:00:00.000Z');
+    await db
+      .update(organizationQuotaReconciliation)
+      .set({
+        attempts: 3,
+        failureMessage: 'Capsule quota controller is unavailable.',
+        state: 'failed',
+        updatedAt: failedAt,
+      })
+      .where(eq(organizationQuotaReconciliation.organizationId, installPayload.organization.id));
+
+    const statusResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken, 'acme-dev'),
+      method: 'GET',
+      url: '/v1/deployments/status?projectName=smoke-web',
+    });
+    expect(statusResponse.statusCode).toBe(200);
+    const status: DeploymentStatusResponse = deploymentStatusResponseSchema.parse(statusResponse.json());
+    expect(requireSingleDeployment(status.deployments).status).toBe('queued');
+    expect(status.infrastructureBlocker).toEqual({
+      code: 'organization_quota_reconciliation_failed',
+      message: 'Capsule quota controller is unavailable.',
+      retryAt: '2026-08-11T10:15:00.000Z',
+    });
+  });
+
   it('falls back to a failed service deployment and returns its run trail', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     const deployPayload: DeployResponse = deployResponseSchema.parse(

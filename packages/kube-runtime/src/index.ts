@@ -12,6 +12,7 @@ export {
   kubeResourceName,
   kubeResourceVolumeName,
 } from './kube-naming';
+export { organizationGlobalCustomQuotaManifests } from './kube-organization-quota-projection';
 export { observeCustomDomainProjection, projectCustomDomainManifests } from './kube-custom-domain-projection';
 export type {
   CustomDomainProjectionObservation,

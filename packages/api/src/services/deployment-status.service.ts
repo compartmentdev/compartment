@@ -7,6 +7,8 @@ import {
   listJoinedDeploymentsForEnvironment,
 } from '../queries/deployment-joined.query';
 import type { DeploymentJoinedRow } from '../queries/deployments.query.types';
+import { readOrganizationQuotaInfrastructureBlocker } from '../queries/organization-quota-reconciliation.query';
+import type { OrganizationQuotaInfrastructureBlockerRow } from '../queries/organization-quota-reconciliation.query.types';
 import { getApiConfig } from '../runtime/runtime-access';
 import {
   requireEnvironmentScopedDeployment,
@@ -17,6 +19,7 @@ import { readLatestDeploymentsByService, sortDeploymentsByServiceName } from './
 import { applyObservedDeploymentPhases } from './deployment-phase.service';
 import type {
   DeploymentIdStatusLookupInput,
+  DeploymentInfrastructureBlockerResult,
   DeploymentStatusLookupResult,
   ResolvedEnvironmentContext,
   ResolvedProjectContext,
@@ -139,17 +142,36 @@ async function buildDeploymentStatusResult(
   activeDeployments: DeploymentJoinedRow[],
 ): Promise<DeploymentStatusLookupResult> {
   const uniqueDeployments: DeploymentJoinedRow[] = deduplicateDeployments([...deployments, ...activeDeployments]);
+  const [observedDeployments, quotaBlocker]: [DeploymentJoinedRow[], OrganizationQuotaInfrastructureBlockerRow | null] =
+    await Promise.all([
+      applyObservedDeploymentPhases(uniqueDeployments),
+      readOrganizationQuotaInfrastructureBlocker(context.organization.id),
+    ]);
   const observedById: ReadonlyMap<string, DeploymentJoinedRow> = new Map(
-    (await applyObservedDeploymentPhases(uniqueDeployments)).map(
-      (deployment: DeploymentJoinedRow): [string, DeploymentJoinedRow] => [deployment.deployment.id, deployment],
-    ),
+    observedDeployments.map((deployment: DeploymentJoinedRow): [string, DeploymentJoinedRow] => [
+      deployment.deployment.id,
+      deployment,
+    ]),
   );
   return {
     activeDeployments: projectObservedDeployments(activeDeployments, observedById),
     deployments: projectObservedDeployments(deployments, observedById),
     environment: context.environment,
+    infrastructureBlocker: buildInfrastructureBlocker(quotaBlocker),
     project: context.project,
   };
+}
+
+function buildInfrastructureBlocker(
+  row: OrganizationQuotaInfrastructureBlockerRow | null,
+): DeploymentInfrastructureBlockerResult | null {
+  return row === null
+    ? null
+    : {
+        code: 'organization_quota_reconciliation_failed',
+        message: row.message,
+        retryAt: row.retryAt,
+      };
 }
 
 function deduplicateDeployments(deployments: DeploymentJoinedRow[]): DeploymentJoinedRow[] {

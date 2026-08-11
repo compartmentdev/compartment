@@ -323,6 +323,28 @@ operations and resource reconcile runs instead of leaving them unclaimable.
 Existing project controller RoleBindings remain unchanged; new projects and
 explicit retries use the target-bound bootstrap identity.
 
+Each organization receives one logical Capsule quota pool, projected as five
+`GlobalCustomQuota` resources and selected by its immutable organization label
+across all managed project namespaces. The fixed pool permits 20 CPU requests
+and limits, 20Gi memory requests and limits, and 100Gi requested PVC storage. Capsule admission evaluates
+only Pod and PVC create and update requests in positively labeled
+project namespaces and fails closed. A separate fail-open delete notification
+lets Capsule release ledger capacity without making workload teardown depend on
+webhook availability. A successful durable reconciliation row becomes eligible
+for refresh after 15 minutes, behind pending and failed work, to repair accounting
+if a notification is missed. Platform and build namespaces are outside that selector.
+Existing workloads are not evicted when aggregate usage is over limit; new Pod
+or PVC admission remains denied until deletion or downsizing releases capacity.
+API state tracks only reconciliation readiness, never usage.
+That state is created transactionally for every new organization. The leader
+worker marks reconciliation successful only after it applies the quota objects.
+Every new project namespace receives the immutable organization ID on its first
+projection. Project namespace provisioning waits for that infrastructure
+readiness, not for available quota usage. Reconciliation failures retry after
+five seconds until the third attempt and every 15 minutes after that.
+Deployment status reports the persisted infrastructure failure and next retry
+time while the project remains pending.
+
 ## Migration and deletion
 
 Replacement code has no compatibility fallback. Obsolete host-runtime

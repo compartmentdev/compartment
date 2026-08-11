@@ -1,11 +1,15 @@
 import {
   buildWorkerUploadGitSourceResolutionTaskArchivePath,
   compartmentInternalAppAccessStatePathname,
+  workerClaimOrganizationQuotaReconcilePathname,
+  workerClaimOrganizationQuotaReconcileResponseSchema,
   workerClaimNextDeploymentPathname,
   workerClaimProjectProvisioningV2Pathname,
   workerClaimProjectProvisioningV2ResponseSchema,
   workerCompleteProjectProvisioningV2Pathname,
   workerCompleteProjectProvisioningResponseSchema,
+  workerCompleteOrganizationQuotaReconcilePathname,
+  workerCompleteOrganizationQuotaReconcileResponseSchema,
   workerRunNextScheduledResourceOperationPathname,
   workerRunNextScheduledResourceOperationResponseSchema,
   workerUploadGitSourceResolutionTaskArchiveResponseSchema,
@@ -13,6 +17,10 @@ import {
 import type { FastifyReply, FastifyRequest, HookHandlerDoneFunction, LightMyRequestResponse } from 'fastify';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ApiApp } from '../src/app.types';
+import type {
+  acknowledgeOrganizationQuotaReconciliation,
+  claimNextOrganizationQuotaReconciliation,
+} from '../src/services/organization-quota-reconciliation.service';
 import type {
   claimQueuedDeploymentForWorker,
   recoverOrphanedDeploymentBuildClaims,
@@ -31,10 +39,14 @@ type RunNextScheduledResourceOperationForWorker = typeof runNextScheduledResourc
 type StoreSourceResolutionTaskArchive = typeof storeSourceResolutionTaskArchive;
 type ClaimProjectProvisioningV2 = typeof claimProjectProvisioningV2;
 type AcknowledgeProjectProvisioningV2 = typeof acknowledgeProjectProvisioningV2;
+type AcknowledgeOrganizationQuotaReconciliation = typeof acknowledgeOrganizationQuotaReconciliation;
+type ClaimNextOrganizationQuotaReconciliation = typeof claimNextOrganizationQuotaReconciliation;
 
 interface InternalWorkerRouteMocks {
+  acknowledgeOrganizationQuotaReconciliation: Mock<AcknowledgeOrganizationQuotaReconciliation>;
   acknowledgeProjectProvisioningV2: Mock<AcknowledgeProjectProvisioningV2>;
   claimQueuedDeploymentForWorker: Mock<ClaimQueuedDeploymentForWorker>;
+  claimNextOrganizationQuotaReconciliation: Mock<ClaimNextOrganizationQuotaReconciliation>;
   recoverOrphanedDeploymentBuildClaims: Mock<RecoverOrphanedDeploymentBuildClaims>;
   claimProjectProvisioningV2: Mock<ClaimProjectProvisioningV2>;
   runNextScheduledResourceOperationForWorker: Mock<RunNextScheduledResourceOperationForWorker>;
@@ -46,12 +58,25 @@ let shouldRestoreSourceArchiveMaxBytes: boolean = false;
 
 const mocks: InternalWorkerRouteMocks = vi.hoisted(
   (): InternalWorkerRouteMocks => ({
+    acknowledgeOrganizationQuotaReconciliation: vi.fn<AcknowledgeOrganizationQuotaReconciliation>(),
     acknowledgeProjectProvisioningV2: vi.fn<AcknowledgeProjectProvisioningV2>(),
     claimQueuedDeploymentForWorker: vi.fn<ClaimQueuedDeploymentForWorker>(),
+    claimNextOrganizationQuotaReconciliation: vi.fn<ClaimNextOrganizationQuotaReconciliation>(),
     recoverOrphanedDeploymentBuildClaims: vi.fn<RecoverOrphanedDeploymentBuildClaims>(),
     claimProjectProvisioningV2: vi.fn<ClaimProjectProvisioningV2>(),
     runNextScheduledResourceOperationForWorker: vi.fn<RunNextScheduledResourceOperationForWorker>(),
     storeSourceResolutionTaskArchive: vi.fn<StoreSourceResolutionTaskArchive>(),
+  }),
+);
+
+vi.mock(
+  '../src/services/organization-quota-reconciliation.service',
+  (): {
+    acknowledgeOrganizationQuotaReconciliation: Mock<AcknowledgeOrganizationQuotaReconciliation>;
+    claimNextOrganizationQuotaReconciliation: Mock<ClaimNextOrganizationQuotaReconciliation>;
+  } => ({
+    acknowledgeOrganizationQuotaReconciliation: mocks.acknowledgeOrganizationQuotaReconciliation,
+    claimNextOrganizationQuotaReconciliation: mocks.claimNextOrganizationQuotaReconciliation,
   }),
 );
 
@@ -97,8 +122,10 @@ vi.mock(
 
 describe('internal worker routes', (): void => {
   afterEach((): void => {
+    mocks.acknowledgeOrganizationQuotaReconciliation.mockReset();
     mocks.acknowledgeProjectProvisioningV2.mockReset();
     mocks.claimQueuedDeploymentForWorker.mockReset();
+    mocks.claimNextOrganizationQuotaReconciliation.mockReset();
     mocks.recoverOrphanedDeploymentBuildClaims.mockReset();
     mocks.claimProjectProvisioningV2.mockReset();
     mocks.runNextScheduledResourceOperationForWorker.mockReset();
@@ -108,6 +135,79 @@ describe('internal worker routes', (): void => {
       shouldRestoreSourceArchiveMaxBytes = false;
     }
     previousSourceArchiveMaxBytes = undefined;
+  });
+
+  it('claims organization quota reconciliation through worker authentication', async (): Promise<void> => {
+    applyApiRouteTestEnv();
+    mocks.claimNextOrganizationQuotaReconciliation.mockResolvedValueOnce({
+      leaseId: 'oql_123',
+      organizationId: 'org_123',
+    });
+    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
+      const response: LightMyRequestResponse = await injectApiRoute(app, {
+        headers: { accept: 'application/json', authorization: 'Bearer test-runtime-control-token' },
+        method: 'POST',
+        timeoutMs: 1000,
+        url: workerClaimOrganizationQuotaReconcilePathname,
+      });
+      expect(response.statusCode).toBe(200);
+      expect(workerClaimOrganizationQuotaReconcileResponseSchema.parse(response.json())).toEqual({
+        target: { leaseId: 'oql_123', organizationId: 'org_123' },
+      });
+    });
+  });
+
+  it('rejects edge auth and invalid organization quota completions', async (): Promise<void> => {
+    applyApiRouteTestEnv();
+    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
+      const edgeResponse: LightMyRequestResponse = await injectApiRoute(app, {
+        headers: { accept: 'application/json', authorization: 'Bearer test-edge-token' },
+        method: 'POST',
+        timeoutMs: 1000,
+        url: workerClaimOrganizationQuotaReconcilePathname,
+      });
+      expect(edgeResponse.statusCode).toBe(401);
+
+      const invalidResponse: LightMyRequestResponse = await injectApiRoute(app, {
+        headers: {
+          accept: 'application/json',
+          authorization: 'Bearer test-runtime-control-token',
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+        payload: { leaseId: 'oql_123', organizationId: 'org_123', status: 'failed' },
+        timeoutMs: 1000,
+        url: workerCompleteOrganizationQuotaReconcilePathname,
+      });
+      expect(invalidResponse.statusCode).toBe(400);
+      expect(mocks.acknowledgeOrganizationQuotaReconciliation).not.toHaveBeenCalled();
+    });
+  });
+
+  it('projects organization quota completion into the service input', async (): Promise<void> => {
+    applyApiRouteTestEnv();
+    mocks.acknowledgeOrganizationQuotaReconciliation.mockResolvedValueOnce(true);
+    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
+      const response: LightMyRequestResponse = await injectApiRoute(app, {
+        headers: {
+          accept: 'application/json',
+          authorization: 'Bearer test-runtime-control-token',
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+        payload: { leaseId: 'oql_123', message: 'apply failed', organizationId: 'org_123', status: 'failed' },
+        timeoutMs: 1000,
+        url: workerCompleteOrganizationQuotaReconcilePathname,
+      });
+      expect(response.statusCode).toBe(200);
+      expect(workerCompleteOrganizationQuotaReconcileResponseSchema.parse(response.json())).toEqual({ applied: true });
+      expect(mocks.acknowledgeOrganizationQuotaReconciliation).toHaveBeenCalledWith({
+        failureMessage: 'apply failed',
+        leaseId: 'oql_123',
+        organizationId: 'org_123',
+        status: 'failed',
+      });
+    });
   });
 
   it('rejects runtime control auth on the edge-only app access state route', async (): Promise<void> => {

@@ -6,12 +6,30 @@ import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import {
   findValuesContractViolations,
   listSchemaValuePaths,
+  readChartDependencyValuePaths,
   readChartValueReads,
   readInstallStateFieldPaths,
   readSourceValuePaths,
 } from './check-helm-values-contract.mjs';
 
 const chartRoot = join(readRepositoryRoot(import.meta.url, 2), 'deploy/chart/compartment');
+
+describe('readChartDependencyValuePaths', () => {
+  it('treats dependency names as chart-owned values roots', () => {
+    expect(
+      readChartDependencyValuePaths(`
+dependencies:
+  - name: capsule
+    repository: https://projectcapsule.github.io/charts
+    version: 0.13.11
+  - name: shared-chart
+    alias: tenant-addon
+    repository: https://charts.example.com
+    version: 1.0.0
+      `),
+    ).toEqual(['capsule', 'tenant-addon']);
+  });
+});
 
 describe('readSourceValuePaths', () => {
   it('reads direct and aliased chart value paths', () => {

@@ -3,6 +3,7 @@ import type { projectKubeProvisioning } from '../db/schema';
 
 export type ProjectProvisioningClaimRow = ProjectProvisioningTargetV2;
 export interface ProjectProvisioningClaimSelection {
+  organizationId: string;
   projectName: string;
   provisioning: typeof projectKubeProvisioning.$inferSelect;
 }

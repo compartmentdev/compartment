@@ -57,7 +57,7 @@ type KubePatchInvocation = [
   object: KubeManifest,
   pretty: string | undefined,
   dryRun: string | undefined,
-  fieldManager: string,
+  fieldManager: string | undefined,
   force: boolean,
   strategy: PatchStrategy,
 ];
@@ -676,10 +676,8 @@ describe('KubeRuntime Job primitive', (): void => {
     createObservationMock.mockResolvedValue(terminalObservation(jobName, false, 23, stop));
     const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
 
-    const result: KubeJobResult = await runtime.runJob(spec);
-
+    expect((await runtime.runJob(spec)).exitCode).toBe(23);
     expect(objectApi.patches.at(-1)![0].spec).toMatchObject({ backoffLimit: 1 });
-    expect(result.exitCode).toBe(23);
     expect(stop).toHaveBeenCalledOnce();
   });
 
@@ -693,6 +691,7 @@ describe('KubeRuntime Job primitive', (): void => {
         labels: {
           'app.kubernetes.io/managed-by': 'compartment',
           'compartment.dev/namespace-id': 'prj-01jz',
+          'compartment.dev/organization-id': 'org_1',
           'compartment.dev/project-id': 'prj-01jz',
         },
         name: kubeNamespaceName('prj-01jz'),
@@ -949,6 +948,7 @@ function provisioningRow(namespaceId: string): ProjectNamespaceProvisioningRow {
       resourcePorts: [5432],
       serviceCidr: ['10', '43', '0', '0/16'].join('.'),
     },
+    organizationId: 'org_1',
     projectId: namespaceId,
     projectName: 'payments',
     registryPullCredentials: {

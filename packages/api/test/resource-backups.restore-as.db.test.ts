@@ -14,6 +14,7 @@ import {
   environments,
   operations,
   organizationMemberships,
+  organizationQuotaReconciliation,
   organizations,
   principals,
   projectKubeProvisioning,
@@ -224,6 +225,7 @@ function targetClaims(resourceId: string): ResourceClaimIdentity[] {
 
 async function seedRestoreAsScope(): Promise<void> {
   await db.insert(organizations).values({ id: 'org_restore_as', name: 'Restore As', slug: 'restore-as' });
+  await db.insert(organizationQuotaReconciliation).values({ organizationId: 'org_restore_as', state: 'succeeded' });
   await db.insert(principals).values({
     email: 'restore-as@example.com',
     id: 'prn_restore_as',

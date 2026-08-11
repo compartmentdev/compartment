@@ -1,0 +1,101 @@
+{{- $name := printf "%s-capsule-admission-cleanup" .Release.Name -}}
+{{- $webhookName := printf "%s-capsule-dynamic-webhook" .Release.Name -}}
+{{- $releaseWebhookName := printf "%s-capsule-quota-release-webhook" .Release.Name -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: pre-delete
+    helm.sh/hook-weight: '-3'
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $name }}
+  annotations:
+    helm.sh/hook: pre-delete
+    helm.sh/hook-weight: '-3'
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [admissionregistration.k8s.io]
+    resourceNames: [{{ $webhookName }}]
+    resources: [mutatingwebhookconfigurations, validatingwebhookconfigurations]
+    verbs: [delete]
+  - apiGroups: [admissionregistration.k8s.io]
+    resourceNames: [{{ $releaseWebhookName }}]
+    resources: [validatingwebhookconfigurations]
+    verbs: [delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $name }}
+  annotations:
+    helm.sh/hook: pre-delete
+    helm.sh/hook-weight: '-2'
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: pre-delete
+    helm.sh/hook-weight: '-1'
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "compartment.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $name }}
+      restartPolicy: OnFailure
+      containers:
+        - name: cleanup
+          image: {{ include "compartment.image" .Values.images.kubectl }}
+          imagePullPolicy: {{ .Values.images.kubectl.pullPolicy }}
+          command: [kubectl]
+          args:
+            - delete
+            - mutatingwebhookconfiguration/{{ $webhookName }}
+            - validatingwebhookconfiguration/{{ $webhookName }}
+            - validatingwebhookconfiguration/{{ $releaseWebhookName }}
+            - --namespace
+            - {{ .Release.Namespace }}
+            - --ignore-not-found
+          securityContext:
+            {{- include "compartment.containerSecurityContext" . | nindent 12 }}
+            runAsUser: 1000
+            runAsGroup: 1000
+          resources:
+            {{- toYaml .Values.resources.wait | nindent 12 }}
+          env:
+            - name: HOME
+              value: /tmp
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}

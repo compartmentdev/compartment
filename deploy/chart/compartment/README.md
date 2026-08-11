@@ -15,6 +15,10 @@ existing-cluster preflight before applying it.
 - gVisor installed on every node eligible for build or tenant workloads, with a working RuntimeClass
 - installer access to the namespaced and cluster-scoped resources rendered by the chart
 
+The chart installs Capsule 0.13.11 and enables fail-closed calculation admission for Pod and PVC creates and updates in
+Compartment-managed project namespaces. Delete notifications fail open so teardown remains available; periodic quota
+reconciliation repairs missed notifications. Platform and build namespaces are excluded by the positive namespace labels.
+
 The chart does not install or disable cluster infrastructure and does not mutate nodes.
 
 `platform.newProjectsPrivateByDefault` controls hosted-route access for projects created after the value is applied.

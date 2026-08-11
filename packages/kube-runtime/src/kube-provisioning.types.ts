@@ -5,6 +5,7 @@ export interface ProjectNamespaceProvisioningRow {
   installationId: string;
   namespaceId: string;
   networkPolicy: ProjectNetworkPolicyProjection;
+  organizationId: string;
   projectId: string;
   projectName: string;
   registryPullCredentials: ProjectRegistryPullCredentialProjection;

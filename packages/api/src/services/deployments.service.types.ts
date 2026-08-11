@@ -135,7 +135,14 @@ export interface DeploymentStatusLookupResult {
   activeDeployments: DeploymentSummaryInput[];
   deployments: DeploymentSummaryInput[];
   environment: EnvironmentSummaryInput;
+  infrastructureBlocker: DeploymentInfrastructureBlockerResult | null;
   project: ProjectSummaryInput;
+}
+
+export interface DeploymentInfrastructureBlockerResult {
+  code: 'organization_quota_reconciliation_failed';
+  message: string;
+  retryAt: Date;
 }
 
 export type DeploymentInspectTargetResult = DeploymentInspectTargetInput;

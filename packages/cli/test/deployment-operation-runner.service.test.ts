@@ -89,6 +89,7 @@ describe('deployment operation runner service', (): void => {
       activeDeployments: [],
       deployments: [],
       environment: createDeploymentReadEnvironmentSummaryFixture({ name: 'preview' }),
+      infrastructureBlocker: null,
       project: createDeploymentReadProjectSummaryFixture(),
     });
 

@@ -5,3 +5,7 @@ type: application
 version: 0.1.0
 appVersion: 0.10.8
 kubeVersion: '>=1.30.0-0'
+dependencies:
+  - name: capsule
+    version: 0.13.11
+    repository: https://projectcapsule.github.io/charts

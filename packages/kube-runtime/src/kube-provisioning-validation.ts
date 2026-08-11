@@ -100,6 +100,7 @@ function hasCanonicalNamespaceLabels(existing: KubeManifest, desired: KubeManife
   const identityLabels: string[] = [
     'app.kubernetes.io/managed-by',
     'compartment.dev/namespace-id',
+    'compartment.dev/organization-id',
     'compartment.dev/project-id',
   ];
   return identityLabels.every(

@@ -21,6 +21,7 @@ const diagnosticsScript = join(repositoryRoot, 'scripts/deploy/collect-platform-
 const networkPolicyGateScript = join(repositoryRoot, 'packages/kube-runtime/test/network-policy-enforcement-check.sh');
 const productLogGateScript = join(repositoryRoot, 'scripts/deploy/run-platform-k3d-product-log-gate.mjs');
 const retainedStateGateScript = join(repositoryRoot, 'scripts/deploy/run-platform-k3d-retained-state-gate.mjs');
+const organizationQuotaGateScript = join(repositoryRoot, 'scripts/deploy/run-platform-k3d-organization-quota-gate.mjs');
 const tenantStateSamplerScript = join(repositoryRoot, 'scripts/deploy/sample-platform-k3d-tenant-state.mjs');
 async function runShard(shardName) {
   const env = buildPlatformK3dShardEnvironment(shardName);
@@ -138,6 +139,8 @@ async function runShardSuites(suites, env, ownerEnvironmentPath, signal) {
         env,
         signal,
       );
+    } else if (suite === 'organization-quota') {
+      await runInterruptibleCommand(process.execPath, [organizationQuotaGateScript], env, signal);
     } else if (suite === 'console') {
       await runInterruptibleCommand('pnpm', ['--filter', '@compartment/console', 'test:e2e:install'], env, signal);
       await runCliE2eSuite(env, 'test/console.e2e.test.ts', signal);
