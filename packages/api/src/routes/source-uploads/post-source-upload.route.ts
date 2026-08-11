@@ -91,6 +91,7 @@ async function createSourceUploadFromMultipartFile(
 ): Promise<CreatedSourceUpload> {
   return await createSourceUploadFromStream({
     actorPrincipalId: request.actor.principalId,
+    authSession: request.actor.authSession,
     isTruncated: (): boolean => sourceArchive.file.truncated === true,
     organizationId: request.currentOrganization.id,
     scope,

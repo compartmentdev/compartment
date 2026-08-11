@@ -3,15 +3,11 @@ import { findOrganizationPrincipalAccessById } from '../queries/organization-use
 import type { OrganizationPrincipalAccessRow } from '../queries/organization-users.query.types';
 import { findActiveSourceByAutomationPrincipal } from '../queries/source.query';
 import type { SourceRow } from '../queries/source.query.types';
-
-interface ActiveHumanRuntimeActorInput {
-  organizationId: string;
-  principalId: string;
-}
-
-interface ActiveSourceAutomationRuntimeActorInput extends ActiveHumanRuntimeActorInput {
-  sourceId: string;
-}
+import type {
+  ActiveHumanRuntimeActorInput,
+  ActiveHumanRuntimeSessionActorInput,
+  ActiveSourceAutomationRuntimeActorInput,
+} from './runtime-actor-authorization.service.types';
 
 export async function requireActiveHumanRuntimeActor(input: ActiveHumanRuntimeActorInput): Promise<void> {
   const principal: OrganizationPrincipalAccessRow | undefined = await findOrganizationPrincipalAccessById(
@@ -19,6 +15,19 @@ export async function requireActiveHumanRuntimeActor(input: ActiveHumanRuntimeAc
     input.principalId,
   );
   if (principal === undefined || !isActiveHumanRuntimePrincipal(principal)) {
+    throw createForbiddenError();
+  }
+}
+
+export async function requireActiveHumanRuntimeSessionActor(input: ActiveHumanRuntimeSessionActorInput): Promise<void> {
+  const principal: OrganizationPrincipalAccessRow | undefined = await findOrganizationPrincipalAccessById(
+    input.organizationId,
+    input.principalId,
+  );
+  if (
+    principal === undefined ||
+    (!isActiveHumanRuntimePrincipal(principal) && !isBoundSessionRuntimePrincipal(input, principal))
+  ) {
     throw createForbiddenError();
   }
 }
@@ -51,6 +60,19 @@ function isActiveHumanRuntimePrincipal(principal: OrganizationPrincipalAccessRow
     principal.principalType === 'user' &&
     principal.blockedAt === null &&
     (principal.passwordHash !== null || principal.hasSsoOidcIdentity)
+  );
+}
+
+function isBoundSessionRuntimePrincipal(
+  input: ActiveHumanRuntimeSessionActorInput,
+  principal: OrganizationPrincipalAccessRow,
+): boolean {
+  return (
+    principal.principalType === 'user' &&
+    principal.blockedAt === null &&
+    input.session.authMethodKind === 'password_scoped' &&
+    input.session.principalId === input.principalId &&
+    input.session.organizationId === input.organizationId
   );
 }
 

@@ -21,7 +21,7 @@ import type { SignupIdempotencyRecordRow } from '../queries/signup-idempotency.q
 import { getApiConfig, getApiDatabase } from '../runtime/runtime-access';
 import {
   buildAuthSessionOrganizationPolicySession,
-  createPasswordAuthSessionInput,
+  createScopedPasswordAuthSessionInput,
   issueAuthSessionWithExecutor,
 } from './auth-session.service';
 import type { AuthSessionPlan } from './auth-session.types';
@@ -55,7 +55,8 @@ export async function signUp(input: SignupInput): Promise<SignupResult> {
 
   const account: SignupAccount = await resolveSignupAccount(input, config);
   const organizations: OrganizationRow[] = await resolveSignupOrganizations(account, input.organizationName);
-  const session: AuthSessionPlan = await issueSignupSession(account.principalId, config);
+  const signupOrganization: OrganizationRow = requireSignupOrganization(organizations, input.organizationName);
+  const session: AuthSessionPlan = await issueSignupSession(account.principalId, signupOrganization.id, config);
 
   return {
     authSession: buildAuthSessionOrganizationPolicySession(session, account.principalId),
@@ -145,6 +146,21 @@ async function resolveSignupOrganizations(
   return await createSignupOrganizations(account, organizationName);
 }
 
+function requireSignupOrganization(
+  organizations: readonly OrganizationRow[],
+  organizationName: string,
+): OrganizationRow {
+  const organizationSlug: string = resolveOrganizationSlug(organizationName);
+  const organization: OrganizationRow | undefined = organizations.find(
+    (candidate: OrganizationRow): boolean => candidate.slug === organizationSlug,
+  );
+  if (organization === undefined) {
+    throw new Error(`Expected signup organization ${organizationSlug}.`);
+  }
+
+  return organization;
+}
+
 async function createSignupOrganizations(account: SignupAccount, organizationName: string): Promise<OrganizationRow[]> {
   try {
     const created: CreateOrganizationResult = await createOrganization({
@@ -200,13 +216,18 @@ async function discardSignupAccount(account: SignupAccount): Promise<void> {
 }
 
 /**
- * The session is unscoped like the one `compartment login` mints, so a signup session is never pinned to the first
- * organization forever.
+ * The signup organization exists before the fresh session is issued, so the session can name it immediately. Session
+ * issuance remains retry-safe because every attempt happens after the idempotent account and organization steps have
+ * converged.
  */
-async function issueSignupSession(principalId: string, config: ApiConfig): Promise<AuthSessionPlan> {
+async function issueSignupSession(
+  principalId: string,
+  organizationId: string,
+  config: ApiConfig,
+): Promise<AuthSessionPlan> {
   return await getApiDatabase().transaction(
     async (tx: OrganizationUsersTransaction): Promise<AuthSessionPlan> =>
-      await issueAuthSessionWithExecutor(tx, createPasswordAuthSessionInput(principalId, null), config),
+      await issueAuthSessionWithExecutor(tx, createScopedPasswordAuthSessionInput(principalId, organizationId), config),
   );
 }
 
