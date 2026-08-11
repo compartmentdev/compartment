@@ -1,5 +1,5 @@
 import type { ExistingProjectRemoteState } from '@compartment/contracts';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Pool, PoolClient, QueryResult } from 'pg';
 import { eq } from 'drizzle-orm';
@@ -232,10 +232,7 @@ describe('projects service', (): void => {
 
   it('backfills exactly one durable quota row for an existing organization', async (): Promise<void> => {
     const client: PoolClient = await pool.connect();
-    const migration: string = readFileSync(
-      join(process.cwd(), 'packages/api/drizzle/0008_talented_blur.sql'),
-      'utf8',
-    ).replaceAll('--> statement-breakpoint', '');
+    const migration: string = readOrganizationQuotaMigration().replaceAll('--> statement-breakpoint', '');
     try {
       await client.query('BEGIN');
       await client.query('DROP TABLE organization_quota_reconciliation');
@@ -1057,4 +1054,20 @@ async function waitForProjectTeardownClaim(): Promise<ProjectProvisioningClaimRo
     });
   }
   throw new Error('Timed out waiting for project teardown claim.');
+}
+
+/**
+ * Located by the table it creates rather than by filename, so renumbering the migration behind a
+ * migration that lands on main first cannot silently skip this backfill assertion.
+ */
+function readOrganizationQuotaMigration(): string {
+  const migrationDirectory: string = join(process.cwd(), 'packages/api/drizzle');
+  const migrations: string[] = readdirSync(migrationDirectory)
+    .filter((entry: string): boolean => entry.endsWith('.sql'))
+    .map((entry: string): string => readFileSync(join(migrationDirectory, entry), 'utf8'))
+    .filter((contents: string): boolean => contents.includes('CREATE TABLE "organization_quota_reconciliation"'));
+  if (migrations.length !== 1) {
+    throw new Error(`Expected exactly one organization quota migration, found ${migrations.length.toString()}.`);
+  }
+  return migrations[0]!;
 }
