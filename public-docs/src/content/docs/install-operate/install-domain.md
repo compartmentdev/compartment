@@ -39,13 +39,27 @@ compartment install \
   --base-domain apps.example.com
 ```
 
-The interactive installer offers two public TLS paths:
+The interactive installer offers three public TLS paths:
 
 - terminate TLS outside Compartment and forward HTTP to the platform;
-- use an existing `kubernetes.io/tls` Secret in the Compartment namespace.
+- use an existing `kubernetes.io/tls` Secret in the Compartment namespace;
+- select an existing cert-manager `Issuer` or `ClusterIssuer` with a Ready DNS-01 solver.
+
+The issuer path creates a wildcard Certificate for your base domain. cert-manager handles issuance and renewal.
+You create the issuer and configure its DNS provider credentials; Compartment stores only its reference. HTTP-01
+cannot issue wildcard certificates.
 
 Publish the DNS records reported by the installer. A namespaced Secret or `Issuer` must exist in the installation
 namespace; a `ClusterIssuer` is cluster-scoped.
+
+For non-interactive installation, add both issuer flags to the complete install command:
+
+```bash
+compartment install \
+  --base-domain apps.example.com \
+  --tls-issuer ClusterIssuer/public-dns01 \
+  --registry-issuer Issuer/registry-ca
+```
 
 The bundled private registry has a separate certificate for its retained Service IP. On an existing cluster, its
 `registry.issuerRef` must reference a cert-manager CA issuer whose CA is already trusted by every eligible Kubernetes

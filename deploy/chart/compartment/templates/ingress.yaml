@@ -15,7 +15,7 @@ spec:
   tls:
     - hosts:
         - {{ printf "console.%s" $baseDomain | quote }}
-      secretName: {{ if eq $installState.effective.platform.domainMode "managed" }}{{ $managedTlsSecret }}{{ else }}{{ default (printf "%s-console-tls" (include "compartment.fullname" .)) $operatorTlsSecret }}{{ end }}
+      secretName: {{ default $managedTlsSecret $operatorTlsSecret }}
     - hosts:
         - {{ printf "*.%s" $baseDomain | quote }}
       secretName: {{ default $managedTlsSecret $operatorTlsSecret }}

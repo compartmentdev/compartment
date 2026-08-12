@@ -41,6 +41,30 @@ export function assertRegistryIpIssuerAssessment(assessment: KubernetesOperatorI
   );
 }
 
+export function assertPublicDns01IssuerAssessment(
+  issuer: DomainIssuerReference,
+  assessment: KubernetesOperatorIssuerAssessment,
+): void {
+  if (assessment.ready === undefined) {
+    throw new KubernetesExistingClusterPreflightError(
+      'cert-manager',
+      `${assessment.detail} The selected issuer must be inspectable so Compartment can verify Ready=True and an ACME DNS-01 solver before issuing a wildcard certificate.`,
+    );
+  }
+  if (assessment.ready !== true) {
+    throw new KubernetesExistingClusterPreflightError(
+      'cert-manager',
+      `Selected ${issuer.kind} ${issuer.name} is not Ready=True. Make the issuer ready before installing.`,
+    );
+  }
+  if (assessment.dns01 !== true) {
+    throw new KubernetesExistingClusterPreflightError(
+      'cert-manager',
+      `Selected ${issuer.kind} ${issuer.name} has no ACME DNS-01 solver. Wildcard certificates cannot use HTTP-01; configure a DNS-01 solver for the operator-owned domain.`,
+    );
+  }
+}
+
 async function readOperatorIssuer(
   input: Pick<KubernetesInstallDeploymentInput, 'kubeconfigPath' | 'kubeContext' | 'namespace'>,
   issuer: DomainIssuerReference,
@@ -63,18 +87,36 @@ function assessOperatorIssuer(issuer: DomainIssuerReference, output: string): Ku
   if (resource.spec?.selfSigned !== undefined) {
     throw selfSignedIssuerError(issuer);
   }
+  const capabilities: Pick<KubernetesOperatorIssuerAssessment, 'dns01' | 'ready'> = assessIssuerCapabilities(resource);
   if (isRecognizedPublicAcme(resource)) {
-    return { detail: `${issuer.kind} ${issuer.name} uses ACME.`, trust: 'acme' };
+    return { ...capabilities, detail: `${issuer.kind} ${issuer.name} uses ACME.`, trust: 'acme' };
   }
   if (resource.spec?.acme !== undefined) {
-    return unknownIssuerAssessment(
-      issuer,
-      'ACME does not guarantee public trust and its server is not a recognized public CA endpoint',
-    );
+    return {
+      ...unknownIssuerAssessment(
+        issuer,
+        'ACME does not guarantee public trust and its server is not a recognized public CA endpoint',
+      ),
+      ...capabilities,
+    };
   }
-  return resource.spec?.ca === undefined
-    ? unknownIssuerAssessment(issuer, 'its cert-manager spec does not identify a known trust model')
-    : caIssuerAssessment(issuer);
+  const assessment: KubernetesOperatorIssuerAssessment =
+    resource.spec?.ca === undefined
+      ? unknownIssuerAssessment(issuer, 'its cert-manager spec does not identify a known trust model')
+      : caIssuerAssessment(issuer);
+  return { ...assessment, ...capabilities };
+}
+
+function assessIssuerCapabilities(
+  issuer: KubernetesCertManagerIssuer,
+): Pick<KubernetesOperatorIssuerAssessment, 'dns01' | 'ready'> {
+  return {
+    dns01: issuer.spec?.acme?.solvers?.some((solver): boolean => solver.dns01 !== undefined) === true,
+    ready:
+      issuer.status?.conditions?.some(
+        (condition): boolean => condition.type === 'Ready' && condition.status === 'True',
+      ) === true,
+  };
 }
 
 function isRecognizedPublicAcme(issuer: KubernetesCertManagerIssuer): boolean {

@@ -58,7 +58,7 @@ Before installation, also provide:
 - `helm` 4.0.0 or newer on `PATH` (`helm version --short`);
 - `kubectl` 1.30.0 or newer on `PATH` and within one minor version of the target Kubernetes API server
   (`kubectl version --client`);
-- an Issuer or ClusterIssuer for operator-owned public domains;
+- for issuer-managed public TLS, a Ready Issuer or ClusterIssuer with an ACME DNS-01 solver;
 - a separate cert-manager CA Issuer or ClusterIssuer for the private registry, with its CA already trusted by every
   node container runtime and the machine running the CLI;
 - NetworkPolicy enforcement;
@@ -229,13 +229,14 @@ hostnames into unstable IPs; choose an operator-owned base domain instead. Both 
 node-trusted registry CA issuer described below.
 
 When you select an operator-owned base domain, the wizard also asks how public TLS is provided. Choose an existing
-cert-manager `Issuer` or `ClusterIssuer`, or choose an existing `kubernetes.io/tls` Secret. The Secret option also asks
-for an issuer for the private registry certificate. A namespaced `Issuer` or Secret must exist in the release namespace
-(`--namespace`, default `compartment`); a `ClusterIssuer` is cluster-scoped. Create the namespace first when you use
-namespaced certificate resources.
+cert-manager `Issuer` or `ClusterIssuer`, choose an existing `kubernetes.io/tls` Secret, or terminate TLS externally
+and let Compartment serve HTTP. The private registry always needs its own issuer. A namespaced `Issuer` or Secret must
+exist in the release namespace (`--namespace`, default `compartment`); a `ClusterIssuer` is cluster-scoped. Create the
+namespace first when you use namespaced certificate resources.
 
-Do not select an issuer with `spec.selfSigned`. A public ACME issuer is appropriate for operator-owned public TLS but
-cannot issue the registry's private ClusterIP certificate. The registry issuer must use `spec.ca`, and that private CA
+The public issuer must report `Ready=True` and have at least one ACME DNS-01 solver because HTTP-01 cannot issue a
+wildcard certificate. Do not select an issuer with `spec.selfSigned`. A public ACME issuer cannot issue the registry's
+private ClusterIP certificate. The registry issuer must use `spec.ca`, and that private CA
 must be installed in the trust stores of every Kubernetes node and the machine running the CLI; the wizard requires
 confirmation.
 Install the CA on every node before installing Compartment. If you add it after the node container runtime starts,
@@ -253,6 +254,10 @@ tls:
   issuerRef:
     kind: ClusterIssuer
     name: letsencrypt-production
+registry:
+  issuerRef:
+    kind: Issuer
+    name: registry-ca
 storage:
   storageClass: local-path
 ```

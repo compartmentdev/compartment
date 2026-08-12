@@ -29,9 +29,10 @@ const discoveredRegistryIssuers: readonly KubernetesInstallIssuerChoice[] = [
   { kind: 'Issuer', name: 'private-ca' },
   { kind: 'Issuer', name: 'registry-issuer' },
   { kind: 'ClusterIssuer', name: 'self-signed' },
+  { kind: 'ClusterIssuer', name: 'public-dns01' },
 ];
 const inspectPublicAcme: InspectKubernetesInstallIssuer = async (): Promise<KubernetesOperatorIssuerAssessment> =>
-  await Promise.resolve({ detail: 'Public ACME issuer.', trust: 'acme' });
+  await Promise.resolve({ detail: 'Public ACME issuer.', dns01: true, ready: true, trust: 'acme' });
 const inspectPlatformAndRegistryIssuer: InspectKubernetesInstallIssuer = async (
   _contextName: string,
   _namespace: string,
@@ -39,7 +40,7 @@ const inspectPlatformAndRegistryIssuer: InspectKubernetesInstallIssuer = async (
 ): Promise<KubernetesOperatorIssuerAssessment> =>
   issuer.name.includes('registry')
     ? await Promise.resolve({ detail: 'Registry CA issuer.', trust: 'ca' })
-    : await Promise.resolve({ detail: 'Public ACME issuer.', trust: 'acme' });
+    : await Promise.resolve({ detail: 'Public ACME issuer.', dns01: true, ready: true, trust: 'acme' });
 
 describe('canonical Kubernetes install input', (): void => {
   it('produces the same validated input from interactive answers and flags', async (): Promise<void> => {
@@ -366,6 +367,35 @@ describe('canonical Kubernetes install input', (): void => {
       platform: { publicProtocol: 'https' },
       registry: { issuerRef: { kind: 'Issuer', name: 'registry-issuer' } },
       tls: { existingSecret: 'platform-tls' },
+    });
+  });
+  it('collects separate public DNS-01 and registry issuers for operator-managed TLS', async (): Promise<void> => {
+    const capture: CliCommandCapture = createCliCapture();
+    capture.stdin.end('1\ny\n2\napps.example.com\n3\n5\n3\ny\ny\n');
+
+    const wizard: KubernetesInstallWizardResult = await resolveCanonicalKubernetesInstallWizard(
+      capture.io,
+      {
+        adminPassword: 'correct horse battery staple',
+        email: 'owner@example.com',
+        organization: 'Acme',
+        output: 'text',
+      },
+      { contexts: [{ apiServer: 'https://cluster.example.test', name: 'production' }] },
+      async (): Promise<KubernetesInstallResourceInventory> =>
+        await Promise.resolve({
+          ingressClasses: ['nginx'],
+          issuers: discoveredRegistryIssuers,
+          storageClasses: [{ default: true, name: 'fast' }],
+        }),
+      inspectPlatformAndRegistryIssuer,
+    );
+
+    expect(wizard.input).toMatchObject({ baseDomain: 'apps.example.com', publicProtocol: 'https' });
+    expect(wizard.values).toMatchObject({
+      platform: { publicProtocol: 'https' },
+      registry: { issuerRef: { kind: 'Issuer', name: 'registry-issuer' } },
+      tls: { issuerRef: { kind: 'ClusterIssuer', name: 'public-dns01' } },
     });
   });
 

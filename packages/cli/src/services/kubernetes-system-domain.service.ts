@@ -30,6 +30,7 @@ import {
   parseSystemDomainMutation,
   parseSystemDomainStatus,
 } from './kubernetes-system-domain-request.service';
+import { assertPublicDns01IssuerAssessment, inspectOperatorIssuer } from './kubernetes-operator-issuer-trust.service';
 
 export async function getKubernetesSystemDomainStatus(
   target: KubernetesOperatorTarget,
@@ -44,6 +45,7 @@ export async function getKubernetesSystemDomainStatus(
 export async function setKubernetesSystemDomain(
   input: KubernetesDomainSetInput,
 ): Promise<SystemDomainMutationResponse> {
+  assertPublicDns01IssuerAssessment(input.issuerRef, await inspectOperatorIssuer(input, input.issuerRef));
   const status: SystemDomainStatusResponse = await readSystemDomainStatus(input);
   const body: SystemDomainSetRequest = {
     expectedSetupVersion: status.setupVersion,

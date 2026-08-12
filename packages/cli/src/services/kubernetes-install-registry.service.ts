@@ -96,15 +96,14 @@ function assertOperatorPlatformTlsConfiguration(
   if (isReservedKubernetesInstallLocalhostDomain(baseDomain)) {
     return;
   }
-  if (values.tls?.issuerRef !== undefined) {
-    throw new Error('tls.issuerRef is not supported for operator-owned domain TLS.');
-  }
   const existingSecret: string = (values.tls?.existingSecret ?? '').trim();
-  if (publicProtocol === 'https' && existingSecret === '') {
-    throw new Error('tls.existingSecret is required in --values when operator TLS uses HTTPS.');
+  const hasIssuer: boolean = values.tls?.issuerRef !== undefined;
+  const hasTlsSource: boolean = existingSecret !== '' || hasIssuer;
+  if (publicProtocol === 'https' && !hasTlsSource) {
+    throw new Error('tls.existingSecret or tls.issuerRef is required in --values when operator TLS uses HTTPS.');
   }
-  if (publicProtocol === 'http' && existingSecret !== '') {
-    throw new Error('tls.existingSecret cannot be used when operator TLS uses external HTTP termination.');
+  if (publicProtocol === 'http' && hasTlsSource) {
+    throw new Error('TLS sources cannot be used when operator TLS uses external HTTP termination.');
   }
 }
 

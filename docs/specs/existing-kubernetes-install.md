@@ -302,8 +302,10 @@ Managed wildcard issuance requires a cert-manager DNS-01 integration with the ma
 is a hard implementation dependency. The existing Caddy DNS module is not reused as an implicit second certificate
 controller.
 
-For an operator-owned base domain, the install contract references an existing Issuer, ClusterIssuer, or operator TLS
-Secret according to the final chart contract. Compartment must not create a customer-wide ClusterIssuer implicitly.
+For an operator-owned base domain, public TLS has three modes: an existing Kubernetes TLS Secret, an existing
+cert-manager Issuer or ClusterIssuer, or external TLS termination with HTTP between the external proxy and Compartment.
+An issuer-managed install requires the selected issuer to report `Ready=True` and expose an ACME DNS-01 solver;
+Compartment creates and renews the wildcard Certificate but does not create the issuer or store its DNS credentials.
 Provided certificate material terminates at the Ingress Controller and is never mounted into Caddy.
 
 ### Stage 5: establish the private registry path
@@ -433,10 +435,8 @@ keys.
 
 System-domain commands keep their product intent but change their runtime effects:
 
-- `set` stages the base domain and required issuer or Secret reference;
+- `set` validates and stages the base domain and existing DNS-01 issuer reference;
 - `verify` proves ownership and routing to the selected shared ingress endpoint;
-- `attach-cert`, if retained by the final public contract, writes an operation-scoped Kubernetes TLS Secret for
-  Ingress consumption rather than a Caddy certificate mount;
 - `activate` waits for the new Ingress and TLS path before committing the retained generation;
 - `reset-managed` restores the original managed allocation without Caddy TLS state.
 
