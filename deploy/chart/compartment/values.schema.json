@@ -695,11 +695,12 @@
     "nodePools": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["system", "build", "tenant"],
+      "required": ["system", "build", "tenant", "data"],
       "properties": {
         "system": { "$ref": "#/definitions/nodePool" },
         "build": { "$ref": "#/definitions/nodePool" },
-        "tenant": { "$ref": "#/definitions/nodePool" }
+        "tenant": { "$ref": "#/definitions/nodePool" },
+        "data": { "$ref": "#/definitions/nodePool" }
       }
     },
     "sandboxRuntime": {

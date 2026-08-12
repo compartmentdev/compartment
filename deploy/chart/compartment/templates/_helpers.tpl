@@ -361,6 +361,14 @@ tolerations:
 {{- end }}
 {{- end }}
 
+{{- define "compartment.dataNodePool" -}}
+{{- $pool := .Values.nodePools.data -}}
+{{- if and (empty $pool.nodeSelector) (empty $pool.tolerations) -}}
+{{- $pool = .Values.nodePools.system -}}
+{{- end -}}
+{{- include "compartment.nodePool" $pool -}}
+{{- end }}
+
 {{- define "compartment.buildNodePool" -}}
 {{- $pool := .Values.nodePools.build -}}
 {{- if and (empty $pool.nodeSelector) (empty $pool.tolerations) -}}

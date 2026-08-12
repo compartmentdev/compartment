@@ -35,7 +35,7 @@ spec:
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
     spec:
       priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
-      {{- include "compartment.nodePool" .Values.nodePools.system | nindent 6 }}
+      {{- include "compartment.dataNodePool" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
         fsGroup: 999

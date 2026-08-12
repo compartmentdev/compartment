@@ -170,6 +170,9 @@ nodePools:
   tenant:
     nodeSelector: {}
     tolerations: []
+  data:
+    nodeSelector: {}
+    tolerations: []
 
 sandboxRuntime:
   runtimeClassName: gvisor
