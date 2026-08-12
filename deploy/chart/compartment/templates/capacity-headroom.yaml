@@ -1,4 +1,5 @@
-{{- if gt (int .Values.capacityHeadroom.replicas) 0 }}
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- if and (eq $installState.effective.platform.startupStage "full") (gt (int .Values.capacityHeadroom.replicas) 0) }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,6 +21,7 @@ spec:
     spec:
       priorityClassName: compartment-capacity-headroom
       runtimeClassName: {{ .Values.sandboxRuntime.runtimeClassName }}
+      terminationGracePeriodSeconds: 0
       {{- include "compartment.nodePool" .Values.nodePools.tenant | nindent 6 }}
       automountServiceAccountToken: false
       securityContext:

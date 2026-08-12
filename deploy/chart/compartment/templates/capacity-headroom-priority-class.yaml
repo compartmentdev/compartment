@@ -1,0 +1,11 @@
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- if and (eq $installState.effective.platform.startupStage "full") (gt (int .Values.capacityHeadroom.replicas) 0) }}
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: compartment-capacity-headroom
+value: -1
+globalDefault: false
+preemptionPolicy: Never
+description: Preemptible placeholder capacity that signals a compatible cluster autoscaler.
+{{- end }}

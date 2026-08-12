@@ -62,7 +62,7 @@ import type { ProjectResourceRow, ResourceTransaction } from '../src/queries/res
 import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisioning.query.types';
 import type { ProjectRow } from '../src/queries/projects.query.types';
 import { parseStoredResourceOperations } from '../src/services/resources.service.storage';
-import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
+import { seedCurrentProjectProvisioning, useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import { seedOrganizationWithReadyQuota } from './organization-quota-test.fixture';
 import { createApiTestConfig } from './api-config-test.fixtures';
 
@@ -1422,7 +1422,7 @@ async function seedResourceBackupScope(): Promise<void> {
     name: 'internal-tools',
     organizationId: 'org_resource_backups',
   });
-  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_internal_tools', state: 'succeeded' });
+  await seedCurrentProjectProvisioning(db, 'prj_internal_tools');
   await db.insert(environments).values({
     id: 'env_production',
     name: 'production',

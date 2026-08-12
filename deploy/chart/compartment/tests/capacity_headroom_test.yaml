@@ -2,10 +2,12 @@
 suite: tenant capacity headroom
 templates:
   - templates/priority-class.yaml
+  - templates/capacity-headroom-priority-class.yaml
   - templates/capacity-headroom.yaml
 tests:
   - it: renders one preemptible free-app allocation on the tenant pool
     set:
+      platform.startupStage: full
       nodePools:
         tenant:
           nodeSelector: { compartment.dev/node-pool: tenant }
@@ -13,23 +15,20 @@ tests:
             - { key: compartment.dev/node-pool, operator: Equal, value: tenant, effect: NoSchedule }
     asserts:
       - hasDocuments:
-          count: 3
-        template: priority-class.yaml
+          count: 1
+        template: capacity-headroom-priority-class.yaml
       - equal:
           path: metadata.name
           value: compartment-capacity-headroom
-        template: priority-class.yaml
-        documentIndex: 2
+        template: capacity-headroom-priority-class.yaml
       - equal:
           path: value
           value: -1
-        template: priority-class.yaml
-        documentIndex: 2
+        template: capacity-headroom-priority-class.yaml
       - equal:
           path: preemptionPolicy
           value: Never
-        template: priority-class.yaml
-        documentIndex: 2
+        template: capacity-headroom-priority-class.yaml
       - equal:
           path: spec.replicas
           value: 1
@@ -45,6 +44,10 @@ tests:
       - equal:
           path: spec.template.spec.runtimeClassName
           value: gvisor
+        template: capacity-headroom.yaml
+      - equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 0
         template: capacity-headroom.yaml
       - equal:
           path: spec.template.spec.nodeSelector
@@ -69,6 +72,7 @@ tests:
   - it: can disable paid spare capacity explicitly
     set:
       capacityHeadroom.replicas: 0
+      platform.startupStage: full
     asserts:
       - hasDocuments:
           count: 0
@@ -76,9 +80,13 @@ tests:
       - hasDocuments:
           count: 2
         template: priority-class.yaml
+      - hasDocuments:
+          count: 0
+        template: capacity-headroom-priority-class.yaml
 
   - it: derives the complete allocation from canonical tenant defaults
     set:
+      platform.startupStage: full
       sandboxRuntime.runtimeClassName: tenant-sandbox
       resources.projectContainerDefaults:
         request: { cpu: 125m, memory: 384Mi }
@@ -94,3 +102,14 @@ tests:
             requests: { cpu: 125m, memory: 384Mi }
             limits: { cpu: 500m, memory: 384Mi }
         template: capacity-headroom.yaml
+
+  - it: omits tenant capacity headroom during foundation startup
+    set:
+      platform.startupStage: foundation
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: capacity-headroom.yaml
+      - hasDocuments:
+          count: 0
+        template: capacity-headroom-priority-class.yaml

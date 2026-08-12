@@ -120,8 +120,8 @@ explicit service `accessMode` in `compartment.yml` overrides the saved project d
 access, not project permissions or RBAC.
 
 Tenant CPU, memory, and storage budgets are installation values. The defaults reserve and cap each container at
-512Mi of memory, request 50m CPU, and retain a 1 CPU hard limit. Each project and organization has matching 8GiB
-memory request and limit budgets, a 2 CPU request budget, an 8 CPU limit, and 20GiB of requested storage. The matching memory values admit at
+512Mi of memory, request 50m CPU, and retain a 1 CPU hard limit. Each project and organization has matching 8 GiB
+memory request and limit budgets, a 2 CPU request budget, an 8 CPU limit, and 20 GiB of requested storage. The matching memory values admit at
 up to 16 default containers by memory without scheduling them more densely than their possible memory use. The 8 CPU
 limit remains binding at eight default containers overall. Override the values together when sizing tenant capacity:
 

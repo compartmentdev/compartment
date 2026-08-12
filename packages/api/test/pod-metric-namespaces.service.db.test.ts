@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import type { Pool } from 'pg';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
@@ -56,13 +57,14 @@ describe('Pod metric namespace scope', (): void => {
       .values({ isolationVersion: projectIsolationVersion - 1, projectId: 'prj_upgrade', state: 'succeeded' });
 
     const target: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning('provision');
+    assert(target !== null);
     expect(target).toMatchObject({ isolationVersion: projectIsolationVersion, projectId: 'prj_upgrade' });
     await expect(
       completeProjectProvisioning({
         action: 'provision',
         failureMessage: null,
         isolationVersion: projectIsolationVersion - 1,
-        leaseId: target?.leaseId ?? '',
+        leaseId: target.leaseId,
         projectId: 'prj_upgrade',
         status: 'succeeded',
       }),
@@ -71,8 +73,8 @@ describe('Pod metric namespace scope', (): void => {
       completeProjectProvisioning({
         action: 'provision',
         failureMessage: null,
-        isolationVersion: target?.isolationVersion ?? projectIsolationVersion,
-        leaseId: target?.leaseId ?? '',
+        isolationVersion: target.isolationVersion,
+        leaseId: target.leaseId,
         projectId: 'prj_upgrade',
         status: 'succeeded',
       }),
@@ -95,12 +97,13 @@ describe('Pod metric namespace scope', (): void => {
     });
 
     const first: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning('provision');
+    assert(first !== null);
     await expect(
       completeProjectProvisioning({
         action: 'provision',
         failureMessage: 'retry upgrade',
-        isolationVersion: first?.isolationVersion ?? projectIsolationVersion,
-        leaseId: first?.leaseId ?? '',
+        isolationVersion: first.isolationVersion,
+        leaseId: first.leaseId,
         projectId: 'prj_retry',
         status: 'failed',
       }),
