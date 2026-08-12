@@ -26,7 +26,7 @@ tests:
           path: spec.tls
         template: ingress.yaml
 
-  - it: never creates Certificates for custom mode even with HTTPS and an issuer
+  - it: creates a wildcard Certificate for custom HTTPS with an operator issuer
     set:
       platform:
         startupStage: full
@@ -35,12 +35,32 @@ tests:
         baseDomain: apps.example.com
       tls:
         issuerRef:
-          name: unsupported-custom-issuer
+          name: public-dns01
           kind: ClusterIssuer
     asserts:
       - hasDocuments:
-          count: 0
+          count: 1
         template: platform-certificates.yaml
+      - equal:
+          path: spec.dnsNames[0]
+          value: '*.apps.example.com'
+        template: platform-certificates.yaml
+      - equal:
+          path: spec.issuerRef.kind
+          value: ClusterIssuer
+        template: platform-certificates.yaml
+      - equal:
+          path: spec.issuerRef.name
+          value: public-dns01
+        template: platform-certificates.yaml
+      - equal:
+          path: spec.tls[0].secretName
+          value: compartment-wildcard-tls
+        template: ingress.yaml
+      - equal:
+          path: spec.tls[1].secretName
+          value: compartment-wildcard-tls
+        template: ingress.yaml
 
   - it: references an operator TLS Secret without creating Certificates or issuers
     set:

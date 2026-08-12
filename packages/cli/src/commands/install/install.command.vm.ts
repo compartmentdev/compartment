@@ -37,6 +37,7 @@ export async function executeManagedVmInstallCommand(
   dependencies: CliCommandDependencies,
   options: InstallCommandOptions,
 ): Promise<void> {
+  assertManagedVmIssuerOptions(options);
   const preflight: ManagedVmPreflightResult = await runManagedVmPreflight();
   renderManagedVmPreflight(dependencies, options, preflight);
   assertManagedVmPreflight(preflight);
@@ -44,6 +45,12 @@ export async function executeManagedVmInstallCommand(
     return;
   }
   await executeManagedVmMutation(dependencies, options, preflight);
+}
+
+function assertManagedVmIssuerOptions(options: InstallCommandOptions): void {
+  if (options.tlsIssuer !== undefined || options.registryIssuer !== undefined) {
+    throw new Error('--tls-issuer and --registry-issuer are supported only for Kubernetes install targets.');
+  }
 }
 
 async function executeManagedVmMutation(

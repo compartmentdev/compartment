@@ -20,6 +20,8 @@ export function registerInstallCommand(program: Command, dependencies: CliComman
       .option('--api-url <url>', 'Public Console URL for the Kubernetes installation')
       .option('--base-domain <domain>', 'Base domain configured for the Kubernetes installation')
       .option('--managed-domain', 'Allocate a managed installation domain (default when --base-domain is omitted)')
+      .option('--tls-issuer <kind/name>', 'cert-manager Issuer or ClusterIssuer for public wildcard TLS')
+      .option('--registry-issuer <kind/name>', 'cert-manager CA Issuer or ClusterIssuer for private registry TLS')
       .option('--broker-url <url>', 'Managed-domain broker URL')
       .option('--values <path>', 'Operator values file for the Compartment Helm chart')
       .option('--chart <path>', 'Compartment Helm chart path for a source CLI build')

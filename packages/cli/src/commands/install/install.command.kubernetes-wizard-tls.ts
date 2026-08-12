@@ -12,6 +12,7 @@ import type {
   KubernetesInstallWizardDomain,
 } from './install.command.kubernetes-wizard.types';
 import type { KubernetesOperatorIssuerAssessment } from '../../services/kubernetes-operator-issuer-trust.service.types';
+import { assertPublicDns01IssuerAssessment } from '../../services/kubernetes-operator-issuer-trust.service';
 import { readPromptLine } from '../../prompts/prompt-reader';
 import type { KubernetesInstallIssuerChoice } from '../../services/kubernetes-install-inventory.service.types';
 
@@ -45,7 +46,10 @@ export async function resolveOperatorDomainTls(
     const secretTls: ExistingSecretTlsValues = await resolveExistingSecretTls(io, input);
     return { input: { baseDomain: input.baseDomain, publicProtocol: 'https' }, ...secretTls };
   }
-  throw new Error('TLS selection must be 1 or 2.');
+  if (mode === '3') {
+    return await resolveIssuerTls(io, input);
+  }
+  throw new Error('TLS selection must be 1, 2, or 3.');
 }
 
 async function resolveExternalTls(
@@ -77,6 +81,7 @@ function renderTlsChoices(io: CliIo, namespace: string): void {
     'TLS for the operator-owned domain:\n' +
       '  1. External TLS termination; platform serves HTTP [default]\n' +
       '  2. Existing kubernetes.io/tls Secret\n' +
+      '  3. Existing cert-manager DNS-01 issuer\n' +
       `Namespaced Issuers and Secrets must exist in namespace "${namespace}".\n`,
   );
 }
@@ -96,6 +101,26 @@ async function resolveExistingSecretTls(
     registry: { issuerRef },
     tls: { existingSecret },
     tlsReview: `Secret/${existingSecret}; registry ${issuerRef.kind}/${issuerRef.name}`,
+  };
+}
+
+async function resolveIssuerTls(
+  io: CliIo,
+  input: OperatorDomainTlsPromptInput,
+): Promise<KubernetesInstallWizardDomain> {
+  const issuerRef: InstallWizardIssuerReference = await promptIssuerReference(io, input, 'Public wildcard TLS');
+  const assessment: KubernetesOperatorIssuerAssessment = await input.inspectIssuer(
+    input.kubeContext,
+    input.namespace,
+    issuerRef,
+  );
+  assertPublicDns01IssuerAssessment(issuerRef, assessment);
+  const registry: InstallWizardRegistryValues = await resolveRegistryIpTls(io, input);
+  return {
+    input: { baseDomain: input.baseDomain, publicProtocol: 'https' },
+    registry,
+    tls: { issuerRef },
+    tlsReview: `${issuerRef.kind}/${issuerRef.name}; registry ${registry.issuerRef.kind}/${registry.issuerRef.name}`,
   };
 }
 

@@ -129,10 +129,12 @@ used by the console and application hosts. Project custom domains use a separate
 exact hostnames are never sent to the managed-domain broker. The private registry has a separate Certificate for its
 retained Service ClusterIP and the selected `registry.issuerRef`. Operator-owned domains default to external TLS
 termination with platform HTTP. Alternatively, `tls.existingSecret` may reference an existing `kubernetes.io/tls`
-Secret in the release namespace. The chart does not create public Certificates for operator-owned domains.
+Secret in the release namespace, or `tls.issuerRef` may reference an existing Ready cert-manager Issuer or
+ClusterIssuer with a DNS-01 solver. In issuer mode, the chart creates one wildcard Certificate and cert-manager
+renews it automatically. The operator owns the issuer and its DNS provider credentials.
 
-The selected Ingress and cert-manager path own public TLS. Compartment does not create, copy, or mount operator
-certificate material.
+The selected Ingress and cert-manager path own public TLS. Compartment does not copy or mount operator certificate
+material.
 
 ## Install and recovery
 

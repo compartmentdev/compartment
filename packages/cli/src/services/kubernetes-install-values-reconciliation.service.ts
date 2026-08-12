@@ -73,7 +73,7 @@ async function buildDesiredEffectiveValues(
       Promise.resolve({ platform: { startupStage: 'full' } }),
     ]);
     const [chartValues, ...overlays]: YamlFileObject[] = values.map(requireValuesObject);
-    return overlays.reduce(mergeValues, chartValues!);
+    return overlays.reduce(mergeKubernetesHelmValues, chartValues!);
   } finally {
     await rm(directory, { force: true, recursive: true });
   }
@@ -113,7 +113,7 @@ function requireValuesObject(value: YamlFileValue): YamlFileObject {
   throw new Error('The operator values file must contain a YAML object.');
 }
 
-function mergeValues(base: JsonValue, overlay: JsonValue): JsonValue {
+export function mergeKubernetesHelmValues(base: JsonValue, overlay: JsonValue): JsonValue {
   let merged: JsonValue = overlay;
   if (isValuesObject(base) && isValuesObject(overlay)) {
     const mergedObject: Record<string, JsonValue> = { ...base };
@@ -121,7 +121,7 @@ function mergeValues(base: JsonValue, overlay: JsonValue): JsonValue {
       if (value === null) {
         Reflect.deleteProperty(mergedObject, key);
       } else {
-        mergedObject[key] = key in mergedObject ? mergeValues(mergedObject[key]!, value) : value;
+        mergedObject[key] = key in mergedObject ? mergeKubernetesHelmValues(mergedObject[key]!, value) : value;
       }
     }
     merged = mergedObject;

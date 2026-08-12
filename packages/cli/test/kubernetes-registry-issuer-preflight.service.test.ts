@@ -5,8 +5,13 @@ import {
   assertOperatorRegistryIssuer,
   assertOperatorTlsSecret,
 } from '../src/services/kubernetes-existing-cluster-preflight.cert-manager';
-import { assertRegistryIpIssuerAssessment } from '../src/services/kubernetes-operator-issuer-trust.service';
+import {
+  assertPublicDns01IssuerAssessment,
+  assertRegistryIpIssuerAssessment,
+  inspectOperatorIssuer,
+} from '../src/services/kubernetes-operator-issuer-trust.service';
 import type { KubernetesOperatorIssuerAssessment } from '../src/services/kubernetes-operator-issuer-trust.service.types';
+import { KubernetesExistingClusterPreflightError } from '../src/services/kubernetes-existing-cluster-preflight.support';
 
 vi.mock('../src/command-runner', (): object => ({
   runCommand: vi.fn(),
@@ -157,3 +162,73 @@ describe('operator registry issuer preflight', (): void => {
 function success(stdout: string): CommandResult {
   return { exitCode: 0, stderr: '', stdout };
 }
+describe('operator public issuer preflight', (): void => {
+  const issuer = { kind: 'ClusterIssuer' as const, name: 'public-dns01' };
+  const target = {
+    kubeContext: 'production',
+    kubeconfigPath: '/tmp/kubeconfig',
+    namespace: 'compartment',
+  };
+
+  it('accepts a Ready ACME issuer with a DNS-01 solver', async (): Promise<void> => {
+    mockedRunCommand.mockResolvedValue(
+      success(
+        JSON.stringify({
+          spec: {
+            acme: {
+              server: 'https://acme-v02.api.letsencrypt.org/directory',
+              solvers: [{ dns01: { cloudDNS: { project: 'customer' } } }],
+            },
+          },
+          status: { conditions: [{ status: 'True', type: 'Ready' }] },
+        }),
+      ),
+    );
+
+    const assessment: KubernetesOperatorIssuerAssessment = await inspectOperatorIssuer(target, issuer);
+
+    expect((): void => assertPublicDns01IssuerAssessment(issuer, assessment)).not.toThrow();
+  });
+
+  it('rejects an HTTP-01-only issuer with a wildcard explanation', async (): Promise<void> => {
+    mockedRunCommand.mockResolvedValue(
+      success(
+        JSON.stringify({
+          spec: {
+            acme: {
+              server: 'https://acme-v02.api.letsencrypt.org/directory',
+              solvers: [{ http01: { ingress: { ingressClassName: 'traefik' } } }],
+            },
+          },
+          status: { conditions: [{ status: 'True', type: 'Ready' }] },
+        }),
+      ),
+    );
+
+    const assessment: KubernetesOperatorIssuerAssessment = await inspectOperatorIssuer(target, issuer);
+
+    expect((): void => assertPublicDns01IssuerAssessment(issuer, assessment)).toThrow(
+      KubernetesExistingClusterPreflightError,
+    );
+  });
+
+  it('rejects an issuer that is not Ready', (): void => {
+    expect((): void =>
+      assertPublicDns01IssuerAssessment(issuer, {
+        detail: 'issuer reports Ready=False',
+        dns01: true,
+        ready: false,
+        trust: 'acme',
+      }),
+    ).toThrow(KubernetesExistingClusterPreflightError);
+  });
+
+  it('preserves the RBAC denial when public issuer capabilities cannot be inspected', (): void => {
+    expect((): void =>
+      assertPublicDns01IssuerAssessment(issuer, {
+        detail: 'Cannot inspect ClusterIssuer public-dns01 because Kubernetes denied read access.',
+        trust: 'unreadable',
+      }),
+    ).toThrow('Kubernetes denied read access');
+  });
+});

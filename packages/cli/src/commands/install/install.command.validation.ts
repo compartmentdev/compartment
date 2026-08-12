@@ -13,7 +13,9 @@ export function assertDevInstallOptions(options: InstallCommandOptions): void {
     'managedDomain',
     'namespace',
     'releaseName',
+    'registryIssuer',
     'storageClass',
+    'tlsIssuer',
     'values',
   ];
   const configuredOption: keyof InstallCommandOptions | undefined = productionOptions.find(
@@ -30,6 +32,14 @@ export function normalizeInstallBaseDomain(value: string): string {
     throw new Error('--base-domain must be a valid DNS base domain without a port.');
   }
   return normalizedValue;
+}
+
+export function assertOperatorTlsIssuerOption(options: InstallCommandOptions): void {
+  if (options.tlsIssuer !== undefined && options.baseDomain === undefined) {
+    throw new Error(
+      '--tls-issuer requires an operator-owned --base-domain. Managed-domain TLS uses the broker issuer.',
+    );
+  }
 }
 
 function toKebabCase(value: string): string {

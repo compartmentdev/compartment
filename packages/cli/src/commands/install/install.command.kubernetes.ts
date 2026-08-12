@@ -39,7 +39,9 @@ import {
   type OperatorInstallInputValues,
 } from './install.command.values';
 import { isReservedKubernetesInstallLocalhostDomain } from '../../kubernetes-install-domain';
-import { normalizeInstallBaseDomain } from './install.command.validation';
+import { cleanMaterializedInstallValues, materializeInstallIssuerOverrides } from './install.command.issuer-values';
+import { readNonInteractiveInstallValues } from './install.command.noninteractive';
+import { assertOperatorTlsIssuerOption, normalizeInstallBaseDomain } from './install.command.validation';
 import { withKubernetesLocalTools } from '../../services/kubernetes-local-tools.service';
 import { inspectOperatorIssuer } from '../../services/kubernetes-operator-issuer-trust.service';
 import type { KubernetesOperatorIssuerAssessment } from '../../services/kubernetes-operator-issuer-trust.service.types';
@@ -59,20 +61,32 @@ export async function executeCanonicalKubernetesInstallCommand(
   options: InstallCommandOptions,
   detectedTarget?: KubernetesInstallTargetDiscovery,
 ): Promise<void> {
+  assertOperatorTlsIssuerOption(options);
   const kubeconfig: ResolvedKubernetesKubeconfig =
     detectedTarget?.kubeconfig ?? (await resolvePreflightKubeconfig(dependencies, options.kubeContext));
+  let issuerMaterial: MaterializedInstallWizardValues | undefined;
   try {
-    const boundaryValues: BoundaryInstallValues | undefined = await readBoundaryValues(dependencies, options);
+    issuerMaterial = await materializeInstallIssuerOverrides({
+      ingressClass: options.ingressClass,
+      registryIssuer: options.registryIssuer,
+      storageClass: options.storageClass,
+      tlsIssuer: options.tlsIssuer,
+      valuesPath: options.values,
+    });
+    const effectiveOptions: InstallCommandOptions =
+      issuerMaterial === undefined ? options : { ...options, values: issuerMaterial.path };
+    const boundaryValues: BoundaryInstallValues | undefined = await readBoundaryValues(dependencies, effectiveOptions);
     await withKubernetesLocalTools(async (localTools: KubernetesInstallLocalToolVersions): Promise<void> => {
       await verifyKubernetesInstallTarget(dependencies, kubeconfig, localTools, detectedTarget !== undefined);
       await executeWithKubeconfig(
         dependencies,
-        detectedTarget === undefined ? options : { ...options, kubeContext: kubeconfig.contextName },
+        detectedTarget === undefined ? effectiveOptions : { ...effectiveOptions, kubeContext: kubeconfig.contextName },
         kubeconfig,
         boundaryValues,
       );
     });
   } finally {
+    await cleanMaterializedInstallValues(issuerMaterial);
     if (kubeconfig.materializedDirectory !== undefined) {
       await rm(kubeconfig.materializedDirectory, { force: true, recursive: true });
     }
@@ -107,7 +121,7 @@ function mergeOperatorBoundaryValues(
   password: string | undefined,
 ): Omit<KubernetesInstallInputValues, 'valuesPath'> {
   return {
-    ...readNonInteractiveValues(options, password),
+    ...readNonInteractiveInstallValues(options, password),
     ...(options.ingressEndpoint === undefined && operatorValues?.clearIngressEndpoint === true
       ? { clearIngressEndpoint: true }
       : {}),
@@ -236,25 +250,6 @@ async function cleanCanonicalMaterial(material: MaterializedInstallWizardValues 
   if (material !== undefined) {
     await rm(material.directory, { force: true, recursive: true });
   }
-}
-
-function readNonInteractiveValues(
-  options: InstallCommandOptions,
-  password: string | undefined,
-): Omit<KubernetesInstallInputValues, 'valuesPath'> {
-  return {
-    ...(options.baseDomain === undefined ? {} : { baseDomain: options.baseDomain }),
-    ...(options.email === undefined ? {} : { email: options.email }),
-    ...(options.ingressClass === undefined ? {} : { ingressClass: options.ingressClass }),
-    ...(options.ingressEndpoint === undefined ? {} : { ingressEndpoint: options.ingressEndpoint }),
-    ...(options.kubeContext === undefined ? {} : { kubeContext: options.kubeContext }),
-    ...(options.managedDomain === undefined ? {} : { managedDomain: options.managedDomain }),
-    ...(options.namespace === undefined ? {} : { namespace: options.namespace }),
-    ...(options.organization === undefined ? {} : { organization: options.organization }),
-    ...(password === undefined ? {} : { password }),
-    ...(options.releaseName === undefined ? {} : { releaseName: options.releaseName }),
-    ...(options.storageClass === undefined ? {} : { storageClass: options.storageClass }),
-  };
 }
 
 function hasInteractiveInput(dependencies: CliCommandDependencies): boolean {

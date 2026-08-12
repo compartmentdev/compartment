@@ -1,6 +1,6 @@
 import type { DomainHostPlan, SystemDomainMutationResponse, SystemDomainStatusResponse } from '@compartment/contracts';
 import type { JsonValue } from '@compartment/utils';
-import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
   activateKubernetesSystemDomain,
   resetManagedKubernetesSystemDomain,
@@ -8,6 +8,8 @@ import {
   verifyKubernetesSystemDomain,
 } from '../src/services/kubernetes-system-domain.service';
 import type { RetainedManagedDomainState } from '../src/services/kubernetes-install.service.types';
+import type { KubernetesOperatorIssuerAssessment } from '../src/services/kubernetes-operator-issuer-trust.service.types';
+import { KubernetesExistingClusterPreflightError } from '../src/services/kubernetes-existing-cluster-preflight.support';
 import type {
   KubernetesOperatorTarget,
   KubernetesSystemApiRequest,
@@ -30,6 +32,7 @@ interface DomainServiceMocks {
   requestSystemApi: Mock<RequestSystemApi>;
   readRetainedManagedState: Mock<() => Promise<RetainedManagedDomainState>>;
   waitForReadiness: Mock<ApplyDomainRelease>;
+  inspectIssuer: Mock<() => Promise<KubernetesOperatorIssuerAssessment>>;
 }
 
 const mocks: DomainServiceMocks = vi.hoisted(
@@ -39,6 +42,7 @@ const mocks: DomainServiceMocks = vi.hoisted(
     requestSystemApi: vi.fn<RequestSystemApi>(),
     readRetainedManagedState: vi.fn<() => Promise<RetainedManagedDomainState>>(),
     waitForReadiness: vi.fn<ApplyDomainRelease>(),
+    inspectIssuer: vi.fn<() => Promise<KubernetesOperatorIssuerAssessment>>(),
   }),
 );
 
@@ -55,6 +59,10 @@ vi.mock('../src/services/kubernetes-install-retained-state.service', (): object 
 vi.mock('../src/services/kubernetes-system-domain-readiness.service', (): object => ({
   waitForKubernetesSystemDomainReadiness: mocks.waitForReadiness,
 }));
+vi.mock('../src/services/kubernetes-operator-issuer-trust.service', async (importOriginal): Promise<object> => {
+  const original: object = await importOriginal();
+  return { ...original, inspectOperatorIssuer: mocks.inspectIssuer };
+});
 
 const target: KubernetesOperatorTarget = {
   chartPath: '/tmp/chart',
@@ -71,6 +79,11 @@ const customHostPlan: DomainHostPlan = {
 };
 
 describe('Kubernetes system-domain activation', (): void => {
+  beforeEach((): void => {
+    mocks.inspectIssuer
+      .mockReset()
+      .mockResolvedValue({ detail: 'ready DNS-01 issuer', dns01: true, ready: true, trust: 'acme' });
+  });
   afterEach((): void => {
     mocks.applyRuntimeRelease.mockReset();
     mocks.commitActiveRelease.mockReset();
@@ -186,6 +199,20 @@ describe('Kubernetes system-domain activation', (): void => {
       }),
       expect.any(Function),
     );
+  });
+
+  it('rejects an unready public issuer before staging the domain', async (): Promise<void> => {
+    mocks.inspectIssuer.mockResolvedValueOnce({ detail: 'not ready', dns01: true, ready: false, trust: 'acme' });
+
+    await expect(
+      setKubernetesSystemDomain({
+        ...target,
+        baseDomain: 'apps.example.com',
+        issuerRef: { kind: 'Issuer', name: 'customer-issuer' },
+      }),
+    ).rejects.toBeInstanceOf(KubernetesExistingClusterPreflightError);
+
+    expect(mocks.requestSystemApi).not.toHaveBeenCalled();
   });
 
   it('fails verify while DNS ownership or routing is pending', async (): Promise<void> => {
