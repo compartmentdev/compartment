@@ -32,9 +32,9 @@ compartment install --target vm
 This target provisions a single-node k3s cluster. It is the shortest production setup path, but it is not highly
 available: losing the VM interrupts the control plane and workloads on that node.
 
-The managed node reserves 512Mi each for the host OS/kernel and K3s host daemons, reducing Pod allocatable memory by
-1GiB. A separate 512Mi hard eviction threshold makes the kubelet reclaim memory before host OOM; it does not reduce
-reported allocatable capacity. Kubernetes system Pods remain separately scheduler-accounted.
+The managed node reserves 512Mi each for the host OS/kernel and K3s host daemons. Its
+`memory.available<512Mi` hard eviction threshold also remains unavailable to Pods, so Kubernetes reports about 1.5GiB
+less Pod Allocatable memory than node capacity. Kubernetes system Pods remain separately scheduler-accounted.
 
 The managed-VM installer asks whether to use a managed Compartment domain or an operator-owned base domain. Because
 Compartment owns this host, it automatically installs cert-manager, creates the internal registry CA and Issuer,

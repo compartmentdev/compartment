@@ -51,6 +51,11 @@ tests:
           value: { compartment.dev/node-pool: tenant }
         template: capacity-headroom.yaml
       - equal:
+          path: spec.template.spec.tolerations
+          value:
+            - { key: compartment.dev/node-pool, operator: Equal, value: tenant, effect: NoSchedule }
+        template: capacity-headroom.yaml
+      - equal:
           path: spec.template.spec.containers[0].resources
           value:
             requests: { cpu: 50m, memory: 512Mi }
