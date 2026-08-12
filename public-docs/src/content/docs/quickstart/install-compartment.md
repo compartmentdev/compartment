@@ -119,24 +119,26 @@ The value is saved on each project when that project is created. Changing it lat
 explicit service `accessMode` in `compartment.yml` overrides the saved project default. This controls hosted app
 access, not project permissions or RBAC.
 
-Tenant CPU, memory, and storage budgets are installation values. The defaults reserve 50m CPU and 256 MiB for each
-container, cap each container at 1 CPU and 1 GiB, and give each project and organization a 2 CPU / 2 GiB request budget,
-an 8 CPU / 8 GiB limit budget, and 20 GiB of requested storage. Override them together when sizing tenant capacity:
+Tenant CPU, memory, and storage budgets are installation values. The defaults reserve and cap each container at
+512Mi of memory, request 50m CPU, and retain a 1 CPU hard limit. Each project and organization has matching 8GiB
+memory request and limit budgets, a 2 CPU request budget, an 8 CPU limit, and 20GiB of requested storage. The matching memory values admit at
+up to 16 default containers by memory without scheduling them more densely than their possible memory use. The 8 CPU
+limit remains binding at eight default containers overall. Override the values together when sizing tenant capacity:
 
 ```yaml
 resources:
   projectContainerDefaults:
-    request: { cpu: 75m, memory: 384Mi }
-    limit: { cpu: '1', memory: 1Gi }
+    request: { cpu: 75m, memory: 512Mi }
+    limit: { cpu: '1', memory: 512Mi }
   projectQuota:
     requestsCpu: '3'
-    requestsMemory: 3Gi
+    requestsMemory: 12Gi
     limitsCpu: '12'
     limitsMemory: 12Gi
     requestsStorage: 30Gi
   organizationQuota:
     requestsCpu: '4'
-    requestsMemory: 4Gi
+    requestsMemory: 16Gi
     limitsCpu: '16'
     limitsMemory: 16Gi
     requestsStorage: 40Gi

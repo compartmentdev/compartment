@@ -1,0 +1,40 @@
+{{- if gt (int .Values.capacityHeadroom.replicas) 0 }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "compartment.fullname" . }}-capacity-headroom
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: capacity-headroom
+spec:
+  replicas: {{ .Values.capacityHeadroom.replicas }}
+  selector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "capacity-headroom") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "compartment.componentLabels" (dict "root" . "component" "capacity-headroom") | nindent 8 }}
+    spec:
+      priorityClassName: compartment-capacity-headroom
+      runtimeClassName: {{ .Values.sandboxRuntime.runtimeClassName }}
+      {{- include "compartment.nodePool" .Values.nodePools.tenant | nindent 6 }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: reserve
+          image: {{ include "compartment.image" .Values.images.capacityHeadroom }}
+          imagePullPolicy: {{ .Values.images.capacityHeadroom.pullPolicy }}
+          securityContext:
+            {{- include "compartment.containerSecurityContext" . | nindent 12 }}
+            runAsUser: 65532
+            runAsGroup: 65532
+          resources:
+            requests:
+              cpu: {{ .Values.resources.projectContainerDefaults.request.cpu }}
+              memory: {{ .Values.resources.projectContainerDefaults.request.memory }}
+            limits:
+              cpu: {{ .Values.resources.projectContainerDefaults.limit.cpu | quote }}
+              memory: {{ .Values.resources.projectContainerDefaults.limit.memory }}
+{{- end }}

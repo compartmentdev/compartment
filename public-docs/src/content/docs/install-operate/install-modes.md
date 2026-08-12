@@ -32,6 +32,9 @@ compartment install --target vm
 This target provisions a single-node k3s cluster. It is the shortest production setup path, but it is not highly
 available: losing the VM interrupts the control plane and workloads on that node.
 
+The managed node keeps 512Mi each for the host OS/kernel, K3s host daemons, and hard memory-eviction headroom. These
+reservations reduce Pod allocatable memory by 1.5GiB; Kubernetes system Pods remain separately scheduler-accounted.
+
 The managed-VM installer asks whether to use a managed Compartment domain or an operator-owned base domain. Because
 Compartment owns this host, it automatically installs cert-manager, creates the internal registry CA and Issuer,
 adds that CA to node trust, and installs gVisor/runsc. It does not ask you for a pre-created issuer or runtime.
@@ -59,6 +62,18 @@ ClusterIssuers and lets you select an observed issuer. If cert-manager is absent
 setup stops with the prerequisite and exact next commands before collecting an impossible issuer name. It does not
 install an ingress controller, change node container-runtime or CA-trust configuration, or take ownership of cluster
 upgrades and backups.
+
+For autoscaled existing clusters, the chart creates one preemptible 512Mi tenant-capacity placeholder by default.
+This scheduler signal costs one continuously requested free-app allocation and requires an operator-installed
+compatible autoscaler. The operator remains responsible for equivalent kube/system reservations and hard eviction
+headroom in every cloud-node bootstrap; Compartment does not create those nodes.
+
+Keep the default single allocation, disable its cost, or buy more headroom in your Helm values:
+
+```yaml
+capacityHeadroom:
+  replicas: 1 # Use 0 to accept full saturation; use 2 for two free-app allocations.
+```
 
 The Helm release installs Capsule 0.13.11 and its cluster-scoped quota resources. Pod and persistent volume claim
 creates and updates fail closed in Compartment-managed project namespaces, so those operations are rejected while

@@ -23,7 +23,7 @@ tests:
   - it: renders priority classes while omitting empty node pools
     asserts:
       - hasDocuments:
-          count: 2
+          count: 3
         template: priority-class.yaml
       - equal:
           path: metadata.name
