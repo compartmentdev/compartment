@@ -144,13 +144,16 @@ resources:
     requestsStorage: 40Gi
 ```
 
-Organization quota changes are applied by periodic reconciliation. Project quotas and container defaults are used when
-a project namespace is provisioned; changing these values does not requeue existing projects. Application capacity is
-constrained by configured resource and object-count quotas and by workload requests and limits; there is no separate
-application-count value. Project object-count quotas remain fixed.
+Organization quota changes are applied by periodic reconciliation. This release advances the project isolation
+revision, so a system upgrade requeues every existing managed project after its organization quota is ready and
+server-side-applies the current project quota and container defaults. Later value-only changes require a newer
+isolation revision to requeue projects that already completed this revision. Application capacity is constrained by
+configured resource and object-count quotas and by workload requests and limits; there is no separate application-count
+value. Project object-count quotas remain fixed.
 
-Each configured CPU or memory request must be less than or equal to its corresponding limit. The worker and project
-provisioner refuse to start when these values are inconsistent or are not valid Kubernetes quantities.
+The configured CPU request must be less than or equal to its limit. The memory request must equal its memory limit so
+tenant scheduling reserves the full allowed memory. The worker and project provisioner refuse to start when these
+values are inconsistent or are not valid Kubernetes quantities.
 
 Build concurrency has separate logical and physical limits. By default, Compartment admits up to 100 in-flight build
 claims, allows two active builds per organization, and applies a build-namespace quota of 48 CPU and 64 GiB. Each

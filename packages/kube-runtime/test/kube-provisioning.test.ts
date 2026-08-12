@@ -180,8 +180,8 @@ describe('project namespace bootstrap provisioning', (): void => {
       spec: {
         limits: [
           {
-            default: { cpu: '1', memory: '1Gi' },
-            defaultRequest: { cpu: '50m', memory: '256Mi' },
+            default: { cpu: '1', memory: '512Mi' },
+            defaultRequest: { cpu: '50m', memory: '512Mi' },
             type: 'Container',
           },
         ],
@@ -213,7 +213,7 @@ describe('project namespace bootstrap provisioning', (): void => {
           'limits.memory': '8Gi',
           pods: '50',
           'requests.cpu': '2',
-          'requests.memory': '2Gi',
+          'requests.memory': '8Gi',
           'requests.storage': '20Gi',
         },
       },

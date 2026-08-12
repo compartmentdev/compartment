@@ -8,6 +8,8 @@ metadata:
     app.kubernetes.io/component: capacity-headroom
 spec:
   replicas: {{ .Values.capacityHeadroom.replicas }}
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "compartment.componentLabels" (dict "root" . "component" "capacity-headroom") | nindent 6 }}

@@ -35,6 +35,10 @@ tests:
           value: 1
         template: capacity-headroom.yaml
       - equal:
+          path: spec.strategy
+          value: { type: Recreate }
+        template: capacity-headroom.yaml
+      - equal:
           path: spec.template.spec.priorityClassName
           value: compartment-capacity-headroom
         template: capacity-headroom.yaml
