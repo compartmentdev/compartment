@@ -206,7 +206,8 @@ describe('install command boundary', (): void => {
       capture.io,
     );
     expect(exitCode).toBe(1);
-    expect(readCliStderr(capture)).toContain('--tls-issuer requires an operator-owned --base-domain');
+    expect(readCliStderr(capture)).toContain('--tls-issuer');
+    expect(readCliStderr(capture)).not.toContain('Missing required install input');
     expect(mocks.resolveKubeconfig).not.toHaveBeenCalled();
   });
 

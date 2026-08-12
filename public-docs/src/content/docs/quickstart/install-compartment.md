@@ -230,9 +230,10 @@ node-trusted registry CA issuer described below.
 
 When you select an operator-owned base domain, the wizard also asks how public TLS is provided. Choose an existing
 cert-manager `Issuer` or `ClusterIssuer`, choose an existing `kubernetes.io/tls` Secret, or terminate TLS externally
-and let Compartment serve HTTP. The private registry always needs its own issuer. A namespaced `Issuer` or Secret must
-exist in the release namespace (`--namespace`, default `compartment`); a `ClusterIssuer` is cluster-scoped. Create the
-namespace first when you use namespaced certificate resources.
+and let Compartment serve HTTP. The private registry always needs its own issuer. Existing Secret mode requires the
+namespaced Secret in the release namespace (`--namespace`, default `compartment`). Issuer mode requires a namespaced
+`Issuer` there or a cluster-scoped `ClusterIssuer`. External TLS mode requires neither public certificate resource.
+Create the namespace first when you use namespaced certificate resources.
 
 The public issuer must report `Ready=True` and have at least one ACME DNS-01 solver because HTTP-01 cannot issue a
 wildcard certificate. Do not select an issuer with `spec.selfSigned`. A public ACME issuer cannot issue the registry's

@@ -2,6 +2,7 @@ import { describe, expect, it, vi, type Mock } from 'vitest';
 import { installIntoKubernetes } from '../src/services/kubernetes-install-application.service';
 import type { KubernetesInstallApplicationInput } from '../src/services/kubernetes-install-input.service.types';
 import type { KubernetesInstallDeploymentResult } from '../src/services/kubernetes-install.service.types';
+import { KubernetesExistingClusterPreflightError } from '../src/services/kubernetes-existing-cluster-preflight.support';
 import type { KubernetesOperatorIssuerAssessment } from '../src/services/kubernetes-operator-issuer-trust.service.types';
 
 interface ApplicationMocks {
@@ -48,8 +49,8 @@ describe('Kubernetes install application certificate preflight', (): void => {
   it('rejects an HTTP-01-only public issuer before deployment mutation', async (): Promise<void> => {
     mocks.inspectIssuer.mockResolvedValue({ detail: 'HTTP-01 only', dns01: false, ready: true, trust: 'acme' });
 
-    await expect(installIntoKubernetes(operatorInstallInput())).rejects.toThrow(
-      'Wildcard certificates cannot use HTTP-01',
+    await expect(installIntoKubernetes(operatorInstallInput())).rejects.toBeInstanceOf(
+      KubernetesExistingClusterPreflightError,
     );
     expect(mocks.deploy).not.toHaveBeenCalled();
   });

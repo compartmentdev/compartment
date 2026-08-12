@@ -304,8 +304,9 @@ controller.
 
 For an operator-owned base domain, public TLS has three modes: an existing Kubernetes TLS Secret, an existing
 cert-manager Issuer or ClusterIssuer, or external TLS termination with HTTP between the external proxy and Compartment.
-An issuer-managed install requires the selected issuer to report `Ready=True` and expose an ACME DNS-01 solver;
-Compartment creates and renews the wildcard Certificate but does not create the issuer or store its DNS credentials.
+An issuer-managed install requires the selected issuer to report `Ready=True` and expose an ACME DNS-01 solver.
+Compartment creates the wildcard Certificate, cert-manager issues and renews it, and Compartment does not create the
+issuer or store its DNS credentials.
 Provided certificate material terminates at the Ingress Controller and is never mounted into Caddy.
 
 ### Stage 5: establish the private registry path
@@ -435,9 +436,11 @@ keys.
 
 System-domain commands keep their product intent but change their runtime effects:
 
-- `set` validates and stages the base domain and existing DNS-01 issuer reference;
+- `set` requires a valid `tls.issuerRef`, validates it, and stages HTTPS with `tlsMode: external`; it does not stage
+  existing-Secret-only or external-HTTP modes;
 - `verify` proves ownership and routing to the selected shared ingress endpoint;
-- `activate` waits for the new Ingress and TLS path before committing the retained generation;
+- `activate` may use `tls.existingSecret` only when the values also contain the issuer reference required by `set`,
+  then waits for the new Ingress and TLS path before committing the retained generation;
 - `reset-managed` restores the original managed allocation without Caddy TLS state.
 
 The old `custom-http` and Caddy `custom-cert` runtime modes do not survive the cutover.

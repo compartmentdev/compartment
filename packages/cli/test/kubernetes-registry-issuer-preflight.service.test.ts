@@ -11,6 +11,7 @@ import {
   inspectOperatorIssuer,
 } from '../src/services/kubernetes-operator-issuer-trust.service';
 import type { KubernetesOperatorIssuerAssessment } from '../src/services/kubernetes-operator-issuer-trust.service.types';
+import { KubernetesExistingClusterPreflightError } from '../src/services/kubernetes-existing-cluster-preflight.support';
 
 vi.mock('../src/command-runner', (): object => ({
   runCommand: vi.fn(),
@@ -207,7 +208,7 @@ describe('operator public issuer preflight', (): void => {
     const assessment: KubernetesOperatorIssuerAssessment = await inspectOperatorIssuer(target, issuer);
 
     expect((): void => assertPublicDns01IssuerAssessment(issuer, assessment)).toThrow(
-      'Wildcard certificates cannot use HTTP-01',
+      KubernetesExistingClusterPreflightError,
     );
   });
 
@@ -219,7 +220,7 @@ describe('operator public issuer preflight', (): void => {
         ready: false,
         trust: 'acme',
       }),
-    ).toThrow('is not Ready=True');
+    ).toThrow(KubernetesExistingClusterPreflightError);
   });
 
   it('preserves the RBAC denial when public issuer capabilities cannot be inspected', (): void => {

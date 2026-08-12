@@ -49,10 +49,12 @@ The issuer path creates a wildcard Certificate for your base domain. cert-manage
 You create the issuer and configure its DNS provider credentials; Compartment stores only its reference. HTTP-01
 cannot issue wildcard certificates.
 
-Publish the DNS records reported by the installer. A namespaced Secret or `Issuer` must exist in the installation
-namespace; a `ClusterIssuer` is cluster-scoped.
+Publish the DNS records reported by the installer. In Secret mode, the namespaced Secret must exist in the installation
+namespace. In issuer mode, a namespaced `Issuer` must exist there, while a `ClusterIssuer` is cluster-scoped. External
+TLS mode requires neither public certificate resource.
 
-For non-interactive installation, add both issuer flags to the complete install command:
+For non-interactive issuer mode, add the public issuer flag and the separate registry issuer flag to the complete
+install command:
 
 ```bash
 compartment install \

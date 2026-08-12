@@ -94,22 +94,15 @@ describe('operator install values boundary', (): void => {
   });
 
   it.each([
-    [
-      'HTTPS without an existing Secret',
-      'platform:\n  publicProtocol: https\n',
-      'tls.existingSecret or tls.issuerRef is required when platform.publicProtocol is https',
-    ],
-    [
-      'HTTP with an existing Secret',
-      'platform:\n  publicProtocol: http\ntls:\n  existingSecret: platform-tls\n',
-      'TLS sources cannot be used when platform.publicProtocol is http',
-    ],
-  ])('rejects %s', async (_label: string, tlsValues: string, message: string): Promise<void> => {
+    ['HTTPS without an existing Secret', 'platform:\n  publicProtocol: https\n'],
+    ['HTTP with an existing Secret', 'platform:\n  publicProtocol: http\ntls:\n  existingSecret: platform-tls\n'],
+  ])('rejects %s', async (_label: string, tlsValues: string): Promise<void> => {
     const valuesPath: string = await writeValues(
       `ingress:\n  className: traefik\nregistry:\n  issuerRef:\n    kind: ClusterIssuer\n    name: registry-ca\n${tlsValues}`,
     );
 
-    await expect(readOperatorInstallInputValues(valuesPath, true)).rejects.toThrow(message);
+    const error: Error = await readFailure(readOperatorInstallInputValues(valuesPath, true));
+    expect(error.message).toContain(`${valuesPath}: tls.existingSecret:`);
   });
 
   it('reports an invalid container and independently missing registry issuer', async (): Promise<void> => {

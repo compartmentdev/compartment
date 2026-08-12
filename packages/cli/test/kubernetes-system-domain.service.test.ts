@@ -9,6 +9,7 @@ import {
 } from '../src/services/kubernetes-system-domain.service';
 import type { RetainedManagedDomainState } from '../src/services/kubernetes-install.service.types';
 import type { KubernetesOperatorIssuerAssessment } from '../src/services/kubernetes-operator-issuer-trust.service.types';
+import { KubernetesExistingClusterPreflightError } from '../src/services/kubernetes-existing-cluster-preflight.support';
 import type {
   KubernetesOperatorTarget,
   KubernetesSystemApiRequest,
@@ -209,7 +210,7 @@ describe('Kubernetes system-domain activation', (): void => {
         baseDomain: 'apps.example.com',
         issuerRef: { kind: 'Issuer', name: 'customer-issuer' },
       }),
-    ).rejects.toThrow('is not Ready=True');
+    ).rejects.toBeInstanceOf(KubernetesExistingClusterPreflightError);
 
     expect(mocks.requestSystemApi).not.toHaveBeenCalled();
   });

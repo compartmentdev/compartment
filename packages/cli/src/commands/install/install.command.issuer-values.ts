@@ -89,8 +89,14 @@ async function writeMergedValues(values: JsonValue): Promise<MaterializedInstall
   }
   const directory: string = await createKubernetesInstallMaterializedDirectory();
   const path: string = join(directory, 'values.json');
-  await writeKubernetesInstallValues(path, values);
-  return { directory, path };
+  const material: MaterializedInstallWizardValues = { directory, path };
+  try {
+    await writeKubernetesInstallValues(path, values);
+    return material;
+  } catch (error) {
+    await cleanMaterializedInstallValues(material);
+    throw error;
+  }
 }
 
 function isValuesObject(value: JsonValue | YamlFileValue): value is YamlFileObject {
