@@ -14,6 +14,11 @@ import { projectProjectNetworkPolicyManifests } from './worker-network-policy.se
 
 const recoveryRestartedAnnotation: string = 'compartment.dev/recovery-restarted';
 
+interface DeploymentCleanupIdentity {
+  labels: Record<string, string>;
+  namespace: string;
+}
+
 export interface AppliedPendingApplication {
   deployment: KubeDeploymentManifest;
   recoveryRestarted: boolean;
@@ -132,6 +137,75 @@ export async function recoverFailedRollout(
       ),
     ],
   });
+}
+
+export async function cleanupTimedOutRollout(
+  runtime: KubeRuntime,
+  target: DeploymentReconcileTarget,
+  tenantSecretsKek: TenantSecretsKeyring,
+  infrastructureTimeoutMs: number,
+  scheduling: KubeWorkloadScheduling | undefined,
+  workerImage: string,
+): Promise<void> {
+  const candidateObjects: KubeManifest[] = projectApplicationObjects(
+    target.candidate,
+    tenantSecretsKek,
+    infrastructureTimeoutMs,
+    scheduling,
+    workerImage,
+  );
+  if (target.active === null || target.active.deploymentId === target.candidate.deploymentId) {
+    await runtime.delete(candidateObjects);
+    return;
+  }
+  await cleanupDistinctTimedOutRollout(
+    runtime,
+    target,
+    candidateObjects,
+    tenantSecretsKek,
+    infrastructureTimeoutMs,
+    scheduling,
+    workerImage,
+  );
+}
+
+async function cleanupDistinctTimedOutRollout(
+  runtime: KubeRuntime,
+  target: DeploymentReconcileTarget,
+  candidateObjects: KubeManifest[],
+  tenantSecretsKek: TenantSecretsKeyring,
+  infrastructureTimeoutMs: number,
+  scheduling: KubeWorkloadScheduling | undefined,
+  workerImage: string,
+): Promise<void> {
+  await recoverFailedRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
+  const candidateDeployment: KubeDeploymentManifest = deploymentFromObjects(candidateObjects);
+  const identity: DeploymentCleanupIdentity = requiredDeploymentCleanupIdentity(candidateDeployment);
+  const observation = await observeCandidateReplicaSets(runtime, identity);
+  try {
+    const candidateSecret: KubeManifest | undefined = candidateObjects.find(
+      (object: KubeManifest): boolean => object.kind === 'Secret',
+    );
+    const replicaSets: KubeManifest[] = [...observation.cache.values()].filter(
+      (object: KubeObservedManifest): object is KubeManifest => object.kind === 'ReplicaSet',
+    );
+    await runtime.delete([...(candidateSecret === undefined ? [] : [candidateSecret]), ...replicaSets]);
+  } finally {
+    await observation.stop();
+  }
+}
+
+async function observeCandidateReplicaSets(runtime: KubeRuntime, identity: DeploymentCleanupIdentity) {
+  return await runtime.observe({ labels: identity.labels, namespace: identity.namespace, resources: ['replicasets'] });
+}
+
+function requiredDeploymentCleanupIdentity(deployment: KubeDeploymentManifest): DeploymentCleanupIdentity {
+  const labels: Record<string, string> | undefined = deployment.metadata?.labels;
+  const namespace: string | undefined = deployment.metadata?.namespace;
+  if (labels === undefined || namespace === undefined) {
+    throw new Error('Candidate Kubernetes Deployment cleanup requires ownership labels and a namespace.');
+  }
+  return { labels, namespace };
 }
 
 async function readRecoveryRestarted(

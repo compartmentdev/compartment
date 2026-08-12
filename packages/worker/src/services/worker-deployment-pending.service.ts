@@ -14,6 +14,7 @@ import type { CompartmentRequester } from '@compartment/sdk';
 import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
 import {
   applyPendingApplication,
+  cleanupTimedOutRollout,
   recoverFailedRollout,
   type AppliedPendingApplication,
 } from './worker-deployment-application.service';
@@ -152,7 +153,7 @@ async function handleMissingPendingDeployment(
   if (await restartActiveCandidate(...restartArguments, rolloutStarts, scheduling)) {
     return [];
   }
-  await recoverFailedRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
+  await cleanupTimedOutRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
   const applied: boolean = (
     await persistDeploymentObservation(request, target, 'failed', 'Kubernetes rollout timed out.')
   ).applied;
@@ -185,6 +186,11 @@ async function handleRolloutStatus(
   if (status === 'progressing' || (await restartActiveCandidate(...restartArguments, rolloutStarts, scheduling))) {
     return [];
   }
+  const cleanup: boolean =
+    status === 'timed-out' && Date.now() >= infrastructureRolloutDeadlineAt(target, infrastructureTimeoutMs).getTime();
+  if (cleanup) {
+    await cleanupTimedOutRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
+  }
   return await failPendingDeployment(
     request,
     runtime,
@@ -195,6 +201,7 @@ async function handleRolloutStatus(
     rolloutFailureMessage(status),
     rolloutStarts,
     scheduling,
+    !cleanup,
   );
 }
 
@@ -208,8 +215,11 @@ async function failPendingDeployment(
   message: string,
   rolloutStarts: DeploymentRolloutStartTracker,
   scheduling: KubeWorkloadScheduling | undefined,
+  recover: boolean = true,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
-  await recoverFailedRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
+  if (recover) {
+    await recoverFailedRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
+  }
   const persisted: WorkerObserveDeploymentReconcileResponse = await persistDeploymentObservation(
     request,
     target,

@@ -80,7 +80,12 @@ async function deleteObjects(objectApi: KubernetesObjectApi | null, objects: Kub
     await deleteObjectIgnoringNotFound(
       objectApi,
       object,
-      object.kind === 'Namespace' || object.kind === 'Job' ? 'Foreground' : undefined,
+      object.kind === 'Namespace' ||
+        object.kind === 'Job' ||
+        object.kind === 'Deployment' ||
+        object.kind === 'ReplicaSet'
+        ? 'Foreground'
+        : undefined,
     );
   }
 }
