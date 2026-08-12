@@ -75,6 +75,7 @@ const definitions: Readonly<Record<KubeObservedResource, InformerDefinition>> = 
     'api/v1/persistentvolumeclaims',
     'persistentvolumeclaims',
   ),
+  replicasets: createDefinition('apps/v1', 'ReplicaSet', 'apis/apps/v1/replicasets', 'replicasets'),
   secrets: createDefinition('v1', 'Secret', 'api/v1/secrets', 'secrets'),
   services: createDefinition('v1', 'Service', 'api/v1/services', 'services'),
 };

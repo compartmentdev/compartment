@@ -189,7 +189,7 @@ describe('informer lifecycle', (): void => {
       {
         labels: { 'compartment.dev/deployment-id': 'dep-1' },
         namespace: 'cpt-prj-1',
-        resources: ['deployments'],
+        resources: ['replicasets'],
       },
     );
     registration!.createInformer();
@@ -199,10 +199,16 @@ describe('informer lifecycle', (): void => {
     expect(listed.items).toEqual([
       {
         apiVersion: 'apps/v1',
-        kind: 'Deployment',
+        kind: 'ReplicaSet',
         metadata: { name: 'app-dep-1', namespace: 'cpt-prj-1' },
       },
     ]);
+    expect(createInformerMock).toHaveBeenCalledWith(
+      expect.anything(),
+      '/apis/apps/v1/namespaces/cpt-prj-1/replicasets',
+      expect.any(Function),
+      'compartment.dev/deployment-id=dep-1',
+    );
   });
 
   it('restarts after disconnect and keeps health and observedAt cache state', async (): Promise<void> => {

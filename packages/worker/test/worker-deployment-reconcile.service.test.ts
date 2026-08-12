@@ -299,8 +299,7 @@ describe('deployment reconciliation', (): void => {
   });
 
   it('restarts a deadline-exceeded active Deployment without terminally failing its recovery claim', async (): Promise<void> => {
-    const runtime: KubeRuntime & { apply: Mock; delete: Mock } = activeRuntimeStub(false, true) as never;
-    runtime.delete = vi.fn(async (): Promise<void> => await Promise.resolve());
+    const runtime: KubeRuntime & { apply: Mock; delete: Mock } = activeRuntimeStub(false, true);
     const candidate: DeploymentReconcileProjection = projection(null);
     const pendingTarget: DeploymentReconcileTarget = {
       ...target(candidate),
@@ -323,8 +322,7 @@ describe('deployment reconciliation', (): void => {
   });
 
   it('does not restart an unhealthy active Deployment at the absolute rollout deadline', async (): Promise<void> => {
-    const runtime: DeleteRuntime = activeRuntimeStub(false, true) as never;
-    runtime.delete = vi.fn(async (): Promise<void> => await Promise.resolve());
+    const runtime: DeleteRuntime = activeRuntimeStub(false, true);
     const candidate: DeploymentReconcileProjection = projection(null);
     const pendingTarget: DeploymentReconcileTarget = {
       ...target(candidate),
@@ -381,7 +379,7 @@ describe('deployment reconciliation', (): void => {
   it('starts a fresh application window after restarting an unhealthy active Deployment', async (): Promise<void> => {
     const namespace: string = kubeNamespaceName('prj_1');
     const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
-    const runtime: KubeRuntime & { delete: Mock; observe: Mock; read: Mock } = pendingRuntimeStub(false) as never;
+    const runtime: KubeRuntime & { delete: Mock; observe: Mock; read: Mock } = pendingRuntimeStub(false);
     runtime.delete = vi.fn(async (): Promise<void> => await Promise.resolve());
     runtime.observe
       .mockResolvedValueOnce(kubeObservation([applicationPod('dep_candidate', '2026-07-12T11:00:00.000Z')]))
@@ -411,7 +409,7 @@ describe('deployment reconciliation', (): void => {
   });
 
   it('fails an unhealthy active Deployment after its single recovery restart window expires', async (): Promise<void> => {
-    const runtime: KubeRuntime & { delete: Mock; observe: Mock } = pendingRuntimeStub(false) as never;
+    const runtime: KubeRuntime & { delete: Mock; observe: Mock } = pendingRuntimeStub(false);
     runtime.delete = vi.fn(async (): Promise<void> => await Promise.resolve());
     runtime.observe
       .mockResolvedValueOnce(kubeObservation([applicationPod('dep_candidate', '2026-07-12T11:00:00.000Z')]))
@@ -432,9 +430,18 @@ describe('deployment reconciliation', (): void => {
   });
 
   it('restores the active application and its ingress ports after a candidate rollout fails', async (): Promise<void> => {
-    const runtime: KubeRuntime & { apply: Mock } = pendingRuntimeStub(false, [
+    const candidateReplicaSet: KubeObservedManifest = {
+      apiVersion: 'apps/v1',
+      kind: 'ReplicaSet',
+      metadata: { labels: { 'compartment.dev/deployment-id': 'dep_candidate' }, name: 'candidate-rs' },
+    };
+    const runtime: KubeRuntime & { apply: Mock; delete: Mock; observe: Mock } = pendingRuntimeStub(false, [
       applicationPod('dep_candidate', '2026-07-12T11:00:00.000Z'),
     ]);
+    runtime.observe.mockResolvedValueOnce(
+      kubeObservation([applicationPod('dep_candidate', '2026-07-12T11:00:00.000Z')]),
+    );
+    runtime.observe.mockResolvedValueOnce(kubeObservation([candidateReplicaSet]));
     const candidate: DeploymentReconcileProjection = projection(null);
     const active: DeploymentReconcileProjection = {
       ...candidate,
@@ -454,7 +461,7 @@ describe('deployment reconciliation', (): void => {
       state: 'pending',
     };
 
-    await reconcileAt('2026-07-12T12:01:00.001Z', runtime, pendingTarget);
+    await reconcileAt('2026-07-12T12:10:00.000Z', runtime, pendingTarget);
 
     const applyCalls: ApplyMockCall[] = runtime.apply.mock.calls as ApplyMockCall[];
     const recovery: ApplyBundle | undefined = applyCalls
@@ -472,12 +479,26 @@ describe('deployment reconciliation', (): void => {
     expect(restoredDeployment?.spec?.template.spec.containers[0]?.ports).toEqual([
       { containerPort: 8080, name: 'http', protocol: 'TCP' },
     ]);
-    expect(restoredPolicy?.metadata?.labels?.['compartment.dev/project-id']).toBe('prj_active');
     expect(restoredPolicy?.spec).toEqual({ ingress: [{ ports: [{ port: 9090 }] }] });
     expect(mocks.projectNetworkPolicyManifests).toHaveBeenCalledWith('prj_active', {
       applicationPorts: [9090],
       resourcePorts: [5432],
     });
+    const cleanupInput: { labels: Record<string, string>; namespace: string; resources: string[] } =
+      runtime.observe.mock.calls.at(-1)?.[0] as never;
+    expect(cleanupInput).toMatchObject({
+      labels: {
+        'compartment.dev/deployment-id': 'dep_candidate',
+        'compartment.dev/environment-id': 'env_1',
+        'compartment.dev/organization-id': 'org_1',
+        'compartment.dev/project-id': 'prj_1',
+        'compartment.dev/service-id': 'svc_1',
+      },
+      namespace: kubeNamespaceName('prj_1'),
+      resources: ['replicasets'],
+    });
+    const deleted: KubeManifest[] = runtime.delete.mock.calls.at(-1)?.[0] as KubeManifest[];
+    expect(deleted.map((object: KubeManifest): string => object.kind)).toEqual(['Secret', 'ReplicaSet']);
   });
 
   it('preserves the single recovery restart after cross-deployment tracker pruning', async (): Promise<void> => {
@@ -614,16 +635,61 @@ describe('deployment reconciliation', (): void => {
   });
 
   it('uses the configured infrastructure timeout for a container that never starts', async (): Promise<void> => {
-    const runtime: KubeRuntime = pendingRuntimeStub(false, [applicationPod('dep_candidate', null)]);
+    const runtime: KubeRuntime & { delete: Mock } = pendingRuntimeStub(false, [applicationPod('dep_candidate', null)]);
     const pendingTarget: DeploymentReconcileTarget = pendingTargetWithReadinessTimeout(10_000);
 
     await reconcileAt('2026-07-12T12:01:59.999Z', runtime, pendingTarget, 120_000);
     expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalled();
+    expect(runtime.delete).not.toHaveBeenCalled();
 
     await reconcileAt('2026-07-12T12:02:00.000Z', runtime, pendingTarget, 120_000);
     expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ observation: 'failed', revision: 0 }),
+    );
+    const deleted: KubeManifest[] = runtime.delete.mock.calls[0]?.[0] as KubeManifest[];
+    expect(deleted.map((object: KubeManifest): string => object.kind)).toEqual(['Secret', 'Deployment', 'Service']);
+  });
+
+  it('leaves timeout failure unpersisted when first-deploy cleanup fails', async (): Promise<void> => {
+    const runtime: KubeRuntime & { delete: Mock } = pendingRuntimeStub(false, [applicationPod('dep_candidate', null)]);
+    runtime.delete.mockRejectedValue(new Error('cleanup failed'));
+
+    await expect(
+      reconcileAt('2026-07-12T12:02:00.000Z', runtime, pendingTargetWithReadinessTimeout(10_000), 120_000),
+    ).rejects.toThrow('cleanup failed');
+
+    expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ observation: 'failed' }),
+    );
+  });
+
+  it('does not cleanup or persist failure when the Kubernetes read fails', async (): Promise<void> => {
+    const runtime: KubeRuntime & { delete: Mock; read: Mock } = pendingRuntimeStub(false);
+    runtime.read.mockRejectedValue(new Error('Kubernetes transport failed'));
+
+    await expect(
+      reconcileAt('2026-07-12T12:10:00.000Z', runtime, pendingTargetWithReadinessTimeout(10_000)),
+    ).rejects.toThrow('Kubernetes transport failed');
+
+    expect(runtime.delete).not.toHaveBeenCalled();
+    expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ observation: 'failed' }),
+    );
+  });
+
+  it('cleans up a missing candidate observation before persisting timeout failure', async (): Promise<void> => {
+    const runtime: KubeRuntime & { delete: Mock; read: Mock } = pendingRuntimeStub(false);
+    runtime.read.mockResolvedValue(null);
+
+    await reconcileAt('2026-07-12T12:10:00.000Z', runtime, pendingTargetWithReadinessTimeout(10_000));
+
+    const deleted: KubeManifest[] = runtime.delete.mock.calls[0]?.[0] as KubeManifest[];
+    expect(deleted.map((object: KubeManifest): string => object.kind)).toEqual(['Secret', 'Deployment', 'Service']);
+    expect(runtime.delete.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.observeDeploymentReconcile.mock.invocationCallOrder[0]!,
     );
   });
 
@@ -707,7 +773,7 @@ describe('deployment reconciliation', (): void => {
       state: 'pending',
     };
 
-    await reconcileDeploymentTarget(requester(), runtime, pendingTarget);
+    await reconcileAt('2026-07-12T12:00:00.000Z', runtime, pendingTarget);
 
     expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
       expect.any(Function),
@@ -727,7 +793,7 @@ describe('deployment reconciliation', (): void => {
     } as never;
     const pendingTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'pending' };
 
-    await reconcileDeploymentTarget(requester(), runtime, pendingTarget);
+    await reconcileAt('2026-07-12T12:00:00.000Z', runtime, pendingTarget);
 
     expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalledWith(
       expect.any(Function),
@@ -747,7 +813,7 @@ describe('deployment reconciliation', (): void => {
     } as never;
     const pendingTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'pending' };
 
-    await reconcileDeploymentTarget(requester(), runtime, pendingTarget);
+    await reconcileAt('2026-07-12T12:00:00.000Z', runtime, pendingTarget);
 
     expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalledWith(
       expect.any(Function),
@@ -860,13 +926,14 @@ function persistedObservation(): WorkerObserveDeploymentReconcileRequest {
 function activeRuntimeStub(
   ready: boolean = true,
   progressDeadlineExceeded: boolean = false,
-): KubeRuntime & { apply: Mock; observe: Mock; read: Mock } {
+): KubeRuntime & { apply: Mock; delete: Mock; observe: Mock; read: Mock } {
   const namespace: string = kubeNamespaceName('prj_1');
   const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
   return {
     apply: vi.fn(
       async (): Promise<KubeManifest[]> => await Promise.resolve([readyDeployment(namespace, name, 'applied-uid', 1)]),
     ),
+    delete: vi.fn(async (): Promise<void> => await Promise.resolve()),
     observe: vi.fn(async (): Promise<KubeObservation> => await Promise.resolve(kubeObservation([]))),
     read: vi.fn(
       async (): Promise<KubeManifest> =>
@@ -880,12 +947,13 @@ function activeRuntimeStub(
 function pendingRuntimeStub(
   publishAfterSubscribe: boolean,
   pods: KubeObservedManifest[] = [],
-): KubeRuntime & { apply: Mock; observe: Mock; read: Mock } {
+): KubeRuntime & { apply: Mock; delete: Mock; observe: Mock; read: Mock } {
   const namespace: string = kubeNamespaceName('prj_1');
   const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
   const applied: KubeManifest = readyDeployment(namespace, name);
   return {
     apply: vi.fn(async (): Promise<KubeManifest[]> => await Promise.resolve([applied])),
+    delete: vi.fn(async (): Promise<void> => await Promise.resolve()),
     observe: vi.fn(async (): Promise<KubeObservation> => await Promise.resolve(kubeObservation(pods))),
     read: vi.fn(
       async (): Promise<KubeManifest> =>

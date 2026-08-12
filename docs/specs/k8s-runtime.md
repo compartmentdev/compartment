@@ -28,7 +28,7 @@ The package exposes eight Kubernetes transport primitives. Only `apply`,
   bootstrap-configured bundle may first create its allowed provisioning
   objects; a separate installation identity finishes by deleting explicitly
   named temporary authority, including after partial failure;
-- `observe(labels)` reads label-scoped informer caches;
+- `observe(labels)` reads label-scoped informer caches, including ReplicaSets used for revision cleanup;
 - `read(object)` performs a direct API-server read for ownership and freshness
   fences;
 - `delete(objects)` deletes exact projected objects, with UID and resource
@@ -84,6 +84,22 @@ The durable protocol follows the immutable T9 evidence linked below:
    object is absent, and recover `active` through the same stateless direct-read
    rules. Failed candidate recovery reapplies the previous active manifests but
    never blocks the controller on a second observation loop.
+
+A terminal `timed-out` rollout is cleaned up only after the configured
+infrastructure deadline has elapsed, and cleanup completes before failure is
+persisted. A cleanup error leaves the failure unpersisted so reconciliation can
+retry. A first deployment removes its projected Deployment, Service, and
+deployment-specific Secret. A replacement rollout first restores the distinct
+active manifests, then removes only the candidate Secret and ReplicaSets
+selected by the complete immutable candidate ownership labels. Deployment and
+ReplicaSet deletion uses foreground propagation and treats an absent object as
+already converged. Progressing, progress-deadline-exceeded, intermediate, and
+transport-error observations never trigger this cleanup.
+
+The controller ClusterRole grants its namespace-bound operator identity
+`get`, `list`, `watch`, and `delete` on ReplicaSets. Helm manages that role for
+both fresh installs and upgrades; the permission is not granted to product
+principals or groups.
 
 Informer callbacks are concurrent, repeatable signals. One database
 transaction owns each state transition and its drift audit event.

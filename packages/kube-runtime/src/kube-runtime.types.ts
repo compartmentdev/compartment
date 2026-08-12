@@ -34,6 +34,7 @@ export type KubeManifestKind =
   | 'Namespace'
   | 'NetworkPolicy'
   | 'PersistentVolumeClaim'
+  | 'ReplicaSet'
   | 'ResourceQuota'
   | 'RoleBinding'
   | 'Secret'
@@ -79,6 +80,7 @@ export interface KubeNonWorkloadManifest extends KubeManifestBase {
     | 'Namespace'
     | 'NetworkPolicy'
     | 'PersistentVolumeClaim'
+    | 'ReplicaSet'
     | 'ResourceQuota'
     | 'RoleBinding'
     | 'Secret'
@@ -238,6 +240,7 @@ export type KubeObservedResource =
   | 'services'
   | 'networkpolicies'
   | 'persistentvolumeclaims'
+  | 'replicasets'
   | 'secrets'
   | 'jobs'
   | 'pods';
