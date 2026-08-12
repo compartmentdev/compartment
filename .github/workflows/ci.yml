@@ -201,6 +201,9 @@ jobs:
           ./.compartment/cli-dist-ci/compartment --version
           ./.compartment/cli-dist-ci/compartment --help
 
+      - name: Install pinned Helm
+        uses: ./.github/actions/install-pinned-helm
+
       - name: Run fast tests
         run: pnpm test:fast:ci
 

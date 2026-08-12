@@ -134,6 +134,16 @@ describe('platform k3d e2e workflow', () => {
     );
   });
 
+  it('installs the repository-pinned Helm before fast package tests', async () => {
+    const workflow = parse(await readFile(ciWorkflowPath, 'utf8'));
+    const steps = workflow.jobs['standard-checks'].steps;
+    const helmIndex = steps.findIndex((step) => step.uses === './.github/actions/install-pinned-helm');
+    const fastTestsIndex = steps.findIndex((step) => step.run === 'pnpm test:fast:ci');
+
+    expect(helmIndex).toBeGreaterThan(-1);
+    expect(fastTestsIndex).toBeGreaterThan(helmIndex);
+  });
+
   it('runs the pull-request lane by default and the full matrix for the subsystems it cannot cover', () => {
     expect(selectPlatformK3dShards(['packages/console/src/features/roles/roles-page.drawer.tsx'])).toEqual({
       escalated: false,
