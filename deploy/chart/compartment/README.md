@@ -77,7 +77,8 @@ availability during node failure or kubelet node-pressure eviction.
 
 The chart reserves one 512Mi tenant allocation with a negative-priority placeholder Deployment. A compatible cluster
 autoscaler sees its replacement become pending after a tenant Pod preempts it and can add a node before real tenant
-capacity is exhausted. This has the infrastructure cost of 512Mi continuously requested tenant capacity. Set
+capacity is exhausted. It continuously requests one free-app allocation; incremental cost can be zero while a node
+has slack or as much as another node when that pending demand triggers scale-up. Set
 `capacityHeadroom.replicas: 0` only when accepting full-node saturation, or increase replicas to buy more headroom.
 Each replica derives its CPU, memory, and RuntimeClass from the canonical free-app defaults.
 The chart supplies the scheduler signal; the operator owns autoscaler installation and cloud-node bootstrap,

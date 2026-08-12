@@ -106,7 +106,7 @@ describe('managed VM cluster installation', (): void => {
       'kubelet-arg': [
         'system-reserved=memory=512Mi',
         'kube-reserved=memory=512Mi',
-        'eviction-hard=memory.available<512Mi,nodefs.available<10%,imagefs.available<15%,nodefs.inodesFree<5%',
+        'eviction-hard=memory.available<512Mi,nodefs.available<10%,imagefs.available<15%,nodefs.inodesFree<5%,imagefs.inodesFree<5%',
       ],
     });
     expect(configCall?.[2]).toBe(0o600);

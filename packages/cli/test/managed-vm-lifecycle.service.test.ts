@@ -159,7 +159,7 @@ describe('managed VM lifecycle ownership', (): void => {
       ...state,
       metadataDigest: 'previous-metadata',
       ownedPaths: managedVmOwnedPaths,
-      releaseMetadata: { ...managedVmReleaseMetadata, metadataVersion: 2 },
+      releaseMetadata: { ...managedVmReleaseMetadata, metadataVersion: 3 },
     };
     mocks.readState.mockResolvedValue(previousState);
     const updatePlatform: Mock = vi.fn();

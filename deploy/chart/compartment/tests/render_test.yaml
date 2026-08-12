@@ -319,7 +319,7 @@ tests:
       resources:
         projectContainerDefaults:
           request: { cpu: +75m, memory: +384Mi }
-          limit: { cpu: 750m, memory: 768Mi }
+          limit: { cpu: 750m, memory: 384Mi }
         projectQuota:
           requestsCpu: '3'
           requestsMemory: 3Gi
@@ -336,7 +336,7 @@ tests:
     asserts:
       - equal:
           path: data.COMPARTMENT_PROJECT_CONTAINER_DEFAULTS
-          value: '{"limit":{"cpu":"750m","memory":"768Mi"},"request":{"cpu":"+75m","memory":"+384Mi"}}'
+          value: '{"limit":{"cpu":"750m","memory":"384Mi"},"request":{"cpu":"+75m","memory":"+384Mi"}}'
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_PROJECT_QUOTA

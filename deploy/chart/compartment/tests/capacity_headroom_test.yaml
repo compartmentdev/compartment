@@ -64,6 +64,9 @@ tests:
       - hasDocuments:
           count: 0
         template: capacity-headroom.yaml
+      - hasDocuments:
+          count: 2
+        template: priority-class.yaml
 
   - it: derives the complete allocation from canonical tenant defaults
     set:

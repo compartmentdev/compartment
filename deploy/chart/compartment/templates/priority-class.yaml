@@ -15,6 +15,7 @@ value: 0
 globalDefault: false
 preemptionPolicy: PreemptLowerPriority
 description: Compartment tenant workloads that may be preempted by platform workloads.
+{{- if gt (int .Values.capacityHeadroom.replicas) 0 }}
 ---
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
@@ -24,3 +25,4 @@ value: -1
 globalDefault: false
 preemptionPolicy: Never
 description: Preemptible placeholder capacity that signals a compatible cluster autoscaler.
+{{- end }}

@@ -32,8 +32,9 @@ compartment install --target vm
 This target provisions a single-node k3s cluster. It is the shortest production setup path, but it is not highly
 available: losing the VM interrupts the control plane and workloads on that node.
 
-The managed node keeps 512Mi each for the host OS/kernel, K3s host daemons, and hard memory-eviction headroom. These
-reservations reduce Pod allocatable memory by 1.5GiB; Kubernetes system Pods remain separately scheduler-accounted.
+The managed node reserves 512Mi each for the host OS/kernel and K3s host daemons, reducing Pod allocatable memory by
+1GiB. A separate 512Mi hard eviction threshold makes the kubelet reclaim memory before host OOM; it does not reduce
+reported allocatable capacity. Kubernetes system Pods remain separately scheduler-accounted.
 
 The managed-VM installer asks whether to use a managed Compartment domain or an operator-owned base domain. Because
 Compartment owns this host, it automatically installs cert-manager, creates the internal registry CA and Issuer,
@@ -64,8 +65,9 @@ install an ingress controller, change node container-runtime or CA-trust configu
 upgrades and backups.
 
 For autoscaled existing clusters, the chart creates one preemptible 512Mi tenant-capacity placeholder by default.
-This scheduler signal costs one continuously requested free-app allocation and requires an operator-installed
-compatible autoscaler. The operator remains responsible for equivalent kube/system reservations and hard eviction
+This scheduler signal continuously requests one free-app allocation. Incremental cost can be zero while a node has
+slack or as much as another node when pending demand triggers scale-up. It requires an operator-installed compatible
+autoscaler. The operator remains responsible for equivalent kube/system reservations and hard eviction
 headroom in every cloud-node bootstrap; Compartment does not create those nodes.
 
 Keep the default single allocation, disable its cost, or buy more headroom in your Helm values:
