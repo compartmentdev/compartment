@@ -271,8 +271,8 @@ resources:
     requests: { cpu: 100m, memory: 384Mi }
     limits: { cpu: '1', memory: 384Mi }
   apiMigrate:
-    requests: { cpu: 50m, memory: 512Mi }
-    limits: { cpu: 500m, memory: 512Mi }
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 128Mi }
   worker:
     requests: { cpu: 100m, memory: 768Mi }
     limits: { cpu: '1', memory: 768Mi }
@@ -313,8 +313,8 @@ resources:
     requests: { cpu: 100m, memory: 1Gi }
     limits: { cpu: 250m, memory: 1Gi }
   productLogAgent:
-    requests: { cpu: 50m, memory: 256Mi, ephemeral-storage: 320Mi }
-    limits: { cpu: '1', memory: 256Mi, ephemeral-storage: 384Mi }
+    requests: { cpu: 50m, memory: 32Mi, ephemeral-storage: 320Mi }
+    limits: { cpu: '1', memory: 32Mi, ephemeral-storage: 384Mi }
   wait:
     requests: { cpu: 10m, memory: 128Mi }
     limits: { cpu: 100m, memory: 128Mi }

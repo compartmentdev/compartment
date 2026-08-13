@@ -51,6 +51,13 @@ tests:
           name: compartment-observability
           any: true
         template: product-log-agent.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            requests: { cpu: 50m, memory: 32Mi, ephemeral-storage: 320Mi }
+            limits: { cpu: '1', memory: 32Mi, ephemeral-storage: 384Mi }
+        template: product-log-agent.yaml
+        documentIndex: 4
       - containsDocument:
           apiVersion: v1
           kind: Namespace
@@ -161,6 +168,12 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].command
           value: ['node', 'dist/db/migrate.js']
+        template: api-migrate.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 128Mi }
         template: api-migrate.yaml
   - it: renders only foundation resources during the foundation stage
     set:
