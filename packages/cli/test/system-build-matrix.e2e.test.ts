@@ -692,8 +692,15 @@ async function expectPersistentDockerHubCacheAfterColdBuild(
 ): Promise<void> {
   const seed: K3dPlatformSeed = readK3dPlatformSeed();
   const deployment: string = 'compartment-dockerhub-cache';
+  const podSelector: string = 'app.kubernetes.io/instance=compartment,app.kubernetes.io/component=dockerhub-cache';
   const beforeRestart: number = await readDockerHubCacheBlobCount(seed.kubeContext, seed.platformNamespace, deployment);
   expect(beforeRestart).toBeGreaterThan(0);
+  const previousPodName: string = await readSinglePodName(
+    seed.kubeContext,
+    seed.platformNamespace,
+    podSelector,
+    'Docker Hub pull-through cache',
+  );
   const restart: SelfHostedUserSetupCommandResult = await runCommand({
     argv: [
       'kubectl',
@@ -708,6 +715,21 @@ async function expectPersistentDockerHubCacheAfterColdBuild(
     timeoutMs: selfHostedBuildMatrixRuntimeCommandTimeoutMs,
   });
   expectSuccessfulCommand(restart, 'restart the Docker Hub pull-through cache');
+  const replaced: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      'wait',
+      '--namespace',
+      seed.platformNamespace,
+      `pod/${previousPodName}`,
+      '--for=delete',
+      '--timeout=4m',
+    ],
+    timeoutMs: 5 * 60_000,
+  });
+  expectSuccessfulCommand(replaced, 'wait for the previous Docker Hub pull-through cache pod to be replaced');
   const ready: SelfHostedUserSetupCommandResult = await runCommand({
     argv: [
       'kubectl',
@@ -723,6 +745,23 @@ async function expectPersistentDockerHubCacheAfterColdBuild(
     timeoutMs: 5 * 60_000,
   });
   expectSuccessfulCommand(ready, 'wait for the Docker Hub pull-through cache restart');
+  const replacementReady: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      'wait',
+      '--namespace',
+      seed.platformNamespace,
+      'pod',
+      '--selector',
+      podSelector,
+      '--for=condition=Ready',
+      '--timeout=4m',
+    ],
+    timeoutMs: 5 * 60_000,
+  });
+  expectSuccessfulCommand(replacementReady, 'wait for the replacement Docker Hub pull-through cache pod');
   expect(await readDockerHubCacheBlobCount(seed.kubeContext, seed.platformNamespace, deployment)).toBe(beforeRestart);
   const warmDeploy: SelfHostedDeployCommandResponse = await admin.runJson('deploy', deployCommandResponseParser, {
     cwd: fixture.directory,
@@ -746,6 +785,36 @@ async function expectPersistentDockerHubCacheAfterColdBuild(
   expect(
     await readDockerHubCacheBlobCount(seed.kubeContext, seed.platformNamespace, deployment),
   ).toBeGreaterThanOrEqual(beforeRestart);
+}
+
+async function readSinglePodName(
+  kubeContext: string,
+  namespace: string,
+  selector: string,
+  description: string,
+): Promise<string> {
+  const result: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      kubeContext,
+      'get',
+      'pods',
+      '--namespace',
+      namespace,
+      '--selector',
+      selector,
+      '--output',
+      'jsonpath={range .items[*]}{.metadata.name}{"\\n"}{end}',
+    ],
+    timeoutMs: selfHostedBuildMatrixRuntimeCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(result, `read ${description} pod`);
+  const podNames: string[] = result.stdout.trim().split('\n').filter(Boolean);
+  if (podNames.length !== 1) {
+    throw new Error(`Expected one ${description} pod, received ${podNames.length.toString()}.`);
+  }
+  return podNames[0] ?? '';
 }
 
 async function readDockerHubCacheBlobCount(
