@@ -3,6 +3,7 @@
 {{- fail "dockerHubCache.enabled must be true when buildkit.enabled is true" -}}
 {{- end -}}
 {{- if and .Values.buildkit.enabled .Values.dockerHubCache.enabled (eq $installState.effective.platform.startupStage "full") }}
+{{- $cacheAddress := printf "%s-dockerhub-cache.%s.svc:%v" (include "compartment.fullname" .) .Release.Namespace .Values.ports.dockerHubCache }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -13,5 +14,7 @@ metadata:
 data:
   buildkitd.toml: |
     [registry."docker.io"]
-      mirrors = ["http://{{ include "compartment.fullname" . }}-dockerhub-cache.{{ .Release.Namespace }}.svc:{{ .Values.ports.dockerHubCache }}"]
+      mirrors = ["{{ $cacheAddress }}"]
+    [registry."{{ $cacheAddress }}"]
+      http = true
 {{- end }}

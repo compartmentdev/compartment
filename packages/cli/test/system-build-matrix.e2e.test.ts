@@ -70,6 +70,7 @@ import {
   runTimedStep,
   type SelfHostedUserSetupCommandResult,
 } from './self-hosted-user-setup-command.harness';
+import { parseDockerHubCacheBlobCount } from './dockerhub-cache-count.harness';
 
 type HttpProbeErrorInput = Error | string | number | boolean | symbol | bigint | null | undefined;
 
@@ -768,11 +769,7 @@ async function readDockerHubCacheBlobCount(
     timeoutMs: selfHostedBuildMatrixRuntimeCommandTimeoutMs,
   });
   expectSuccessfulCommand(result, 'count cached Docker Hub blobs');
-  const count: number = Number.parseInt(result.stdout.trim(), 10);
-  if (!Number.isSafeInteger(count)) {
-    throw new Error(`Expected a Docker Hub cache blob count, received ${result.stdout.trim()}.`);
-  }
-  return count;
+  return parseDockerHubCacheBlobCount(result.stdout);
 }
 
 /**

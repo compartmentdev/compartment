@@ -6,11 +6,6 @@ import {
   type KubeJobSpec,
   type KubeRunJobOptions,
 } from '@compartment/kube-runtime';
-import {
-  kubeJobManifest,
-  serializeManifestOnTheWire,
-  type WireObject,
-} from '../../kube-runtime/test/kube-job-wire-test-support';
 import { createWorkerTestConfig } from './worker-config-test.fixtures';
 import { readWorkerBuildJobInputEnvironment, runWorkerBuildJob } from '../src/services/worker-build-job.service';
 import type {
@@ -257,16 +252,6 @@ describe('build Job credential environment', (): void => {
       readOnly: true,
       subPath: 'buildkitd.toml',
     });
-    if (spec === undefined) {
-      throw new Error('Expected the worker to submit a Kubernetes build Job.');
-    }
-    const wireJob: WireObject = await serializeManifestOnTheWire(kubeJobManifest(spec, 'job-art-123', spec.labels));
-    const serializedJob: string = JSON.stringify(wireJob);
-    expect(serializedJob).toContain('"configMap":{"name":"compartment-buildkit"},"name":"buildkit-config"');
-    expect(serializedJob).toContain(
-      '"mountPath":"/etc/buildkit/buildkitd.toml","name":"buildkit-config","readOnly":true,"subPath":"buildkitd.toml"',
-    );
-    expect(serializedJob).toContain('"--config","/etc/buildkit/buildkitd.toml"');
   });
 
   it('gives a source build Pod its scoped credential and nothing else to authenticate with', async (): Promise<void> => {

@@ -23,6 +23,14 @@ tests:
       - failedTemplate:
           errorPattern: dockerHubCache/credentials/existingSecret
 
+  - it: rejects a Docker Hub credential Secret name longer than 253 characters
+    set:
+      dockerHubCache.enabled: true
+      dockerHubCache.credentials.existingSecret: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+    asserts:
+      - failedTemplate:
+          errorPattern: dockerHubCache/credentials/existingSecret
+
   - it: rejects a non-boolean new-project privacy default
     set:
       platform:

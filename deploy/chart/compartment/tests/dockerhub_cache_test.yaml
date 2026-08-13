@@ -63,7 +63,9 @@ tests:
           path: data["buildkitd.toml"]
           value: |
             [registry."docker.io"]
-              mirrors = ["http://compartment-dockerhub-cache.default.svc:5002"]
+              mirrors = ["compartment-dockerhub-cache.default.svc:5002"]
+            [registry."compartment-dockerhub-cache.default.svc:5002"]
+              http = true
         documentIndex: 0
         template: buildkit-configmap.yaml
       - equal:
@@ -112,14 +114,14 @@ tests:
     set:
       platform.startupStage: full
       platform.installationId: cache-credentials
-      dockerHubCache.credentials.existingSecret: dockerhub-credentials
+      dockerHubCache.credentials.existingSecret: dockerhub.credentials
     asserts:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
             name: REGISTRY_PROXY_USERNAME
             valueFrom:
-              secretKeyRef: { name: dockerhub-credentials, key: username }
+              secretKeyRef: { name: dockerhub.credentials, key: username }
         documentSelector:
           path: kind
           value: Deployment
@@ -129,7 +131,7 @@ tests:
           content:
             name: REGISTRY_PROXY_PASSWORD
             valueFrom:
-              secretKeyRef: { name: dockerhub-credentials, key: password }
+              secretKeyRef: { name: dockerhub.credentials, key: password }
         documentSelector:
           path: kind
           value: Deployment
