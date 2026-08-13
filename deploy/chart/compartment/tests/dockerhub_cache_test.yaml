@@ -1,0 +1,159 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: Docker Hub pull-through cache
+templates:
+  - templates/dockerhub-cache.yaml
+  - templates/buildkit.yaml
+  - templates/buildkit-configmap.yaml
+  - templates/pvc.yaml
+  - templates/buildkit-network-policy.yaml
+values:
+  - registry-values.yaml
+release:
+  name: compartment
+  namespace: default
+tests:
+  - it: renders the persistent internal cache as BuildKit's preferred Docker Hub mirror
+    set:
+      platform.startupStage: full
+      platform.installationId: cache-test
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: compartment-dockerhub-cache
+          any: true
+        template: dockerhub-cache.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
+        documentSelector:
+          path: kind
+          value: Deployment
+        template: dockerhub-cache.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REGISTRY_PROXY_REMOTEURL
+            value: https://registry-1.docker.io
+        documentSelector:
+          path: kind
+          value: Deployment
+        template: dockerhub-cache.yaml
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content: { name: data, mountPath: /var/lib/registry }
+        documentSelector:
+          path: kind
+          value: Deployment
+        template: dockerhub-cache.yaml
+      - equal:
+          path: spec.template.spec.volumes[0].persistentVolumeClaim.claimName
+          value: compartment-dockerhub-cache
+        documentSelector:
+          path: kind
+          value: Deployment
+        template: dockerhub-cache.yaml
+      - containsDocument:
+          apiVersion: v1
+          kind: Service
+          name: compartment-dockerhub-cache
+          any: true
+        template: dockerhub-cache.yaml
+      - equal:
+          path: data["buildkitd.toml"]
+          value: |
+            [registry."docker.io"]
+              mirrors = ["compartment-dockerhub-cache.default.svc:5002"]
+            [registry."compartment-dockerhub-cache.default.svc:5002"]
+              http = true
+        documentIndex: 0
+        template: buildkit-configmap.yaml
+      - equal:
+          path: spec.resources.requests.storage
+          value: 20Gi
+        documentSelector:
+          path: metadata.name
+          value: compartment-dockerhub-cache
+        template: pvc.yaml
+      - contains:
+          path: spec.egress
+          content:
+            to:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: default
+                podSelector:
+                  matchLabels:
+                    app.kubernetes.io/component: dockerhub-cache
+                    app.kubernetes.io/instance: compartment
+                    app.kubernetes.io/name: compartment
+            ports:
+              - { port: 5002, protocol: TCP }
+        documentSelector:
+          path: metadata.name
+          value: compartment-build
+        template: buildkit-network-policy.yaml
+      - equal:
+          path: spec.ingress[0]
+          value:
+            from:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: compartment-build
+                podSelector:
+                  matchLabels:
+                    compartment.dev/job-class: build
+            ports:
+              - { port: 5002, protocol: TCP }
+        documentSelector:
+          path: kind
+          value: NetworkPolicy
+        template: dockerhub-cache.yaml
+
+  - it: wires optional Docker Hub credentials from one existing Secret
+    set:
+      platform.startupStage: full
+      platform.installationId: cache-credentials
+      dockerHubCache.credentials.existingSecret: dockerhub.credentials
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REGISTRY_PROXY_USERNAME
+            valueFrom:
+              secretKeyRef: { name: dockerhub.credentials, key: username }
+        documentSelector:
+          path: kind
+          value: Deployment
+        template: dockerhub-cache.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REGISTRY_PROXY_PASSWORD
+            valueFrom:
+              secretKeyRef: { name: dockerhub.credentials, key: password }
+        documentSelector:
+          path: kind
+          value: Deployment
+        template: dockerhub-cache.yaml
+
+  - it: disables every cache-owned artifact together
+    set:
+      platform.startupStage: full
+      platform.installationId: cache-disabled
+      dockerHubCache.enabled: false
+      buildkit.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: dockerhub-cache.yaml
+
+  - it: fails closed when builds are enabled without the cache
+    set:
+      platform.startupStage: full
+      platform.installationId: cache-required
+      dockerHubCache.enabled: false
+    asserts:
+      - failedTemplate:
+          errorMessage: dockerHubCache.enabled must be true when buildkit.enabled is true
+        template: buildkit-configmap.yaml

@@ -13,6 +13,7 @@ export interface KubeJobSpec {
   args?: string[] | undefined;
   cleanupPolicy?: 'delete' | 'ttl' | undefined;
   command?: string[] | undefined;
+  configMapVolumes?: KubeJobConfigMapVolume[] | undefined;
   emptyDirVolumes?: KubeJobEmptyDirVolume[] | undefined;
   env: Readonly<Record<string, string>>;
   id: string;
@@ -31,6 +32,11 @@ export interface KubeJobSpec {
   sidecars?: KubeJobSidecar[] | undefined;
   timeoutMs: number;
   volumeMounts?: KubeJobVolumeMount[] | undefined;
+}
+
+export interface KubeJobConfigMapVolume {
+  name: string;
+  configMapName: string;
 }
 
 export interface KubeJobEmptyDirVolume {

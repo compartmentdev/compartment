@@ -183,9 +183,15 @@ Set `registry.storage.s3.existingSecret` to a Secret in the release namespace co
 Populate the bucket before switching backends; the chart does not migrate blobs. The S3 backend leaves any retained
 registry PVC unmounted and does not create one for new installations.
 
+Docker Hub base-image pulls use a separate, internal pull-through cache with a retained `20Gi` PVC by default.
+Set `storage.dockerHubCache` to a bounded Kubernetes quantity sized for the base-image working set. To authenticate
+cache misses to Docker Hub, set `dockerHubCache.credentials.existingSecret` to a Secret in the release namespace
+containing `username` and `password`. The chart never creates or stores those credentials. BuildKit prefers this
+cache and uses its native direct Docker Hub fallback only while the cache is unavailable or a mirrored request fails.
+
 Project provisioning creates repository-scoped credentials and project-scoped image pull Secrets. NetworkPolicy
-projections retain tenant isolation and the configured RFC1918 egress policy. Dockerfile, Railpack, BuildKit, and OCI
-image behavior is unchanged.
+projections retain tenant isolation and the configured RFC1918 egress policy. OCI output and artifact-registry
+behavior are unchanged.
 
 ## Usage metering
 

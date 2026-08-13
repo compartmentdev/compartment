@@ -227,6 +227,33 @@ describe('runWorkerBuildJob', (): void => {
 });
 
 describe('build Job credential environment', (): void => {
+  it('submits the BuildKit mirror ConfigMap in the Kubernetes Job request', async (): Promise<void> => {
+    const runJob: Mock<(spec: KubeJobSpec) => Promise<KubeJobResult>> = vi.fn(
+      async (): Promise<KubeJobResult> => await Promise.resolve(successfulResult(vi.fn(), 'done')),
+    );
+
+    await runWorkerBuildJob({ runJob }, createWorkerTestConfig(), { build: buildInput().build, id: 'art_123' });
+
+    const spec: KubeJobSpec | undefined = runJob.mock.calls[0]?.[0];
+    expect(spec?.configMapVolumes).toEqual([{ configMapName: 'compartment-buildkit', name: 'buildkit-config' }]);
+    expect(spec?.sidecars?.[0]?.args).toEqual([
+      '--addr',
+      'tcp://127.0.0.1:1234',
+      '--config',
+      '/etc/buildkit/buildkitd.toml',
+      '--oci-worker=true',
+      '--oci-worker-binary=/usr/local/bin/buildkit-runc-gvisor',
+      '--oci-worker-gc-keepstorage',
+      '1024',
+    ]);
+    expect(spec?.sidecars?.[0]?.volumeMounts).toContainEqual({
+      mountPath: '/etc/buildkit/buildkitd.toml',
+      name: 'buildkit-config',
+      readOnly: true,
+      subPath: 'buildkitd.toml',
+    });
+  });
+
   it('gives a source build Pod its scoped credential and nothing else to authenticate with', async (): Promise<void> => {
     const runJob: Mock<(spec: KubeJobSpec) => Promise<KubeJobResult>> = vi.fn(
       async (): Promise<KubeJobResult> => await Promise.resolve(successfulResult(vi.fn(), 'done')),

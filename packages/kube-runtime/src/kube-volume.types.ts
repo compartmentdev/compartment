@@ -10,6 +10,7 @@ export interface KubeVolumeMount {
 }
 
 export interface KubePodVolume {
+  configMap?: KubeConfigMapVolumeSource | undefined;
   emptyDir?: KubeEmptyDirVolume | undefined;
   name: string;
   persistentVolumeClaim?: { claimName: string; readOnly?: boolean | undefined } | undefined;
@@ -20,6 +21,10 @@ export interface KubePodVolume {
       }
     | undefined;
   secret?: { secretName: string } | undefined;
+}
+
+export interface KubeConfigMapVolumeSource {
+  name: string;
 }
 
 export interface KubeJobVolumeMount {

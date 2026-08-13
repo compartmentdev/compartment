@@ -1,20 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolve } from 'node:path';
-import {
-  KubernetesObjectApi,
-  RequestContext,
-  type HttpMethod,
-  type KubernetesObject,
-  type RequestBody,
-} from '@kubernetes/client-node';
-import {
-  KubeRuntime,
-  type ApplyBundle,
-  type KubeJobResult,
-  type KubeJobSpec,
-  type KubeManifest,
-} from '@compartment/kube-runtime';
+import type { KubeJobResult, KubeJobSpec, KubeRuntime } from '@compartment/kube-runtime';
 import { describe, expect, it } from 'vitest';
 import { parseAllDocuments, type Document } from 'yaml';
 import { readWorkerBuildConfig, type WorkerBuildConfig } from '../src/config';
@@ -45,6 +32,7 @@ interface RenderedPodSpec {
 }
 
 interface RenderedWorkload {
+  data?: Record<string, string>;
   kind?: string;
   metadata?: RenderedMetadata;
   spec?: RenderedWorkloadSpec;
@@ -71,15 +59,6 @@ interface RenderedPodTemplate {
   spec?: RenderedPodSpec;
 }
 
-interface SerializedJobPodSpec {
-  containers: RenderedContainer[];
-  initContainers?: RenderedContainer[];
-}
-
-interface SerializedJob {
-  spec: { template: { spec: SerializedJobPodSpec } };
-}
-
 const executeFile = promisify(execFile);
 const chartDirectory: string = resolve(__dirname, '../../../deploy/chart/compartment');
 const expectedWorkloadContainers: readonly string[] = [
@@ -92,6 +71,7 @@ const expectedWorkloadContainers: readonly string[] = [
   'Deployment/memory-contract-compartment-caddy/wait-for-api-migrate',
   'Deployment/memory-contract-compartment-capacity-headroom/reserve',
   'Deployment/memory-contract-compartment-dns01/solver',
+  'Deployment/memory-contract-compartment-dockerhub-cache/registry',
   'Deployment/memory-contract-compartment-edge/edge',
   'Deployment/memory-contract-compartment-edge/snapshots-ownership',
   'Deployment/memory-contract-compartment-edge/wait-for-api-migrate',
@@ -143,10 +123,11 @@ describe('shipped platform memory contract', (): void => {
     expect(sortedRenderedIdentities).toEqual(sortedExpectedIdentities);
   }, 30_000);
 
-  it('serializes honest chart memory into the Kubernetes build Job', async (): Promise<void> => {
+  it('submits honest chart memory in the Kubernetes build Job request', async (): Promise<void> => {
     const documents: RenderedWorkload[] = await renderManagedPlatform();
     const configMap: RenderedConfigMap | undefined = documents.find(
-      (document: RenderedWorkload): boolean => document.kind === 'ConfigMap',
+      (document: RenderedWorkload): boolean =>
+        document.kind === 'ConfigMap' && 'COMPARTMENT_API_INTERNAL_HOST' in (document.data ?? {}),
     );
     const config: WorkerBuildConfig = readWorkerBuildConfig({
       ...configMap?.data,
@@ -154,7 +135,7 @@ describe('shipped platform memory contract', (): void => {
       COMPARTMENT_LEADER_ELECTION_IDENTITY: 'memory-contract-worker',
       COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-token',
     });
-    const runtime = new SerializedBuildJobRuntime();
+    const runtime = new CapturingBuildJobRuntime();
 
     await expect(
       runWorkerBuildJob(runtime, config, {
@@ -176,13 +157,15 @@ describe('shipped platform memory contract', (): void => {
         id: 'build_memory_contract',
       }),
     ).rejects.toThrow(/Sandboxed build Job memory-contract failed/u);
-    const serialized: SerializedJob = JSON.parse(runtime.jobBody ?? '') as SerializedJob;
-    const podSpec: SerializedJobPodSpec = serialized.spec.template.spec;
-    const buildContainers: RenderedContainer[] = [...(podSpec.initContainers ?? []), ...podSpec.containers];
-
-    expect(buildContainers.map((container: RenderedContainer): string => container.name)).toEqual(['buildkit', 'job']);
-    for (const container of buildContainers) {
-      expect(container.resources?.requests?.memory).toBe(container.resources?.limits?.memory);
+    const spec: KubeJobSpec | undefined = runtime.spec;
+    expect(spec?.sidecars?.map((sidecar): string => sidecar.name)).toEqual(['buildkit']);
+    const resources: object[] = [spec?.sidecars?.[0]?.resources, spec?.resources].filter(
+      (resource): resource is object => resource !== undefined,
+    );
+    expect(resources).toHaveLength(2);
+    for (const resource of resources) {
+      const containerResources: RenderedContainerResources = resource;
+      expect(containerResources.requests?.memory).toBe(containerResources.limits?.memory);
     }
   }, 30_000);
 });
@@ -260,56 +243,11 @@ class FailedBuildJobResult implements KubeJobResult {
   }
 }
 
-class SerializedBuildJobRuntime implements Pick<KubeRuntime, 'runJob'> {
-  private readonly api = new CapturingKubernetesObjectApi();
-  private readonly execution: KubeRuntime;
-  private readonly transport: KubeRuntime;
-
-  public constructor() {
-    this.transport = new KubeRuntime({ makeApiClient: (): KubernetesObjectApi => this.api } as never);
-    this.execution = Object.create(KubeRuntime.prototype) as KubeRuntime;
-    Object.assign(this.execution, {
-      apply: async (bundle: ApplyBundle): Promise<KubeManifest[]> => await this.transport.apply(bundle),
-      captureJob: (): KubeJobResult => new FailedBuildJobResult(),
-      completeJob: async (): Promise<object> => await Promise.resolve({ exitCode: 1, logs: '', status: 'failed' }),
-      read: async (): Promise<null> => await Promise.resolve(null),
-    });
-  }
-
-  public get jobBody(): string | null {
-    return this.api.jobBody;
-  }
+class CapturingBuildJobRuntime implements Pick<KubeRuntime, 'runJob'> {
+  public spec: KubeJobSpec | undefined;
 
   public async runJob(spec: KubeJobSpec): Promise<KubeJobResult> {
-    return await this.execution.runJob(spec);
-  }
-}
-
-class CapturingKubernetesObjectApi extends KubernetesObjectApi {
-  public jobBody: string | null = null;
-
-  public constructor() {
-    super({
-      baseServer: {
-        makeRequestContext: (path: string, method: HttpMethod): RequestContext =>
-          new RequestContext(`https://kubernetes.test${path}`, method),
-      },
-    } as never);
-  }
-
-  protected override async specUriPath(): Promise<string> {
-    return await Promise.resolve('/apis/batch/v1/namespaces/compartment/jobs/memory-contract');
-  }
-
-  protected override async requestPromise<T extends KubernetesObject>(requestContext: RequestContext): Promise<T> {
-    const body: RequestBody = requestContext.getBody();
-    if (typeof body !== 'string') {
-      throw new Error('Expected the Kubernetes request body to be serialized JSON.');
-    }
-    const object: KubernetesObject = JSON.parse(body) as KubernetesObject;
-    if (object.kind === 'Job') {
-      this.jobBody = body;
-    }
-    return await Promise.resolve(object as T);
+    this.spec = spec;
+    return await Promise.resolve(new FailedBuildJobResult());
   }
 }

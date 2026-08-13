@@ -56,7 +56,7 @@ describe('build sandbox workspace', (): void => {
           `quantity(volume.emptyDir.sizeLimit).compareTo(quantity('${String(volume.sizeLimit)}')) == 0)`,
       );
     }
-    expect(policy).toContain(`object.spec.template.spec.volumes.size() == ${String(volumes.length)}`);
+    expect(policy).toContain(`object.spec.template.spec.volumes.size() == ${String(volumes.length + 1)}`);
     expect(policy.match(/quantity\(volume\.emptyDir\.sizeLimit\)/gu)).toHaveLength(volumes.length);
   });
 });
@@ -67,6 +67,7 @@ function buildSandboxConfig(overrides: {
   runnerMemory?: string;
 }): WorkerBuildSandboxConfig {
   return {
+    buildKitConfigMapName: 'compartment-buildkit',
     buildKitResources: { limits: { memory: overrides.buildKitMemory ?? '3Gi' } },
     gcKeepStorageMb: overrides.gcKeepStorageMb ?? 1024,
     namespace: 'compartment-build',

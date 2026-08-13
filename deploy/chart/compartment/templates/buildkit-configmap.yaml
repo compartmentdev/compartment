@@ -1,0 +1,20 @@
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- if and .Values.buildkit.enabled (not .Values.dockerHubCache.enabled) (eq $installState.effective.platform.startupStage "full") -}}
+{{- fail "dockerHubCache.enabled must be true when buildkit.enabled is true" -}}
+{{- end -}}
+{{- if and .Values.buildkit.enabled .Values.dockerHubCache.enabled (eq $installState.effective.platform.startupStage "full") }}
+{{- $cacheAddress := printf "%s-dockerhub-cache.%s.svc:%v" (include "compartment.fullname" .) .Release.Namespace .Values.ports.dockerHubCache }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "compartment.fullname" . }}-buildkit
+  namespace: {{ .Values.buildkit.namespace }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+data:
+  buildkitd.toml: |
+    [registry."docker.io"]
+      mirrors = ["{{ $cacheAddress }}"]
+    [registry."{{ $cacheAddress }}"]
+      http = true
+{{- end }}

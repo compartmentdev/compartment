@@ -1,0 +1,100 @@
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- if and .Values.dockerHubCache.enabled (eq $installState.effective.platform.startupStage "full") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "compartment.fullname" . }}-dockerhub-cache
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "compartment.componentLabels" (dict "root" . "component" "dockerhub-cache") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.ports.dockerHubCache }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "compartment.fullname" . }}-dockerhub-cache
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dockerhub-cache
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "dockerhub-cache") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "compartment.componentLabels" (dict "root" . "component" "dockerhub-cache") | nindent 8 }}
+    spec:
+      priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
+      {{- include "compartment.nodePool" .Values.nodePools.system | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: registry
+          image: {{ include "compartment.image" .Values.images.registry }}
+          imagePullPolicy: {{ .Values.images.registry.pullPolicy }}
+          securityContext:
+            {{- include "compartment.containerSecurityContext" . | nindent 12 }}
+            runAsUser: 1000
+            runAsGroup: 1000
+          resources:
+            {{- toYaml .Values.resources.dockerHubCache | nindent 12 }}
+          env:
+            - name: REGISTRY_HTTP_ADDR
+              value: {{ printf "0.0.0.0:%v" .Values.ports.dockerHubCache | quote }}
+            - name: REGISTRY_PROXY_REMOTEURL
+              value: https://registry-1.docker.io
+            {{- with .Values.dockerHubCache.credentials.existingSecret }}
+            - name: REGISTRY_PROXY_USERNAME
+              valueFrom:
+                secretKeyRef: {name: {{ . }}, key: username}
+            - name: REGISTRY_PROXY_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ . }}, key: password}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ports.dockerHubCache }}
+          readinessProbe:
+            httpGet: {path: /v2/, port: http}
+            periodSeconds: 2
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/registry}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "compartment.fullname" . }}-dockerhub-cache
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "compartment.fullname" . }}-dockerhub-cache
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "dockerhub-cache") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.buildkit.namespace }}
+          podSelector:
+            matchLabels:
+              compartment.dev/job-class: build
+      ports:
+        - {port: {{ .Values.ports.dockerHubCache }}, protocol: TCP}
+{{- end }}

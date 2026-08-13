@@ -25,6 +25,7 @@ export interface WorkerBuildConfig extends WorkerProcessConfig {
 }
 
 export interface WorkerBuildSandboxConfig {
+  buildKitConfigMapName: string;
   gcKeepStorageMb: number;
   buildKitResources: WorkerBuildResourceRequirements;
   namespace: string;

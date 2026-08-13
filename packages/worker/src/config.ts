@@ -40,6 +40,7 @@ interface WorkerProcessConfigEnvironment {
 }
 
 interface WorkerBuildConfigEnvironment extends WorkerProcessConfigEnvironment {
+  COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME: string;
   COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: number;
   COMPARTMENT_BUILDKIT_RESOURCES: string;
   COMPARTMENT_BUILD_NAMESPACE: string;
@@ -93,6 +94,7 @@ const buildResourceRequirementsSchema = z
 
 const workerBuildConfigSchema: z.ZodType<WorkerBuildConfigEnvironment> = workerProcessConfigSchema.and(
   z.object({
+    COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME: z.string().trim().min(1),
     COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: z.coerce.number().int().positive(),
     COMPARTMENT_BUILDKIT_RESOURCES: z.string().trim().min(1),
     COMPARTMENT_BUILD_NAMESPACE: z.string().trim().min(1),
@@ -191,6 +193,7 @@ function buildWorkerBuildConfig(parsed: WorkerBuildConfigEnvironment): WorkerBui
     ...buildWorkerProcessConfig(parsed),
     workerImage: parsed.COMPARTMENT_WORKER_IMAGE,
     buildSandbox: {
+      buildKitConfigMapName: parsed.COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME,
       buildKitResources: readResourceRequirements(
         parsed.COMPARTMENT_BUILDKIT_RESOURCES,
         'COMPARTMENT_BUILDKIT_RESOURCES',
