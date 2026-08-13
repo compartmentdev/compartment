@@ -6,6 +6,11 @@ import {
   type KubeJobSpec,
   type KubeRunJobOptions,
 } from '@compartment/kube-runtime';
+import {
+  kubeJobManifest,
+  serializeManifestOnTheWire,
+  type WireObject,
+} from '../../kube-runtime/test/kube-job-wire-test-support';
 import { createWorkerTestConfig } from './worker-config-test.fixtures';
 import { readWorkerBuildJobInputEnvironment, runWorkerBuildJob } from '../src/services/worker-build-job.service';
 import type {
@@ -227,6 +232,43 @@ describe('runWorkerBuildJob', (): void => {
 });
 
 describe('build Job credential environment', (): void => {
+  it('submits the BuildKit mirror ConfigMap in the Kubernetes Job request', async (): Promise<void> => {
+    const runJob: Mock<(spec: KubeJobSpec) => Promise<KubeJobResult>> = vi.fn(
+      async (): Promise<KubeJobResult> => await Promise.resolve(successfulResult(vi.fn(), 'done')),
+    );
+
+    await runWorkerBuildJob({ runJob }, createWorkerTestConfig(), { build: buildInput().build, id: 'art_123' });
+
+    const spec: KubeJobSpec | undefined = runJob.mock.calls[0]?.[0];
+    expect(spec?.configMapVolumes).toEqual([{ configMapName: 'compartment-buildkit', name: 'buildkit-config' }]);
+    expect(spec?.sidecars?.[0]?.args).toEqual([
+      '--addr',
+      'tcp://127.0.0.1:1234',
+      '--config',
+      '/etc/buildkit/buildkitd.toml',
+      '--oci-worker=true',
+      '--oci-worker-binary=/usr/local/bin/buildkit-runc-gvisor',
+      '--oci-worker-gc-keepstorage',
+      '1024',
+    ]);
+    expect(spec?.sidecars?.[0]?.volumeMounts).toContainEqual({
+      mountPath: '/etc/buildkit/buildkitd.toml',
+      name: 'buildkit-config',
+      readOnly: true,
+      subPath: 'buildkitd.toml',
+    });
+    if (spec === undefined) {
+      throw new Error('Expected the worker to submit a Kubernetes build Job.');
+    }
+    const wireJob: WireObject = await serializeManifestOnTheWire(kubeJobManifest(spec, 'job-art-123', spec.labels));
+    const serializedJob: string = JSON.stringify(wireJob);
+    expect(serializedJob).toContain('"configMap":{"name":"compartment-buildkit"},"name":"buildkit-config"');
+    expect(serializedJob).toContain(
+      '"mountPath":"/etc/buildkit/buildkitd.toml","name":"buildkit-config","readOnly":true,"subPath":"buildkitd.toml"',
+    );
+    expect(serializedJob).toContain('"--config","/etc/buildkit/buildkitd.toml"');
+  });
+
   it('gives a source build Pod its scoped credential and nothing else to authenticate with', async (): Promise<void> => {
     const runJob: Mock<(spec: KubeJobSpec) => Promise<KubeJobResult>> = vi.fn(
       async (): Promise<KubeJobResult> => await Promise.resolve(successfulResult(vi.fn(), 'done')),

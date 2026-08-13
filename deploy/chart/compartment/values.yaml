@@ -63,6 +63,7 @@ ports:
   edge: 39081
   registry: 5000
   registryInternal: 5001
+  dockerHubCache: 5002
   http: 8080
 
 ingress:
@@ -89,6 +90,7 @@ storage:
   storageClass: ''
   postgres: 2Gi
   registry: 2Gi
+  dockerHubCache: 20Gi
   edgeSnapshots: 1Gi
   api: 1Gi
 
@@ -204,6 +206,11 @@ buildkit:
   podCidr: 10.42.0.0/16
   serviceCidr: 10.43.0.0/16
 
+dockerHubCache:
+  enabled: true
+  credentials:
+    existingSecret: ''
+
 edge:
   replicas: 1
   snapshots:
@@ -294,6 +301,9 @@ resources:
   registryAuth:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { cpu: 500m, memory: 256Mi }
+  dockerHubCache:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
   # gVisor serves the build Job's emptyDir volumes from Sentry memory, so these two limits also fund
   # the 3Gi tmpfs build workspace. The worker refuses to start when they no longer cover that
   # workspace plus 1Gi of BuildKit, runner, and Sentry process memory.

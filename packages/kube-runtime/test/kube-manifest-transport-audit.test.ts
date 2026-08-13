@@ -300,6 +300,7 @@ function authorityInput(): ProjectProvisioningAuthorityInput {
 
 function buildJobSpec(): KubeJobSpec {
   return {
+    configMapVolumes: [{ configMapName: 'compartment-buildkit', name: 'buildkit-config' }],
     emptyDirVolumes: [
       { gvisorTmpfs: true, name: 'buildkit-data', sizeLimit: '3Gi' },
       { containerMountPath: '/tmp', gvisorTmpfs: true, name: 'tmp', sizeLimit: '1Gi' },
@@ -319,7 +320,15 @@ function buildJobSpec(): KubeJobSpec {
         env: { HOME: '/tmp' },
         image: 'compartment-worker@sha256:runner',
         name: 'buildkit',
-        volumeMounts: [{ mountPath: '/var/lib/buildkit', name: 'buildkit-data' }],
+        volumeMounts: [
+          { mountPath: '/var/lib/buildkit', name: 'buildkit-data' },
+          {
+            mountPath: '/etc/buildkit/buildkitd.toml',
+            name: 'buildkit-config',
+            readOnly: true,
+            subPath: 'buildkitd.toml',
+          },
+        ],
       },
     ],
     timeoutMs: 900_000,

@@ -38,6 +38,7 @@ export function createWorkerTestConfig(overrides: Partial<WorkerConfig> = {}): W
     apiUrl: 'http://127.0.0.1:9443',
     artifactRegistry: createArtifactRegistryTestConfig(),
     buildSandbox: {
+      buildKitConfigMapName: 'compartment-buildkit',
       buildKitResources: { limits: { memory: '3Gi' } },
       gcKeepStorageMb: 1024,
       namespace: 'compartment-build',

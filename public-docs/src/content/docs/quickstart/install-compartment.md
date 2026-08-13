@@ -24,7 +24,7 @@ Add `--verbose` to show Cosign, ORAS, and checksum diagnostics during installati
 
 ## Prepare a clean VM
 
-Use a fresh x86_64 VM with systemd, cgroup v2, sudo access, a public IPv4 address, and at least 20 GiB free storage.
+Use a fresh x86_64 VM with systemd, cgroup v2, sudo access, a public IPv4 address, and at least 40 GiB free storage.
 Ubuntu 24.04 LTS is tested; 2 vCPU, 4 GiB memory, and 50 GiB free storage are recommended for a host that only runs
 the platform and already-built applications. Source builds need their own headroom: a build Pod is limited to 2 CPU and
 4 GiB, and gVisor holds its whole workspace in memory, so use 4 vCPU, 8 GiB memory, and 80 GiB storage for one build at
@@ -362,6 +362,12 @@ Dockerfile and Railpack builds use an ephemeral BuildKit sidecar inside gVisor, 
 deploy immutable digest-pinned references. Build cache is stored in the project/service registry repository; no
 persistent cache volume is shared between tenants, and every Dockerfile or Railpack source deployment starts a fresh
 build Job.
+
+Docker Hub base images are fetched through a platform-owned pull-through cache. Its retained PVC defaults to `20Gi`;
+set `storage.dockerHubCache` to a bounded size that fits the installation's base-image working set. For authenticated
+Docker Hub pulls, set `dockerHubCache.credentials.existingSecret` to a Secret in the Compartment release namespace
+with `username` and `password` keys. Do not put Docker Hub credentials in values files. BuildKit prefers the cache;
+if it is unavailable or rejects a mirrored request, BuildKit falls back directly to Docker Hub so builds can continue.
 Project NetworkPolicies preserve tenant isolation and the configured RFC1918 egress policy.
 
 Kubernetes cluster administrators and anyone able to escape a container remain outside the tenant-isolation boundary.

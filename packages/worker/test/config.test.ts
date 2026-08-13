@@ -13,6 +13,7 @@ describe('readWorkerConfig', (): void => {
       internalUrl: 'https://registry.apps.example.com',
     });
     expect(config.buildSandbox).toEqual({
+      buildKitConfigMapName: 'compartment-buildkit',
       buildKitResources: { limits: { cpu: '2', memory: '3Gi' }, requests: { cpu: '250m', memory: '512Mi' } },
       gcKeepStorageMb: 1024,
       namespace: 'compartment-build',
@@ -204,6 +205,7 @@ const tenantSchedulingJson: string = JSON.stringify({
 
 function validEnvironment(): NodeJS.ProcessEnv {
   return {
+    COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME: 'compartment-buildkit',
     COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: '1024',
     COMPARTMENT_BUILDKIT_RESOURCES: '{"limits":{"cpu":"2","memory":"3Gi"},"requests":{"cpu":"250m","memory":"512Mi"}}',
     COMPARTMENT_BUILD_NAMESPACE: 'compartment-build',

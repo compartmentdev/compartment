@@ -91,6 +91,7 @@ function buildKubeJobSpec(config: WorkerBuildConfig, input: RunWorkerBuildJobInp
   return {
     cleanupPolicy: 'delete',
     command: workerJobCommand(workerJobEntrypoints.build),
+    configMapVolumes: [{ configMapName: config.buildSandbox.buildKitConfigMapName, name: 'buildkit-config' }],
     emptyDirVolumes: buildSandboxVolumes(),
     env: buildJobEnvironment(input),
     id: input.id,
@@ -122,6 +123,8 @@ function buildKitSidecar(config: WorkerBuildConfig): KubeJobSidecar {
     args: [
       '--addr',
       buildKitAddress,
+      '--config',
+      '/etc/buildkit/buildkitd.toml',
       '--oci-worker=true',
       '--oci-worker-binary=/usr/local/bin/buildkit-runc-gvisor',
       '--oci-worker-gc-keepstorage',
@@ -136,6 +139,7 @@ function buildKitSidecar(config: WorkerBuildConfig): KubeJobSidecar {
       { mountPath: '/var/lib/buildkit', name: 'buildkit-data' },
       { mountPath: '/run', name: 'buildkit-run' },
       { mountPath: '/buildkit-tmp', name: 'buildkit-tmp' },
+      { mountPath: '/etc/buildkit/buildkitd.toml', name: 'buildkit-config', readOnly: true, subPath: 'buildkitd.toml' },
     ],
   };
 }

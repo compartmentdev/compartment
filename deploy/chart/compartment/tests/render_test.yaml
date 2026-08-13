@@ -1272,7 +1272,7 @@ tests:
           value: ghcr.io/compartmentdev/compartment-worker:latest
         template: configmap.yaml
       - hasDocuments:
-          count: 3
+          count: 4
         template: pvc.yaml
       - equal:
           path: spec.template.spec.volumes[?(@.name == "snapshots")].emptyDir

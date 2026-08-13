@@ -381,12 +381,13 @@
     "ports": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["api", "edge", "registry", "registryInternal", "http"],
+      "required": ["api", "edge", "registry", "registryInternal", "dockerHubCache", "http"],
       "properties": {
         "api": { "$ref": "#/definitions/tcpPort" },
         "edge": { "$ref": "#/definitions/tcpPort" },
         "registry": { "$ref": "#/definitions/tcpPort" },
         "registryInternal": { "$ref": "#/definitions/tcpPort" },
+        "dockerHubCache": { "$ref": "#/definitions/tcpPort" },
         "http": { "$ref": "#/definitions/tcpPort" }
       }
     },
@@ -492,6 +493,25 @@
               }
             }
           ]
+        }
+      }
+    },
+    "dockerHubCache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "credentials"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "credentials": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["existingSecret"],
+          "properties": {
+            "existingSecret": {
+              "type": "string",
+              "oneOf": [{ "const": "" }, { "minLength": 1, "pattern": "^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$" }]
+            }
+          }
         }
       }
     },
@@ -776,6 +796,7 @@
         "postgres",
         "registry",
         "registryAuth",
+        "dockerHubCache",
         "buildkit",
         "buildRunner",
         "productLogAgent",
@@ -794,6 +815,7 @@
         "postgres": { "$ref": "#/definitions/containerResources" },
         "registry": { "$ref": "#/definitions/containerResources" },
         "registryAuth": { "$ref": "#/definitions/containerResources" },
+        "dockerHubCache": { "$ref": "#/definitions/containerResources" },
         "buildkit": { "$ref": "#/definitions/buildContainerResources" },
         "buildRunner": { "$ref": "#/definitions/buildContainerResources" },
         "productLogAgent": { "$ref": "#/definitions/containerResources" },
@@ -831,7 +853,7 @@
     "storage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["storageClass", "postgres", "registry", "edgeSnapshots", "api"],
+      "required": ["storageClass", "postgres", "registry", "dockerHubCache", "edgeSnapshots", "api"],
       "properties": {
         "storageClass": {
           "description": "StorageClass for every platform claim. Empty means the cluster default.",
@@ -839,6 +861,7 @@
         },
         "postgres": { "$ref": "#/definitions/kubernetesQuantity" },
         "registry": { "$ref": "#/definitions/kubernetesQuantity" },
+        "dockerHubCache": { "$ref": "#/definitions/kubernetesQuantity" },
         "edgeSnapshots": { "$ref": "#/definitions/kubernetesQuantity" },
         "api": { "$ref": "#/definitions/kubernetesQuantity" }
       }
