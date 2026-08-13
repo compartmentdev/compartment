@@ -52,6 +52,8 @@ spec:
             runAsUser: 0
             runAsGroup: 0
           command: ['sh', '-c', 'chown -R 1000:1000 {{ .Values.edge.snapshots.mountPath }}']
+          resources:
+            {{- toYaml .Values.resources.edgeInit | nindent 12 }}
           volumeMounts:
             - {name: snapshots, mountPath: {{ .Values.edge.snapshots.mountPath | quote }}}
         {{- include "compartment.waitForMigrationInit" . | nindent 8 }}

@@ -254,8 +254,9 @@ cannot measure a mount it does not own. The declared volume sizes state what the
 build resource limits and the declared workspace are one contract. A build fails before it starts unless
 `resources.buildkit` and `resources.buildRunner` together fund the whole declared workspace plus the BuildKit, runner,
 and Sentry process memory that writes into it, and unless `buildkit.gcKeepStorageMb` reserves no more than the
-memory-backed BuildKit data volume. The defaults give each build Pod a 4Gi memory limit covering a 3Gi workspace and
-1Gi of process memory, which fits the 8 GiB single-node host documented for application builds.
+memory-backed BuildKit data volume. The defaults give each build Pod a 4Gi memory request and limit covering a 3Gi
+workspace and 1Gi of process memory. Together with the honest platform footprint and node reservations, one build
+fits the 12 GiB single-node host documented for application builds.
 
 The build Pod runs tenant-authored code, so it never carries the installation runtime control token. The worker mints
 one HMAC-signed credential per build, pinned to that build's artifact id and outliving the Job's own

@@ -75,14 +75,9 @@ they share `compartment-tenant` with configured tenant workloads and never preem
 Pod preempt lower-priority tenant Pods when both are eligible for the same node. Priority does not guarantee
 availability during node failure or kubelet node-pressure eviction.
 
-The chart reserves one 512Mi tenant allocation with a negative-priority placeholder Deployment. A compatible cluster
-autoscaler sees its replacement become pending after a tenant Pod preempts it and can add a node before real tenant
-capacity is exhausted. It continuously requests one free-app allocation; incremental cost can be zero while a node
-has slack or as much as another node when that pending demand triggers scale-up. Set
-`capacityHeadroom.replicas: 0` only when accepting full-node saturation, or increase replicas to buy more headroom.
-Each replica derives its CPU, memory, and RuntimeClass from the canonical free-app defaults.
-The chart supplies the scheduler signal; the operator owns autoscaler installation and cloud-node bootstrap,
-including kubelet reservations and eviction policy.
+`capacityHeadroom.replicas` controls preemptible tenant-capacity placeholders for a compatible cluster autoscaler.
+Set it to zero to accept saturation or increase it to reserve more free allocations. The operator owns autoscaler
+installation, node bootstrap, kubelet reservations, and eviction policy.
 
 ## Public ingress
 
@@ -172,12 +167,8 @@ preflight and first-owner bootstrap.
 
 ## Registry and workload isolation
 
-Free application containers request and are limited to 512Mi of memory by default, while retaining the 1 CPU hard
-limit. Equal memory requests and limits make scheduler density match worst-case memory use, so a leak or OOM loop is
-bounded to its Pod. Project and organization request and limit memory quotas are both 8Gi, deliberately preserving a
-8Gi aggregate memory ceiling while removing request/limit overcommit. Memory quota capacity rises from eight to
-sixteen default containers without raising possible aggregate use; the existing 8 CPU limit quota remains binding at
-eight default containers overall.
+Size tenant container resources and project and organization quotas together. Memory requests determine scheduler
+density; memory limits and quotas bound what workloads may consume.
 
 The registry is a private ClusterIP workload. The CLI reads the retained registry Service ClusterIP and writes that
 address to `registry.hostname`; it does not derive the registry address from the public base domain. The registry
