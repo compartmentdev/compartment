@@ -54,8 +54,8 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].resources
           value:
-            requests: { cpu: 50m, memory: 32Mi, ephemeral-storage: 320Mi }
-            limits: { cpu: '1', memory: 32Mi, ephemeral-storage: 384Mi }
+            requests: { cpu: 50m, memory: 256Mi, ephemeral-storage: 320Mi }
+            limits: { cpu: '1', memory: 256Mi, ephemeral-storage: 384Mi }
         template: product-log-agent.yaml
         documentIndex: 4
       - containsDocument:
