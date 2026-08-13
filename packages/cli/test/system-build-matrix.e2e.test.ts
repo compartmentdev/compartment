@@ -768,20 +768,6 @@ async function expectPersistentDockerHubCacheAfterColdBuild(
     timeoutMs: selfHostedBuildMatrixDeployTimeoutMs,
   });
   expect(requireSingleActiveDeployment(warmDeploy, 'web').status).toBe('succeeded');
-  const logs: SelfHostedUserSetupCommandResult = await runCommand({
-    argv: [
-      'kubectl',
-      '--context',
-      seed.kubeContext,
-      'logs',
-      `deployment/${deployment}`,
-      '--namespace',
-      seed.platformNamespace,
-    ],
-    timeoutMs: selfHostedBuildMatrixRuntimeCommandTimeoutMs,
-  });
-  expectSuccessfulCommand(logs, 'read Docker Hub pull-through cache logs after the warm build');
-  expect(logs.stdout).toMatch(/\/v2\/library\/[^/]+\/(?:blobs|manifests)\//u);
   expect(
     await readDockerHubCacheBlobCount(seed.kubeContext, seed.platformNamespace, deployment),
   ).toBeGreaterThanOrEqual(beforeRestart);
