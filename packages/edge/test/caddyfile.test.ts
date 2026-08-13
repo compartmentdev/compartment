@@ -38,6 +38,7 @@ import {
   readDeletedRequestHeaders,
   readSingleCaddyServer,
   readWorkflowJob,
+  readWorkflowJobNames,
   validateCaddyfile,
 } from './caddy-config.utils';
 
@@ -47,7 +48,13 @@ const caddyfilePath: string = resolve(edgePackageRoot, 'Caddyfile');
 const syncCaddyfileScriptPath: string = resolve(edgePackageRoot, 'scripts/sync-caddyfile.mjs');
 const ciWorkflowPath: string = resolve(repositoryRoot, '.github/workflows/ci.yml');
 const mainCiWorkflowPath: string = resolve(repositoryRoot, '.github/workflows/main-ci.yml');
-const caddyValidationJobName: string = 'edge-caddy-config';
+const imageSecurityWorkflowPath: string = resolve(
+  repositoryRoot,
+  '.github/workflows/_self-hosted-image-security-gate.yml',
+);
+const imageSecurityGateJobName: string = 'self-hosted-image-security-gate';
+const caddyValidationJobName: string = 'scan-images';
+const removedCaddyValidationJobName: string = 'edge-caddy-config';
 const pinnedHelmActionPath: string = './.github/actions/install-pinned-helm';
 /** The image copies this file into /etc/caddy/Caddyfile, so every behavioral assertion reads it from disk. */
 const committedCaddyfile: string = readFileSync(caddyfilePath, 'utf8');
@@ -60,13 +67,11 @@ describe('edge Caddyfile source', (): void => {
 });
 
 describe('edge Caddyfile validation gate', (): void => {
-  it.each([
-    { workflowName: 'ci.yml', workflowPath: ciWorkflowPath },
-    { workflowName: 'main-ci.yml', workflowPath: mainCiWorkflowPath },
-  ])('runs as a job that cannot silently skip in $workflowName', ({ workflowPath }): void => {
-    const job: WorkflowJob = readWorkflowJob(workflowPath, caddyValidationJobName);
-    const stepUses: (string | undefined)[] = job.steps.map((step: WorkflowStep): string | undefined => step.uses);
-    const stepRuns: string[] = job.steps.map((step: WorkflowStep): string => step.run ?? '');
+  it('runs in the reusable image security gate without consuming another runner', (): void => {
+    const job: WorkflowJob = readWorkflowJob(imageSecurityWorkflowPath, caddyValidationJobName);
+    const steps: WorkflowStep[] = job.steps ?? [];
+    const stepUses: (string | undefined)[] = steps.map((step: WorkflowStep): string | undefined => step.uses);
+    const stepRuns: string[] = steps.map((step: WorkflowStep): string => step.run ?? '');
 
     // Without the required flag a missing Caddy build or Helm would skip the suite instead of failing.
     expect(job.env?.COMPARTMENT_CADDY_VALIDATION_REQUIRED).toBe('1');
@@ -75,12 +80,22 @@ describe('edge Caddyfile validation gate', (): void => {
     expect(stepRuns).toContain('pnpm --filter @compartment/edge test:caddy-config');
   });
 
+  it.each([
+    { workflowName: 'ci.yml', workflowPath: ciWorkflowPath },
+    { workflowName: 'main-ci.yml', workflowPath: mainCiWorkflowPath },
+  ])('invokes the reusable gate in $workflowName', ({ workflowPath }): void => {
+    const job: WorkflowJob = readWorkflowJob(workflowPath, imageSecurityGateJobName);
+
+    expect(job.uses).toBe('./.github/workflows/_self-hosted-image-security-gate.yml');
+    expect(readWorkflowJobNames(workflowPath)).not.toContain(removedCaddyValidationJobName);
+  });
+
   it('keeps the gate in the aggregate check:ci result', (): void => {
     const aggregateJob: WorkflowJob = readWorkflowJob(ciWorkflowPath, 'check-ci');
-    const [verificationStep]: WorkflowStep[] = aggregateJob.steps;
+    const [verificationStep]: WorkflowStep[] = aggregateJob.steps ?? [];
 
-    expect(aggregateJob.needs).toContain(caddyValidationJobName);
-    expect(verificationStep?.run).toContain(`needs.${caddyValidationJobName}.result`);
+    expect(aggregateJob.needs).toContain(imageSecurityGateJobName);
+    expect(verificationStep?.run).toContain(`needs.${imageSecurityGateJobName}.result`);
   });
 });
 
