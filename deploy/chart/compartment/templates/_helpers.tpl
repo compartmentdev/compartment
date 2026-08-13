@@ -182,12 +182,6 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- define "compartment.validateInstallValues" -}}
 {{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
 {{- $effective := $installState.effective -}}
-{{- $platformResources := dict "resources.api" .Values.resources.api "resources.apiMigrate" .Values.resources.apiMigrate "resources.worker" .Values.resources.worker "resources.projectProvisioner" .Values.resources.projectProvisioner "resources.edge" .Values.resources.edge "resources.edgeInit" .Values.resources.edgeInit "resources.caddy" .Values.resources.caddy "resources.caddyInit" .Values.resources.caddyInit "resources.postgres" .Values.resources.postgres "resources.registry" .Values.resources.registry "resources.registryAuth" .Values.resources.registryAuth "resources.dns01Solver" .Values.resources.dns01Solver "resources.buildkit" .Values.resources.buildkit "resources.buildRunner" .Values.resources.buildRunner "resources.productLogAgent" .Values.resources.productLogAgent "resources.wait" .Values.resources.wait "capsule.manager.resources" .Values.capsule.manager.resources -}}
-{{- range $path, $resources := $platformResources -}}
-{{- if ne (printf "%v" $resources.requests.memory) (printf "%v" $resources.limits.memory) -}}
-{{- fail (printf "%s requests.memory must equal limits.memory so Kubernetes schedules the full allowed platform memory" $path) -}}
-{{- end -}}
-{{- end -}}
 {{- if and .Values.postgres.external.enabled (empty .Values.postgres.external.existingSecret) -}}
 {{- fail "postgres.external.existingSecret is required when external PostgreSQL is enabled" -}}
 {{- end -}}

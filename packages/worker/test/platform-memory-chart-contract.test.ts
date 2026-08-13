@@ -111,26 +111,6 @@ const expectedWorkloadContainers: readonly string[] = [
   'Job/memory-contract-compartment-api-migrate-1/api-migrate',
   'Job/memory-contract-compartment-api-migrate-1/wait-for-foundation',
 ];
-const platformResourcePaths: readonly string[] = [
-  'resources.api',
-  'resources.apiMigrate',
-  'resources.worker',
-  'resources.projectProvisioner',
-  'resources.edge',
-  'resources.edgeInit',
-  'resources.caddy',
-  'resources.caddyInit',
-  'resources.postgres',
-  'resources.registry',
-  'resources.registryAuth',
-  'resources.dns01Solver',
-  'resources.buildkit',
-  'resources.buildRunner',
-  'resources.productLogAgent',
-  'resources.wait',
-  'capsule.manager.resources',
-];
-
 describe('shipped platform memory contract', (): void => {
   it('renders every platform container with an honest memory request', async (): Promise<void> => {
     const documents: RenderedWorkload[] = await renderManagedPlatform();
@@ -161,18 +141,6 @@ describe('shipped platform memory contract', (): void => {
       (left: string, right: string): number => left.localeCompare(right),
     );
     expect(sortedRenderedIdentities).toEqual(sortedExpectedIdentities);
-  });
-
-  it.each(platformResourcePaths)('rejects an unequal %s operator override', async (path: string): Promise<void> => {
-    await expect(
-      executeFile('helm', [
-        'template',
-        'memory-contract',
-        chartDirectory,
-        '--set-string',
-        `${path}.requests.memory=127Mi`,
-      ]),
-    ).rejects.toThrow(`${path} requests.memory must equal limits.memory`);
   });
 
   it('serializes honest chart memory into the Kubernetes build Job', async (): Promise<void> => {

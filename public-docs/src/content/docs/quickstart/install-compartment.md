@@ -26,11 +26,14 @@ Add `--verbose` to show Cosign, ORAS, and checksum diagnostics during installati
 
 Use a fresh x86_64 VM with systemd, cgroup v2, sudo access, a public IPv4 address, and at least 20 GiB free storage.
 Ubuntu 24.04 LTS is tested; 2 vCPU, 8 GiB memory, and 50 GiB free storage are recommended for a host that only runs
-the platform and already-built applications. The default managed-domain platform requests 3,456 MiB: 384 API + 768
-worker + 256 project provisioner + 128 edge + 128 Caddy + 512 PostgreSQL + 256 registry + 128 registry auth + 512
+the platform and already-built applications. The default managed-domain platform requests 3,968 MiB: 384 API + 768
+worker + 256 project provisioner + 128 edge + 128 Caddy + 1,024 PostgreSQL + 256 registry + 128 registry auth + 512
 for two Capsule replicas + 256 log agent + 128 DNS solver. Managed-node reservations add 1,536 MiB (512 MiB each
-for Kubernetes, system processes, and hard-eviction headroom), for 4,992 MiB before transient upgrade Jobs and
-ordinary add-ons. An 8 GiB host leaves 3,200 MiB for those peaks; a 4 GiB host cannot admit the default platform.
+for Kubernetes, system processes, and hard-eviction headroom), for 5,504 MiB before transient upgrade Jobs and
+ordinary add-ons. An 8 GiB host leaves 2,688 MiB for those peaks; a 4 GiB host cannot admit the default platform.
+PostgreSQL receives a 1 GiB request and limit because usage tables, connection count, and retained metrics grow with
+the installation. Its OOM kill also takes the platform with it, so the default reserves more headroom for the database
+than a small-install measurement alone would suggest.
 
 Source builds need their own headroom. Each build Pod requests and is limited to 2 CPU and 4 GiB, and gVisor holds
 its whole workspace in memory, so use 4 vCPU, 12 GiB memory, and 80 GiB storage for one build at a time and add 4 GiB
@@ -159,9 +162,11 @@ isolation revision to requeue projects that already completed this revision. App
 configured resource and object-count quotas and by workload requests and limits; there is no separate application-count
 value. Project object-count quotas remain fixed.
 
-The configured CPU request must be less than or equal to its limit. The memory request must equal its memory limit so
-tenant scheduling reserves the full allowed memory. The worker and project provisioner refuse to start when these
-values are inconsistent or are not valid Kubernetes quantities.
+The configured CPU and memory requests must not exceed their limits. The worker and project provisioner refuse to
+start when a request exceeds its limit or a value is not a valid Kubernetes quantity. The defaults set the memory
+request equal to the limit so the scheduler reserves everything a container may use. Lowering a request below its
+limit deliberately permits memory overcommit: the node can then be scheduled beyond physical memory, and under
+pressure the kernel, not the kubelet, chooses what dies. That victim can be a neighbouring application or PostgreSQL.
 
 Build concurrency has separate logical and physical limits. By default, Compartment admits up to 100 in-flight build
 claims, allows two active builds per organization, and applies a build-namespace quota of 48 CPU and 64 GiB. Each
@@ -189,9 +194,10 @@ resources:
 
 Builds run inside gVisor, which serves the build workspace from sandbox memory. A build Pod's memory limit therefore
 covers its whole scratch space, not just the BuildKit and runner processes: the default 4 GiB is a 3 GiB workspace plus
-1 GiB of process memory. Each container's memory request must use the same quantity spelling as its limit, so the
-scheduler reserves all 4 GiB before admitting a build Pod. If the two memory limits together fall below that total,
-the build fails immediately with a message naming both values instead of being killed later by the kernel. `buildkit.gcKeepStorageMb` reserves BuildKit
+1 GiB of process memory. The default requests also total 4 GiB, so the scheduler reserves that full amount before
+admitting a build Pod. Lower requests permit memory overcommit and carry the node-pressure risk described above. If
+the two memory limits together fall below that total, the build fails immediately with a message naming both values
+instead of being killed later by the kernel. `buildkit.gcKeepStorageMb` reserves BuildKit
 cache in the same memory and is checked separately: it cannot exceed 2147, the size of the memory-backed BuildKit data
 volume. Raise both memory limits together for source builds that pull large base images or install large system
 packages, and size the host for one build Pod per concurrent build you allow.
@@ -200,13 +206,14 @@ The namespace quota requires every build container to declare CPU and memory lim
 removed `buildkit.maximumConcurrentBuildsPerProject` value with
 `buildkit.maximumConcurrentBuildsPerOrganization`; the chart rejects the old key. A values file that pins the earlier
 build defaults is incompatible with the build workspace. Remove those pins to take the new defaults before upgrading.
-To keep the overrides instead, set each build container's memory request equal to its limit, keep the two limits at
-least 4 GiB in total, and separately lower `buildkit.gcKeepStorageMb` to 2147 or less.
+To keep the overrides instead, keep the two limits at least 4 GiB in total and separately lower
+`buildkit.gcKeepStorageMb` to 2147 or less. Keeping each request equal to its limit also preserves the default's
+full-memory reservation; lower requests trade that reservation for greater density.
 
-The same memory rule applies to every entry under `resources` that configures a platform Pod and to
-`capsule.manager.resources`. Before upgrading with a pinned values file, set every platform `requests.memory` to the
-same quantity spelling as its `limits.memory`; for example, use `1Gi` on both sides instead of mixing `1024Mi` and
-`1Gi`. Helm rejects the release during render and names the first inconsistent value.
+Every shipped platform profile under `resources`, along with `capsule.manager.resources`, defaults its memory request
+to its limit. Operators may lower requests to overcommit memory on clusters sized and monitored for that trade-off.
+When the requested total no longer covers what Pods may consume, node pressure can make the kernel kill a neighbouring
+application or PostgreSQL instead of the Pod whose burst exhausted physical memory.
 
 The namespace quota does not return a claimed build to Compartment's fair queue. If the quota blocks its Pod, the
 Kubernetes Job continues consuming the configured build timeout while it waits for capacity. Sustained quota

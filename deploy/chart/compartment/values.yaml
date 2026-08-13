@@ -292,8 +292,8 @@ resources:
     requests: { cpu: 10m, memory: 128Mi }
     limits: { cpu: 100m, memory: 128Mi }
   postgres:
-    requests: { cpu: 100m, memory: 512Mi }
-    limits: { cpu: '1', memory: 512Mi }
+    requests: { cpu: 100m, memory: 1Gi }
+    limits: { cpu: '1', memory: 1Gi }
   registry:
     requests: { cpu: 50m, memory: 256Mi }
     limits: { cpu: 500m, memory: 256Mi }
