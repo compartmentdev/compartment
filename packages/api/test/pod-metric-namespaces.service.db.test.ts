@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import type { Pool } from 'pg';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
@@ -11,6 +12,7 @@ import type {
 } from '../src/queries/project-provisioning.query.types';
 import { completeProjectProvisioning } from '../src/queries/project-provisioning-completion.query';
 import { claimPendingProjectProvisioning } from '../src/queries/project-provisioning.query';
+import { projectIsolationVersion } from '../src/queries/project-provisioning-policy';
 import { readPodMetricNamespaceScope } from '../src/services/pod-metrics-namespace.service';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import { createApiTestConfig } from './api-config-test.fixtures';
@@ -41,7 +43,7 @@ describe('Pod metric namespace scope', (): void => {
     await expect(readPodMetricNamespaceScope()).resolves.toEqual({ namespaceIds: ['prj_a', 'prj_z'] });
   });
 
-  it('reclaims pre-isolation succeeded projects and rejects stale-generation completion', async (): Promise<void> => {
+  it('reclaims projects on the tenant-capacity policy revision and rejects stale completion', async (): Promise<void> => {
     await db.insert(organizations).values({ id: 'org_upgrade', name: 'Upgrade', slug: 'upgrade' });
     await seedOrganizationQuota('org_upgrade');
     await db.insert(projects).values({
@@ -52,16 +54,17 @@ describe('Pod metric namespace scope', (): void => {
     });
     await db
       .insert(projectKubeProvisioning)
-      .values({ isolationVersion: 0, projectId: 'prj_upgrade', state: 'succeeded' });
+      .values({ isolationVersion: projectIsolationVersion - 1, projectId: 'prj_upgrade', state: 'succeeded' });
 
     const target: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning('provision');
-    expect(target).toMatchObject({ isolationVersion: 1, projectId: 'prj_upgrade' });
+    assert(target !== null);
+    expect(target).toMatchObject({ isolationVersion: projectIsolationVersion, projectId: 'prj_upgrade' });
     await expect(
       completeProjectProvisioning({
         action: 'provision',
         failureMessage: null,
-        isolationVersion: 0,
-        leaseId: target?.leaseId ?? '',
+        isolationVersion: projectIsolationVersion - 1,
+        leaseId: target.leaseId,
         projectId: 'prj_upgrade',
         status: 'succeeded',
       }),
@@ -70,8 +73,8 @@ describe('Pod metric namespace scope', (): void => {
       completeProjectProvisioning({
         action: 'provision',
         failureMessage: null,
-        isolationVersion: target?.isolationVersion ?? 1,
-        leaseId: target?.leaseId ?? '',
+        isolationVersion: target.isolationVersion,
+        leaseId: target.leaseId,
         projectId: 'prj_upgrade',
         status: 'succeeded',
       }),
@@ -86,17 +89,21 @@ describe('Pod metric namespace scope', (): void => {
     await db
       .insert(projects)
       .values({ defaultAccessMode: 'authenticated', id: 'prj_retry', name: 'retry', organizationId: 'org_retry' });
-    await db
-      .insert(projectKubeProvisioning)
-      .values({ attempts: 3, isolationVersion: 0, projectId: 'prj_retry', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({
+      attempts: 3,
+      isolationVersion: projectIsolationVersion - 1,
+      projectId: 'prj_retry',
+      state: 'succeeded',
+    });
 
     const first: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning('provision');
+    assert(first !== null);
     await expect(
       completeProjectProvisioning({
         action: 'provision',
         failureMessage: 'retry upgrade',
-        isolationVersion: first?.isolationVersion ?? 1,
-        leaseId: first?.leaseId ?? '',
+        isolationVersion: first.isolationVersion,
+        leaseId: first.leaseId,
         projectId: 'prj_retry',
         status: 'failed',
       }),
@@ -107,7 +114,7 @@ describe('Pod metric namespace scope', (): void => {
       .where(eq(projectKubeProvisioning.projectId, 'prj_retry'));
 
     await expect(claimPendingProjectProvisioning('provision')).resolves.toMatchObject({
-      isolationVersion: 1,
+      isolationVersion: projectIsolationVersion,
       projectId: 'prj_retry',
     });
   });
@@ -129,5 +136,5 @@ async function seedProject(
     name: projectId,
     organizationId: 'org_metrics',
   });
-  await db.insert(projectKubeProvisioning).values({ projectId, state });
+  await db.insert(projectKubeProvisioning).values({ isolationVersion: projectIsolationVersion, projectId, state });
 }

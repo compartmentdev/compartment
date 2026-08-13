@@ -18,10 +18,10 @@ const projectContainerDefaultsSchema: z.ZodType<ProjectContainerDefaults> = z
     if (compareKubernetesQuantities(defaults.request.cpu, defaults.limit.cpu) === 1) {
       context.addIssue({ code: z.ZodIssueCode.custom, message: 'must not exceed limit.cpu', path: ['request', 'cpu'] });
     }
-    if (compareKubernetesQuantities(defaults.request.memory, defaults.limit.memory) === 1) {
+    if (compareKubernetesQuantities(defaults.request.memory, defaults.limit.memory) !== 0) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'must not exceed limit.memory',
+        message: 'must equal limit.memory',
         path: ['request', 'memory'],
       });
     }

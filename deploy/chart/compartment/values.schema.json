@@ -278,7 +278,8 @@
         "postgres",
         "registry",
         "kubectl",
-        "productLogAgent"
+        "productLogAgent",
+        "capacityHeadroom"
       ],
       "properties": {
         "api": { "$ref": "#/definitions/platformImage" },
@@ -289,7 +290,8 @@
         "postgres": { "$ref": "#/definitions/platformImage" },
         "registry": { "$ref": "#/definitions/platformImage" },
         "kubectl": { "$ref": "#/definitions/platformImage" },
-        "productLogAgent": { "$ref": "#/definitions/platformImage" }
+        "productLogAgent": { "$ref": "#/definitions/platformImage" },
+        "capacityHeadroom": { "$ref": "#/definitions/platformImage" }
       }
     },
     "ingress": {
@@ -700,6 +702,14 @@
         "system": { "$ref": "#/definitions/nodePool" },
         "build": { "$ref": "#/definitions/nodePool" },
         "tenant": { "$ref": "#/definitions/nodePool" }
+      }
+    },
+    "capacityHeadroom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["replicas"],
+      "properties": {
+        "replicas": { "type": "integer", "minimum": 0 }
       }
     },
     "sandboxRuntime": {

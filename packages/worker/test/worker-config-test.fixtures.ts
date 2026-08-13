@@ -23,8 +23,8 @@ export const testOrganizationQuota: OrganizationQuotaCapacity = {
 
 export const testProjectResourceConfiguration: ProjectNamespaceResourceConfiguration = {
   containerDefaults: {
-    limit: { cpu: '1', memory: '1Gi' },
-    request: { cpu: '50m', memory: '256Mi' },
+    limit: { cpu: '1', memory: '512Mi' },
+    request: { cpu: '50m', memory: '512Mi' },
   },
   quota: testOrganizationQuota,
 };

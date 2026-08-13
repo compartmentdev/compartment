@@ -14,7 +14,7 @@ git apply /patches/runc-gvisor-mount-remap.patch
 # dependencies with versions that clear the worker image's vulnerability gate.
 export GOFLAGS=-mod=mod
 go get \
-  golang.org/x/net@v0.55.0 \
+  golang.org/x/net@v0.56.0 \
   golang.org/x/text@v0.40.0
 go mod tidy
 

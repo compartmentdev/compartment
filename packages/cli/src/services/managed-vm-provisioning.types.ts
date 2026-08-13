@@ -43,13 +43,19 @@ export interface ManagedVmPreviousReleaseMetadata extends ManagedVmReleaseMetada
   metadataVersion: 2;
 }
 
-export interface ManagedVmCurrentReleaseMetadata extends ManagedVmReleaseMetadataBase {
+export interface ManagedVmNodeIdentityReleaseMetadata extends ManagedVmReleaseMetadataBase {
   gvisorVersion: string;
   metadataVersion: 3;
 }
 
+export interface ManagedVmCurrentReleaseMetadata extends ManagedVmReleaseMetadataBase {
+  gvisorVersion: string;
+  metadataVersion: 4;
+}
+
 export type ManagedVmReleaseMetadata =
   | ManagedVmCurrentReleaseMetadata
+  | ManagedVmNodeIdentityReleaseMetadata
   | ManagedVmLegacyReleaseMetadata
   | ManagedVmPreviousReleaseMetadata;
 

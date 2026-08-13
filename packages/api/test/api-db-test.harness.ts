@@ -3,6 +3,8 @@ import { beforeAll, beforeEach, afterAll, afterEach } from 'vitest';
 import { ensureDatabaseExists, resetDatabase, runCompartmentApiMigrations } from '@compartment/test-support';
 import type { ApiConfig } from '../src/config';
 import type { Database } from '../src/db/client';
+import { projectKubeProvisioning } from '../src/db/schema';
+import { projectIsolationVersion } from '../src/queries/project-provisioning-policy';
 import { clearApiRuntime, configureApiRuntime } from '../src/runtime/runtime';
 
 interface ApiRuntimeDatabaseTestHarnessInput {
@@ -55,4 +57,10 @@ export function useApiRuntimeDatabaseTestHarness(input: ApiRuntimeDatabaseTestHa
   afterAll(async (): Promise<void> => {
     await input.pool.end();
   });
+}
+
+export async function seedCurrentProjectProvisioning(db: Database, projectId: string): Promise<void> {
+  await db
+    .insert(projectKubeProvisioning)
+    .values({ isolationVersion: projectIsolationVersion, projectId, state: 'succeeded' });
 }
