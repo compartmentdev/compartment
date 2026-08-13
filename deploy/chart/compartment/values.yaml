@@ -271,8 +271,8 @@ resources:
     requests: { cpu: 100m, memory: 384Mi }
     limits: { cpu: '1', memory: 384Mi }
   apiMigrate:
-    requests: { cpu: 50m, memory: 128Mi }
-    limits: { cpu: 500m, memory: 128Mi }
+    requests: { cpu: 50m, memory: 512Mi }
+    limits: { cpu: 500m, memory: 512Mi }
   worker:
     requests: { cpu: 100m, memory: 768Mi }
     limits: { cpu: '1', memory: 768Mi }

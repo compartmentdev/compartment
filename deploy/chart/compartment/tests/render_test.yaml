@@ -172,8 +172,8 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].resources
           value:
-            requests: { cpu: 50m, memory: 128Mi }
-            limits: { cpu: 500m, memory: 128Mi }
+            requests: { cpu: 50m, memory: 512Mi }
+            limits: { cpu: 500m, memory: 512Mi }
         template: api-migrate.yaml
   - it: renders only foundation resources during the foundation stage
     set:
