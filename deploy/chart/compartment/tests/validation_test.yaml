@@ -257,6 +257,17 @@ tests:
       - failedTemplate:
           errorPattern: resources.buildRunner.limits.memory.*pattern
 
+  - it: accepts a platform memory request below its limit
+    set:
+      resources:
+        api:
+          requests:
+            memory: 256Mi
+          limits:
+            memory: 384Mi
+    asserts:
+      - notFailedTemplate: {}
+
   - it: rejects Capsule cluster-admin RBAC generation
     set:
       capsule:

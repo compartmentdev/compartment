@@ -51,6 +51,13 @@ tests:
           name: compartment-observability
           any: true
         template: product-log-agent.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            requests: { cpu: 50m, memory: 256Mi, ephemeral-storage: 320Mi }
+            limits: { cpu: '1', memory: 256Mi, ephemeral-storage: 384Mi }
+        template: product-log-agent.yaml
+        documentIndex: 4
       - containsDocument:
           apiVersion: v1
           kind: Namespace
@@ -162,6 +169,12 @@ tests:
           path: spec.template.spec.containers[0].command
           value: ['node', 'dist/db/migrate.js']
         template: api-migrate.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            requests: { cpu: 50m, memory: 512Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+        template: api-migrate.yaml
   - it: renders only foundation resources during the foundation stage
     set:
       platform:
@@ -212,7 +225,7 @@ tests:
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BUILDKIT_RESOURCES
-          value: '{"limits":{"cpu":"1750m","memory":"3Gi"},"requests":{"cpu":"250m","memory":"512Mi"}}'
+          value: '{"limits":{"cpu":"1750m","memory":"3Gi"},"requests":{"cpu":"250m","memory":"3Gi"}}'
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_PROJECT_CONTAINER_DEFAULTS
@@ -228,7 +241,7 @@ tests:
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BUILD_RUNNER_RESOURCES
-          value: '{"limits":{"cpu":"250m","memory":"1Gi"},"requests":{"cpu":"100m","memory":"256Mi"}}'
+          value: '{"limits":{"cpu":"250m","memory":"1Gi"},"requests":{"cpu":"100m","memory":"1Gi"}}'
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB

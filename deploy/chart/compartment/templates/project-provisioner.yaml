@@ -46,7 +46,7 @@ spec:
             runAsUser: 10001
             runAsGroup: 10001
           resources:
-            {{- toYaml .Values.resources.worker | nindent 12 }}
+            {{- toYaml .Values.resources.projectProvisioner | nindent 12 }}
           envFrom:
             - configMapRef:
                 name: {{ include "compartment.fullname" . }}

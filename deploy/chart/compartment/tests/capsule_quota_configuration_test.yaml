@@ -57,4 +57,4 @@ tests:
           value: system-cluster-critical
       - equal:
           path: spec.template.spec.containers[0].resources.requests
-          value: { cpu: 100m, memory: 128Mi }
+          value: { cpu: 100m, memory: 256Mi }

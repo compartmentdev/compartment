@@ -25,10 +25,8 @@ Add `--verbose` to show Cosign, ORAS, and checksum diagnostics during installati
 ## Prepare a clean VM
 
 Use a fresh x86_64 VM with systemd, cgroup v2, sudo access, a public IPv4 address, and at least 20 GiB free storage.
-Ubuntu 24.04 LTS is tested; 2 vCPU, 4 GiB memory, and 50 GiB free storage are recommended for a host that only runs
-the platform and already-built applications. Source builds need their own headroom: a build Pod is limited to 2 CPU and
-4 GiB, and gVisor holds its whole workspace in memory, so use 4 vCPU, 8 GiB memory, and 80 GiB storage for one build at
-a time and add 4 GiB per additional concurrent build.
+Ubuntu 24.04 LTS is tested; for the platform and already-built applications, use at least 2 vCPU, 8 GiB memory, and 50 GiB free storage. A 4 GiB host no longer fits.
+For source builds, use 4 vCPU, 12 GiB memory, and 80 GiB storage for one concurrent build; add 4 GiB memory for each additional build.
 Ports 80 and 443 must be available and reachable. Compartment never changes port 22 or cloud security-group rules.
 
 The installer blocks Kubernetes API, etcd, kubelet, and overlay ports on the public interface with persistent,
@@ -151,48 +149,23 @@ isolation revision to requeue projects that already completed this revision. App
 configured resource and object-count quotas and by workload requests and limits; there is no separate application-count
 value. Project object-count quotas remain fixed.
 
-The configured CPU request must be less than or equal to its limit. The memory request must equal its memory limit so
-tenant scheduling reserves the full allowed memory. The worker and project provisioner refuse to start when these
-values are inconsistent or are not valid Kubernetes quantities.
+The configured CPU and memory requests must not exceed their limits. The worker and project provisioner reject
+invalid Kubernetes quantities and requests above their limits. Lowering a memory request below its limit permits
+overcommit: the scheduler can admit more memory than the node has, and under pressure the kernel may kill a
+neighbouring application or PostgreSQL.
 
-Build concurrency has separate logical and physical limits. By default, Compartment admits up to 100 in-flight build
-claims, allows two active builds per organization, and applies a build-namespace quota of 48 CPU and 64 GiB. Each
-default build Pod is limited to 2 CPU and 4 GiB, so memory limits the namespace to 16 concurrently admitted build Pods.
-Set the queue limits, namespace quota, and per-container resources together when sizing a cluster:
-
-If the values file already contains a top-level `resources` mapping, add `buildkit` and `buildRunner` to that mapping
-instead of declaring a second `resources` key.
-
-```yaml
-buildkit:
-  maximumConcurrentBuilds: 100
-  maximumConcurrentBuildsPerOrganization: 2
-  gcKeepStorageMb: 1024
-  resourceQuota:
-    limits: { cpu: '48', memory: 64Gi }
-resources:
-  buildkit:
-    requests: { cpu: 250m, memory: 512Mi }
-    limits: { cpu: 1750m, memory: 3Gi }
-  buildRunner:
-    requests: { cpu: 100m, memory: 256Mi }
-    limits: { cpu: 250m, memory: 1Gi }
-```
+Build concurrency has separate logical and physical limits. Size the queue limits, namespace quota, and
+`resources.buildkit` and `resources.buildRunner` together for the concurrency the cluster can support.
 
 Builds run inside gVisor, which serves the build workspace from sandbox memory. A build Pod's memory limit therefore
-covers its whole scratch space, not just the BuildKit and runner processes: the default 4 GiB is a 3 GiB workspace plus
-1 GiB of process memory. If the two memory limits together fall below that total, the build fails immediately with a
-message naming both values instead of being killed later by the kernel. `buildkit.gcKeepStorageMb` reserves BuildKit
-cache in the same memory and is checked separately: it cannot exceed 2147, the size of the memory-backed BuildKit data
-volume. Raise both memory limits together for source builds that pull large base images or install large system
-packages, and size the host for one build Pod per concurrent build you allow.
+covers its whole scratch space, not just its processes. Keep the two container memory limits at least 4 GiB in total;
+otherwise the build fails before it starts. Raise both limits together for larger source builds, and keep
+`buildkit.gcKeepStorageMb` within the memory-backed BuildKit data volume.
 
-The namespace quota requires every build container to declare CPU and memory limits. During an upgrade, replace the
-removed `buildkit.maximumConcurrentBuildsPerProject` value with
-`buildkit.maximumConcurrentBuildsPerOrganization`; the chart rejects the old key. A values file that pins the earlier
-build defaults is incompatible with the build workspace. Remove those pins to take the new defaults before upgrading.
-To keep the overrides instead, raise `resources.buildkit.limits.memory` and `resources.buildRunner.limits.memory` to at
-least 4 GiB in total, and separately lower `buildkit.gcKeepStorageMb` to 2147 or less.
+The namespace quota requires every build container to declare CPU and memory limits. Before upgrading, replace the
+removed `buildkit.maximumConcurrentBuildsPerProject` key with `buildkit.maximumConcurrentBuildsPerOrganization`.
+Values files that pin earlier build resources must either remove those pins or keep the two memory limits at least
+4 GiB in total and set `buildkit.gcKeepStorageMb` to 2147 or less.
 
 The namespace quota does not return a claimed build to Compartment's fair queue. If the quota blocks its Pod, the
 Kubernetes Job continues consuming the configured build timeout while it waits for capacity. Sustained quota

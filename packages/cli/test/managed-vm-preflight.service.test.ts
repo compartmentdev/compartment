@@ -80,6 +80,24 @@ describe('managed VM preflight', (): void => {
     },
   );
 
+  it.each([
+    [8 * gibibyte - 1, 'warning'],
+    [8 * gibibyte, 'passed'],
+  ] as const)(
+    'classifies %s memory bytes as %s',
+    (memoryBytes: number, status: ManagedVmPreflightCheckStatus): void => {
+      const result: ManagedVmPreflightResult = evaluateManagedVmPreflight(
+        { ...supportedInventory(), memoryBytes },
+        freshState(),
+        publicAddress(),
+      );
+
+      expect(result.checks.find((item: ManagedVmPreflightCheck): boolean => item.name === 'memory')?.status).toBe(
+        status,
+      );
+    },
+  );
+
   it('keeps recommendations visible without blocking installation', (): void => {
     const result: ManagedVmPreflightResult = evaluateManagedVmPreflight(
       {

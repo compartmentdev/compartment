@@ -88,15 +88,20 @@ describe('readProjectProvisionerConfig', (): void => {
           COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
             '{"request":{"cpu":"50m","memory":"1025Mi"},"limit":{"cpu":"1","memory":"1Gi"}}',
         }),
-    ).toThrow('COMPARTMENT_PROJECT_CONTAINER_DEFAULTS request.memory must equal limit.memory.');
-    expect(
-      (): ProjectProvisionerConfig =>
-        readProjectProvisionerConfig({
-          ...projectProvisionerEnvironment(),
-          COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
-            '{"request":{"cpu":"50m","memory":"256Mi"},"limit":{"cpu":"1","memory":"512Mi"}}',
-        }),
-    ).toThrow('COMPARTMENT_PROJECT_CONTAINER_DEFAULTS request.memory must equal limit.memory.');
+    ).toThrow('COMPARTMENT_PROJECT_CONTAINER_DEFAULTS request.memory must not exceed limit.memory.');
+  });
+
+  it('accepts a container memory request below its limit', (): void => {
+    const config: ProjectProvisionerConfig = readProjectProvisionerConfig({
+      ...projectProvisionerEnvironment(),
+      COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
+        '{"request":{"cpu":"50m","memory":"256Mi"},"limit":{"cpu":"1","memory":"512Mi"}}',
+    });
+
+    expect(config.resourceConfiguration.containerDefaults).toEqual({
+      limit: { cpu: '1', memory: '512Mi' },
+      request: { cpu: '50m', memory: '256Mi' },
+    });
   });
 
   it('rejects project requests that exceed their quota limits', (): void => {
