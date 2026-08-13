@@ -760,6 +760,7 @@ async function readDockerHubCacheBlobCount(
       kubeContext,
       'exec',
       '--namespace',
+      namespace,
       `deployment/${deployment}`,
       '--',
       'sh',
