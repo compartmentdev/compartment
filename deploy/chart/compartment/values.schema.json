@@ -67,6 +67,7 @@
         },
         "manager": {
           "type": "object",
+          "required": ["resources"],
           "properties": {
             "apiPriorityAndFairness": {
               "type": "object",
@@ -120,6 +121,7 @@
               },
               "additionalProperties": { "type": "array", "maxItems": 0 }
             },
+            "resources": { "$ref": "#/definitions/honestMemoryContainerResources" },
             "securityContext": { "const": {} },
             "volumeMounts": { "type": "array", "maxItems": 0 },
             "volumes": { "type": "array", "maxItems": 0 }
@@ -770,12 +772,15 @@
         "api",
         "apiMigrate",
         "worker",
+        "projectProvisioner",
         "edge",
+        "edgeInit",
         "caddy",
         "caddyInit",
         "postgres",
         "registry",
         "registryAuth",
+        "dns01Solver",
         "buildkit",
         "buildRunner",
         "productLogAgent",
@@ -785,19 +790,22 @@
         "organizationQuota"
       ],
       "properties": {
-        "api": { "$ref": "#/definitions/containerResources" },
-        "apiMigrate": { "$ref": "#/definitions/containerResources" },
-        "worker": { "$ref": "#/definitions/containerResources" },
-        "edge": { "$ref": "#/definitions/containerResources" },
-        "caddy": { "$ref": "#/definitions/containerResources" },
-        "caddyInit": { "$ref": "#/definitions/containerResources" },
-        "postgres": { "$ref": "#/definitions/containerResources" },
-        "registry": { "$ref": "#/definitions/containerResources" },
-        "registryAuth": { "$ref": "#/definitions/containerResources" },
+        "api": { "$ref": "#/definitions/honestMemoryContainerResources" },
+        "apiMigrate": { "$ref": "#/definitions/honestMemoryContainerResources" },
+        "worker": { "$ref": "#/definitions/honestMemoryContainerResources" },
+        "projectProvisioner": { "$ref": "#/definitions/honestMemoryContainerResources" },
+        "edge": { "$ref": "#/definitions/honestMemoryContainerResources" },
+        "edgeInit": { "$ref": "#/definitions/honestMemoryContainerResources" },
+        "caddy": { "$ref": "#/definitions/honestMemoryContainerResources" },
+        "caddyInit": { "$ref": "#/definitions/honestMemoryContainerResources" },
+        "postgres": { "$ref": "#/definitions/honestMemoryContainerResources" },
+        "registry": { "$ref": "#/definitions/honestMemoryContainerResources" },
+        "registryAuth": { "$ref": "#/definitions/honestMemoryContainerResources" },
+        "dns01Solver": { "$ref": "#/definitions/honestMemoryContainerResources" },
         "buildkit": { "$ref": "#/definitions/buildContainerResources" },
         "buildRunner": { "$ref": "#/definitions/buildContainerResources" },
-        "productLogAgent": { "$ref": "#/definitions/containerResources" },
-        "wait": { "$ref": "#/definitions/containerResources" },
+        "productLogAgent": { "$ref": "#/definitions/honestMemoryContainerResources" },
+        "wait": { "$ref": "#/definitions/honestMemoryContainerResources" },
         "projectContainerDefaults": {
           "type": "object",
           "additionalProperties": false,
@@ -920,10 +928,18 @@
         "limits": { "$ref": "#/definitions/containerResourceQuantities" }
       }
     },
+    "honestMemoryContainerResources": {
+      "description": "Platform container resources. Both memory fields are required; Helm validates that they are equal.",
+      "allOf": [{ "$ref": "#/definitions/containerResources" }],
+      "required": ["requests", "limits"],
+      "properties": {
+        "requests": { "required": ["memory"] },
+        "limits": { "required": ["memory"] }
+      }
+    },
     "buildContainerResources": {
       "description": "Build container resources. The worker reads the limits, so they must stay complete.",
-      "allOf": [{ "$ref": "#/definitions/containerResources" }],
-      "required": ["limits"],
+      "allOf": [{ "$ref": "#/definitions/honestMemoryContainerResources" }],
       "properties": { "limits": { "required": ["cpu", "memory"] } }
     },
     "haComponent": {

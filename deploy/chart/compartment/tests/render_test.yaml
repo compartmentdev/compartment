@@ -212,7 +212,7 @@ tests:
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BUILDKIT_RESOURCES
-          value: '{"limits":{"cpu":"1750m","memory":"3Gi"},"requests":{"cpu":"250m","memory":"512Mi"}}'
+          value: '{"limits":{"cpu":"1750m","memory":"3Gi"},"requests":{"cpu":"250m","memory":"3Gi"}}'
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_PROJECT_CONTAINER_DEFAULTS
@@ -228,7 +228,7 @@ tests:
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BUILD_RUNNER_RESOURCES
-          value: '{"limits":{"cpu":"250m","memory":"1Gi"},"requests":{"cpu":"100m","memory":"256Mi"}}'
+          value: '{"limits":{"cpu":"250m","memory":"1Gi"},"requests":{"cpu":"100m","memory":"1Gi"}}'
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB

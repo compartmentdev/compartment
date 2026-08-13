@@ -268,46 +268,55 @@ resources:
     limitsMemory: 8Gi
     requestsStorage: 20Gi
   api:
-    requests: { cpu: 100m, memory: 256Mi }
-    limits: { cpu: '1', memory: 768Mi }
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { cpu: '1', memory: 384Mi }
   apiMigrate:
-    requests: { cpu: 50m, memory: 128Mi }
+    requests: { cpu: 50m, memory: 512Mi }
     limits: { cpu: 500m, memory: 512Mi }
   worker:
+    requests: { cpu: 100m, memory: 768Mi }
+    limits: { cpu: '1', memory: 768Mi }
+  projectProvisioner:
     requests: { cpu: 100m, memory: 256Mi }
-    limits: { cpu: '1', memory: 1Gi }
+    limits: { cpu: '1', memory: 256Mi }
   edge:
     requests: { cpu: 50m, memory: 128Mi }
-    limits: { cpu: 500m, memory: 384Mi }
+    limits: { cpu: 500m, memory: 128Mi }
+  edgeInit:
+    requests: { cpu: 10m, memory: 128Mi }
+    limits: { cpu: 100m, memory: 128Mi }
   caddy:
-    requests: { cpu: 25m, memory: 64Mi }
-    limits: { cpu: 500m, memory: 256Mi }
+    requests: { cpu: 25m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 128Mi }
   caddyInit:
-    requests: { cpu: 10m, memory: 32Mi }
+    requests: { cpu: 10m, memory: 128Mi }
     limits: { cpu: 100m, memory: 128Mi }
   postgres:
-    requests: { cpu: 100m, memory: 256Mi }
-    limits: { cpu: '1', memory: 1Gi }
+    requests: { cpu: 100m, memory: 512Mi }
+    limits: { cpu: '1', memory: 512Mi }
   registry:
-    requests: { cpu: 50m, memory: 128Mi }
-    limits: { cpu: 500m, memory: 512Mi }
+    requests: { cpu: 50m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 256Mi }
   registryAuth:
     requests: { cpu: 50m, memory: 128Mi }
-    limits: { cpu: 500m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 128Mi }
+  dns01Solver:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 128Mi }
   # gVisor serves the build Job's emptyDir volumes from Sentry memory, so these two limits also fund
   # the 3Gi tmpfs build workspace. The worker refuses to start when they no longer cover that
   # workspace plus 1Gi of BuildKit, runner, and Sentry process memory.
   buildkit:
-    requests: { cpu: 250m, memory: 512Mi }
+    requests: { cpu: 250m, memory: 3Gi }
     limits: { cpu: 1750m, memory: 3Gi }
   buildRunner:
-    requests: { cpu: 100m, memory: 256Mi }
+    requests: { cpu: 100m, memory: 1Gi }
     limits: { cpu: 250m, memory: 1Gi }
   productLogAgent:
-    requests: { cpu: 50m, memory: 64Mi, ephemeral-storage: 320Mi }
+    requests: { cpu: 50m, memory: 256Mi, ephemeral-storage: 320Mi }
     limits: { cpu: '1', memory: 256Mi, ephemeral-storage: 384Mi }
   wait:
-    requests: { cpu: 10m, memory: 32Mi }
+    requests: { cpu: 10m, memory: 128Mi }
     limits: { cpu: 100m, memory: 128Mi }
 
 capsule:
@@ -341,8 +350,8 @@ capsule:
     options:
       users: []
     resources:
-      requests: { cpu: 100m, memory: 128Mi }
-      limits: { cpu: 500m, memory: 512Mi }
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 256Mi }
   webhooks:
     hooks:
       customquotas: { enabled: false }

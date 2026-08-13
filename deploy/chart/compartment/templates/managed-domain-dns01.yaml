@@ -169,6 +169,8 @@ spec:
             failureThreshold: 30
           securityContext:
             {{- include "compartment.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources.dns01Solver | nindent 12 }}
           volumeMounts:
             - { name: tls, mountPath: /tls, readOnly: true }
       volumes:

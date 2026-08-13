@@ -25,10 +25,18 @@ Add `--verbose` to show Cosign, ORAS, and checksum diagnostics during installati
 ## Prepare a clean VM
 
 Use a fresh x86_64 VM with systemd, cgroup v2, sudo access, a public IPv4 address, and at least 20 GiB free storage.
-Ubuntu 24.04 LTS is tested; 2 vCPU, 4 GiB memory, and 50 GiB free storage are recommended for a host that only runs
-the platform and already-built applications. Source builds need their own headroom: a build Pod is limited to 2 CPU and
-4 GiB, and gVisor holds its whole workspace in memory, so use 4 vCPU, 8 GiB memory, and 80 GiB storage for one build at
-a time and add 4 GiB per additional concurrent build.
+Ubuntu 24.04 LTS is tested; 2 vCPU, 8 GiB memory, and 50 GiB free storage are recommended for a host that only runs
+the platform and already-built applications. The default managed-domain platform requests 3,456 MiB: 384 API + 768
+worker + 256 project provisioner + 128 edge + 128 Caddy + 512 PostgreSQL + 256 registry + 128 registry auth + 512
+for two Capsule replicas + 256 log agent + 128 DNS solver. Managed-node reservations add 1,536 MiB (512 MiB each
+for Kubernetes, system processes, and hard-eviction headroom), for 4,992 MiB before transient upgrade Jobs and
+ordinary add-ons. An 8 GiB host leaves 3,200 MiB for those peaks; a 4 GiB host cannot admit the default platform.
+
+Source builds need their own headroom. Each build Pod requests and is limited to 2 CPU and 4 GiB, and gVisor holds
+its whole workspace in memory, so use 4 vCPU, 12 GiB memory, and 80 GiB storage for one build at a time and add 4 GiB
+per additional concurrent build. Increasing `api`, `worker`, `projectProvisioner`, `edge`, or `caddy` replicas adds
+that component's full memory value per replica; the two Capsule replicas are already included above. The product log
+agent is a DaemonSet, so every eligible system node adds another 256 MiB.
 Ports 80 and 443 must be available and reachable. Compartment never changes port 22 or cloud security-group rules.
 
 The installer blocks Kubernetes API, etcd, kubelet, and overlay ports on the public interface with persistent,
@@ -172,17 +180,18 @@ buildkit:
     limits: { cpu: '48', memory: 64Gi }
 resources:
   buildkit:
-    requests: { cpu: 250m, memory: 512Mi }
+    requests: { cpu: 250m, memory: 3Gi }
     limits: { cpu: 1750m, memory: 3Gi }
   buildRunner:
-    requests: { cpu: 100m, memory: 256Mi }
+    requests: { cpu: 100m, memory: 1Gi }
     limits: { cpu: 250m, memory: 1Gi }
 ```
 
 Builds run inside gVisor, which serves the build workspace from sandbox memory. A build Pod's memory limit therefore
 covers its whole scratch space, not just the BuildKit and runner processes: the default 4 GiB is a 3 GiB workspace plus
-1 GiB of process memory. If the two memory limits together fall below that total, the build fails immediately with a
-message naming both values instead of being killed later by the kernel. `buildkit.gcKeepStorageMb` reserves BuildKit
+1 GiB of process memory. Each container's memory request must use the same quantity spelling as its limit, so the
+scheduler reserves all 4 GiB before admitting a build Pod. If the two memory limits together fall below that total,
+the build fails immediately with a message naming both values instead of being killed later by the kernel. `buildkit.gcKeepStorageMb` reserves BuildKit
 cache in the same memory and is checked separately: it cannot exceed 2147, the size of the memory-backed BuildKit data
 volume. Raise both memory limits together for source builds that pull large base images or install large system
 packages, and size the host for one build Pod per concurrent build you allow.
@@ -191,8 +200,13 @@ The namespace quota requires every build container to declare CPU and memory lim
 removed `buildkit.maximumConcurrentBuildsPerProject` value with
 `buildkit.maximumConcurrentBuildsPerOrganization`; the chart rejects the old key. A values file that pins the earlier
 build defaults is incompatible with the build workspace. Remove those pins to take the new defaults before upgrading.
-To keep the overrides instead, raise `resources.buildkit.limits.memory` and `resources.buildRunner.limits.memory` to at
+To keep the overrides instead, set each build container's memory request equal to its limit, keep the two limits at
 least 4 GiB in total, and separately lower `buildkit.gcKeepStorageMb` to 2147 or less.
+
+The same memory rule applies to every entry under `resources` that configures a platform Pod and to
+`capsule.manager.resources`. Before upgrading with a pinned values file, set every platform `requests.memory` to the
+same quantity spelling as its `limits.memory`; for example, use `1Gi` on both sides instead of mixing `1024Mi` and
+`1Gi`. Helm rejects the release during render and names the first inconsistent value.
 
 The namespace quota does not return a claimed build to Compartment's fair queue. If the quota blocks its Pod, the
 Kubernetes Job continues consuming the configured build timeout while it waits for capacity. Sustained quota

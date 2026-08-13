@@ -257,6 +257,54 @@ tests:
       - failedTemplate:
           errorPattern: resources.buildRunner.limits.memory.*pattern
 
+  - it: rejects a platform memory request below its limit
+    set:
+      resources:
+        api:
+          requests:
+            memory: 256Mi
+          limits:
+            memory: 384Mi
+    asserts:
+      - failedTemplate:
+          errorMessage: resources.api requests.memory must equal limits.memory so Kubernetes schedules the full allowed platform memory
+
+  - it: rejects a build memory request below its limit
+    set:
+      resources:
+        buildkit:
+          requests:
+            memory: 2Gi
+          limits:
+            memory: 3Gi
+    asserts:
+      - failedTemplate:
+          errorMessage: resources.buildkit requests.memory must equal limits.memory so Kubernetes schedules the full allowed platform memory
+
+  - it: rejects a Capsule memory request below its limit
+    set:
+      capsule:
+        manager:
+          resources:
+            requests:
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+    asserts:
+      - failedTemplate:
+          errorMessage: capsule.manager.resources requests.memory must equal limits.memory so Kubernetes schedules the full allowed platform memory
+
+  - it: accepts an equal platform memory override
+    set:
+      resources:
+        registry:
+          requests:
+            memory: 384Mi
+          limits:
+            memory: 384Mi
+    asserts:
+      - notFailedTemplate: {}
+
   - it: rejects Capsule cluster-admin RBAC generation
     set:
       capsule:
