@@ -141,7 +141,7 @@ describe('shipped platform memory contract', (): void => {
       (left: string, right: string): number => left.localeCompare(right),
     );
     expect(sortedRenderedIdentities).toEqual(sortedExpectedIdentities);
-  });
+  }, 30_000);
 
   it('serializes honest chart memory into the Kubernetes build Job', async (): Promise<void> => {
     const documents: RenderedWorkload[] = await renderManagedPlatform();
@@ -184,10 +184,18 @@ describe('shipped platform memory contract', (): void => {
     for (const container of buildContainers) {
       expect(container.resources?.requests?.memory).toBe(container.resources?.limits?.memory);
     }
-  });
+  }, 30_000);
 });
 
+// Rendering the whole chart takes several seconds, so both tests read one shared render.
+let renderedPlatform: Promise<RenderedWorkload[]> | undefined;
+
 async function renderManagedPlatform(): Promise<RenderedWorkload[]> {
+  renderedPlatform ??= renderManagedPlatformOnce();
+  return await renderedPlatform;
+}
+
+async function renderManagedPlatformOnce(): Promise<RenderedWorkload[]> {
   const { stdout } = await executeFile('helm', [
     'template',
     'memory-contract',
