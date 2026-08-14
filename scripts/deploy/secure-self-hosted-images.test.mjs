@@ -272,6 +272,7 @@ describe('scanSelfHostedImages', () => {
     const workerImageRefs = [
       'ghcr.io/compartmentdev/compartment-worker:sha-test',
       'docker.io/compartmentdev/compartment-worker:sha-test',
+      'compartmentdev/compartment-worker:sha-test',
       `ghcr.io/compartmentdev/compartment-worker@${digest}`,
       `docker.io/compartmentdev/compartment-worker@${digest}`,
     ];
@@ -285,6 +286,15 @@ describe('scanSelfHostedImages', () => {
         }),
       ).toBeUndefined();
     }
+    expect(
+      await runDockerScoutGateOnce({
+        imageRef: 'compartment-worker:sha-test',
+        suppressedProductId: 'pkg:docker/library/compartment-worker',
+        suppressedVulnerabilityName: 'GHSA-suppressed-0001',
+        findingRuleId: 'GHSA-suppressed-0001',
+        findingServiceName: 'worker',
+      }),
+    ).toBeUndefined();
 
     const caddyDigestRefs = [
       `ghcr.io/compartmentdev/compartment-caddy@${digest}`,
@@ -358,7 +368,13 @@ describe('scanSelfHostedImages', () => {
   });
 });
 
-async function runDockerScoutGateOnce({ imageRef, suppressedVulnerabilityName, findingRuleId, findingServiceName }) {
+async function runDockerScoutGateOnce({
+  imageRef,
+  suppressedProductId = 'pkg:docker/compartmentdev/compartment-worker',
+  suppressedVulnerabilityName,
+  findingRuleId,
+  findingServiceName,
+}) {
   const tempDirectory = await mkdtemp(join(tmpdir(), 'compartment-scout-gate-test-'));
   const oldPath = process.env.PATH;
   const oldDockerScoutArgsLog = process.env.DOCKER_SCOUT_ARGS_LOG;
@@ -379,7 +395,7 @@ async function runDockerScoutGateOnce({ imageRef, suppressedVulnerabilityName, f
                 '@id': 'pkg:oci/compartment-worker?repository_url=ghcr.io/compartmentdev/compartment-worker',
               },
               {
-                '@id': 'pkg:docker/compartmentdev/compartment-worker',
+                '@id': suppressedProductId,
               },
             ],
             status: 'not_affected',

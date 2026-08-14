@@ -485,7 +485,7 @@ function readScoutSuppressedVulnerabilityIds(repositoryRoot, imageRef) {
 }
 
 function buildVexProductIds(imageRef) {
-  const repository = readImageRepository(imageRef);
+  const repository = normalizeDockerImageRepository(readImageRepository(imageRef));
   const repositoryParts = repository.split('/');
   const imageName = repositoryParts.at(-1);
   if (!imageName || repositoryParts.length < 2) {
@@ -499,6 +499,16 @@ function buildVexProductIds(imageRef) {
     productIds.add(`pkg:docker/${repositoryParts.slice(1).join('/')}`);
   }
   return productIds;
+}
+
+function normalizeDockerImageRepository(repository) {
+  const repositoryParts = repository.split('/');
+  const registry = repositoryParts[0];
+  const hasExplicitRegistry = registry.includes('.') || registry.includes(':') || registry === 'localhost';
+  if (hasExplicitRegistry) {
+    return repository;
+  }
+  return repositoryParts.length === 1 ? `docker.io/library/${repository}` : `docker.io/${repository}`;
 }
 
 function readImageRepository(imageRef) {
