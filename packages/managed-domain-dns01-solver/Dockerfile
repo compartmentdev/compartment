@@ -1,4 +1,4 @@
-ARG COMPARTMENT_GO_BUILD_IMAGE=golang:1.26.5-bookworm
+ARG COMPARTMENT_GO_BUILD_IMAGE=golang:1.26.6-bookworm
 FROM ${COMPARTMENT_GO_BUILD_IMAGE} AS build
 WORKDIR /src
 COPY packages/managed-domain-dns01-solver/go.mod packages/managed-domain-dns01-solver/go.sum ./

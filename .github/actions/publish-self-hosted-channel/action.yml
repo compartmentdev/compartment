@@ -61,7 +61,7 @@ runs:
       env:
         COMPARTMENT_BUILDKIT_VERSION: v0.30.0
         COMPARTMENT_CADDY_RUNTIME_IMAGE: public.ecr.aws/docker/library/alpine:3.22
-        COMPARTMENT_GO_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.5-bookworm
+        COMPARTMENT_GO_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.6-bookworm
         COMPARTMENT_NODE_BUILD_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
         COMPARTMENT_NODE_RUNTIME_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm-slim
         PRIMARY_TAG: sha-${{ inputs.publish-sha }}

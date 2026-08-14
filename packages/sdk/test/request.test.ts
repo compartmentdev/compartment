@@ -27,7 +27,7 @@ import type {
   CompartmentRequestOptions,
 } from '../src/http/request.types';
 import { createJsonResponse, mockFetchSequence, readRequestHeaders, readRequestUrl } from './fetch-test-helpers';
-import type { FetchCall, FetchMockState } from './fetch-test.types';
+import type { FetchCall, FetchInput, FetchMockState } from './fetch-test.types';
 import type { ErrorResponsePayload, CompartmentRequestErrorShape } from './request.test.types';
 
 interface TestAuthorizationRequestOptions extends CompartmentRequestOptions<OrganizationListResponse, undefined> {
@@ -45,6 +45,8 @@ function getFirstCall(calls: FetchCall[]): FetchCall {
 }
 
 afterEach((): void => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -388,7 +390,7 @@ describe('compartment requester', (): void => {
     ).resolves.toEqual(responsePayload);
   });
 
-  it('throws typed request errors for non-ok binary responses', async (): Promise<void> => {
+  it.each([401, 404])('does not retry binary GET responses with status %i', async (status: number): Promise<void> => {
     const defaults: ClientOptions = {
       apiUrl: 'https://console.example',
     };
@@ -397,8 +399,12 @@ describe('compartment requester', (): void => {
       'Source archive not found.',
     );
     const request: CompartmentBinaryRequester = createCompartmentBinaryRequester(defaults);
+    let fetchCalls: number = 0;
 
-    mockFetchSequence([createJsonResponse(errorPayload, 404)]);
+    vi.stubGlobal('fetch', async (): Promise<Response> => {
+      fetchCalls += 1;
+      return await Promise.resolve(createJsonResponse(errorPayload, status));
+    });
 
     await expect(
       request({
@@ -408,11 +414,12 @@ describe('compartment requester', (): void => {
     ).rejects.toEqual(
       expect.objectContaining<Partial<CompartmentRequestErrorShape>>({
         code: 'source_archive_not_found',
-        message: 'Source archive not found.',
+        message: `Source archive not found. GET https://console.example/internal/artifacts/artifact_123/source-archive failed after 1/4 attempts with status ${status.toString()} (code: source_archive_not_found).`,
         name: 'CompartmentRequestError',
-        statusCode: 404,
+        statusCode: status,
       }),
     );
+    expect(fetchCalls).toBe(1);
   });
 
   it('throws typed request errors for unreadable non-ok binary responses', async (): Promise<void> => {
@@ -421,7 +428,7 @@ describe('compartment requester', (): void => {
     };
     const request: CompartmentBinaryRequester = createCompartmentBinaryRequester(defaults);
 
-    mockFetchSequence([createUnreadableTextResponse(502)]);
+    mockFetchSequence([createUnreadableTextResponse(400)]);
 
     await expect(
       request({
@@ -431,11 +438,176 @@ describe('compartment requester', (): void => {
     ).rejects.toEqual(
       expect.objectContaining<Partial<CompartmentRequestErrorShape>>({
         code: 'request_error',
-        message: 'GET https://console.example/internal/artifacts/artifact_123/source-archive failed with status 502.',
+        message:
+          'GET https://console.example/internal/artifacts/artifact_123/source-archive failed after 1/4 attempts with status 400 (code: request_error).',
         name: 'CompartmentRequestError',
-        statusCode: 502,
+        statusCode: 400,
       }),
     );
+  });
+
+  it('retries a transient binary GET transport failure and returns the archive', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const connectionError: Error = createFetchConnectionError('ECONNRESET');
+    const request: CompartmentBinaryRequester = createCompartmentBinaryRequester({
+      apiUrl: 'https://console.example',
+      requestTimeoutMs: 30_000,
+    });
+    let fetchCalls: number = 0;
+
+    vi.stubGlobal('fetch', async (): Promise<Response> => {
+      fetchCalls += 1;
+      if (fetchCalls === 1) {
+        throw connectionError;
+      }
+      return await Promise.resolve(new Response('archive'));
+    });
+
+    const archivePromise: Promise<Buffer> = request({
+      method: 'GET',
+      path: '/internal/artifacts/artifact_123/source-archive',
+    });
+    const archiveExpectation: Promise<void> = expect(archivePromise).resolves.toEqual(Buffer.from('archive'));
+    await vi.runAllTimersAsync();
+    await archiveExpectation;
+    expect(fetchCalls).toBe(2);
+  });
+
+  it('retries a 503 binary GET response and returns the archive', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const request: CompartmentBinaryRequester = createCompartmentBinaryRequester({
+      apiUrl: 'https://console.example',
+      requestTimeoutMs: 30_000,
+    });
+    let fetchCalls: number = 0;
+
+    vi.stubGlobal('fetch', async (): Promise<Response> => {
+      fetchCalls += 1;
+      return await Promise.resolve(
+        fetchCalls === 1
+          ? createJsonResponse(createErrorResponse('internal_error', 'Temporary failure.'), 503)
+          : new Response('archive'),
+      );
+    });
+
+    const archivePromise: Promise<Buffer> = request({
+      method: 'GET',
+      path: '/internal/artifacts/artifact_123/source-archive',
+    });
+    const archiveExpectation: Promise<void> = expect(archivePromise).resolves.toEqual(Buffer.from('archive'));
+    await vi.runAllTimersAsync();
+    await archiveExpectation;
+    expect(fetchCalls).toBe(2);
+  });
+
+  it('uses bounded exponential binary GET backoff with jitter', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const request: CompartmentBinaryRequester = createCompartmentBinaryRequester({
+      apiUrl: 'https://console.example',
+    });
+    const attemptTimes: number[] = [];
+
+    vi.stubGlobal('fetch', async (): Promise<Response> => {
+      attemptTimes.push(Date.now());
+      return await Promise.resolve(
+        createJsonResponse(createErrorResponse('internal_error', 'Temporary failure.'), 503),
+      );
+    });
+
+    const archivePromise: Promise<Buffer> = request({
+      method: 'GET',
+      path: '/internal/artifacts/artifact_123/source-archive',
+    });
+    const archiveExpectation: Promise<void> = expect(archivePromise).rejects.toMatchObject({
+      statusCode: 503,
+    });
+    await vi.runAllTimersAsync();
+    await archiveExpectation;
+    expect(attemptTimes).toHaveLength(4);
+    expect(readAttemptDelay(attemptTimes, 1)).toBeGreaterThanOrEqual(125);
+    expect(readAttemptDelay(attemptTimes, 1)).toBeLessThanOrEqual(250);
+    expect(readAttemptDelay(attemptTimes, 2)).toBeGreaterThanOrEqual(250);
+    expect(readAttemptDelay(attemptTimes, 2)).toBeLessThanOrEqual(500);
+    expect(readAttemptDelay(attemptTimes, 3)).toBeGreaterThanOrEqual(500);
+    expect(readAttemptDelay(attemptTimes, 3)).toBeLessThanOrEqual(1_000);
+  });
+
+  it('reports sanitized retry exhaustion diagnostics with the nested transport code', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const connectionError: Error = createFetchConnectionError('UND_ERR_CONNECT_TIMEOUT');
+    const request: CompartmentBinaryRequester = createCompartmentBinaryRequester({
+      apiUrl: 'https://user:secret@console.example',
+      internalToken: 'internal-secret',
+      requestTimeoutMs: 30_000,
+    });
+    let fetchCalls: number = 0;
+
+    vi.stubGlobal('fetch', async (): Promise<Response> => {
+      await Promise.resolve();
+      fetchCalls += 1;
+      throw connectionError;
+    });
+
+    const archivePromise: Promise<Buffer> = request({
+      method: 'GET',
+      path: '/internal/artifacts/artifact_123/source-archive?token=query-secret',
+    });
+    const archiveExpectation: Promise<void> = expect(archivePromise).rejects.toMatchObject({
+      message:
+        'GET https://console.example/internal/artifacts/artifact_123/source-archive failed after 4/4 attempts: connection timed out; nested cause: TypeError; code: UND_ERR_CONNECT_TIMEOUT.',
+    });
+    await vi.runAllTimersAsync();
+    await archiveExpectation;
+    expect(fetchCalls).toBe(4);
+  });
+
+  it('retries a binary GET timeout with a fresh per-attempt signal', async (): Promise<void> => {
+    vi.useRealTimers();
+    const request: CompartmentBinaryRequester = createCompartmentBinaryRequester({
+      apiUrl: 'https://console.example',
+      requestTimeoutMs: 10,
+    });
+    const requestSignals: AbortSignal[] = [];
+    let fetchCalls: number = 0;
+
+    vi.stubGlobal('fetch', async (_input: FetchInput, init?: RequestInit): Promise<Response> => {
+      fetchCalls += 1;
+      if (init?.signal !== undefined && init.signal !== null) {
+        requestSignals.push(init.signal);
+      }
+      if (fetchCalls === 1) {
+        const response: Response = new Response('archive');
+        const signal: AbortSignal | null | undefined = init?.signal;
+        if (signal === undefined || signal === null) {
+          throw new Error('Expected the binary GET to have an abort signal.');
+        }
+        vi.spyOn(response, 'arrayBuffer').mockImplementation(
+          async (): Promise<ArrayBuffer> =>
+            await new Promise<ArrayBuffer>((_resolve, reject): void => {
+              const keepAliveTimer: NodeJS.Timeout = setTimeout((): void => undefined, 1_000);
+              signal.addEventListener(
+                'abort',
+                (): void => {
+                  clearTimeout(keepAliveTimer);
+                  reject(createFetchAbortError());
+                },
+                { once: true },
+              );
+            }),
+        );
+        return response;
+      }
+      return await Promise.resolve(new Response('archive'));
+    });
+
+    const archivePromise: Promise<Buffer> = request({
+      method: 'GET',
+      path: '/internal/artifacts/artifact_123/source-archive',
+    });
+    const archiveExpectation: Promise<void> = expect(archivePromise).resolves.toEqual(Buffer.from('archive'));
+    await archiveExpectation;
+    expect(requestSignals).toHaveLength(2);
+    expect(requestSignals[0]).not.toBe(requestSignals[1]);
   });
 
   it('preserves the original transport error when no request timeout is configured', async (): Promise<void> => {
@@ -535,6 +707,7 @@ describe('compartment requester', (): void => {
         ),
       ),
     ).toBe(true);
+    expect(isRetryableTransportRequestError(createFetchAbortError())).toBe(true);
     expect(
       isRetryableTransportRequestError(
         createTransportRequestError(
@@ -620,6 +793,15 @@ async function captureRequestError(request: CompartmentRequester): Promise<Error
   throw new Error('Expected the request to fail.');
 }
 
+function readAttemptDelay(attemptTimes: number[], attempt: number): number {
+  const attemptAt: number | undefined = attemptTimes[attempt];
+  const previousAttemptAt: number | undefined = attemptTimes[attempt - 1];
+  if (attemptAt === undefined || previousAttemptAt === undefined) {
+    throw new Error(`Expected retry attempt ${attempt.toString()} to be recorded.`);
+  }
+  return attemptAt - previousAttemptAt;
+}
+
 async function expectTransportRequestFailure(
   promise: Promise<OrganizationListResponse>,
   expectedMessage: string,
@@ -662,6 +844,12 @@ async function expectAuthorizationHeader(
 function createFetchTimeoutError(): Error {
   const error: Error = new Error('The request timed out.');
   error.name = 'TimeoutError';
+  return error;
+}
+
+function createFetchAbortError(): Error {
+  const error: Error = new Error('The request was aborted.');
+  error.name = 'AbortError';
   return error;
 }
 
