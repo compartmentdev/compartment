@@ -4,6 +4,8 @@ import { createId } from '../lib/tokens';
 import { finalizeProjectResourceDeletion } from '../queries/resource-reconcile-deletion.query';
 import type { ResourceDeletionFinalizationResult } from '../queries/resource-reconcile-deletion.query.types';
 import { updateActiveResourceBootstrapIntent } from '../queries/resource-reconcile-create.query';
+import { readLatestResourceReconcileRunStateWithExecutor } from '../queries/resource-reconcile-runs.query';
+import type { ResourceReconcileRunState } from '../queries/resource-reconcile-runs.query.types';
 import {
   beginProjectResourceDeletion,
   findProjectResourceById,
@@ -26,6 +28,7 @@ import { prepareResourceEffectiveVariables, persistResourceIntent } from './reso
 import { assertAllowedVolumeChange } from './resources-reconcile.validation';
 import { resolveStoredResourceIntent } from './resources-stored-intent.service';
 import { resolveResourceIntent, type ResolvedResourceIntent } from './resources.service.helpers';
+import { serializeResourceReadiness } from './resources.service.storage';
 import type { ResourceEnvironmentContext } from './resources.service.types';
 import { requireFinalizedResourceDeletionDemand, settleResourceDeletion } from './resource-deletion-settlement.service';
 import { withResourceOperationLocks } from './resource-operation-lock.service';
@@ -95,9 +98,10 @@ async function persistKubernetesDesiredAndRun(
   existing: ProjectResourceRow | undefined,
   intent: ResolvedResourceIntent,
 ): Promise<ProjectResourceRow> {
+  const keepActive: boolean = await canKeepActiveResource(tx, existing, intent);
   const persisted: ProjectResourceRow = await persistResourceIntent(tx, context, existing, intent, new Date());
   const projected: ResourceReconcileIntent = buildKubernetesResourceIntent(context, persisted, intent, 1);
-  await enqueueKubernetesReconcileWhenReady(tx, projected, persisted);
+  await enqueueKubernetesReconcileWhenReady(tx, projected, persisted, keepActive);
   return persisted;
 }
 
@@ -105,12 +109,37 @@ async function enqueueKubernetesReconcileWhenReady(
   tx: ResourceTransaction,
   projected: ResourceReconcileIntent,
   persisted: ProjectResourceRow,
+  keepActive: boolean,
 ): Promise<void> {
   if (persisted.expectedClaimsJson === '[]') {
     await updateActiveResourceBootstrapIntent(tx, projected);
     return;
   }
+  if (keepActive) {
+    return;
+  }
   await requestResourceReconcileWithExecutor(tx, createId('resource_operation'), projected, persisted);
+}
+
+async function canKeepActiveResource(
+  tx: ResourceTransaction,
+  existing: ProjectResourceRow | undefined,
+  intent: ResolvedResourceIntent,
+): Promise<boolean> {
+  if (
+    existing === undefined ||
+    existing.expectedClaimsJson === '[]' ||
+    existing.status !== 'running' ||
+    existing.runtimeDefinitionHash !== intent.runtimeHash ||
+    existing.readinessJson !== serializeResourceReadiness(intent.readiness)
+  ) {
+    return false;
+  }
+  const latest: ResourceReconcileRunState | null = await readLatestResourceReconcileRunStateWithExecutor(
+    tx,
+    existing.id,
+  );
+  return latest?.phase === 'succeeded';
 }
 
 async function resolveKubernetesResourceIntent(

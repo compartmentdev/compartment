@@ -77,6 +77,8 @@ const k3dApiServiceProbeIntervalMs: number = 1_000;
 const k3dApiServiceProbeTimeoutMs: number = 10_000;
 const k3dBackupRetentionPollAttempts: number = 90;
 const k3dBackupRetentionPollDelayMs: number = 2_000;
+const k3dResourcePodStabilityPollDelayMs: number = 250;
+const k3dResourcePodStabilityWindowMs: number = 5_000;
 const k3dApiBoundaryProbeScript: string = `
 const [apiUrl, email] = process.argv.slice(1);
 const response = await fetch(new URL('/v1/auth/login-discovery', apiUrl), {
@@ -219,6 +221,47 @@ export async function expectK3dProjectNamespaceActive(projectId: string): Promis
     `verify active project namespace ${projectId}`,
     '',
   );
+}
+
+export async function readK3dResourcePodUid(projectId: string, resourceId: string): Promise<string> {
+  const seed: K3dPlatformSeed = readK3dPlatformSeed();
+  const namespace: string = immutableKubeName('cpt', projectId);
+  const result: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      '--namespace',
+      namespace,
+      'get',
+      'pods',
+      '--selector',
+      `compartment.dev/resource-id=${resourceId}`,
+      '--output=jsonpath={range .items[*]}{.metadata.uid}{"\\n"}{end}',
+    ],
+    timeoutMs: k3dKubectlCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(result, `read resource Pod UID for ${resourceId}`, '');
+  const podUids: string[] = result.stdout
+    .split('\n')
+    .map((value: string): string => value.trim())
+    .filter((value: string): boolean => value !== '');
+  if (podUids.length !== 1) {
+    throw new Error(`Expected one resource Pod for ${resourceId}, received ${String(podUids.length)}.`);
+  }
+  return podUids[0]!;
+}
+
+export async function expectK3dResourcePodUidStable(
+  projectId: string,
+  resourceId: string,
+  expectedPodUid: string,
+): Promise<void> {
+  const deadline: number = Date.now() + k3dResourcePodStabilityWindowMs;
+  do {
+    expect(await readK3dResourcePodUid(projectId, resourceId)).toBe(expectedPodUid);
+    await sleep(k3dResourcePodStabilityPollDelayMs);
+  } while (Date.now() < deadline);
 }
 
 export async function expectK3dBackupRetentionFlow(
