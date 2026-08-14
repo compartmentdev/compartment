@@ -1,0 +1,1 @@
+CREATE INDEX "resource_reconcile_runs_resource_operation_order_idx" ON "resource_reconcile_runs" USING btree ("project_resource_id","operation_type","created_at","id");
