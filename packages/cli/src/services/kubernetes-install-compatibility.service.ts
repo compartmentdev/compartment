@@ -1,32 +1,47 @@
-import type {
-  KubernetesInstallCompatibility,
-  ManagedKubernetesInstallArtifact,
-  ManagedKubernetesInstallArtifactName,
-  SemanticVersion,
-} from './kubernetes-install-compatibility.service.types';
-import compatibility from './kubernetes-install-compatibility.json';
+import type { KubernetesInstallCompatibility, SemanticVersion } from './kubernetes-install-compatibility.service.types';
 
 export const kubernetesInstallCompatibility: KubernetesInstallCompatibility = {
-  ...compatibility,
+  helmMinimumVersion: '4.0.0',
+  kubernetesMinimumVersion: '1.30.0',
+  kubectlMaximumMinorSkew: 1,
+  kubectlMinimumVersion: '1.30.0',
   managed: {
-    ...compatibility.managed,
-    certManager: validatedArtifact(compatibility.managed.certManager, 'cert-manager'),
-    gvisor: validatedArtifact(compatibility.managed.gvisor, 'gvisor'),
-    helm: validatedArtifact(compatibility.managed.helm, 'helm'),
-    k3s: validatedArtifact(compatibility.managed.k3s, 'k3s'),
-    k3sInstallScript: validatedArtifact(compatibility.managed.k3sInstallScript, 'k3s-install-script'),
+    certManager: {
+      name: 'cert-manager',
+      sha256: '6e499c3f1ab356abe79a7853911f80cb09c213885bfdf81092fdff142ba63c4a',
+      url: 'https://github.com/cert-manager/cert-manager/releases/download/v1.21.0/cert-manager.yaml',
+      version: 'v1.21.0',
+    },
+    gvisor: {
+      name: 'gvisor',
+      sha256: '386bdc2196fc600b68ff8dafdd8ecdc6a8e033ecf9cfa9dfab61ec1b389da307',
+      sha512:
+        '2a440a27a1297ee2124b5c4915b44f9cbcd82ed7871a7ddd99f6602e6d550f8d080f26cb1fa8259d1bd6cde1f4e5942d3eff11116c450b28b2ddfdd92654e87a',
+      url: 'https://storage.googleapis.com/gvisor/releases/pool/20260727.0/binary-amd64/runsc.deb',
+      version: 'release-20260727.0',
+    },
+    helm: {
+      name: 'helm',
+      sha256: '70b2c30a19da4db264dfd68c8a3664e05093a361cefd89572ffb36f8abfa3d09',
+      url: 'https://get.helm.sh/helm-v4.1.4-linux-amd64.tar.gz',
+      version: 'v4.1.4',
+    },
+    k3s: {
+      name: 'k3s',
+      sha256: '267d18da7b3c837d82283f0588fb9031a8a6ff3c0dac772c260c40852ce515f6',
+      url: 'https://github.com/k3s-io/k3s/releases/download/v1.35.5%2Bk3s1/k3s',
+      version: 'v1.35.5+k3s1',
+    },
+    k3sChannel: 'compartment-stable-1.35',
+    k3sInstallScript: {
+      name: 'k3s-install-script',
+      sha256: '8598e002e61d658fed7b7542fc6d2c66d8da6eae69e088830105d2ee1ffb6d91',
+      url: 'https://raw.githubusercontent.com/k3s-io/k3s/v1.35.5%2Bk3s1/install.sh',
+      version: 'v1.35.5+k3s1',
+    },
+    kubernetesMinor: '1.35',
   },
 };
-
-function validatedArtifact(
-  artifact: Omit<ManagedKubernetesInstallArtifact, 'name'> & { name: string },
-  expectedName: ManagedKubernetesInstallArtifactName,
-): ManagedKubernetesInstallArtifact {
-  if (artifact.name !== expectedName) {
-    throw new Error(`Expected managed artifact ${expectedName}, received ${artifact.name}.`);
-  }
-  return { ...artifact, name: expectedName };
-}
 
 export function isSupportedKubernetesVersion(version: string): boolean {
   try {

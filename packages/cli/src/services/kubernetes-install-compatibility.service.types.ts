@@ -1,7 +1,5 @@
-export type ManagedKubernetesInstallArtifactName = 'cert-manager' | 'gvisor' | 'helm' | 'k3s' | 'k3s-install-script';
-
 export interface ManagedKubernetesInstallArtifact {
-  name: ManagedKubernetesInstallArtifactName;
+  name: 'cert-manager' | 'gvisor' | 'helm' | 'k3s' | 'k3s-install-script';
   sha256: string;
   sha512?: string | undefined;
   url: string;
@@ -10,7 +8,6 @@ export interface ManagedKubernetesInstallArtifact {
 
 export interface ManagedKubernetesInstallCompatibility {
   certManager: ManagedKubernetesInstallArtifact;
-  containerdVersion: string;
   gvisor: ManagedKubernetesInstallArtifact;
   helm: ManagedKubernetesInstallArtifact;
   k3s: ManagedKubernetesInstallArtifact;

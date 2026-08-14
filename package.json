@@ -18,8 +18,6 @@
     "platform:e2e:up": "node ./scripts/deploy/platform-k3d-e2e.mjs up",
     "platform:e2e:down": "node ./scripts/deploy/platform-k3d-e2e.mjs down",
     "platform:e2e:run": "node ./scripts/deploy/run-platform-k3d-e2e-shard.mjs",
-    "worker-node:image:prepare": "sudo ./scripts/deploy/prepare-worker-node-image.sh",
-    "worker-node:runtime:e2e": "sudo --preserve-env=KUBECONFIG,NODE_NAME,OOM_ROUNDS,OOM_BATCH_SIZE,CRASHLOOP_RESTARTS,RUNTIME_SNAPSHOT_PATH ./scripts/deploy/worker-node-runtime-oom-e2e.sh",
     "broker:deploy:prod": "node ./scripts/deploy/deploy-broker-prod.mjs",
     "release:prepare": "node ./scripts/release/prepare.mjs",
     "cli:build:sea": "node ./scripts/release/build-cli-sea.mjs",
