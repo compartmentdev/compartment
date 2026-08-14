@@ -97,6 +97,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
         revision: 0,
       }),
     ).toBe(true);
+
     expect(
       await persistDeploymentReconcileObservation({
         deploymentId: 'dep_candidate',
@@ -153,6 +154,55 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
     const [route] = await db.select({ deploymentId: deploymentRoutes.deploymentId }).from(deploymentRoutes);
     expect(route).toEqual({ deploymentId: 'dep_kube' });
+  });
+
+  it('keeps a pending active route published until the replacement is Ready', async (): Promise<void> => {
+    await seedCandidate(db);
+    await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
+    await db.update(deploymentRoutes).set({ deploymentId: 'dep_kube' });
+    const observedAt: Date = new Date('2026-07-12T10:00:00.000Z');
+
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_kube',
+        failureMessage: 'active workload reconciliation pending',
+        observation: 'pending',
+        observedAt,
+        revision: 0,
+      }),
+    ).toBe(true);
+
+    await expect(findActiveDeploymentRouteByHost('kube.localhost', 'localhost')).resolves.toMatchObject({
+      deploymentId: 'dep_kube',
+    });
+
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_candidate',
+        failureMessage: null,
+        observation: 'pending',
+        observedAt,
+        revision: 0,
+      }),
+    ).toBe(true);
+
+    await expect(findActiveDeploymentRouteByHost('kube.localhost', 'localhost')).resolves.toMatchObject({
+      deploymentId: 'dep_kube',
+    });
+
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_candidate',
+        failureMessage: null,
+        observation: 'ready',
+        observedAt: new Date('2026-07-12T10:00:01.000Z'),
+        revision: 1,
+      }),
+    ).toBe(true);
+
+    await expect(findActiveDeploymentRouteByHost('kube.localhost', 'localhost')).resolves.toMatchObject({
+      deploymentId: 'dep_candidate',
+    });
   });
 
   it('returns an active deployment to pending with one drift audit', async (): Promise<void> => {

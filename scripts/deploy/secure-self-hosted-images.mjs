@@ -414,7 +414,7 @@ function scanSelfHostedImageWithDockerScout(repositoryRoot, imageRef) {
   // gate deterministically ourselves: run Scout to a SARIF report (no
   // --exit-code) and fail only on fixable HIGH/CRITICAL findings that are not
   // covered by a suppression, using the same suppression source Trivy honors.
-  const suppressedVulnerabilityIds = readScoutSuppressedVulnerabilityIds(repositoryRoot);
+  const suppressedVulnerabilityIds = readScoutSuppressedVulnerabilityIds(repositoryRoot, imageRef);
   const sarifDirectory = mkdtempSync(join(tmpdir(), 'compartment-scout-sarif-'));
   const sarifPath = join(sarifDirectory, 'scout.sarif.json');
   try {
@@ -463,7 +463,7 @@ function scanSelfHostedImageWithDockerScout(repositoryRoot, imageRef) {
   }
 }
 
-function readScoutSuppressedVulnerabilityIds(repositoryRoot) {
+function readScoutSuppressedVulnerabilityIds(repositoryRoot, imageRef) {
   const vexPath = resolve(repositoryRoot, dockerScoutVexFile);
   let raw;
   try {
@@ -473,13 +473,52 @@ function readScoutSuppressedVulnerabilityIds(repositoryRoot) {
     return new Set();
   }
   const vex = JSON.parse(raw);
+  const productIds = buildVexProductIds(imageRef);
   const suppressedVulnerabilityIds = new Set();
   for (const statement of vex.statements ?? []) {
-    if (statement.status === 'not_affected' && typeof statement.vulnerability?.name === 'string') {
+    const coversImage = statement.products?.some((product) => productIds.has(product['@id']));
+    if (coversImage && statement.status === 'not_affected' && typeof statement.vulnerability?.name === 'string') {
       suppressedVulnerabilityIds.add(statement.vulnerability.name);
     }
   }
   return suppressedVulnerabilityIds;
+}
+
+function buildVexProductIds(imageRef) {
+  const repository = normalizeDockerImageRepository(readImageRepository(imageRef));
+  const repositoryParts = repository.split('/');
+  const imageName = repositoryParts.at(-1);
+  if (!imageName || repositoryParts.length < 2) {
+    return new Set();
+  }
+  const productIds = new Set([
+    `pkg:oci/${imageName}?repository_url=${repository}`,
+    `pkg:oci/${imageName}?repository_url=${encodeURIComponent(repository)}`,
+  ]);
+  if (repositoryParts[0] === 'docker.io') {
+    productIds.add(`pkg:docker/${repositoryParts.slice(1).join('/')}`);
+  }
+  return productIds;
+}
+
+function normalizeDockerImageRepository(repository) {
+  const repositoryParts = repository.split('/');
+  const registry = repositoryParts[0];
+  const hasExplicitRegistry = registry.includes('.') || registry.includes(':') || registry === 'localhost';
+  if (hasExplicitRegistry) {
+    return repository;
+  }
+  return repositoryParts.length === 1 ? `docker.io/library/${repository}` : `docker.io/${repository}`;
+}
+
+function readImageRepository(imageRef) {
+  const digestIndex = imageRef.indexOf('@');
+  if (digestIndex >= 0) {
+    return imageRef.slice(0, digestIndex);
+  }
+  const lastSlashIndex = imageRef.lastIndexOf('/');
+  const tagIndex = imageRef.lastIndexOf(':');
+  return tagIndex > lastSlashIndex ? imageRef.slice(0, tagIndex) : imageRef;
 }
 
 function readScoutBlockingVulnerabilityIds(sarifPath, suppressedVulnerabilityIds) {

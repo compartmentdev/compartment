@@ -267,21 +267,48 @@ describe('scanSelfHostedImages', () => {
     }
   });
 
-  it('suppresses only the VEX-covered advisory in the Docker Scout gate', async () => {
-    // Suppressed advisory (VEX matches the finding) does not fail the gate.
+  it('suppresses a VEX-covered advisory only for the identified image product', async () => {
+    const digest = `sha256:${'a'.repeat(64)}`;
+    const workerImageRefs = [
+      'ghcr.io/compartmentdev/compartment-worker:sha-test',
+      'docker.io/compartmentdev/compartment-worker:sha-test',
+      'compartmentdev/compartment-worker:sha-test',
+      `ghcr.io/compartmentdev/compartment-worker@${digest}`,
+      `docker.io/compartmentdev/compartment-worker@${digest}`,
+    ];
+    for (const imageRef of workerImageRefs) {
+      expect(
+        await runDockerScoutGateOnce({
+          imageRef,
+          suppressedVulnerabilityName: 'GHSA-suppressed-0001',
+          findingRuleId: 'GHSA-suppressed-0001',
+          findingServiceName: 'worker',
+        }),
+      ).toBeUndefined();
+    }
     expect(
       await runDockerScoutGateOnce({
+        imageRef: 'compartment-worker:sha-test',
+        suppressedProductId: 'pkg:docker/library/compartment-worker',
         suppressedVulnerabilityName: 'GHSA-suppressed-0001',
         findingRuleId: 'GHSA-suppressed-0001',
+        findingServiceName: 'worker',
       }),
     ).toBeUndefined();
 
-    // A different advisory, present VEX but not covering it, still fails.
-    const uncoveredError = await runDockerScoutGateOnce({
-      suppressedVulnerabilityName: 'GHSA-suppressed-0001',
-      findingRuleId: 'CVE-2099-0001',
-    });
-    expect(uncoveredError?.message).toContain('Docker Scout failed the fixable HIGH/CRITICAL vulnerability gate');
+    const caddyDigestRefs = [
+      `ghcr.io/compartmentdev/compartment-caddy@${digest}`,
+      `docker.io/compartmentdev/compartment-caddy@${digest}`,
+    ];
+    for (const imageRef of caddyDigestRefs) {
+      const uncoveredError = await runDockerScoutGateOnce({
+        imageRef,
+        suppressedVulnerabilityName: 'GHSA-suppressed-0001',
+        findingRuleId: 'GHSA-suppressed-0001',
+        findingServiceName: 'caddy',
+      });
+      expect(uncoveredError?.message).toContain('Docker Scout failed the fixable HIGH/CRITICAL vulnerability gate');
+    }
   });
 
   it('scans every self-hosted image before reporting failures', async () => {
@@ -341,19 +368,39 @@ describe('scanSelfHostedImages', () => {
   });
 });
 
-async function runDockerScoutGateOnce({ suppressedVulnerabilityName, findingRuleId }) {
+async function runDockerScoutGateOnce({
+  imageRef,
+  suppressedProductId = 'pkg:docker/compartmentdev/compartment-worker',
+  suppressedVulnerabilityName,
+  findingRuleId,
+  findingServiceName,
+}) {
   const tempDirectory = await mkdtemp(join(tmpdir(), 'compartment-scout-gate-test-'));
   const oldPath = process.env.PATH;
   const oldDockerScoutArgsLog = process.env.DOCKER_SCOUT_ARGS_LOG;
   const oldTrivyArgsLog = process.env.TRIVY_ARGS_LOG;
   const oldFakeRuleId = process.env.DOCKER_SCOUT_FAKE_RULE_ID;
+  const oldFakeServiceName = process.env.DOCKER_SCOUT_FAKE_SERVICE_NAME;
 
   try {
     const scannerPaths = await installFakeImageScanners(tempDirectory);
     await writeFile(
       join(tempDirectory, '.scout-vex.openvex.json'),
       JSON.stringify({
-        statements: [{ vulnerability: { name: suppressedVulnerabilityName }, status: 'not_affected' }],
+        statements: [
+          {
+            vulnerability: { name: suppressedVulnerabilityName },
+            products: [
+              {
+                '@id': 'pkg:oci/compartment-worker?repository_url=ghcr.io/compartmentdev/compartment-worker',
+              },
+              {
+                '@id': suppressedProductId,
+              },
+            ],
+            status: 'not_affected',
+          },
+        ],
       }),
       'utf8',
     );
@@ -369,9 +416,14 @@ async function runDockerScoutGateOnce({ suppressedVulnerabilityName, findingRule
     process.env.DOCKER_SCOUT_ARGS_LOG = scannerPaths.dockerScoutArgsLogPath;
     process.env.TRIVY_ARGS_LOG = scannerPaths.trivyArgsLogPath;
     process.env.DOCKER_SCOUT_FAKE_RULE_ID = findingRuleId;
+    process.env.DOCKER_SCOUT_FAKE_SERVICE_NAME = findingServiceName;
 
     try {
-      scanSelfHostedImages({ dockerScout: true, repositoryRoot: tempDirectory, tags: ['sha-test'] });
+      scanSelfHostedImages({
+        dockerScout: true,
+        imageRefs: [imageRef],
+        repositoryRoot: tempDirectory,
+      });
       return undefined;
     } catch (error) {
       return error;
@@ -381,6 +433,7 @@ async function runDockerScoutGateOnce({ suppressedVulnerabilityName, findingRule
     restoreEnv('DOCKER_SCOUT_ARGS_LOG', oldDockerScoutArgsLog);
     restoreEnv('TRIVY_ARGS_LOG', oldTrivyArgsLog);
     restoreEnv('DOCKER_SCOUT_FAKE_RULE_ID', oldFakeRuleId);
+    restoreEnv('DOCKER_SCOUT_FAKE_SERVICE_NAME', oldFakeServiceName);
     await rm(tempDirectory, { force: true, recursive: true });
   }
 }
@@ -566,7 +619,10 @@ appendFileSync(process.env.DOCKER_SCOUT_ARGS_LOG, \`\${JSON.stringify(argv)}\n\`
 
 const outputIndex = argv.indexOf('--output');
 const outputPath = outputIndex >= 0 ? argv[outputIndex + 1] : '';
-const emitsVulnerability = imageRef.startsWith('ghcr.io/') && imageRef.includes('compartment-caddy');
+const findingServiceName = process.env.DOCKER_SCOUT_FAKE_SERVICE_NAME ?? 'caddy';
+const acceptsRepository =
+  process.env.DOCKER_SCOUT_FAKE_SERVICE_NAME !== undefined || imageRef.startsWith('ghcr.io/');
+const emitsVulnerability = acceptsRepository && imageRef.includes('compartment-' + findingServiceName);
 const ruleId = process.env.DOCKER_SCOUT_FAKE_RULE_ID ?? 'CVE-0000-0001';
 const results = emitsVulnerability ? [{ ruleId, message: { text: \`\${ruleId} in image\` } }] : [];
 
