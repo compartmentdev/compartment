@@ -118,7 +118,9 @@ import { expectCurrentOrganizationSlug } from './cli-response-test.harness';
 import { cliRemoteListResponseSchema, cliRemoteResponseSchema } from './remote-command-response.harness';
 import {
   expectK3dProjectNamespaceActive,
+  expectK3dResourcePodUidStable,
   expectK3dWorkerNamespaceIsolation,
+  readK3dResourcePodUid,
 } from './self-hosted-user-setup-k3d.harness';
 import {
   organizationUseResponseSchema,
@@ -610,6 +612,17 @@ export function registerSystemUserFlowDeployLifecycleCases(): void {
       );
       expect(bootstrapPayload.resource.name).toBe(app.resourceName);
       await waitForRunningResource(admin, app.projectName, app.resourceName);
+      const resourcePodUid: string = await readK3dResourcePodUid(
+        bootstrapPayload.project.id,
+        bootstrapPayload.resource.id,
+      );
+      const unchangedResourceDeployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
+        'deploy',
+        deployCommandResponseParser,
+        { cwd: app.directory },
+      );
+      expect(requireSingleActiveDeployment(unchangedResourceDeployPayload, app.serviceName).status).toBe('succeeded');
+      await expectK3dResourcePodUidStable(bootstrapPayload.project.id, bootstrapPayload.resource.id, resourcePodUid);
       const restoreResourceReleaseDescriptor = async (): Promise<void> =>
         await disableSelfHostedUserSetupResourceRelease(app);
       let resourceReleaseDeployError: Error | undefined;

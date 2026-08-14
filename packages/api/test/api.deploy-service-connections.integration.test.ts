@@ -4,6 +4,8 @@ import {
   errorResponseSchema,
   type CompartmentAuthoredDescriptorInput,
   type InstallResponse,
+  type ResourceReadinessSummary,
+  type ResourceReconcileIntent,
   type TenantSecretEnvelope,
 } from '@compartment/contracts';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
@@ -18,6 +20,7 @@ import {
   environmentVariableValues,
   projectServices,
   projectResources,
+  resourceReconcileRuns,
   variableChangeEvents,
 } from '../src/db/schema';
 import {
@@ -197,6 +200,77 @@ describe('API deploy descriptor service connections integration', (): void => {
     expect(await db.select().from(buildArtifacts)).toHaveLength(1);
   });
 
+  it('does not publish a worker reconcile for an unchanged running resource on app redeploy', async (): Promise<void> => {
+    const context: InstalledDeployContext = await installDeployContext();
+    expectSuccessfulDeploy(await deployPresetDescriptor(context.installPayload));
+    requireClaimedDeployment(await claimNextQueuedDeployment(app));
+    await markResourceRunningWithSuccessfulReconcile('db');
+    const reconcileRunsBefore: (typeof resourceReconcileRuns.$inferSelect)[] = await db
+      .select()
+      .from(resourceReconcileRuns);
+
+    expectSuccessfulDeploy(await deployPresetDescriptor(context.installPayload));
+
+    expect(await db.select().from(resourceReconcileRuns)).toEqual(reconcileRunsBefore);
+    expect(await db.select().from(deployments)).toHaveLength(2);
+  });
+
+  it('publishes a retry when the latest ordinary reconcile failed before a newer bootstrap record', async (): Promise<void> => {
+    const context: InstalledDeployContext = await installDeployContext();
+    expectSuccessfulDeploy(await deployPresetDescriptor(context.installPayload));
+    requireClaimedDeployment(await claimNextQueuedDeployment(app));
+    await markResourceRunning('db');
+    const [resource] = await db.select().from(projectResources).where(eq(projectResources.name, 'db')).limit(1);
+    if (resource === undefined) {
+      throw new Error('Expected resource db to exist.');
+    }
+    const succeededAt: Date = new Date();
+    const intentJson: string = resourceReconcileIntentJson(resource);
+    await db.insert(resourceReconcileRuns).values([
+      {
+        createdAt: succeededAt,
+        expectedClaimsJson: resource.expectedClaimsJson,
+        id: 'resource_operation_older_succeeded',
+        intentJson,
+        operationType: 'reconcile',
+        phase: 'succeeded',
+        projectResourceId: resource.id,
+      },
+      {
+        createdAt: new Date(succeededAt.getTime() + 1),
+        expectedClaimsJson: resource.expectedClaimsJson,
+        failureMessage: 'replacement failed',
+        id: 'resource_operation_newer_failed',
+        intentJson,
+        operationType: 'reconcile',
+        phase: 'failed',
+        projectResourceId: resource.id,
+      },
+      {
+        createdAt: new Date(succeededAt.getTime() + 2),
+        expectedClaimsJson: resource.expectedClaimsJson,
+        id: 'resource_operation_newest_bootstrap',
+        intentJson,
+        operationType: 'bootstrap',
+        phase: 'succeeded',
+        projectResourceId: resource.id,
+      },
+    ]);
+    const reconcileRunsBefore: (typeof resourceReconcileRuns.$inferSelect)[] = await db
+      .select()
+      .from(resourceReconcileRuns);
+
+    expectSuccessfulDeploy(await deployPresetDescriptor(context.installPayload));
+
+    const reconcileRunsAfter: (typeof resourceReconcileRuns.$inferSelect)[] = await db
+      .select()
+      .from(resourceReconcileRuns);
+    expect(reconcileRunsAfter).toHaveLength(reconcileRunsBefore.length + 1);
+    expect(
+      reconcileRunsAfter.find((run): boolean => !reconcileRunsBefore.some((before): boolean => before.id === run.id)),
+    ).toMatchObject({ operationType: 'reconcile', phase: 'reconcile-pending' });
+  });
+
   it('rejects descriptor resource connections selected for build env', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     const response: LightMyRequestResponse = await deployConnectionDescriptor(installPayload, ['DATABASE_URL']);
@@ -364,6 +438,42 @@ async function markResourceRunning(resourceName: string): Promise<void> {
       status: 'running',
     })
     .where(eq(projectResources.name, resourceName));
+}
+
+async function markResourceRunningWithSuccessfulReconcile(resourceName: string): Promise<void> {
+  await markResourceRunning(resourceName);
+  const [resource] = await db.select().from(projectResources).where(eq(projectResources.name, resourceName)).limit(1);
+  if (resource === undefined) {
+    throw new Error(`Expected resource ${resourceName} to exist.`);
+  }
+  await db.insert(resourceReconcileRuns).values({
+    createdAt: new Date(),
+    expectedClaimsJson: resource.expectedClaimsJson,
+    id: 'resource_operation_succeeded',
+    intentJson: resourceReconcileIntentJson(resource),
+    operationType: 'reconcile',
+    phase: 'succeeded',
+    projectResourceId: resource.id,
+  });
+}
+
+function resourceReconcileIntentJson(resource: typeof projectResources.$inferSelect): string {
+  const intent: ResourceReconcileIntent = {
+    command: JSON.parse(resource.commandJson) as string[],
+    deleteData: false,
+    environmentId: resource.environmentId,
+    env: {},
+    image: resource.image,
+    namespaceId: 'project',
+    operation: 'reconcile',
+    ports: JSON.parse(resource.portsJson) as number[],
+    readiness: JSON.parse(resource.readinessJson) as ResourceReadinessSummary | null,
+    replicas: 1,
+    resourceId: resource.id,
+    secretId: resource.id,
+    volumes: [],
+  };
+  return JSON.stringify(intent);
 }
 
 async function setServiceDatabaseUrlLiteral(installPayload: InstallResponse): Promise<void> {
