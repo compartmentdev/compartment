@@ -1,4 +1,8 @@
-import type { CompartmentRequestErrorFields, CompartmentRequestMethod } from './request.types';
+import type {
+  CompartmentRequestErrorCandidate,
+  CompartmentRequestErrorFields,
+  CompartmentRequestMethod,
+} from './request.types';
 
 interface CompartmentRequestErrorInput extends CompartmentRequestErrorFields {
   message: string;
@@ -22,6 +26,30 @@ export class CompartmentRequestError extends Error {
   }
 }
 
+export function isCompartmentRequestError(
+  value: Error | null | undefined,
+): value is Error & CompartmentRequestErrorFields {
+  const candidate: CompartmentRequestErrorCandidate =
+    (value as CompartmentRequestErrorCandidate | null | undefined) ?? {};
+
+  return (
+    value instanceof Error &&
+    candidate.name === 'CompartmentRequestError' &&
+    typeof candidate.code === 'string' &&
+    typeof candidate.statusCode === 'number' &&
+    typeof candidate.method === 'string' &&
+    typeof candidate.url === 'string'
+  );
+}
+
+export function isRetryableRequestError(error: Error | null | undefined): boolean {
+  return (
+    (isCompartmentRequestError(error) &&
+      (error.statusCode === 429 || (error.statusCode >= 500 && error.statusCode <= 599))) ||
+    isRetryableTransportRequestError(error)
+  );
+}
+
 export interface RequestTransportOptions {
   method: CompartmentRequestMethod;
   path: string;
@@ -40,8 +68,12 @@ const retryableTransportFailureCodes: Set<string> = new Set<string>([
   'EAI_AGAIN',
   'ECONNREFUSED',
   'ECONNRESET',
+  'EPIPE',
   'ENOTFOUND',
   'ETIMEDOUT',
+  'UND_ERR_BODY_TIMEOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
   'UND_ERR_SOCKET',
 ]);
 
@@ -65,11 +97,21 @@ export function isRetryableTransportRequestError(error: RequestTransportFailure)
   return code !== null && retryableTransportFailureCodes.has(code);
 }
 
+export function readTransportFailureDiagnostic(error: RequestTransportFailure): string {
+  const code: string | null = readTransportFailureCode(error);
+  const nestedErrorName: string | null = readNestedTransportErrorName(error);
+  const causeContext: string = nestedErrorName === null ? '' : `; nested cause: ${nestedErrorName}`;
+  const codeContext: string = code === null ? '' : `; code: ${code}`;
+  const reason: string = hasTransportTimeout(error) ? 'request timed out' : readTransportFailureReason(error);
+
+  return `${reason}${causeContext}${codeContext}`;
+}
+
 function hasTransportTimeout(error: RequestTransportFailure): boolean {
   let candidate: RequestTransportFailure = error;
   const visitedCandidates: Set<object> = new Set<object>();
   while (candidate !== null && candidate !== undefined) {
-    if (candidate instanceof Error && candidate.name === 'TimeoutError') {
+    if (candidate instanceof Error && (candidate.name === 'AbortError' || candidate.name === 'TimeoutError')) {
       return true;
     }
     if (typeof candidate !== 'object' || visitedCandidates.has(candidate)) {
@@ -105,15 +147,38 @@ function readTransportFailureReason(cause: RequestTransportFailure): string {
     return 'DNS lookup failed';
   }
 
-  if (code === 'ETIMEDOUT') {
+  if (
+    code === 'ETIMEDOUT' ||
+    code === 'UND_ERR_BODY_TIMEOUT' ||
+    code === 'UND_ERR_CONNECT_TIMEOUT' ||
+    code === 'UND_ERR_HEADERS_TIMEOUT'
+  ) {
     return 'connection timed out';
   }
 
-  if (code === 'ECONNRESET' || code === 'UND_ERR_SOCKET') {
+  if (code === 'ECONNRESET' || code === 'EPIPE' || code === 'UND_ERR_SOCKET') {
     return 'connection closed';
   }
 
   return 'network request failed';
+}
+
+function readNestedTransportErrorName(error: RequestTransportFailure): string | null {
+  let candidate: RequestTransportFailure = readTransportFailureCause(error);
+  const visitedCandidates: Set<object> = new Set<object>();
+
+  while (candidate !== null && candidate !== undefined) {
+    if (candidate instanceof Error) {
+      return candidate.name;
+    }
+    if (typeof candidate !== 'object' || visitedCandidates.has(candidate)) {
+      return null;
+    }
+    visitedCandidates.add(candidate);
+    candidate = readTransportFailureCause(candidate);
+  }
+
+  return null;
 }
 
 function readTransportFailureCode(cause: RequestTransportFailure): string | null {

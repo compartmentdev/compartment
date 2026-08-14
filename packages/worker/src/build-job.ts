@@ -18,6 +18,8 @@ import type {
 import { prepareServiceDirectory } from './services/worker-source.service';
 import type { PreparedWorkerSource, PreparedWorkerSourceBuildInput } from './services/worker-source.service.types';
 
+const sourceArchiveRequestTimeoutMs: number = 180_000;
+
 class BuildJobDockerImageInput implements DockerBuildImageInput {
   appPath?: string | undefined;
   buildAptPackages?: string[] | undefined;
@@ -57,7 +59,11 @@ async function buildSourceImage(
   const directory: string = await mkdtemp(join(tmpdir(), 'compartment-build-job-'));
   try {
     const archive: Buffer = await getArtifactSourceArchive(
-      createCompartmentBinaryRequester({ apiUrl: input.apiUrl, internalToken: sourceArchiveCredential }),
+      createCompartmentBinaryRequester({
+        apiUrl: input.apiUrl,
+        internalToken: sourceArchiveCredential,
+        requestTimeoutMs: sourceArchiveRequestTimeoutMs,
+      }),
       input.artifactId,
     );
     const prepared: PreparedWorkerSource = await prepareServiceDirectory(
