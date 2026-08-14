@@ -6,6 +6,7 @@ import { createDatabase, createDatabasePool, type Database } from '../src/db/cli
 import {
   buildArtifacts,
   deploymentCustomDomains,
+  deploymentKubeReferences,
   deploymentRoutes,
   deploymentRuns,
   deployments,
@@ -72,6 +73,8 @@ describe('custom deployment routes db queries', (): void => {
         projectName: 'billing',
         serviceName: 'web',
         subdomain: 'billing',
+        upstreamHost: 'app-dep-custom-routes.cpt-prj-custom-routes.svc',
+        upstreamPort: 80,
       }),
     ]);
     await expect(findActiveCustomDeploymentRouteByHost('valid.customer.example.com')).resolves.toEqual(
@@ -254,6 +257,15 @@ async function insertActiveDeploymentRoute(input?: {
     id: routeId,
     subdomain: routeSubdomain,
     updatedAt: new Date('2026-04-24T09:05:00.000Z'),
+  });
+  await db.insert(deploymentKubeReferences).values({
+    deploymentId,
+    deploymentName: `app-${deploymentId}`,
+    id: `kref_${deploymentId}`,
+    namespace: `cpt-${projectId.replaceAll('_', '-')}`,
+    networkPolicyNamesJson: '[]',
+    serviceName: `app-${deploymentId.replaceAll('_', '-')}`,
+    state: 'pending',
   });
 }
 

@@ -10,7 +10,10 @@ import {
   projects,
 } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
-import { createDeploymentRouteLookupSelection } from './deployment-route-lookup-selection';
+import {
+  buildPublishedDeploymentReferenceFilter,
+  createDeploymentRouteLookupSelection,
+} from './deployment-route-lookup-selection';
 import type {
   CustomDeploymentRouteLookupQuery,
   CustomDeploymentRouteLookupSelection,
@@ -73,7 +76,7 @@ function createCustomDeploymentRouteLookupQuery(): CustomDeploymentRouteLookupQu
     .innerJoin(deploymentRoutes, eq(deploymentRoutes.deploymentId, deployments.id))
     .leftJoin(
       deploymentKubeReferences,
-      and(eq(deploymentKubeReferences.deploymentId, deployments.id), eq(deploymentKubeReferences.state, 'active')),
+      and(eq(deploymentKubeReferences.deploymentId, deployments.id), buildPublishedDeploymentReferenceFilter()),
     );
 }
 
