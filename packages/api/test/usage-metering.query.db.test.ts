@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
 import type { ApiConfig } from '../src/config';
@@ -28,7 +28,10 @@ import type { RecordJobUsageInput } from '../src/queries/job-usage.query.types';
 import type { ApiDatabaseTransaction } from '../src/db/client.types';
 import { deleteExpiredUsageBatch, recordPodUsage } from '../src/queries/usage-metering.query';
 import { publishEdgeTrafficMetrics } from '../src/services/usage-metering.service';
-import type { PublishEdgeTrafficMetricsInput } from '../src/services/usage-metering.service.types';
+import type {
+  PublishEdgeTrafficMetricInput,
+  PublishEdgeTrafficMetricsInput,
+} from '../src/services/usage-metering.service.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import { createApiTestConfig } from './api-config-test.fixtures';
 
@@ -44,6 +47,15 @@ const apiConfig: ApiConfig = createApiTestConfig({
   sessionTtlMs: 1000,
   sourceArchiveMaxBytes: 1000,
 });
+
+interface BlockedTransactionCountRow {
+  blocked: number;
+}
+
+interface EdgeMetricTarget {
+  observedAt: Date;
+  upstreamHost: string;
+}
 
 describe('usage metering persistence', (): void => {
   useApiRuntimeDatabaseTestHarness({ apiConfig, databaseUrl, db, pool });
@@ -206,6 +218,105 @@ describe('usage metering persistence', (): void => {
     ]);
   });
 
+  it('uses one owner lock order for concurrent edge batches with reversed metrics', async (): Promise<void> => {
+    await seedSecondApplication();
+    const firstHour: Date = new Date('2026-07-29T12:00:00.000Z');
+    const secondHour: Date = new Date('2026-07-29T13:00:00.000Z');
+    await db
+      .insert(workloadUsageHourly)
+      .values([edgeUsageBucket(firstHour), edgeUsageBucket(secondHour), edgeUsageBucket(firstHour, 'svc-z')]);
+    const firstTarget: EdgeMetricTarget = {
+      observedAt: firstHour,
+      upstreamHost: 'app-env-service.cpt-prj-usage.svc',
+    };
+    const secondTarget: EdgeMetricTarget = {
+      observedAt: firstHour,
+      upstreamHost: 'app-env-service-z.cpt-prj-usage.svc',
+    };
+    const thirdTarget: EdgeMetricTarget = {
+      observedAt: secondHour,
+      upstreamHost: 'app-env-service.cpt-prj-usage.svc',
+    };
+    const holder: PoolClient = await pool.connect();
+    await holder.query('begin');
+    try {
+      await holder.query(
+        `select 1 from workload_usage_hourly
+         where service_id = $1 and hour_bucket = $2
+         for update`,
+        ['svc-usage', firstHour],
+      );
+      const firstBatch: Promise<'accepted' | 'duplicate'> = publishEdgeTrafficMetrics(
+        edgeBatch('batch-lock-order-1', [firstTarget, secondTarget, thirdTarget]),
+      );
+      await waitForBlockedMeteringTransactions(1);
+      const secondBatch: Promise<'accepted' | 'duplicate'> = publishEdgeTrafficMetrics(
+        edgeBatch('batch-lock-order-2', [secondTarget, thirdTarget, firstTarget]),
+      );
+      await waitForBlockedMeteringTransactions(2);
+      await holder.query('commit');
+      await expect(Promise.all([firstBatch, secondBatch])).resolves.toEqual(['accepted', 'accepted']);
+    } finally {
+      await holder.query('rollback');
+      holder.release();
+    }
+
+    const rows: (typeof workloadUsageHourly.$inferSelect)[] = await db
+      .select()
+      .from(workloadUsageHourly)
+      .where(eq(workloadUsageHourly.organizationId, 'org-usage'))
+      .orderBy(workloadUsageHourly.serviceId, workloadUsageHourly.hourBucket);
+    expect(rows).toMatchObject([
+      { hourBucket: firstHour, requestBytes: 2, requestCount: 2, serviceId: 'svc-usage' },
+      { hourBucket: secondHour, requestBytes: 2, requestCount: 2, serviceId: 'svc-usage' },
+      { hourBucket: firstHour, requestBytes: 2, requestCount: 2, serviceId: 'svc-z' },
+    ]);
+  });
+
+  it('uses the same owner lock order for concurrent pod and edge batches', async (): Promise<void> => {
+    await seedSecondApplication();
+    const previousObservedAt: Date = new Date('2026-07-29T12:00:00.000Z');
+    const observedAt: Date = new Date('2026-07-29T12:01:00.000Z');
+    await recordApplicationSamples(previousObservedAt);
+    await db
+      .insert(workloadUsageHourly)
+      .values([edgeUsageBucket(previousObservedAt), edgeUsageBucket(previousObservedAt, 'svc-z')]);
+    const holder: PoolClient = await pool.connect();
+    await holder.query('begin');
+    try {
+      await holder.query(
+        `select 1 from workload_usage_hourly
+         where service_id = $1 and hour_bucket = $2
+         for update`,
+        ['svc-z', previousObservedAt],
+      );
+      const podBatch: Promise<void> = recordApplicationSamples(observedAt);
+      await waitForBlockedMeteringTransactions(1);
+      const edgePromise: Promise<'accepted' | 'duplicate'> = publishEdgeTrafficMetrics(
+        edgeBatch('batch-mixed-lock-order', [
+          { observedAt: previousObservedAt, upstreamHost: 'app-env-service.cpt-prj-usage.svc' },
+          { observedAt: previousObservedAt, upstreamHost: 'app-env-service-z.cpt-prj-usage.svc' },
+        ]),
+      );
+      await waitForBlockedMeteringTransactions(2);
+      await holder.query('commit');
+      await expect(Promise.all([podBatch, edgePromise])).resolves.toEqual([undefined, 'accepted']);
+    } finally {
+      await holder.query('rollback');
+      holder.release();
+    }
+
+    const rows: (typeof workloadUsageHourly.$inferSelect)[] = await db
+      .select()
+      .from(workloadUsageHourly)
+      .where(eq(workloadUsageHourly.hourBucket, previousObservedAt))
+      .orderBy(workloadUsageHourly.serviceId);
+    expect(rows).toMatchObject([
+      { cpuMillicoreSeconds: 6000, requestCount: 1, sampleCount: 1, serviceId: 'svc-usage' },
+      { cpuMillicoreSeconds: 6000, requestCount: 1, sampleCount: 1, serviceId: 'svc-z' },
+    ]);
+  });
+
   it('persists resource usage under the resource identity', async (): Promise<void> => {
     await recordResourceSample('2026-07-29T12:00:00.000Z');
     await recordResourceSample('2026-07-29T12:01:00.000Z');
@@ -349,6 +460,84 @@ async function recordSample(observedAt: string, maximumIntervalMs: number = 120_
   });
 }
 
+async function recordApplicationSamples(observedAt: Date): Promise<void> {
+  await recordPodUsage({
+    maximumIntervalMs: 120_000,
+    pods: [
+      {
+        cpuMillicores: 100,
+        deploymentId: 'dep-z',
+        kind: 'application',
+        memoryBytes: 200,
+        namespace: 'cmp-prj-usage',
+        observedAt: observedAt.toISOString(),
+        podName: 'usage-pod-z',
+        podUid: 'a0000000-0000-0000-0000-000000000000',
+      },
+      {
+        cpuMillicores: 100,
+        deploymentId: 'dep-usage',
+        kind: 'application',
+        memoryBytes: 200,
+        namespace: 'cmp-prj-usage',
+        observedAt: observedAt.toISOString(),
+        podName: 'usage-pod',
+        podUid: 'z0000000-0000-0000-0000-000000000000',
+      },
+    ],
+  });
+}
+
+async function seedSecondApplication(): Promise<void> {
+  await db.insert(projectServices).values({
+    id: 'svc-z',
+    kind: 'web',
+    name: 'web-z',
+    path: '.',
+    projectId: 'prj-usage',
+  });
+  await db.insert(operations).values({
+    id: 'op-z',
+    status: 'running',
+    summary: 'Deploy',
+    targetId: 'dep-z',
+    targetType: 'deployment',
+    type: 'deployment.create',
+  });
+  await db.insert(buildArtifacts).values({
+    id: 'artifact-z',
+    imageRepository: 'registry.local/usage-z',
+    projectId: 'prj-usage',
+    projectServiceId: 'svc-z',
+    resolvedBuildEnvJson: '{}',
+    resolvedBuildJson: '{}',
+    sourceDigest: 'sha256:usage-z',
+  });
+  await db.insert(deploymentRuns).values({ environmentId: 'env-usage', id: 'run-z', triggerType: 'manual' });
+  await db.insert(deployments).values({
+    buildArtifactId: 'artifact-z',
+    deploymentRunId: 'run-z',
+    environmentId: 'env-usage',
+    health: 'ready',
+    id: 'dep-z',
+    operationId: 'op-z',
+    projectServiceId: 'svc-z',
+    promotionStage: 'run',
+    resolvedReadinessJson: 'null',
+    resolvedRunJson: '{}',
+    status: 'running',
+  });
+  await db.insert(deploymentKubeReferences).values({
+    deploymentId: 'dep-z',
+    deploymentName: 'app-dep-z',
+    id: 'kube-ref-z',
+    namespace: 'cpt-prj-usage',
+    networkPolicyNamesJson: '[]',
+    serviceName: 'app-env-service-z',
+    state: 'active',
+  });
+}
+
 async function recordResourceSample(observedAt: string): Promise<void> {
   await recordPodUsage({
     maximumIntervalMs: 120_000,
@@ -365,4 +554,55 @@ async function recordResourceSample(observedAt: string): Promise<void> {
       },
     ],
   });
+}
+
+function edgeUsageBucket(hourBucket: Date, serviceId: string = 'svc-usage'): typeof workloadUsageHourly.$inferInsert {
+  return {
+    environmentId: 'env-usage',
+    hourBucket,
+    organizationId: 'org-usage',
+    projectId: 'prj-usage',
+    requestBytes: 0,
+    requestCount: 0,
+    responseBytes: 0,
+    serviceId,
+    status4xxCount: 0,
+    status5xxCount: 0,
+  };
+}
+
+function edgeBatch(batchId: string, targets: EdgeMetricTarget[]): PublishEdgeTrafficMetricsInput {
+  return {
+    batchId,
+    metrics: targets.map(
+      (target: EdgeMetricTarget): PublishEdgeTrafficMetricInput => ({
+        observedAt: target.observedAt,
+        requestBytes: 1,
+        requestCount: 1,
+        responseBytes: 1,
+        status4xxCount: 0,
+        status5xxCount: 0,
+        upstreamHost: target.upstreamHost,
+      }),
+    ),
+    sourceId: batchId,
+  };
+}
+
+async function waitForBlockedMeteringTransactions(expected: number): Promise<void> {
+  const deadline: number = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const result = await pool.query<BlockedTransactionCountRow>(`
+      select count(*)::int as blocked
+      from pg_stat_activity
+      where datname = current_database()
+        and wait_event_type = 'Lock'
+        and query like 'insert into "workload_usage_hourly"%'
+    `);
+    if ((result.rows[0]?.blocked ?? 0) >= expected) {
+      return;
+    }
+    await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for ${expected} blocked edge metering transactions`);
 }
