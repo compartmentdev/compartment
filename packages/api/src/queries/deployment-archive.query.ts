@@ -2,7 +2,7 @@ import { and, eq, inArray, lte, notExists, sql } from 'drizzle-orm';
 import { deploymentKubeReferences, deployments, environments, operations } from '../db/schema';
 import type { DeploymentTransaction, PersistedStoppedDeploymentOperationRow } from './deployments.query.types';
 
-export async function stopInactiveQueuedProjectDeploymentsForArchive(
+export async function stopInactiveQueuedProjectDeploymentsForArchivedProject(
   transaction: DeploymentTransaction,
   projectId: string,
   stoppedAt: Date,
