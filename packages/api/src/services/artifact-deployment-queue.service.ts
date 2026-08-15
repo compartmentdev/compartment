@@ -1,10 +1,12 @@
 import type {
+  CreateQueuedExistingArtifactDeploymentBatchResult,
   CreateQueuedExistingArtifactDeploymentBatchItem,
   DeploymentJoinedRow,
   DeploymentRow,
   EnvironmentRow,
 } from '../queries/deployments.query.types';
 import { createQueuedExistingArtifactDeploymentBatch } from '../queries/deployments.query';
+import { createProjectArchivedError } from '../errors/api-business-error';
 import { buildArtifactDeploymentBatchItem } from './artifact-deployment-batch-item.service';
 import {
   appendQueuedDeploymentRunEvents,
@@ -33,7 +35,12 @@ export async function queueArtifactStartDeployments(
             'deployment.start',
           ),
       );
-      return await createQueuedExistingArtifactDeploymentBatch(items);
+      const result: CreateQueuedExistingArtifactDeploymentBatchResult =
+        await createQueuedExistingArtifactDeploymentBatch(items);
+      if (result === 'project-archived') {
+        throw createProjectArchivedError();
+      }
+      return result;
     },
   );
 

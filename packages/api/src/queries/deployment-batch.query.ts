@@ -2,7 +2,12 @@ import { and, eq, gt, inArray, isNull, or, type SQL } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { buildArtifacts, sourceUploads } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
-import { createDeploymentWithExecutor, requirePersistedRow, toBuildArtifactRow } from './deployments.query';
+import {
+  createDeploymentWithExecutor,
+  lockActiveDeploymentProjectsWithExecutor,
+  requirePersistedRow,
+  toBuildArtifactRow,
+} from './deployments.query';
 import type {
   BuildArtifactRow,
   ConsumeSourceUploadAndCreateQueuedDeploymentBatchInput,
@@ -10,20 +15,26 @@ import type {
   CreateQueuedDeploymentBatchItem,
   DeploymentRow,
   DeploymentTransaction,
+  ConsumeSourceUploadAndCreateQueuedDeploymentBatchResult,
 } from './deployments.query.types';
 import { insertOperationRecordWithExecutor } from './operations.query';
 import type { OperationRecord } from './operations.query.types';
 
 export async function consumeSourceUploadAndCreateQueuedDeploymentBatch(
   input: ConsumeSourceUploadAndCreateQueuedDeploymentBatchInput,
-): Promise<DeploymentRow[] | undefined> {
-  return await getApiDatabase().transaction(async (tx: DeploymentTransaction): Promise<DeploymentRow[] | undefined> => {
-    if (!(await consumeSourceUploadWithExecutor(tx, input))) {
-      return undefined;
-    }
+): Promise<ConsumeSourceUploadAndCreateQueuedDeploymentBatchResult> {
+  return await getApiDatabase().transaction(
+    async (tx: DeploymentTransaction): Promise<ConsumeSourceUploadAndCreateQueuedDeploymentBatchResult> => {
+      if (!(await lockActiveDeploymentProjectsWithExecutor(tx, [input.environmentId]))) {
+        return 'project-archived';
+      }
+      if (!(await consumeSourceUploadWithExecutor(tx, input))) {
+        return undefined;
+      }
 
-    return await createQueuedDeploymentBatchWithExecutor(tx, input.items);
-  });
+      return await createQueuedDeploymentBatchWithExecutor(tx, input.items);
+    },
+  );
 }
 
 async function consumeSourceUploadWithExecutor(

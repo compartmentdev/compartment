@@ -1,6 +1,6 @@
 import { and, eq, inArray, or, type SQL } from 'drizzle-orm';
 import type { Database } from '../db/client';
-import { buildArtifacts, deployments, environments } from '../db/schema';
+import { buildArtifacts, deployments, environments, projects } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { toDeploymentRow } from './deployment-row.mapper';
 import type { OperationRecord } from './operations.query.types';
@@ -11,11 +11,13 @@ import type {
   BuildArtifactRow,
   CreateDeploymentInput,
   CreateQueuedExistingArtifactDeploymentBatchItem,
+  CreateQueuedExistingArtifactDeploymentBatchResult,
   DeploymentRow,
   DeploymentTransaction,
   FindDeploymentRunDeploymentInput,
   MarkBuildArtifactsCleanedInput,
   MarkDeploymentFailedInput,
+  LockedDeploymentProjectRow,
   PersistedDeploymentRow,
   UpdateBuildArtifactImageInput,
   PersistedBuildArtifactRow,
@@ -69,16 +71,27 @@ export async function listDeploymentsBySourceResolutionTaskId(
 
 export async function createQueuedExistingArtifactDeploymentBatch(
   items: CreateQueuedExistingArtifactDeploymentBatchItem[],
-): Promise<DeploymentRow[]> {
-  return await getApiDatabase().transaction(async (tx: DeploymentTransaction): Promise<DeploymentRow[]> => {
-    return await createQueuedExistingArtifactDeploymentBatchWithExecutor(tx, items);
-  });
+): Promise<CreateQueuedExistingArtifactDeploymentBatchResult> {
+  return await getApiDatabase().transaction(
+    async (tx: DeploymentTransaction): Promise<CreateQueuedExistingArtifactDeploymentBatchResult> => {
+      return await createQueuedExistingArtifactDeploymentBatchWithExecutor(tx, items);
+    },
+  );
 }
 
 export async function createQueuedExistingArtifactDeploymentBatchWithExecutor(
   tx: DeploymentTransaction,
   items: CreateQueuedExistingArtifactDeploymentBatchItem[],
-): Promise<DeploymentRow[]> {
+): Promise<CreateQueuedExistingArtifactDeploymentBatchResult> {
+  if (
+    !(await lockActiveDeploymentProjectsWithExecutor(
+      tx,
+      items.map((item) => item.deployment.environmentId),
+    ))
+  ) {
+    return 'project-archived';
+  }
+
   const queuedDeployments: DeploymentRow[] = [];
 
   for (const item of items) {
@@ -92,6 +105,39 @@ export async function createQueuedExistingArtifactDeploymentBatchWithExecutor(
   }
 
   return queuedDeployments;
+}
+
+export async function lockActiveDeploymentProjectsWithExecutor(
+  tx: DeploymentTransaction,
+  environmentIds: string[],
+): Promise<boolean> {
+  const rows: LockedDeploymentProjectRow[] = await lockDeploymentProjectsWithExecutor(tx, environmentIds);
+  return rows.every((row: LockedDeploymentProjectRow): boolean => row.archivedAt === null);
+}
+
+export async function lockDeploymentProjectsWithExecutor(
+  tx: DeploymentTransaction,
+  environmentIds: string[],
+): Promise<LockedDeploymentProjectRow[]> {
+  const uniqueEnvironmentIds: string[] = [...new Set(environmentIds)].sort((left: string, right: string): number =>
+    left.localeCompare(right),
+  );
+  if (uniqueEnvironmentIds.length === 0) {
+    return [];
+  }
+
+  const rows: LockedDeploymentProjectRow[] = await tx
+    .select({ archivedAt: projects.archivedAt, environmentId: environments.id, projectId: projects.id })
+    .from(environments)
+    .innerJoin(projects, eq(projects.id, environments.projectId))
+    .where(inArray(environments.id, uniqueEnvironmentIds))
+    .orderBy(projects.id)
+    .for('update', { of: projects });
+  if (rows.length !== uniqueEnvironmentIds.length) {
+    throw new Error('Deployment queue project was not found.');
+  }
+
+  return rows;
 }
 
 export async function findDeploymentRunDeployment(

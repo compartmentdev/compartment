@@ -37,13 +37,14 @@ export async function ensureArchivedProject(
   transaction: ProjectsMutationTransaction,
   organizationId: string,
   project: ProjectRow,
+  archivedAt: Date,
 ): Promise<ProjectRow> {
   if (project.archivedAt !== null) {
     return project;
   }
   return await setProjectArchivedAtWithExecutor(
     transaction,
-    projectArchiveMutation(organizationId, project, new Date()),
+    projectArchiveMutation(organizationId, project, archivedAt),
   );
 }
 

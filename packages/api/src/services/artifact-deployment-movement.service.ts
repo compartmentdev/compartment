@@ -5,12 +5,14 @@ import {
 import type { DeploymentMovementTargetSelector } from '../queries/deployment-movement.query.types';
 import { createQueuedExistingArtifactDeploymentBatchWithExecutor } from '../queries/deployments.query';
 import type {
+  CreateQueuedExistingArtifactDeploymentBatchResult,
   CreateQueuedExistingArtifactDeploymentBatchItem,
   DeploymentJoinedRow,
   DeploymentTransaction,
   DeploymentRow,
   EnvironmentRow,
 } from '../queries/deployments.query.types';
+import { createProjectArchivedError } from '../errors/api-business-error';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { buildArtifactDeploymentBatchItem } from './artifact-deployment-batch-item.service';
 import {
@@ -177,13 +179,17 @@ async function createQueuedSerializedDeploymentMovementBatch(
   tx: DeploymentTransaction,
   items: SerializedDeploymentMovementBatchItem[],
 ): Promise<DeploymentRow[]> {
-  const queuedDeployments: DeploymentRow[] = await createQueuedExistingArtifactDeploymentBatchWithExecutor(
-    tx,
-    toQueuedExistingArtifactDeploymentBatchItems(items),
-  );
+  const result: CreateQueuedExistingArtifactDeploymentBatchResult =
+    await createQueuedExistingArtifactDeploymentBatchWithExecutor(
+      tx,
+      toQueuedExistingArtifactDeploymentBatchItems(items),
+    );
+  if (result === 'project-archived') {
+    throw createProjectArchivedError();
+  }
 
   return sortResolvedDeploymentMovementItemsByRequestIndex(
-    queuedDeployments.map(
+    result.map(
       (deployment: DeploymentRow, index: number): ResolvedDeploymentMovementBatchItem => ({
         deployment,
         requestIndex: items[index]!.requestIndex,
