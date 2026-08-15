@@ -7,7 +7,7 @@ import {
 } from '../errors/api-business-error';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { hasBlockingProjectDeployments } from '../queries/deployments.query';
-import { stopInactiveQueuedProjectDeploymentsForArchive } from '../queries/deployment-archive.query';
+import { stopInactiveQueuedProjectDeploymentsForArchivedProject } from '../queries/deployment-archive.query';
 import { setProjectArchivedAtWithExecutor } from '../queries/projects.query';
 import {
   activateProjectTeardownWithTransaction,
@@ -89,7 +89,7 @@ export async function archiveProjectForPrincipal(input: ProjectScopeInput): Prom
         project,
         archivedAt,
       );
-      await stopInactiveQueuedProjectDeploymentsForArchive(transaction, project.id, archivedAt);
+      await stopInactiveQueuedProjectDeploymentsForArchivedProject(transaction, project.id, archivedAt);
       await cancelProjectProductJobsForArchive(transaction, project.id, archivedAt);
       await cancelResourceReconcileRunsForProjectArchive(transaction, project.id, archivedAt);
       return persistedArchivedProject;
@@ -203,6 +203,7 @@ async function requireArchivedDeletableProject(
   if (project.archivedAt === null) {
     throw createProjectDeleteRequiresArchiveError();
   }
+  await stopInactiveQueuedProjectDeploymentsForArchivedProject(transaction, project.id, new Date());
   if (await hasBlockingProjectDeployments(transaction, project.id)) {
     throw createProjectDeleteBlockedError();
   }

@@ -682,6 +682,74 @@ describe('Phase 0 API integration project lifecycle', (): void => {
     });
     expect(deleteResponse.statusCode).toBe(200);
   });
+  it('repairs inactive queued deployments for legacy archived projects before deletion', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+
+    const deployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+    expect(deployResponse.statusCode).toBe(200);
+
+    const [project]: ProjectRow[] = await db.select().from(projects).where(eq(projects.name, 'smoke-web'));
+    const [queuedDeployment]: StoredDeploymentRow[] = await db.select().from(deployments);
+    if (project === undefined || queuedDeployment === undefined) {
+      throw new Error('Expected the legacy archived project and its queued deployment.');
+    }
+    const archivedAt: Date = new Date();
+    await db.update(projects).set({ archivedAt, updatedAt: archivedAt }).where(eq(projects.id, project.id));
+    const [legacyArchivedProject]: ProjectRow[] = await db.select().from(projects).where(eq(projects.id, project.id));
+    const [queuedOperation]: StoredOperationRow[] = await db
+      .select()
+      .from(operations)
+      .where(eq(operations.id, queuedDeployment.operationId));
+    expect(legacyArchivedProject?.archivedAt).toEqual(archivedAt);
+    expect(queuedDeployment).toMatchObject({
+      completedAt: null,
+      isActive: false,
+      status: 'queued',
+    });
+    expect(queuedOperation).toMatchObject({ completedAt: null, status: 'queued' });
+
+    const deleteResponse: LightMyRequestResponse = await app.inject({
+      method: 'DELETE',
+      url: '/v1/projects/smoke-web',
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+    });
+    expect(deleteResponse.statusCode).toBe(200);
+
+    const [stoppedDeployment]: StoredDeploymentRow[] = await db
+      .select()
+      .from(deployments)
+      .where(eq(deployments.id, queuedDeployment.id));
+    expect(stoppedDeployment).toMatchObject({
+      isActive: false,
+      promotionStage: 'stopped',
+      status: 'stopped',
+    });
+    expect(stoppedDeployment?.completedAt).toBeInstanceOf(Date);
+    const [storedOperation]: StoredOperationRow[] = await db
+      .select()
+      .from(operations)
+      .where(eq(operations.id, queuedDeployment.operationId));
+    expect(storedOperation).toMatchObject({
+      status: 'failed',
+      summary: 'Deployment was stopped because the project was archived.',
+    });
+    expect(storedOperation?.completedAt).toEqual(stoppedDeployment?.completedAt);
+
+    const teardown: ProjectProvisioningClaimRow = await waitForProjectTeardownClaim();
+    await completeProjectProvisioning({
+      action: 'teardown',
+      failureMessage: null,
+      isolationVersion: teardown.isolationVersion,
+      leaseId: teardown.leaseId,
+      projectId: teardown.projectId,
+      status: 'succeeded',
+    });
+    await expect(db.select().from(projects).where(eq(projects.id, project.id))).resolves.toHaveLength(0);
+  });
   it('rejects queued deployment creation that loses the project archive race', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     const deployment: DeploymentSummary = requireDeployResponseDeployment(
