@@ -294,8 +294,8 @@ describe('usage metering persistence', (): void => {
       await waitForBlockedMeteringTransactions(1);
       const edgePromise: Promise<'accepted' | 'duplicate'> = publishEdgeTrafficMetrics(
         edgeBatch('batch-mixed-lock-order', [
-          { observedAt: previousObservedAt, upstreamHost: 'app-env-service-z.cpt-prj-usage.svc' },
           { observedAt: previousObservedAt, upstreamHost: 'app-env-service.cpt-prj-usage.svc' },
+          { observedAt: previousObservedAt, upstreamHost: 'app-env-service-z.cpt-prj-usage.svc' },
         ]),
       );
       await waitForBlockedMeteringTransactions(2);
@@ -592,7 +592,7 @@ function edgeBatch(batchId: string, targets: EdgeMetricTarget[]): PublishEdgeTra
 async function waitForBlockedMeteringTransactions(expected: number): Promise<void> {
   const deadline: number = Date.now() + 5_000;
   while (Date.now() < deadline) {
-    const result: { rows: BlockedTransactionCountRow[] } = await pool.query<BlockedTransactionCountRow>(`
+    const result = await pool.query<BlockedTransactionCountRow>(`
       select count(*)::int as blocked
       from pg_stat_activity
       where datname = current_database()
