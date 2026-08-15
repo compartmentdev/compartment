@@ -18,3 +18,13 @@ export interface BuildQueueCountsRow {
 export interface UpdatedDeploymentIdRow {
   id: string;
 }
+
+export interface OrphanedDeploymentBuildClaimRow {
+  deploymentId: string;
+  environmentId: string;
+}
+
+export interface OrphanedDeploymentBuildClaimPartition {
+  activeDeploymentIds: string[];
+  archivedDeploymentIds: string[];
+}

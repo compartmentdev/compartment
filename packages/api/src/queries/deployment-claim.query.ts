@@ -1,11 +1,20 @@
-import { and, eq, lte, notExists, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, lte, notExists, sql, type SQL } from 'drizzle-orm';
 import { deployments, deploymentKubeReferences, environments, projectServices, projects } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { requirePersistedRow } from './persisted-row.query.shared';
 import { toDeploymentRow } from './deployment-row.mapper';
-import type { DeploymentRow, DeploymentTransaction, PersistedDeploymentRow } from './deployments.query.types';
+import { lockDeploymentProjectsWithExecutor } from './deployments.query';
+import { stopInactiveDeploymentBuildsForArchivedProjects } from './deployment-archive.query';
+import type {
+  DeploymentRow,
+  DeploymentTransaction,
+  LockedDeploymentProjectRow,
+  PersistedDeploymentRow,
+} from './deployments.query.types';
 import type {
   BuildQueueCountsRow,
+  OrphanedDeploymentBuildClaimPartition,
+  OrphanedDeploymentBuildClaimRow,
   QueuedDeploymentClaimCandidateRow,
   UpdatedDeploymentIdRow,
 } from './deployment-claim.query.types';
@@ -68,9 +77,6 @@ const queuedBuildCandidateSelection: SQL = sql`
   ) as candidate
   left join active_builds on active_builds.organization_id = candidate.organization_id
   cross join total_active_builds
-  inner join ${deployments} locked_deployment
-    on locked_deployment.id = candidate.deployment_id
-    and locked_deployment.status = ${'queued'}
 `;
 
 const fairBuildCandidateOrder: SQL = sql`
@@ -78,7 +84,6 @@ const fairBuildCandidateOrder: SQL = sql`
     coalesce(active_builds.active_build_count, 0),
     candidate.created_at,
     candidate.deployment_id
-  for update of locked_deployment skip locked
   limit 1
 `;
 
@@ -96,7 +101,7 @@ const buildQueueCountsQuery: SQL<BuildQueueCountsRow> = sql<BuildQueueCountsRow>
   from ${deployments}
 `;
 
-export async function findFirstFairQueuedDeploymentCandidateForUpdate(
+export async function findFirstFairQueuedDeploymentCandidate(
   tx: DeploymentTransaction,
   maximumConcurrentBuilds: number,
   maximumConcurrentBuildsPerOrganization: number,
@@ -148,21 +153,100 @@ export async function markQueuedDeploymentRunningWithExecutor(
 }
 
 export async function requeueOrphanedDeploymentBuildClaims(staleBefore: Date): Promise<number> {
-  const rows: UpdatedDeploymentIdRow[] = await getApiDatabase()
+  return await getApiDatabase().transaction(
+    async (tx: DeploymentTransaction): Promise<number> =>
+      await recoverOrphanedDeploymentBuildClaimsWithExecutor(tx, staleBefore),
+  );
+}
+
+async function recoverOrphanedDeploymentBuildClaimsWithExecutor(
+  tx: DeploymentTransaction,
+  staleBefore: Date,
+): Promise<number> {
+  await tx.execute(sql`select pg_advisory_xact_lock(${buildQueueAdvisoryLockId})`);
+  const candidates: OrphanedDeploymentBuildClaimRow[] = await listOrphanedDeploymentBuildClaims(tx, staleBefore);
+  if (candidates.length === 0) {
+    return 0;
+  }
+  const lockedProjects: LockedDeploymentProjectRow[] = await lockDeploymentProjectsWithExecutor(
+    tx,
+    candidates.map((candidate: OrphanedDeploymentBuildClaimRow): string => candidate.environmentId),
+  );
+  const partition: OrphanedDeploymentBuildClaimPartition = partitionOrphanedDeploymentBuildClaims(
+    candidates,
+    lockedProjects,
+  );
+  const recoveredAt: Date = new Date();
+  const requeuedCount: number = await requeueActiveOrphanedDeploymentBuildClaims(
+    tx,
+    partition.activeDeploymentIds,
+    staleBefore,
+    recoveredAt,
+  );
+  await stopInactiveDeploymentBuildsForArchivedProjects(tx, partition.archivedDeploymentIds, recoveredAt, staleBefore);
+  return requeuedCount;
+}
+
+async function listOrphanedDeploymentBuildClaims(
+  tx: DeploymentTransaction,
+  staleBefore: Date,
+): Promise<OrphanedDeploymentBuildClaimRow[]> {
+  return await tx
+    .select({ deploymentId: deployments.id, environmentId: deployments.environmentId })
+    .from(deployments)
+    .where(buildOrphanedDeploymentClaimFilter(tx, staleBefore));
+}
+
+function partitionOrphanedDeploymentBuildClaims(
+  candidates: OrphanedDeploymentBuildClaimRow[],
+  lockedProjects: LockedDeploymentProjectRow[],
+): OrphanedDeploymentBuildClaimPartition {
+  const projectsByEnvironmentId: Map<string, LockedDeploymentProjectRow> = new Map<string, LockedDeploymentProjectRow>(
+    lockedProjects.map((project: LockedDeploymentProjectRow): [string, LockedDeploymentProjectRow] => [
+      project.environmentId,
+      project,
+    ]),
+  );
+  const partition: OrphanedDeploymentBuildClaimPartition = { activeDeploymentIds: [], archivedDeploymentIds: [] };
+  for (const candidate of candidates) {
+    const project: LockedDeploymentProjectRow | undefined = projectsByEnvironmentId.get(candidate.environmentId);
+    if (project === undefined) {
+      throw new Error(`Project for deployment ${candidate.deploymentId} was not found.`);
+    }
+    (project.archivedAt === null ? partition.activeDeploymentIds : partition.archivedDeploymentIds).push(
+      candidate.deploymentId,
+    );
+  }
+  return partition;
+}
+
+async function requeueActiveOrphanedDeploymentBuildClaims(
+  tx: DeploymentTransaction,
+  deploymentIds: string[],
+  staleBefore: Date,
+  recoveredAt: Date,
+): Promise<number> {
+  if (deploymentIds.length === 0) {
+    return 0;
+  }
+  const requeued: UpdatedDeploymentIdRow[] = await tx
     .update(deployments)
-    .set({ status: 'queued', updatedAt: new Date() })
-    .where(
-      and(
-        eq(deployments.status, 'running'),
-        lte(deployments.updatedAt, staleBefore),
-        notExists(
-          getApiDatabase()
-            .select({ deploymentId: deploymentKubeReferences.deploymentId })
-            .from(deploymentKubeReferences)
-            .where(eq(deploymentKubeReferences.deploymentId, deployments.id)),
-        ),
-      ),
-    )
+    .set({ status: 'queued', updatedAt: recoveredAt })
+    .where(and(inArray(deployments.id, deploymentIds), buildOrphanedDeploymentClaimFilter(tx, staleBefore)))
     .returning({ id: deployments.id });
-  return rows.length;
+  return requeued.length;
+}
+
+function buildOrphanedDeploymentClaimFilter(executor: DeploymentTransaction, staleBefore: Date): SQL | undefined {
+  return and(
+    eq(deployments.status, 'running'),
+    eq(deployments.isActive, false),
+    lte(deployments.updatedAt, staleBefore),
+    notExists(
+      executor
+        .select({ deploymentId: deploymentKubeReferences.deploymentId })
+        .from(deploymentKubeReferences)
+        .where(eq(deploymentKubeReferences.deploymentId, deployments.id)),
+    ),
+  );
 }
