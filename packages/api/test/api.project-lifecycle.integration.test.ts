@@ -1306,7 +1306,7 @@ async function deleteArchivedProject(sessionToken: string): Promise<LightMyReque
 }
 
 async function waitForDatabaseBlocker(client: PoolClient): Promise<void> {
-  const deadline: number = Date.now() + 10_000;
+  const deadline: number = Date.now() + 5_000;
   while (Date.now() < deadline) {
     const result: { rows: { blockedCount: number }[] } = await client.query(
       `select count(*)::int as "blockedCount"
@@ -1319,7 +1319,7 @@ async function waitForDatabaseBlocker(client: PoolClient): Promise<void> {
     }
     await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, 10));
   }
-  throw new Error('Timed out waiting for deployment queue creation to block on the project archive transaction.');
+  throw new Error('Timed out waiting for the concurrent session to block on the project archive transaction.');
 }
 
 async function waitForProjectTeardownClaim(): Promise<ProjectProvisioningClaimRow> {
