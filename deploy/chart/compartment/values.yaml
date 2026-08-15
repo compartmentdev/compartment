@@ -305,8 +305,8 @@ resources:
     requests: { cpu: 50m, memory: 256Mi }
     limits: { cpu: 500m, memory: 256Mi }
   registryAuth:
-    requests: { cpu: 50m, memory: 128Mi }
-    limits: { cpu: 500m, memory: 128Mi }
+    requests: { cpu: 50m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 256Mi }
   dns01Solver:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { cpu: 500m, memory: 128Mi }
