@@ -276,6 +276,23 @@ describe('worker resource reconcile lifecycle', (): void => {
     }
   });
 
+  it('completes a resource stop without waiting for a Running container', async (): Promise<void> => {
+    const observation: TestObservation = new TestObservation('uid-original', false);
+    observation.addClaim(backupClaimName, 'uid-backup', false);
+    const apply: Mock = vi.fn(
+      async (bundle: ApplyBundle): Promise<KubeManifest[]> =>
+        await Promise.resolve(withAppliedDeploymentIdentity(bundle.objects, 2)),
+    );
+
+    await executeResourceReconcile(requester(), runtime(apply, observation), stopClaim());
+
+    expect(apply).toHaveBeenCalledTimes(2);
+    expect(mocks.acknowledge).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: 'succeeded' }),
+    );
+  });
+
   it('applies the current resource port policy before starting the resource workload', async (): Promise<void> => {
     const observation: TestObservation = new TestObservation('uid-original', false, true, false);
     observation.addClaim(backupClaimName, 'uid-backup', false);
@@ -1048,6 +1065,11 @@ function deleteClaim(): WorkerClaimResourceReconcileResponse {
     ...claimed,
     intent: claimed.intent === null ? null : { ...claimed.intent, deleteData: true, operation: 'delete', replicas: 0 },
   };
+}
+
+function stopClaim(): WorkerClaimResourceReconcileResponse {
+  const claimed: WorkerClaimResourceReconcileResponse = claim(null);
+  return { ...claimed, intent: { ...claimed.intent!, replicas: 0 } };
 }
 
 function withAppliedDeploymentIdentity(objects: KubeManifest[], generation: number): KubeManifest[] {

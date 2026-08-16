@@ -24,6 +24,9 @@ export async function waitForFreshResourceDeployment(
   signal?: AbortSignal,
 ): Promise<void> {
   const desired: KubeDeploymentManifest = requiredDeployment(manifests);
+  if (desired.spec?.replicas === 0) {
+    return;
+  }
   const timeoutMs: number = readResourceReadinessTimeoutMs(desired);
   const startedAt: Date = await waitUntil(
     observation,
