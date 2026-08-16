@@ -35,6 +35,7 @@ describe('readApiConfig', (): void => {
     expect(config.tlsMode).toBe('internal');
     expect(config.controlPlaneHost).toBe('console.localhost');
     expect(config.edgeToken).toBe('edge-secret');
+    expect(config.deploymentInfrastructureTimeoutMs).toBe(600_000);
     expect(config.edgeUrl).toBe('http://127.0.0.1:9081');
     expect(config.managedDomainAcmeDnsToken).toBeNull();
     expect(config.managedDomainBrokerUrl).toBeNull();
@@ -352,6 +353,7 @@ function createApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.
     COMPARTMENT_BASE_DOMAIN: 'localhost',
     COMPARTMENT_TLS_MODE: 'internal',
     COMPARTMENT_DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/compartment_dev',
+    COMPARTMENT_DEPLOYMENT_INFRASTRUCTURE_TIMEOUT_MS: '600000',
     COMPARTMENT_EDGE_INTERNAL_HOST: '127.0.0.1',
     COMPARTMENT_EDGE_PORT: '9081',
     COMPARTMENT_EDGE_TOKEN: 'edge-secret',

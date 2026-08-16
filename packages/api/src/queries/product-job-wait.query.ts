@@ -54,10 +54,11 @@ const resourcePredecessorQueueSql: SQL = sql`
 export async function readProductJobQueueWaitState(
   jobClass: ProductJobClass,
   identityId: string,
+  infrastructureTimeoutMs: number,
 ): Promise<ProductJobQueueWaitState | null> {
   const rows: object[] = (await getApiDatabase().execute(productJobQueueWaitStateQuery(jobClass, identityId))).rows;
   const row: ProductJobQueueWaitRow | undefined = rows[0] as ProductJobQueueWaitRow | undefined;
-  return row === undefined ? null : parseProductJobQueueWaitState(row, jobClass, identityId);
+  return row === undefined ? null : parseProductJobQueueWaitState(row, jobClass, identityId, infrastructureTimeoutMs);
 }
 
 export async function expireProductJobWait(
@@ -97,12 +98,15 @@ function parseProductJobQueueWaitState(
   row: ProductJobQueueWaitRow,
   jobClass: ProductJobClass,
   identityId: string,
+  infrastructureTimeoutMs: number,
 ): ProductJobQueueWaitState {
   const productJobBudgetMs: number = Number(row.productJobBudgetMs);
   const queueBudgetMs: number =
     productJobBudgetMs +
-    row.resourceBootstrapPredecessorCount * resourceReconcileOperationWaitTimeoutMs('bootstrap') +
-    row.resourceReconcilePredecessorCount * resourceReconcileOperationWaitTimeoutMs('reconcile');
+    row.resourceBootstrapPredecessorCount *
+      resourceReconcileOperationWaitTimeoutMs('bootstrap', infrastructureTimeoutMs) +
+    row.resourceReconcilePredecessorCount *
+      resourceReconcileOperationWaitTimeoutMs('reconcile', infrastructureTimeoutMs);
   if (!Number.isSafeInteger(queueBudgetMs) || queueBudgetMs < 1) {
     throw new Error(`Product Job ${jobClass}/${identityId} has an invalid queue budget.`);
   }

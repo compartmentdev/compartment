@@ -46,6 +46,7 @@ export {
   calculateKubeRolloutStatus,
   kubeDeploymentAvailable,
   readKubeApplicationRunningStartedAt,
+  readKubeContainerRunningStartedAt,
   readKubeRolloutObservation,
 } from './kube-rollout';
 export type {

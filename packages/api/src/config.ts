@@ -25,6 +25,7 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_BASE_DOMAIN: z.string().min(1),
   COMPARTMENT_TLS_MODE: z.enum(['broker-dns01', 'internal', 'issuer']),
   COMPARTMENT_DATABASE_URL: z.string().min(1),
+  COMPARTMENT_DEPLOYMENT_INFRASTRUCTURE_TIMEOUT_MS: z.coerce.number().int().positive(),
   COMPARTMENT_EDGE_INTERNAL_HOST: z.string().min(1),
   COMPARTMENT_EDGE_PORT: z.coerce.number().int().positive(),
   COMPARTMENT_EDGE_TOKEN: z.string().min(1),
@@ -67,6 +68,7 @@ export interface ApiConfig extends ApiRuntimeConfig {
   tlsMode: 'broker-dns01' | 'internal' | 'issuer';
   controlPlaneHost: string;
   databaseUrl: string;
+  deploymentInfrastructureTimeoutMs: number;
   edgeToken: string;
   edgeUrl: string;
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
@@ -92,7 +94,15 @@ export interface ApiConfig extends ApiRuntimeConfig {
 
 type ApiCoreConfig = Pick<
   ApiConfig,
-  'bindHost' | 'databaseUrl' | 'edgeToken' | 'logLevel' | 'port' | 'sessionSecret' | 'sessionTtlMs' | 'signupEnabled'
+  | 'bindHost'
+  | 'databaseUrl'
+  | 'deploymentInfrastructureTimeoutMs'
+  | 'edgeToken'
+  | 'logLevel'
+  | 'port'
+  | 'sessionSecret'
+  | 'sessionTtlMs'
+  | 'signupEnabled'
 >;
 type ApiHostConfig = Pick<ApiConfig, 'baseDomain' | 'tlsMode' | 'controlPlaneHost' | 'edgeUrl'>;
 type ApiIntegrationConfig = Pick<
@@ -178,6 +188,7 @@ function readApiCoreConfig(parsed: ApiConfigEnv): ApiCoreConfig {
   return {
     bindHost: parsed.COMPARTMENT_API_BIND_HOST,
     databaseUrl: parsed.COMPARTMENT_DATABASE_URL,
+    deploymentInfrastructureTimeoutMs: parsed.COMPARTMENT_DEPLOYMENT_INFRASTRUCTURE_TIMEOUT_MS,
     edgeToken: parsed.COMPARTMENT_EDGE_TOKEN,
     logLevel: parsed.COMPARTMENT_LOG_LEVEL,
     port: parsed.COMPARTMENT_API_PORT,

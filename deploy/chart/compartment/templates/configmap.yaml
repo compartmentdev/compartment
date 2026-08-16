@@ -17,6 +17,7 @@ data:
   COMPARTMENT_BASE_DOMAIN: {{ $installState.effective.platform.baseDomain | quote }}
   COMPARTMENT_TLS_MODE: {{ $installState.effective.platform.tlsMode }}
   COMPARTMENT_CADDY_HTTP_PORT: {{ .Values.ports.http | quote }}
+  COMPARTMENT_DEPLOYMENT_INFRASTRUCTURE_TIMEOUT_MS: {{ .Values.worker.deploymentInfrastructureTimeoutMs | quote }}
   COMPARTMENT_EDGE_BIND_HOST: "0.0.0.0"
   COMPARTMENT_EDGE_INTERNAL_HOST: {{ printf "%s-edge" (include "compartment.fullname" .) | quote }}
   COMPARTMENT_EDGE_PORT: {{ .Values.ports.edge | quote }}

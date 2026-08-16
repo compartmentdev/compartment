@@ -38,6 +38,7 @@ describe('shipped project resource contract', (): void => {
       .find((document: RenderedConfigMap): boolean => document.kind === 'ConfigMap' && document.data !== undefined);
     const defaultsJson: string = requiredConfigValue(configMap, 'COMPARTMENT_PROJECT_CONTAINER_DEFAULTS');
     const quotaJson: string = requiredConfigValue(configMap, 'COMPARTMENT_PROJECT_QUOTA');
+    expect(requiredConfigValue(configMap, 'COMPARTMENT_DEPLOYMENT_INFRASTRUCTURE_TIMEOUT_MS')).toBe('600000');
     const api = new CapturingKubernetesObjectApi();
     const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): KubernetesObjectApi => api } as never);
 

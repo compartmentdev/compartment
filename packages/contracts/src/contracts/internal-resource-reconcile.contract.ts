@@ -5,6 +5,7 @@ import { projectNetworkPolicyPortsSchema, type ProjectNetworkPolicyPorts } from 
 import { tenantSecretEnvironmentSchema, type TenantSecretEnvironment } from './internal-tenant-secret.contract';
 
 export const resourceReconcileLifecycleTimeoutMs: number = 120_000;
+export const resourceReconcileLeaseHeartbeatIntervalMs: number = 60_000;
 
 export interface ResourceClaimIdentity {
   claimName: string;

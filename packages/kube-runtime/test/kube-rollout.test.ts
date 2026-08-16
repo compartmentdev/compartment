@@ -3,6 +3,7 @@ import {
   calculateKubeRolloutStatus,
   kubeDeploymentAvailable,
   readKubeApplicationRunningStartedAt,
+  readKubeContainerRunningStartedAt,
   readKubeRolloutObservation,
   type KubeDeploymentManifest,
   type KubeObservedManifest,
@@ -130,6 +131,22 @@ describe('rollout observation decisions', (): void => {
     );
 
     expect(readKubeApplicationRunningStartedAt([pod], 'dep_candidate')).toEqual(new Date('2026-07-11T12:00:08.000Z'));
+  });
+
+  it('uses only the current Running start for a resource container that restarted', (): void => {
+    const pod: KubeObservedManifest = applicationPod(
+      'dep_candidate',
+      '2026-07-11T12:00:18.000Z',
+      '2026-07-11T12:00:08.000Z',
+    );
+
+    expect(
+      readKubeContainerRunningStartedAt(
+        [pod],
+        { 'compartment.dev/deployment-id': 'dep_candidate' },
+        kubeApplicationName('dep_candidate'),
+      ),
+    ).toEqual(new Date('2026-07-11T12:00:18.000Z'));
   });
 });
 

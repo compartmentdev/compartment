@@ -11,6 +11,7 @@ import {
   resourceReconcilePredecessorWaitTimeoutMs,
 } from '../queries/resource-reconcile-policy';
 import type { ResourceReconcileWaitContext } from './resource-reconcile-wait.service.types';
+import { getApiConfig } from '../runtime/runtime-access';
 
 const resourceReconcilePollInitialDelayMs: number = 100;
 const resourceReconcilePollMaxDelayMs: number = 5_000;
@@ -52,8 +53,9 @@ async function readCurrentSettlement(
 
 async function createWaitContext(operationId: string): Promise<ResourceReconcileWaitContext> {
   const state: ResourceReconcileRunWaitState | null = await readResourceReconcileRunWaitState(operationId);
+  const infrastructureTimeoutMs: number = getApiConfig().deploymentInfrastructureTimeoutMs;
   return {
-    deadlineAt: Date.now() + resourceReconcileWaitTimeoutMs(state),
+    deadlineAt: Date.now() + resourceReconcileWaitTimeoutMs(state, infrastructureTimeoutMs),
     nextQueueRefreshAt: Date.now() + resourceReconcileQueueRefreshIntervalMs,
     predecessorToken: state?.predecessorToken ?? null,
     state,
@@ -67,7 +69,10 @@ async function refreshQueueStateIfDue(operationId: string, context: ResourceReco
   const state: ResourceReconcileRunWaitState | null = await readResourceReconcileRunWaitState(operationId);
   const predecessorToken: string | null = state?.predecessorToken ?? null;
   if (predecessorToken !== context.predecessorToken) {
-    context.deadlineAt = Math.max(context.deadlineAt, Date.now() + resourceReconcileWaitTimeoutMs(state));
+    context.deadlineAt = Math.max(
+      context.deadlineAt,
+      Date.now() + resourceReconcileWaitTimeoutMs(state, getApiConfig().deploymentInfrastructureTimeoutMs),
+    );
     context.predecessorToken = predecessorToken;
   }
   context.nextQueueRefreshAt = Date.now() + resourceReconcileQueueRefreshIntervalMs;
@@ -84,16 +89,19 @@ function assertResourceReconcileBeforeDeadline(deadlineAt: number): void {
   }
 }
 
-function resourceReconcileWaitTimeoutMs(state: ResourceReconcileRunWaitState | null): number {
+function resourceReconcileWaitTimeoutMs(
+  state: ResourceReconcileRunWaitState | null,
+  infrastructureTimeoutMs: number,
+): number {
   const resourcePredecessorBudgetMs: number =
-    (state?.predecessorCount ?? 0) * resourceReconcilePredecessorWaitTimeoutMs();
+    (state?.predecessorCount ?? 0) * resourceReconcilePredecessorWaitTimeoutMs(infrastructureTimeoutMs);
   const productJobPredecessorBudgetMs: number =
     (state?.predecessorProductJobCount ?? 0) * resourceProductJobQueueBaseTimeoutMs +
     (state?.predecessorProductJobTimeoutMs ?? 0);
   return (
     resourcePredecessorBudgetMs +
     productJobPredecessorBudgetMs +
-    resourceReconcileOperationWaitTimeoutMs(state?.operationType ?? 'reconcile')
+    resourceReconcileOperationWaitTimeoutMs(state?.operationType ?? 'reconcile', infrastructureTimeoutMs)
   );
 }
 

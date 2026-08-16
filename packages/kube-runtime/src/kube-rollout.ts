@@ -16,35 +16,65 @@ export function readKubeApplicationRunningStartedAt(
   observed: Iterable<KubeObservedManifest>,
   deploymentId: string,
 ): Date | null {
-  const containerName: string = kubeApplicationName(deploymentId);
+  return readKubeContainerStartedAt(
+    observed,
+    { [deploymentIdLabel]: deploymentId },
+    kubeApplicationName(deploymentId),
+    true,
+  );
+}
+
+export function readKubeContainerRunningStartedAt(
+  observed: Iterable<KubeObservedManifest>,
+  labels: Readonly<Record<string, string>>,
+  containerName: string,
+): Date | null {
+  return readKubeContainerStartedAt(observed, labels, containerName, false);
+}
+
+function readKubeContainerStartedAt(
+  observed: Iterable<KubeObservedManifest>,
+  labels: Readonly<Record<string, string>>,
+  containerName: string,
+  retainTerminatedStart: boolean,
+): Date | null {
   const startedAt: number[] = [...observed].flatMap((manifest: KubeObservedManifest): number[] =>
-    readPodContainerStartedAt(manifest, deploymentId, containerName),
+    readPodContainerStartedAt(manifest, labels, containerName, retainTerminatedStart),
   );
   return startedAt.length === 0 ? null : new Date(Math.min(...startedAt));
 }
 
 function readPodContainerStartedAt(
   manifest: KubeObservedManifest,
-  deploymentId: string,
+  labels: Readonly<Record<string, string>>,
   containerName: string,
+  retainTerminatedStart: boolean,
 ): number[] {
-  if (manifest.kind !== 'Pod' || manifest.metadata?.labels?.[deploymentIdLabel] !== deploymentId) {
+  if (manifest.kind !== 'Pod' || !hasLabels(manifest.metadata?.labels, labels)) {
     return [];
   }
   const pod: KubeObservedRolloutPod = manifest;
   const container: KubeObservedContainerStatus | undefined = pod.status?.containerStatuses?.find(
     (status: KubeObservedContainerStatus): boolean => status.name === containerName,
   );
-  return container === undefined ? [] : validStartedAt(container);
+  return container === undefined ? [] : validStartedAt(container, retainTerminatedStart);
 }
 
-function validStartedAt(container: KubeObservedContainerStatus): number[] {
-  return [container.state?.running?.startedAt, container.lastState?.terminated?.startedAt].flatMap(
-    (value: string | undefined): number[] => {
-      const timestamp: number = value === undefined ? Number.NaN : Date.parse(value);
-      return Number.isNaN(timestamp) ? [] : [timestamp];
-    },
+function hasLabels(observed: Record<string, string> | undefined, expected: Readonly<Record<string, string>>): boolean {
+  return (
+    observed !== undefined &&
+    Object.entries(expected).every(([key, value]: [string, string]) => observed[key] === value)
   );
+}
+
+function validStartedAt(container: KubeObservedContainerStatus, retainTerminatedStart: boolean): number[] {
+  const previousStartedAt: string | undefined = retainTerminatedStart
+    ? container.lastState?.terminated?.startedAt
+    : undefined;
+  return [container.state?.running?.startedAt, previousStartedAt].flatMap((value: string | undefined): number[] => {
+    const timestamp: number = value === undefined ? Number.NaN : Date.parse(value);
+    return Number.isNaN(timestamp) ? [] : [timestamp];
+  });
 }
 
 /**

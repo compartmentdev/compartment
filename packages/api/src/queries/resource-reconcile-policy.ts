@@ -1,25 +1,34 @@
-import { resourceReadinessTimeoutMaxMs, resourceReconcileLifecycleTimeoutMs } from '@compartment/contracts';
+import {
+  resourceReadinessTimeoutMaxMs,
+  resourceReconcileLeaseHeartbeatIntervalMs,
+  resourceReconcileLifecycleTimeoutMs,
+} from '@compartment/contracts';
 import {
   projectProvisioningAttemptLimit,
   projectProvisioningLeaseDurationMs,
   projectProvisioningRetryDelayMs,
 } from './project-provisioning-policy';
 
-export const resourceReconcileLeaseDurationMs: number = 10 * 60_000;
+export const resourceReconcileLeaseDurationMs: number = 10 * resourceReconcileLeaseHeartbeatIntervalMs;
 export const resourceProductJobQueueBaseTimeoutMs: number = 30 * 60_000;
 
-export function resourceReconcileOperationWaitTimeoutMs(operationType: 'bootstrap' | 'reconcile'): number {
-  return operationType === 'bootstrap' ? resourceBootstrapWaitTimeoutMs() : resourceReconcileWaitTimeoutMs();
+export function resourceReconcileOperationWaitTimeoutMs(
+  operationType: 'bootstrap' | 'reconcile',
+  infrastructureTimeoutMs: number,
+): number {
+  return operationType === 'bootstrap'
+    ? resourceBootstrapWaitTimeoutMs()
+    : resourceReconcileWaitTimeoutMs(infrastructureTimeoutMs);
 }
 
-export function resourceReconcilePredecessorWaitTimeoutMs(): number {
-  return Math.max(resourceReconcileWaitTimeoutMs(), resourceBootstrapWaitTimeoutMs());
+export function resourceReconcilePredecessorWaitTimeoutMs(infrastructureTimeoutMs: number): number {
+  return Math.max(resourceReconcileWaitTimeoutMs(infrastructureTimeoutMs), resourceBootstrapWaitTimeoutMs());
 }
 
-function resourceReconcileWaitTimeoutMs(): number {
+function resourceReconcileWaitTimeoutMs(infrastructureTimeoutMs: number): number {
   return (
     resourceReconcileLeaseDurationMs +
-    2 * (resourceReconcileLifecycleTimeoutMs + resourceReadinessTimeoutMaxMs) +
+    2 * (resourceReconcileLifecycleTimeoutMs + 2 * infrastructureTimeoutMs + resourceReadinessTimeoutMaxMs) +
     30_000
   );
 }
