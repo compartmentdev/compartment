@@ -8,7 +8,7 @@ import {
 } from './request-error';
 import type { CompartmentBinaryRequestExecution, CompartmentRequestMethod } from './request.types';
 
-const binaryGetMaxAttempts: number = 4;
+const binaryGetMaxAttempts: number = 8;
 const binaryGetRetryBaseMs: number = 250;
 const binaryGetRetryCapMs: number = 2_000;
 

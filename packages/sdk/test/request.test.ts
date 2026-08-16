@@ -414,7 +414,7 @@ describe('compartment requester', (): void => {
     ).rejects.toEqual(
       expect.objectContaining<Partial<CompartmentRequestErrorShape>>({
         code: 'source_archive_not_found',
-        message: `Source archive not found. GET https://console.example/internal/artifacts/artifact_123/source-archive failed after 1/4 attempts with status ${status.toString()} (code: source_archive_not_found).`,
+        message: `Source archive not found. GET https://console.example/internal/artifacts/artifact_123/source-archive failed after 1/8 attempts with status ${status.toString()} (code: source_archive_not_found).`,
         name: 'CompartmentRequestError',
         statusCode: status,
       }),
@@ -439,7 +439,7 @@ describe('compartment requester', (): void => {
       expect.objectContaining<Partial<CompartmentRequestErrorShape>>({
         code: 'request_error',
         message:
-          'GET https://console.example/internal/artifacts/artifact_123/source-archive failed after 1/4 attempts with status 400 (code: request_error).',
+          'GET https://console.example/internal/artifacts/artifact_123/source-archive failed after 1/8 attempts with status 400 (code: request_error).',
         name: 'CompartmentRequestError',
         statusCode: 400,
       }),
@@ -471,6 +471,33 @@ describe('compartment requester', (): void => {
     await vi.runAllTimersAsync();
     await archiveExpectation;
     expect(fetchCalls).toBe(2);
+  });
+
+  it('keeps retrying binary GET connection refusals beyond the initial four attempts', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const connectionError: Error = createFetchConnectionError('ECONNREFUSED');
+    const request: CompartmentBinaryRequester = createCompartmentBinaryRequester({
+      apiUrl: 'https://console.example',
+      requestTimeoutMs: 30_000,
+    });
+    let fetchCalls: number = 0;
+
+    vi.stubGlobal('fetch', async (): Promise<Response> => {
+      fetchCalls += 1;
+      if (fetchCalls <= 4) {
+        throw connectionError;
+      }
+      return await Promise.resolve(new Response('archive'));
+    });
+
+    const archivePromise: Promise<Buffer> = request({
+      method: 'GET',
+      path: '/internal/artifacts/artifact_123/source-archive',
+    });
+    const archiveExpectation: Promise<void> = expect(archivePromise).resolves.toEqual(Buffer.from('archive'));
+    await vi.runAllTimersAsync();
+    await archiveExpectation;
+    expect(fetchCalls).toBe(5);
   });
 
   it('retries a 503 binary GET response and returns the archive', async (): Promise<void> => {
@@ -523,13 +550,17 @@ describe('compartment requester', (): void => {
     });
     await vi.runAllTimersAsync();
     await archiveExpectation;
-    expect(attemptTimes).toHaveLength(4);
+    expect(attemptTimes).toHaveLength(8);
     expect(readAttemptDelay(attemptTimes, 1)).toBeGreaterThanOrEqual(125);
     expect(readAttemptDelay(attemptTimes, 1)).toBeLessThanOrEqual(250);
     expect(readAttemptDelay(attemptTimes, 2)).toBeGreaterThanOrEqual(250);
     expect(readAttemptDelay(attemptTimes, 2)).toBeLessThanOrEqual(500);
     expect(readAttemptDelay(attemptTimes, 3)).toBeGreaterThanOrEqual(500);
     expect(readAttemptDelay(attemptTimes, 3)).toBeLessThanOrEqual(1_000);
+    for (let attempt: number = 4; attempt < 8; attempt += 1) {
+      expect(readAttemptDelay(attemptTimes, attempt)).toBeGreaterThanOrEqual(1_000);
+      expect(readAttemptDelay(attemptTimes, attempt)).toBeLessThanOrEqual(2_000);
+    }
   });
 
   it('reports sanitized retry exhaustion diagnostics with the nested transport code', async (): Promise<void> => {
@@ -554,11 +585,11 @@ describe('compartment requester', (): void => {
     });
     const archiveExpectation: Promise<void> = expect(archivePromise).rejects.toMatchObject({
       message:
-        'GET https://console.example/internal/artifacts/artifact_123/source-archive failed after 4/4 attempts: connection timed out; nested cause: TypeError; code: UND_ERR_CONNECT_TIMEOUT.',
+        'GET https://console.example/internal/artifacts/artifact_123/source-archive failed after 8/8 attempts: connection timed out; nested cause: TypeError; code: UND_ERR_CONNECT_TIMEOUT.',
     });
     await vi.runAllTimersAsync();
     await archiveExpectation;
-    expect(fetchCalls).toBe(4);
+    expect(fetchCalls).toBe(8);
   });
 
   it('retries a binary GET timeout with a fresh per-attempt signal', async (): Promise<void> => {
