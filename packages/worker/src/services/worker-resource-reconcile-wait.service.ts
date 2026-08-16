@@ -8,6 +8,7 @@ import {
   readKubeRolloutObservation,
   type KubeRolloutObservation,
   type KubeRolloutStatus,
+  readResourceReadinessTimeoutMs,
 } from '@compartment/kube-runtime';
 
 interface ObservationReadResult<T> {
@@ -20,9 +21,7 @@ export async function waitForFreshResourceDeployment(
   manifests: KubeManifest[],
 ): Promise<void> {
   const desired: KubeDeploymentManifest = requiredDeployment(manifests);
-  const progressDeadlineSeconds: number | undefined = desired.spec?.progressDeadlineSeconds;
-  const timeoutMs: number =
-    progressDeadlineSeconds === undefined ? resourceReconcileLifecycleTimeoutMs : progressDeadlineSeconds * 1_000;
+  const timeoutMs: number = readResourceReadinessTimeoutMs(desired);
   const deadlineAt: Date = new Date(Date.now() + timeoutMs);
   await waitUntil(
     observation,

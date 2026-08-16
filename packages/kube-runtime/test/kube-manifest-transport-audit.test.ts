@@ -70,7 +70,10 @@ const transportAuditRegistry: readonly TransportAuditCase[] = [
     manifests: (): KubeManifest[] => projectApplicationManifests(applicationRow(), infrastructureTimeoutMs),
     projection: 'projectApplicationManifests',
   },
-  { manifests: (): KubeManifest[] => projectResourceManifests(resourceRow()), projection: 'projectResourceManifests' },
+  {
+    manifests: (): KubeManifest[] => projectResourceManifests(resourceRow(), infrastructureTimeoutMs),
+    projection: 'projectResourceManifests',
+  },
   {
     manifests: (): KubeManifest[] => projectResourceBootstrapClaims(resourceRow()),
     projection: 'projectResourceBootstrapClaims',

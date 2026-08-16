@@ -110,11 +110,14 @@ function applicationPodSpec(scheduling?: KubeWorkloadScheduling): KubeProjectedP
 }
 
 function resourcePodSpec(image?: string, scheduling?: KubeWorkloadScheduling): KubeProjectedPodSpec {
-  const deployment: KubeManifest = projectResourceManifests({
-    ...resourceRow(),
-    ...(image === undefined ? {} : { image }),
-    ...(scheduling === undefined ? {} : { scheduling }),
-  }).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
+  const deployment: KubeManifest = projectResourceManifests(
+    {
+      ...resourceRow(),
+      ...(image === undefined ? {} : { image }),
+      ...(scheduling === undefined ? {} : { scheduling }),
+    },
+    600_000,
+  ).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
   return (deployment as KubeDeploymentManifest).spec!.template.spec;
 }
 

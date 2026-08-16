@@ -31,6 +31,7 @@ const row: ResourceProjectionRow = {
   secretId: 'sec-resource',
   volumes: [{ mountPath: '/var/lib/postgresql/data', size: '10Gi', volumeHandle: 'data' }],
 };
+const infrastructureTimeoutMs: number = 120_000;
 
 describe('resource projection and fencing', (): void => {
   it('fails closed before mutation when expected identity, claim, binding, or UID is invalid', (): void => {
@@ -68,12 +69,29 @@ describe('resource projection and fencing', (): void => {
   });
 
   it('never includes a PVC in ordinary reconcile and isolates claims in explicit bootstrap', (): void => {
-    expect(projectResourceManifests(row).map((manifest: KubeManifest): string => manifest.kind)).toEqual([
+    const manifests: KubeManifest[] = projectResourceManifests(row, infrastructureTimeoutMs);
+    const deployment: KubeDeploymentManifest = manifests.find(
+      (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
+    ) as KubeDeploymentManifest;
+    expect(manifests.map((manifest: KubeManifest): string => manifest.kind)).toEqual([
       'Secret',
-      'Deployment',
       'Service',
+      'Deployment',
     ]);
-    expect(projectResourceManifests(row)[0]?.metadata?.labels?.['compartment.dev/resource-id']).toBe(row.resourceId);
+    expect(manifests[0]?.metadata?.labels?.['compartment.dev/resource-id']).toBe(row.resourceId);
+    expect(deployment.spec!.template.spec.volumes).toEqual([
+      {
+        name: kubeResourceVolumeName(row.resourceId, 'data'),
+        persistentVolumeClaim: { claimName: kubeResourceVolumeName(row.resourceId, 'data') },
+      },
+    ]);
+    expect(deployment.spec!.template.spec.containers[0]!.volumeMounts).toEqual([
+      { mountPath: row.volumes[0]!.mountPath, name: kubeResourceVolumeName(row.resourceId, 'data') },
+    ]);
+    expect(deployment.metadata?.annotations).toHaveProperty(
+      'compartment.dev/resource-readiness-timeout-ms',
+      String(row.readiness!.timeoutMs),
+    );
     expect(projectResourceBootstrapClaims(row)).toHaveLength(2);
     expect(projectResourceBootstrapClaims(row)[0]?.kind).toBe('PersistentVolumeClaim');
     expect(projectResourceBootstrapClaims(row)[1]?.metadata?.name).toBe(
@@ -82,7 +100,7 @@ describe('resource projection and fencing', (): void => {
   });
 
   it('pins resource Pods to the project identity and the restricted security profile', (): void => {
-    const deployment: KubeManifest = projectResourceManifests(row).find(
+    const deployment: KubeManifest = projectResourceManifests(row, infrastructureTimeoutMs).find(
       (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
     )!;
 
@@ -118,10 +136,10 @@ describe('resource projection and fencing', (): void => {
   });
 
   it('assigns a numeric non-root runtime identity to generic resources', (): void => {
-    const deployment: KubeManifest = projectResourceManifests({
-      ...row,
-      image: 'registry.example/acme/postgres:16-alpine',
-    }).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
+    const deployment: KubeManifest = projectResourceManifests(
+      { ...row, image: 'registry.example/acme/postgres:16-alpine' },
+      infrastructureTimeoutMs,
+    ).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
 
     expect(deployment.spec).toHaveProperty('template.spec.securityContext.fsGroup', 10_001);
     expect(deployment.spec).toHaveProperty('template.spec.securityContext.runAsUser', 10_001);
@@ -131,10 +149,10 @@ describe('resource projection and fencing', (): void => {
   });
 
   it('preserves the official Debian PostgreSQL runtime identity', (): void => {
-    const deployment: KubeManifest = projectResourceManifests({
-      ...row,
-      image: 'docker.io/library/postgres:16@sha256:def',
-    }).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
+    const deployment: KubeManifest = projectResourceManifests(
+      { ...row, image: 'docker.io/library/postgres:16@sha256:def' },
+      infrastructureTimeoutMs,
+    ).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
 
     expect(deployment.spec).toHaveProperty('template.spec.securityContext.fsGroup', 999);
     expect(deployment.spec).toHaveProperty('template.spec.securityContext.runAsUser', 999);
@@ -142,10 +160,10 @@ describe('resource projection and fencing', (): void => {
   });
 
   it('assigns the generic identity to variant-ambiguous PostgreSQL digests', (): void => {
-    const deployment: KubeManifest = projectResourceManifests({
-      ...row,
-      image: 'postgres@sha256:def',
-    }).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
+    const deployment: KubeManifest = projectResourceManifests(
+      { ...row, image: 'postgres@sha256:def' },
+      infrastructureTimeoutMs,
+    ).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
 
     expect(deployment.spec).toHaveProperty('template.spec.securityContext.fsGroup', 10_001);
     expect(deployment.spec).toHaveProperty('template.spec.securityContext.runAsUser', 10_001);
@@ -153,10 +171,10 @@ describe('resource projection and fencing', (): void => {
   });
 
   it('recognizes the official PostgreSQL Alpine shorthand identity', (): void => {
-    const deployment: KubeManifest = projectResourceManifests({
-      ...row,
-      image: 'postgres:alpine3.22',
-    }).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
+    const deployment: KubeManifest = projectResourceManifests(
+      { ...row, image: 'postgres:alpine3.22' },
+      infrastructureTimeoutMs,
+    ).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
 
     expect(deployment.spec).toHaveProperty('template.spec.securityContext.fsGroup', 70);
     expect(deployment.spec).toHaveProperty('template.spec.securityContext.runAsUser', 70);
@@ -164,7 +182,7 @@ describe('resource projection and fencing', (): void => {
   });
 
   it('selects an upgrade-safe writable PostgreSQL data directory at startup', (): void => {
-    const manifests: KubeManifest[] = projectResourceManifests(row);
+    const manifests: KubeManifest[] = projectResourceManifests(row, infrastructureTimeoutMs);
     const secret: KubeManifest = manifests.find((manifest: KubeManifest): boolean => manifest.kind === 'Secret')!;
     const deployment: KubeManifest = manifests.find(
       (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
@@ -186,7 +204,7 @@ describe('resource projection and fencing', (): void => {
       ...row.env,
       PGDATA: '/var/lib/postgresql/data/custom',
     };
-    const manifests: KubeManifest[] = projectResourceManifests({ ...row, env });
+    const manifests: KubeManifest[] = projectResourceManifests({ ...row, env }, infrastructureTimeoutMs);
     const secret: KubeManifest = manifests.find((manifest: KubeManifest): boolean => manifest.kind === 'Secret')!;
     const deployment: KubeDeploymentManifest = manifests.find(
       (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
@@ -209,7 +227,10 @@ describe('resource projection and fencing', (): void => {
 
   it('projects deterministic Recreate workload, PVC reference, Service DNS, and bootstrap golden', (): void => {
     expect(kubeResourceServiceDns(row.resourceId, row.namespaceId)).toMatch(/^resource-.+\.cpt-.+\.svc$/);
-    const yaml: string = [...projectResourceManifests(row), ...projectResourceBootstrapClaims(row)]
+    const yaml: string = [
+      ...projectResourceManifests(row, infrastructureTimeoutMs),
+      ...projectResourceBootstrapClaims(row),
+    ]
       .map((manifest: KubeManifest): string => stringify(manifest, { sortMapEntries: true }).trim())
       .join('\n---\n')
       .replaceAll(/[a-f0-9]{64}/g, '<sha256>');
@@ -218,14 +239,14 @@ describe('resource projection and fencing', (): void => {
   });
 
   it('projects the complete command, port, and readiness intent', (): void => {
-    const manifests: KubeManifest[] = projectResourceManifests(row);
+    const manifests: KubeManifest[] = projectResourceManifests(row, infrastructureTimeoutMs);
     const deployment: KubeManifest = manifests.find(
       (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
     )!;
     const service: KubeManifest = manifests.find((manifest: KubeManifest): boolean => manifest.kind === 'Service')!;
 
     expect(deployment.spec).toMatchObject({
-      progressDeadlineSeconds: 30,
+      progressDeadlineSeconds: 270,
       template: {
         spec: {
           containers: [
@@ -253,7 +274,10 @@ describe('resource projection and fencing', (): void => {
   });
 
   it('keeps stable DNS without inventing ports or a readiness probe for a background resource', (): void => {
-    const manifests: KubeManifest[] = projectResourceManifests({ ...row, command: [], ports: [], readiness: null });
+    const manifests: KubeManifest[] = projectResourceManifests(
+      { ...row, command: [], ports: [], readiness: null },
+      infrastructureTimeoutMs,
+    );
     const deployment: KubeManifest = manifests.find(
       (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
     )!;
@@ -267,7 +291,7 @@ describe('resource projection and fencing', (): void => {
   });
 
   it('matches the provisioned resource NetworkPolicy selector', (): void => {
-    const manifests: KubeManifest[] = projectResourceManifests(row);
+    const manifests: KubeManifest[] = projectResourceManifests(row, infrastructureTimeoutMs);
     const deployment: KubeManifest = manifests.find(
       (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
     )!;

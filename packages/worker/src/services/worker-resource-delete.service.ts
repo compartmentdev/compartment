@@ -1,7 +1,6 @@
 import {
   assertResourceClaimOwnership,
   projectResourceClaimDeleteTargets,
-  projectResourceManifests,
   type KubeObservation,
   type KubeRuntime,
   type ObservedResourceClaim,
@@ -9,7 +8,11 @@ import {
 } from '@compartment/kube-runtime';
 import type { ResourceClaimIdentity } from '@compartment/contracts';
 import { acknowledgeResourceReconcile, type CompartmentRequester } from '@compartment/sdk';
-import { readLiveClaims, scaleDownAndAwaitTermination } from './worker-resource-reconcile-observation.service';
+import {
+  projectManagedResourceManifests,
+  readLiveClaims,
+  scaleDownAndAwaitTermination,
+} from './worker-resource-reconcile-observation.service';
 import type { CompleteResourceReconcileClaim } from './worker-resource-reconcile.service.types';
 
 export async function executeManagedDelete(
@@ -40,7 +43,7 @@ async function stopAndDeleteManagedManifests(
   assertManagedClaimOwnership(claimed.expectedClaims, await readLiveClaims(runtime, row), row.deleteData);
   await scaleDownAndAwaitTermination(runtime, observation, row);
   assertManagedClaimOwnership(claimed.expectedClaims, await readLiveClaims(runtime, row), row.deleteData);
-  await runtime.delete(projectResourceManifests(row, 0));
+  await runtime.delete(projectManagedResourceManifests(row, 0));
   if (row.deleteData) {
     await deleteManagedData(runtime, claimed.expectedClaims, row);
   }
