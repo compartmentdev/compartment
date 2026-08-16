@@ -240,9 +240,9 @@ compartment resource bootstrap --resource db
 compartment deploy
 ```
 
-Bootstrap fails when its storage was already bootstrapped. Later deploys fail closed if a recorded claim is missing or has
-a different identity, or if a workload-mounted data claim remains unbound. An unused backup artifact claim may stay
-pending until a backup or restore job consumes it; Compartment does not replace claims with empty volumes.
+Bootstrap fails when its storage was already bootstrapped. Later deploys fail closed if recorded storage is missing or
+has a different identity, or if storage required by a running resource is not ready. Unused backup storage does not
+block deploy. Compartment does not replace storage with empty volumes.
 For an update, Compartment stops the existing resource, waits until its pod is absent, verifies the storage identities,
 and only then starts the replacement. If start or readiness fails, it restores the previous executable manifest with the
 same storage; rollback does not downgrade data written in a newer format.
