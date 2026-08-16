@@ -130,7 +130,7 @@ Application rows project deterministically to Deployment and Service objects.
 Project namespace provisioning projects the namespace-owned NetworkPolicy set
 in the same reconciliation as P5 RBAC. Rolling parameters follow the immutable T1 evidence:
 `maxUnavailable: 0` and `maxSurge: 1`. The termination grace period remains 45 seconds,
-with a 3-second `preStop` and the documented readiness probe timings. Service Deployment
+with a 3-second `preStop`; HTTP readiness probes allow 5 seconds for each response. Service Deployment
 rollouts use an operator-configured pre-Running infrastructure deadline, defaulting to 10 minutes.
 Their Kubernetes progress guard is that deadline plus the service readiness timeout, rounded up to seconds.
 Application readiness time starts when the current candidate container first enters Running and is retained across

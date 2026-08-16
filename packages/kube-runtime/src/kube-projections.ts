@@ -32,6 +32,7 @@ interface ApplicationProjectionContext {
 }
 
 const minimumTerminationGracePeriodSeconds: number = 45;
+const applicationReadinessProbeTimeoutSeconds: number = 5;
 export function projectApplicationManifests(
   row: ApplicationProjectionRow,
   infrastructureTimeoutMs: number,
@@ -155,7 +156,7 @@ function readinessProbe(readiness: ApplicationReadinessConfig): KubeReadinessPro
     initialDelaySeconds: 1,
     periodSeconds: 2,
     successThreshold: 1,
-    timeoutSeconds: 1,
+    timeoutSeconds: applicationReadinessProbeTimeoutSeconds,
   };
 }
 

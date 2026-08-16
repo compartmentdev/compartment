@@ -196,12 +196,14 @@ ${resourceConnections}`;
 const probeServer: string = `import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 const port = Number.parseInt(process.env.PORT ?? '3000', 10);
 const listeningLogText = '${selfHostedUserSetupAppListeningLogText}';
 const buildMessageFileUrl = new URL('./build-message.txt', import.meta.url);
+let readinessDelayMs = Number.parseInt(process.env.READINESS_DELAY_MS ?? '0', 10);
 
 // One connection attempt at boot, with no retry of its own. Without the platform reachability gate the CNI
 // refuses this first packet, so a green result here is evidence the gate ran before this process did.
@@ -229,7 +231,18 @@ const server = createServer(async (request, response) => {
     const requestUrl = new URL(request.url ?? '/', \`http://\${request.headers.host ?? 'localhost'}\`);
 
     if (requestUrl.pathname === '/healthz') {
+      await delay(readinessDelayMs);
       sendJson(response, 200, { status: 'ok' });
+      return;
+    }
+    if (request.method === 'POST' && requestUrl.pathname === '/probe/readiness-delay') {
+      const requestedDelayMs = Number.parseInt(requestUrl.searchParams.get('ms') ?? '', 10);
+      if (!Number.isInteger(requestedDelayMs) || requestedDelayMs < 0 || requestedDelayMs > 10000) {
+        sendJson(response, 400, { error: 'invalid_readiness_delay' });
+        return;
+      }
+      readinessDelayMs = requestedDelayMs;
+      sendJson(response, 200, { readinessDelayMs });
       return;
     }
     if (requestUrl.pathname === '/probe/db/boot') {

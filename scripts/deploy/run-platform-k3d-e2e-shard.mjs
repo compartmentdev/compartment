@@ -128,6 +128,7 @@ async function runShardSuites(suites, env, ownerEnvironmentPath, signal) {
       await runInterruptibleCommand(process.execPath, [lifecycleScript, 'configure'], env, signal);
     } else if (suite === 'system-user') {
       await runCliE2eSuite(env, 'test/system-user-flow.e2e.test.ts', signal);
+      await runCliE2eSuite(env, 'test/platform-k3d-readiness-availability.e2e.test.ts', signal);
     } else if (suite === 'system-update') {
       await runCliE2eSuite(env, 'test/platform-k3d-system-update.e2e.test.ts', signal);
     } else if (suite === 'ha') {

@@ -40,7 +40,7 @@ import {
   listManifestProjectionExports,
   serializeManifestOnTheWire,
 } from './kube-transport-audit.harness';
-import type { TransportAuditCase, WireDifference, WireObject } from './kube-transport-audit.test.types';
+import type { TransportAuditCase, WireDifference, WireObject, WireValue } from './kube-transport-audit.test.types';
 
 const infrastructureTimeoutMs: number = 600_000;
 const podCidr: string = ['10', '42', '0', '0/16'].join('.');
@@ -186,7 +186,54 @@ describe('Kubernetes manifest transport audit', (): void => {
       expect(losses).toEqual([]);
     });
   }
+
+  it('sends a readiness timeout that preserves loaded application availability', async (): Promise<void> => {
+    const observedLoadedReadinessLatencyMs: number = 2_802;
+    const deployment: KubeManifest = projectApplicationManifests(applicationRow(), infrastructureTimeoutMs).find(
+      (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
+    )!;
+    const serialized: WireObject = await serializeManifestOnTheWire(deployment);
+    const timeoutSeconds: number = readWireNumber(
+      readWireObject(
+        readWireArray(
+          readWireObject(readWireObject(readWireObject(serialized, 'spec'), 'template'), 'spec'),
+          'containers',
+        )[0],
+        'readinessProbe',
+      ),
+      'timeoutSeconds',
+    );
+
+    expect(timeoutSeconds * 1_000).toBeGreaterThan(observedLoadedReadinessLatencyMs);
+  });
 });
+
+function readWireObject(value: WireValue | undefined, key: string): WireObject {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`Expected Kubernetes wire object before reading ${key}.`);
+  }
+  const child: WireValue | undefined = value[key];
+  if (typeof child !== 'object' || child === null || Array.isArray(child)) {
+    throw new Error(`Expected Kubernetes wire object at ${key}.`);
+  }
+  return child;
+}
+
+function readWireArray(value: WireObject, key: string): WireValue[] {
+  const child: WireValue | undefined = value[key];
+  if (!Array.isArray(child)) {
+    throw new Error(`Expected Kubernetes wire array at ${key}.`);
+  }
+  return child;
+}
+
+function readWireNumber(value: WireObject, key: string): number {
+  const child: WireValue | undefined = value[key];
+  if (typeof child !== 'number') {
+    throw new Error(`Expected Kubernetes wire number at ${key}.`);
+  }
+  return child;
+}
 
 function applicationRow(): ApplicationProjectionRow {
   return {
