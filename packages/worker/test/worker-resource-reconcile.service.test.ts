@@ -1,4 +1,7 @@
-import type { WorkerClaimResourceReconcileResponse } from '@compartment/contracts';
+import {
+  resourceReconcileLeaseHeartbeatIntervalMs,
+  type WorkerClaimResourceReconcileResponse,
+} from '@compartment/contracts';
 import {
   kubeResourceVolumeName,
   KubeRuntime,
@@ -21,6 +24,7 @@ const dataClaimName: string = kubeResourceVolumeName('resource', 'data');
 const backupClaimName: string = kubeResourceVolumeName('resource', 'backup-artifacts');
 const resourceName: string = immutableKubeName('resource', 'resource');
 const secretName: string = immutableKubeName('secret', 'secret');
+const infrastructureTimeoutMs: number = 10 * 60_000;
 
 type TestObservedResource =
   | 'deployments'
@@ -64,7 +68,14 @@ async function executeResourceReconcile(
   claimed: WorkerClaimResourceReconcileResponse,
   scheduling?: KubeWorkloadScheduling,
 ): Promise<void> {
-  return await executeResourceReconcileWithKek(request, kubeRuntime, claimed, testTenantSecretsKek, scheduling);
+  return await executeResourceReconcileWithKek(
+    request,
+    kubeRuntime,
+    claimed,
+    testTenantSecretsKek,
+    infrastructureTimeoutMs,
+    scheduling,
+  );
 }
 
 const mocks: ResourceSdkMocks = vi.hoisted(
@@ -87,6 +98,7 @@ vi.mock(
 describe('worker resource reconcile lifecycle', (): void => {
   beforeEach((): void => {
     mocks.acknowledge.mockReset();
+    mocks.acknowledge.mockResolvedValue({});
     mocks.applyNetworkPolicy.mockReset();
     mocks.applyNetworkPolicy.mockResolvedValue(undefined);
   });
@@ -99,6 +111,33 @@ describe('worker resource reconcile lifecycle', (): void => {
       'UID changed',
     );
     expect(apply).not.toHaveBeenCalled();
+  });
+
+  it('does not roll back or acknowledge failure after losing the reconcile lease', async (): Promise<void> => {
+    vi.useFakeTimers();
+    try {
+      const observation: TestObservation = new TestObservation('uid-original', false, true, false);
+      observation.addClaim(backupClaimName, 'uid-backup', false);
+      const apply: Mock = vi.fn(
+        async (bundle: ApplyBundle): Promise<KubeManifest[]> =>
+          await Promise.resolve(withAppliedDeploymentIdentity(bundle.objects, 2)),
+      );
+      mocks.acknowledge
+        .mockResolvedValueOnce({})
+        .mockRejectedValueOnce(new Error('Resource reconcile lease is no longer current.'));
+      const execution: Promise<void> = executeResourceReconcile(requester(), runtime(apply, observation), claim(null));
+      const rejected: Promise<void> = expect(execution).rejects.toThrow('lease is no longer current');
+      await vi.waitFor((): void => {
+        expect(apply).toHaveBeenCalledTimes(2);
+      });
+
+      await vi.advanceTimersByTimeAsync(resourceReconcileLeaseHeartbeatIntervalMs);
+      await rejected;
+      expect(apply).toHaveBeenCalledTimes(2);
+      expect(mocks.acknowledge).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('completes bootstrap after WaitForFirstConsumer claims have stable UIDs but remain pending', async (): Promise<void> => {
@@ -156,17 +195,26 @@ describe('worker resource reconcile lifecycle', (): void => {
         expect(appliedDeployment).not.toBeNull();
       });
 
-      expect(appliedDeployment!.spec!.progressDeadlineSeconds).toBe(241);
+      expect(appliedDeployment!.spec!.progressDeadlineSeconds).toBe(
+        Math.ceil((infrastructureTimeoutMs * 2 + 1_000) / 1_000),
+      );
       expect(appliedDeployment!.spec!.template.spec.volumes).toEqual([
         { name: dataClaimName, persistentVolumeClaim: { claimName: dataClaimName } },
       ]);
       expect(appliedDeployment!.spec!.template.spec.containers[0]!.volumeMounts).toEqual([
         { mountPath: '/data', name: dataClaimName },
       ]);
-      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.advanceTimersByTimeAsync(8 * 60_000);
       expect(settled).toBe(false);
+      expect(mocks.acknowledge).toHaveBeenCalledTimes(1 + (8 * 60_000) / resourceReconcileLeaseHeartbeatIntervalMs);
+      expect(mocks.acknowledge).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ status: 'running' }),
+      );
 
       observation.bindClaim(dataClaimName);
+      await vi.advanceTimersByTimeAsync(3 * 60_000);
+      expect(settled).toBe(false);
       observation.addReadyDeployment(appliedDeployment!, 2);
       await execution;
 
@@ -177,6 +225,51 @@ describe('worker resource reconcile lifecycle', (): void => {
         expect.anything(),
         expect.objectContaining({ status: 'succeeded' }),
       );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('starts the declared readiness budget when the resource container enters Running', async (): Promise<void> => {
+    vi.useFakeTimers();
+    try {
+      const observation: TestObservation = new TestObservation('uid-original', false, true, false);
+      observation.addClaim(backupClaimName, 'uid-backup', false);
+      let appliedDeployment: KubeDeploymentManifest | null = null;
+      const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
+        const applied: KubeManifest[] = withAppliedDeploymentIdentity(bundle.objects, 2);
+        const deployment: KubeManifest | undefined = applied.find(
+          (object: KubeManifest): boolean => object.kind === 'Deployment' && object.spec?.replicas === 1,
+        );
+        if (deployment?.kind === 'Deployment') {
+          appliedDeployment = deployment;
+        }
+        return await Promise.resolve(applied);
+      });
+      const claimed: WorkerClaimResourceReconcileResponse = claim(null);
+      const execution: Promise<void> = executeResourceReconcile(requester(), runtime(apply, observation), {
+        ...claimed,
+        intent:
+          claimed.intent === null
+            ? null
+            : { ...claimed.intent, readiness: { port: 5432, timeoutMs: 60_000, type: 'tcp' } },
+      });
+      let settled: boolean = false;
+      void execution.finally((): void => {
+        settled = true;
+      });
+      await vi.waitFor((): void => {
+        expect(appliedDeployment).not.toBeNull();
+      });
+
+      await vi.advanceTimersByTimeAsync(3 * 60_000);
+      expect(settled).toBe(false);
+      observation.addRunningResourcePod(appliedDeployment!, new Date());
+      await vi.advanceTimersByTimeAsync(59_000);
+      expect(settled).toBe(false);
+
+      observation.addReadyDeployment(appliedDeployment!, 2);
+      await execution;
     } finally {
       vi.useRealTimers();
     }
@@ -366,44 +459,6 @@ describe('worker resource reconcile lifecycle', (): void => {
     await execution;
   });
 
-  it('uses the configured resource readiness deadline instead of the global reconcile timeout', async (): Promise<void> => {
-    vi.useFakeTimers();
-    try {
-      const observation: TestObservation = new TestObservation('uid-original', false, true, false);
-      observation.addClaim(backupClaimName, 'uid-backup', false);
-      const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
-        const deployment: KubeManifest | undefined = bundle.objects.find(
-          (object: KubeManifest): boolean => object.kind === 'Deployment',
-        );
-        if (deployment?.kind === 'Deployment' && deployment.spec?.replicas === 0) {
-          observation.removePods();
-          return await Promise.resolve(bundle.objects);
-        }
-        return await Promise.resolve(withAppliedDeploymentIdentity(bundle.objects, 2));
-      });
-      const claimed: WorkerClaimResourceReconcileResponse = claim(null);
-      const execution: Promise<void> = executeResourceReconcile(requester(), runtime(apply, observation), {
-        ...claimed,
-        intent:
-          claimed.intent === null
-            ? null
-            : { ...claimed.intent, readiness: { port: 5432, timeoutMs: 1_000, type: 'tcp' } },
-      });
-      await vi.waitFor((): void => {
-        expect(apply).toHaveBeenCalledTimes(2);
-      });
-      const timedOut: Promise<void> = expect(execution).rejects.toThrow(
-        'Timed out waiting for Kubernetes resource lifecycle evidence',
-      );
-
-      await vi.advanceTimersByTimeAsync(1_001);
-
-      await timedOut;
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it('fails immediately on progress-deadline evidence for the applied Deployment revision', async (): Promise<void> => {
     const observation: TestObservation = new TestObservation('uid-original', false, true, false);
     observation.addClaim(backupClaimName, 'uid-backup', false);
@@ -413,6 +468,7 @@ describe('worker resource reconcile lifecycle', (): void => {
         (object: KubeManifest): boolean => object.kind === 'Deployment',
       );
       if (deployment?.kind === 'Deployment' && deployment.spec?.replicas === 0) {
+        observation.removePods();
         return await Promise.resolve(bundle.objects);
       }
       const applied: KubeManifest[] = withAppliedDeploymentIdentity(bundle.objects, 2);
@@ -423,6 +479,10 @@ describe('worker resource reconcile lifecycle', (): void => {
     const execution: Promise<void> = executeResourceReconcile(requester(), runtime(apply, observation), claim(null));
     await vi.waitFor((): void => {
       expect(appliedDeployment).not.toBeNull();
+    });
+    observation.addRunningResourcePod(appliedDeployment!, new Date());
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 0);
     });
     observation.addFailedDeployment(appliedDeployment!, 2);
 
@@ -818,6 +878,28 @@ class TestObservation implements KubeObservation {
   public addPod(name: string): void {
     this.cache.set(`pods/ns/${name}`, { metadata: { name } } as KubeObservedManifest);
   }
+  public addRunningResourcePod(deployment: KubeManifest, startedAt: Date): void {
+    if (deployment.kind !== 'Deployment') {
+      throw new Error('Expected a Deployment manifest.');
+    }
+    const labels: Record<string, string> | undefined = deployment.spec?.template.metadata.labels;
+    const containerName: string | undefined = deployment.spec?.template.spec.containers[0]?.name;
+    if (labels === undefined || containerName === undefined) {
+      throw new Error('Expected resource Pod identity.');
+    }
+    const pod: KubeObservedManifest = {
+      apiVersion: 'v1',
+      kind: 'Pod',
+      metadata: { labels, name: 'resource-pod', namespace: 'cpt-project' },
+      status: {
+        containerStatuses: [{ name: containerName, state: { running: { startedAt: startedAt.toISOString() } } }],
+      },
+    };
+    this.cache.set('pods/ns/resource-pod', pod);
+    this.listeners.forEach((listener: TestKubeObservationListener): void => {
+      void listener({ object: pod, observedAt: new Date(), resource: 'pods', type: 'update' });
+    });
+  }
   public addReadyDeployment(deployment: KubeManifest, observedGeneration?: number, updatedReplicas: number = 1): void {
     if (deployment.kind !== 'Deployment') {
       throw new Error('Expected a Deployment manifest.');
@@ -836,6 +918,9 @@ class TestObservation implements KubeObservation {
         updatedReplicas,
       },
     };
+    if (deployment.spec?.replicas === 1) {
+      this.addRunningResourcePod(deployment, new Date());
+    }
     this.cache.set(`deployments/ns/${resourceName}`, observed);
     this.listeners.forEach((listener: TestKubeObservationListener): void => {
       void listener({ object: observed, observedAt: new Date(), resource: 'deployments', type: 'update' });

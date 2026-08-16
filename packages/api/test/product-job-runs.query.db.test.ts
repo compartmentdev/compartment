@@ -601,7 +601,7 @@ describe('product Job persistence', (): void => {
     await persistProductJobIntent({ identityId: 'op_first', intent: resourceOperationIntent('op_first') });
     await persistProductJobIntent({ identityId: 'op_waiting', intent: resourceOperationIntent('op_waiting') });
 
-    await expect(readProductJobQueueWaitState('resource-operation', 'op_waiting')).resolves.toMatchObject({
+    await expect(readProductJobQueueWaitState('resource-operation', 'op_waiting', 600_000)).resolves.toMatchObject({
       queueBudgetMs: 60_000,
     });
     await persistProductJobResult({
@@ -615,7 +615,7 @@ describe('product Job persistence', (): void => {
       status: 'succeeded',
     });
     await persistProductJobFinalized('resource-operation', 'op_first');
-    await expect(readProductJobQueueWaitState('resource-operation', 'op_waiting')).resolves.toMatchObject({
+    await expect(readProductJobQueueWaitState('resource-operation', 'op_waiting', 600_000)).resolves.toMatchObject({
       queueBudgetMs: 30_000,
     });
 
@@ -648,6 +648,7 @@ describe('product Job persistence', (): void => {
     const state: ProductJobQueueWaitState | null = await readProductJobQueueWaitState(
       'resource-operation',
       'job_waits_for_reconcile_budget',
+      600_000,
     );
     expect(state?.queueBudgetMs).toBeGreaterThan(30_000);
   });

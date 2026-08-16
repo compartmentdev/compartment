@@ -137,6 +137,9 @@ Application readiness time starts when the current candidate container first ent
 candidate container restarts. An unhealthy active candidate receives one recovery restart with a fresh application
 window; later reconciliations do not reset that window, and the single-recovery guard survives worker replacement.
 Failed rollout recovery reapplies the saved active manifest by SSA; it does not use `kubectl rollout undo`.
+Resource rollouts use the same operator-configured infrastructure deadline independently for mounted-volume
+provisioning and for reaching the resource container's first Running state. Their declared readiness budget starts at
+that container's observed `Running.startedAt`; unused operation-only claims do not consume either budget.
 
 Tenant node-pool scheduling is installation-owned and opt-in. When configured, application and resource Deployments
 plus product and provisioning Jobs project the tenant selector, tolerations, and `compartment-tenant` PriorityClass.

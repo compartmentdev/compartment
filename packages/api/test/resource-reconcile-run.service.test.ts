@@ -1,6 +1,7 @@
 import type { ResourceReconcileIntent } from '@compartment/contracts';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ProjectResourceRow } from '../src/queries/resources.query.types';
+import { resourceReconcileOperationWaitTimeoutMs } from '../src/queries/resource-reconcile-policy';
 import {
   requestResourceReconcile,
   waitForResourceClaimIdentities,
@@ -40,6 +41,9 @@ vi.mock('../src/queries/project-provisioning-policy', (): object => ({
   projectProvisioningAttemptLimit: 3,
   projectProvisioningLeaseDurationMs: 420_000,
   projectProvisioningRetryDelayMs: 10_000,
+}));
+vi.mock('../src/runtime/runtime-access', (): object => ({
+  getApiConfig: (): object => ({ deploymentInfrastructureTimeoutMs: 600_000 }),
 }));
 describe('resource reconcile run boundary', (): void => {
   beforeEach((): void => {
@@ -179,6 +183,29 @@ describe('resource reconcile run boundary', (): void => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('ends at the fixed configured lifecycle boundary when a running reconcile never settles', async (): Promise<void> => {
+    vi.useFakeTimers();
+    try {
+      readRunState.mockResolvedValue({ failureMessage: null, phase: 'running' });
+      const waiting: Promise<void> = waitForResourceReconcile('operation');
+      const rejected: Promise<void> = expect(waiting).rejects.toThrow(
+        'Timed out waiting for Kubernetes resource reconcile.',
+      );
+
+      await vi.advanceTimersByTimeAsync(resourceReconcileOperationWaitTimeoutMs('reconcile', 600_000) + 5_000);
+      await rejected;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('expands the fixed lifecycle boundary for a supported infrastructure timeout override', (): void => {
+    expect(
+      resourceReconcileOperationWaitTimeoutMs('reconcile', 900_000) -
+        resourceReconcileOperationWaitTimeoutMs('reconcile', 600_000),
+    ).toBe(1_200_000);
   });
 
   it('extends the wait boundary when a previously invisible predecessor commits', async (): Promise<void> => {

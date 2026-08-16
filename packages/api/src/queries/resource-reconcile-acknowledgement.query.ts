@@ -12,28 +12,29 @@ import type {
   ResourceReconcileRunLockRow,
 } from './resource-reconcile-runs.query.types';
 
-export async function acknowledgeResourceReconcileRun(input: AcknowledgeResourceReconcileRunInput): Promise<void> {
-  await getApiDatabase().transaction(
-    async (tx: ApiDatabaseTransaction): Promise<void> => await acknowledgeWithTransaction(tx, input),
+export async function acknowledgeResourceReconcileRun(input: AcknowledgeResourceReconcileRunInput): Promise<boolean> {
+  return await getApiDatabase().transaction(
+    async (tx: ApiDatabaseTransaction): Promise<boolean> => await acknowledgeWithTransaction(tx, input),
   );
 }
 
 async function acknowledgeWithTransaction(
   tx: ApiDatabaseTransaction,
   input: AcknowledgeResourceReconcileRunInput,
-): Promise<void> {
+): Promise<boolean> {
   const resourceId: string | undefined = await findAcknowledgementResourceId(tx, input);
   if (resourceId === undefined) {
-    return;
+    return false;
   }
   const project: ResourceReconcileProjectLockRow = await lockResourceReconcileProject(tx, resourceId);
   await lockProjectResourceForReconcile(tx, resourceId);
   const run: typeof resourceReconcileRuns.$inferSelect | undefined = await lockAcknowledgedRun(tx, input);
   if (run === undefined) {
-    return;
+    return false;
   }
   await persistResourceReconcileAcknowledgement(tx, input);
   await persistCompletedResourceState(tx, run, input, project.archivedAt !== null);
+  return true;
 }
 
 async function lockAcknowledgedRun(

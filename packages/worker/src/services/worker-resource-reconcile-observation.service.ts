@@ -16,7 +16,11 @@ import {
   type ResourceVolumeProjection,
 } from '@compartment/kube-runtime';
 import { readLiveResourceClaims, toObservedResourceClaim } from './worker-resource-claim-observation.service';
-import { findObservedManifest, waitUntil } from './worker-resource-reconcile-wait.service';
+import {
+  assertResourceReconcileActive,
+  findObservedManifest,
+  waitUntil,
+} from './worker-resource-reconcile-wait.service';
 
 interface ObservedRollbackManifestData {
   data?: Record<string, string> | undefined;
@@ -62,8 +66,12 @@ export async function readLiveClaims(
   return await readLiveResourceClaims(runtime, projectResourceBootstrapClaims(row));
 }
 
-export function projectManagedResourceManifests(row: ResourceProjectionRow, replicas: 0 | 1): KubeManifest[] {
-  return projectResourceManifests(row, resourceReconcileLifecycleTimeoutMs, replicas);
+export function projectManagedResourceManifests(
+  row: ResourceProjectionRow,
+  replicas: 0 | 1,
+  infrastructureTimeoutMs: number,
+): KubeManifest[] {
+  return projectResourceManifests(row, infrastructureTimeoutMs, replicas);
 }
 
 export function assertFinalClaimState(
@@ -87,6 +95,8 @@ export async function waitForMountedResourceClaims(
   expectedClaims: ResourceClaimIdentity[],
   row: ResourceProjectionRow,
   manifests: KubeManifest[],
+  infrastructureTimeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<void> {
   const mountedNames: Set<string> = mountedClaimNames(row);
   const startsWorkload: boolean = manifests.some(
@@ -106,7 +116,8 @@ export async function waitForMountedResourceClaims(
         ? true
         : null;
     },
-    resourceReconcileLifecycleTimeoutMs,
+    infrastructureTimeoutMs,
+    signal,
   );
 }
 
@@ -122,10 +133,15 @@ export async function scaleDownAndAwaitTermination(
   runtime: KubeRuntime,
   observation: KubeObservation,
   row: ResourceProjectionRow,
+  signal?: AbortSignal,
 ): Promise<void> {
-  await runtime.apply({ objects: projectManagedResourceManifests(row, 0) });
-  await waitUntil(observation, (): true | null =>
-    resourcePodsFullyTerminated(readResourcePods(observation)) ? true : null,
+  assertResourceReconcileActive(signal);
+  await runtime.apply({ objects: projectManagedResourceManifests(row, 0, resourceReconcileLifecycleTimeoutMs) });
+  await waitUntil(
+    observation,
+    (): true | null => (resourcePodsFullyTerminated(readResourcePods(observation)) ? true : null),
+    resourceReconcileLifecycleTimeoutMs,
+    signal,
   );
 }
 

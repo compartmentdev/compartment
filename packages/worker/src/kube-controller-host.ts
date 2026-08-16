@@ -114,16 +114,21 @@ class ResourceReconcileArea implements KubeControllerHost {
   public constructor(
     private readonly request: CompartmentRequester,
     private readonly runtime: KubeRuntime,
-    private readonly tenantSecretsKek: TenantSecretsKeyring,
-    private readonly scheduling: KubeWorkloadScheduling | undefined,
-    private readonly workerImage: string,
+    private readonly config: WorkerConfig,
   ) {}
 
   public async reconcile(): Promise<boolean> {
     const claimed: WorkerClaimResourceReconcileResponse = await claimResourceReconcile(this.request);
     let reconciled: boolean = false;
     if (claimed.intent !== null) {
-      await executeResourceReconcile(this.request, this.runtime, claimed, this.tenantSecretsKek, this.scheduling);
+      await executeResourceReconcile(
+        this.request,
+        this.runtime,
+        claimed,
+        this.config.tenantSecretsKek,
+        this.config.deploymentInfrastructureTimeoutMs,
+        this.config.tenantScheduling,
+      );
       reconciled = true;
     }
     return (
@@ -131,9 +136,9 @@ class ResourceReconcileArea implements KubeControllerHost {
         this.request,
         this.runtime,
         'resource-operation',
-        this.tenantSecretsKek,
-        this.workerImage,
-        this.scheduling,
+        this.config.tenantSecretsKek,
+        this.config.workerImage,
+        this.config.tenantScheduling,
       )) || reconciled
     );
   }
@@ -194,7 +199,7 @@ export function createKubeControllerHosts(
       config.tenantScheduling,
       config.workerImage,
     ),
-    new ResourceReconcileArea(request, runtime, config.tenantSecretsKek, config.tenantScheduling, config.workerImage),
+    new ResourceReconcileArea(request, runtime, config),
     new CustomDomainReconcileArea(request, runtime, config.customDomains),
     createOrganizationQuotaControllerHost(request, runtime, config.organizationQuota),
   ];

@@ -97,7 +97,9 @@ Resource fields:
   connected to it. `readiness.timeoutMs` is the budget for that wait, per resource. A command that exhausts it fails
   naming the resource it could not reach, and never waits longer than the command itself has left to run. A service
   instance that exhausts it never starts serving, and the deploy then fails on its usual deploy timeout. A resource
-  you stopped is not expected to answer, so nothing waits on it.
+  you stopped is not expected to answer, so nothing waits on it. When Compartment starts a resource, this readiness
+  budget begins when the resource container enters `Running`; node scheduling and mounted-volume provisioning use a
+  separate platform infrastructure budget.
 - `operations`: optional `backup` and `restore` commands, backup schedule, and backup retention.
 
 Use the generated schema reference for the exact current contract.
