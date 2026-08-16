@@ -3,7 +3,6 @@ import {
   assertResourceClaimOwnership,
   kubeNamespaceName,
   projectResourceBootstrapClaims,
-  projectResourceManifests,
   type KubeManifest,
   type KubeObservation,
   type KubeRuntime,
@@ -16,9 +15,11 @@ import {
   assertFinalClaimState,
   readCreatedClaims,
   readLiveClaims,
+  projectManagedResourceManifests,
   readResourcePods,
   readRollbackManifest,
   scaleDownAndAwaitTermination,
+  waitForMountedResourceClaims,
 } from './worker-resource-reconcile-observation.service';
 import { waitForFreshResourceDeployment, waitUntil } from './worker-resource-reconcile-wait.service';
 import { executeManagedDelete } from './worker-resource-delete.service';
@@ -109,23 +110,16 @@ async function executeManagedUpdate(
   );
   try {
     await applyManagedResourceState(runtime, observation, claimed.expectedClaims, row, plan.desired);
-    await acknowledgeManagedUpdateSuccess(request, plan);
+    await acknowledgeResourceReconcile(request, {
+      leaseId: plan.leaseId,
+      operationId: plan.operationId,
+      status: 'succeeded',
+    });
   } catch (error) {
     const failure: object | null = typeof error === 'object' ? error : null;
     await recoverClaimedUpdate(request, runtime, observation, claimed, row, plan, failure);
     throw error;
   }
-}
-
-async function acknowledgeManagedUpdateSuccess(
-  request: CompartmentRequester,
-  plan: ManagedResourceUpdatePlan,
-): Promise<void> {
-  await acknowledgeResourceReconcile(request, {
-    leaseId: plan.leaseId,
-    operationId: plan.operationId,
-    status: 'succeeded',
-  });
 }
 
 async function prepareManagedUpdateOrAcknowledgeFailure(
@@ -169,7 +163,7 @@ async function prepareManagedUpdate(
   row: ResourceProjectionRow,
 ): Promise<ManagedResourceUpdatePlan> {
   assertResourceClaimOwnership(claimed.expectedClaims, await readLiveClaims(runtime, row));
-  const desired: KubeManifest[] = projectResourceManifests(row, row.replicas);
+  const desired: KubeManifest[] = projectManagedResourceManifests(row, row.replicas);
   const hasLivePods: boolean = readResourcePods(observation).length > 0;
   const plan: ManagedResourceUpdatePlan = {
     desired,
@@ -235,6 +229,7 @@ async function applyManagedResourceState(
   await scaleDownAndAwaitTermination(runtime, observation, row);
   assertResourceClaimOwnership(expectedClaims, await readLiveClaims(runtime, row));
   const applied: KubeManifest[] = await runtime.apply({ objects: manifests });
+  await waitForMountedResourceClaims(observation, expectedClaims, row, applied);
   await waitForFreshResourceDeployment(observation, applied);
   assertFinalClaimState(expectedClaims, await readLiveClaims(runtime, row), row);
 }
