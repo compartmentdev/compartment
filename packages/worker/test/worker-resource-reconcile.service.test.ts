@@ -19,6 +19,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { readCreatedClaims } from '../src/services/worker-resource-reconcile-observation.service';
 import { executeResourceReconcile as executeResourceReconcileWithKek } from '../src/services/worker-resource-reconcile.service';
 import { testTenantSecretsKek } from './tenant-secret-test.fixtures';
+import { resourceReconcileRequestError } from './resource-reconcile-request-error.fixture';
 
 const dataClaimName: string = kubeResourceVolumeName('resource', 'data');
 const backupClaimName: string = kubeResourceVolumeName('resource', 'backup-artifacts');
@@ -122,9 +123,7 @@ describe('worker resource reconcile lifecycle', (): void => {
         async (bundle: ApplyBundle): Promise<KubeManifest[]> =>
           await Promise.resolve(withAppliedDeploymentIdentity(bundle.objects, 2)),
       );
-      mocks.acknowledge
-        .mockResolvedValueOnce({})
-        .mockRejectedValueOnce(new Error('Resource reconcile lease is no longer current.'));
+      mocks.acknowledge.mockResolvedValueOnce({}).mockRejectedValueOnce(resourceReconcileRequestError(409));
       const execution: Promise<void> = executeResourceReconcile(requester(), runtime(apply, observation), claim(null));
       const rejected: Promise<void> = expect(execution).rejects.toThrow('lease is no longer current');
       await vi.waitFor((): void => {
@@ -206,7 +205,9 @@ describe('worker resource reconcile lifecycle', (): void => {
       ]);
       await vi.advanceTimersByTimeAsync(8 * 60_000);
       expect(settled).toBe(false);
-      expect(mocks.acknowledge).toHaveBeenCalledTimes(1 + (8 * 60_000) / resourceReconcileLeaseHeartbeatIntervalMs);
+      expect(mocks.acknowledge).toHaveBeenCalledTimes(
+        1 + Math.floor((8 * 60_000) / resourceReconcileLeaseHeartbeatIntervalMs),
+      );
       expect(mocks.acknowledge).toHaveBeenLastCalledWith(
         expect.anything(),
         expect.objectContaining({ status: 'running' }),

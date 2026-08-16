@@ -2,7 +2,12 @@ import {
   resourceReconcileLeaseHeartbeatIntervalMs,
   type WorkerAcknowledgeResourceReconcileRequest,
 } from '@compartment/contracts';
-import { acknowledgeResourceReconcile, type CompartmentRequester } from '@compartment/sdk';
+import {
+  acknowledgeResourceReconcile,
+  isCompartmentRequestError,
+  isRetryableRequestError,
+  type CompartmentRequester,
+} from '@compartment/sdk';
 import type { ResourceReconcileWork } from './worker-resource-reconcile.service.types';
 
 class ResourceReconcileLeaseError extends Error {
@@ -11,6 +16,9 @@ class ResourceReconcileLeaseError extends Error {
     this.name = 'ResourceReconcileLeaseError';
   }
 }
+
+const resourceReconcileHeartbeatAttemptLimit: number = 3;
+const resourceReconcileHeartbeatRetryDelayMs: number = 1_000;
 
 export function rethrowResourceReconcileLeaseError(error: object | null): void {
   if (error instanceof ResourceReconcileLeaseError) {
@@ -25,11 +33,11 @@ export async function acknowledgeCurrentResourceReconcile(
   try {
     await acknowledgeResourceReconcile(request, input);
   } catch (error) {
-    if (error instanceof ResourceReconcileLeaseError) {
-      throw error;
+    const failure: Error = error instanceof Error ? error : new Error('Resource reconcile acknowledgement failed.');
+    if (isCompartmentRequestError(failure) && failure.statusCode === 409) {
+      throw new ResourceReconcileLeaseError('Resource reconcile lease is no longer current.');
     }
-    const detail: string = error instanceof Error ? `: ${error.message}` : '';
-    throw new ResourceReconcileLeaseError(`Resource reconcile lease could not be renewed${detail}`);
+    throw failure;
   }
 }
 
@@ -72,19 +80,61 @@ async function maintainResourceReconcileLease(
 ): Promise<Error | null> {
   while (await waitForHeartbeat(controller.signal)) {
     try {
-      await acknowledgeCurrentResourceReconcile(request, {
-        leaseId,
-        operationId,
-        status: 'running',
-      });
+      await renewResourceReconcileLease(request, leaseId, operationId, controller.signal);
     } catch (error) {
-      const failure: Error =
-        error instanceof Error ? error : new ResourceReconcileLeaseError('Resource reconcile lease renewal failed.');
-      controller.abort(failure);
-      return failure;
+      if (controller.signal.aborted) {
+        return null;
+      }
+      const failure: Error = error instanceof Error ? error : new Error('Resource reconcile lease renewal failed.');
+      const leaseFailure: ResourceReconcileLeaseError =
+        failure instanceof ResourceReconcileLeaseError
+          ? failure
+          : new ResourceReconcileLeaseError(
+              `Resource reconcile lease could not be renewed after ${resourceReconcileHeartbeatAttemptLimit} attempts: ${failure.message}`,
+            );
+      controller.abort(leaseFailure);
+      return leaseFailure;
     }
   }
   return null;
+}
+
+async function renewResourceReconcileLease(
+  request: CompartmentRequester,
+  leaseId: string,
+  operationId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  for (let attempt: number = 1; attempt <= resourceReconcileHeartbeatAttemptLimit; attempt += 1) {
+    try {
+      await acknowledgeCurrentResourceReconcile(request, { leaseId, operationId, status: 'running' });
+      return;
+    } catch (error) {
+      const failure: Error = error instanceof Error ? error : new Error('Resource reconcile lease renewal failed.');
+      if (
+        failure instanceof ResourceReconcileLeaseError ||
+        attempt === resourceReconcileHeartbeatAttemptLimit ||
+        !isRetryableRequestError(failure)
+      ) {
+        throw failure;
+      }
+      await waitForHeartbeatRetry(signal);
+    }
+  }
+}
+
+async function waitForHeartbeatRetry(signal: AbortSignal): Promise<void> {
+  await new Promise<void>((resolve: () => void, reject: (error: Error) => void): void => {
+    const abort: () => void = (): void => {
+      clearTimeout(timer);
+      reject(signal.reason instanceof Error ? signal.reason : new Error('Resource reconcile heartbeat was aborted.'));
+    };
+    const timer: NodeJS.Timeout = setTimeout((): void => {
+      signal.removeEventListener('abort', abort);
+      resolve();
+    }, resourceReconcileHeartbeatRetryDelayMs);
+    signal.addEventListener('abort', abort, { once: true });
+  });
 }
 
 async function waitForHeartbeat(signal: AbortSignal): Promise<boolean> {
