@@ -203,7 +203,17 @@ const execFileAsync = promisify(execFile);
 const port = Number.parseInt(process.env.PORT ?? '3000', 10);
 const listeningLogText = '${selfHostedUserSetupAppListeningLogText}';
 const buildMessageFileUrl = new URL('./build-message.txt', import.meta.url);
-let readinessDelayMs = Number.parseInt(process.env.READINESS_DELAY_MS ?? '0', 10);
+
+function parseReadinessDelay(value) {
+  const parsedValue = Number(value);
+  return Number.isInteger(parsedValue) && parsedValue >= 0 && parsedValue <= 10000 ? parsedValue : undefined;
+}
+
+const configuredReadinessDelayMs = parseReadinessDelay(process.env.READINESS_DELAY_MS ?? '0');
+if (configuredReadinessDelayMs === undefined) {
+  throw new Error('READINESS_DELAY_MS must be an integer between 0 and 10000.');
+}
+let readinessDelayMs = configuredReadinessDelayMs;
 
 // One connection attempt at boot, with no retry of its own. Without the platform reachability gate the CNI
 // refuses this first packet, so a green result here is evidence the gate ran before this process did.
@@ -236,8 +246,8 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (request.method === 'POST' && requestUrl.pathname === '/probe/readiness-delay') {
-      const requestedDelayMs = Number.parseInt(requestUrl.searchParams.get('ms') ?? '', 10);
-      if (!Number.isInteger(requestedDelayMs) || requestedDelayMs < 0 || requestedDelayMs > 10000) {
+      const requestedDelayMs = parseReadinessDelay(requestUrl.searchParams.get('ms') ?? '');
+      if (requestedDelayMs === undefined) {
         sendJson(response, 400, { error: 'invalid_readiness_delay' });
         return;
       }
