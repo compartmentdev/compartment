@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.11.0](https://github.com/compartmentdev/compartment/compare/v0.10.8...v0.11.0) (2026-08-17)
+
+
+### Features
+
+* **api:** let the CLI sign up an account and claim it with a real email ([#337](https://github.com/compartmentdev/compartment/issues/337)) ([6a00666](https://github.com/compartmentdev/compartment/commit/6a00666e40944d09a8f1f2f30c5cf83ae2cf13c7))
+* **api:** make new projects private by default ([#345](https://github.com/compartmentdev/compartment/issues/345)) ([d1735c4](https://github.com/compartmentdev/compartment/commit/d1735c4b42ff4ffafecdbccb5343c04693d4ed08))
+* **cli:** add managed cloud URL fallback ([#344](https://github.com/compartmentdev/compartment/issues/344)) ([b0a809e](https://github.com/compartmentdev/compartment/commit/b0a809ebefaea4098900ca6a3abd656da83ef367))
+* **cli:** support operator domain issuers ([#350](https://github.com/compartmentdev/compartment/issues/350)) ([01b294d](https://github.com/compartmentdev/compartment/commit/01b294ddfcb6512ecb3a58ba83362b4c3960edac))
+* **cli:** use Compartment Cloud by default ([#369](https://github.com/compartmentdev/compartment/issues/369)) ([eab5a9a](https://github.com/compartmentdev/compartment/commit/eab5a9a9c595dde5b41ff0a85afdaccf2b13c4d7))
+* **kube-runtime:** configure tenant resource quotas ([#347](https://github.com/compartmentdev/compartment/issues/347)) ([747015a](https://github.com/compartmentdev/compartment/commit/747015aa49fc2e20c17eae7e47cc469329d264ee))
+* **kube-runtime:** enforce organization resource quotas ([#318](https://github.com/compartmentdev/compartment/issues/318)) ([4955a51](https://github.com/compartmentdev/compartment/commit/4955a5147794b19d20ba9c818219dfc53db662a7))
+* **worker:** add organization-fair parallel build queue ([#316](https://github.com/compartmentdev/compartment/issues/316)) ([37a8a9e](https://github.com/compartmentdev/compartment/commit/37a8a9e87fbbfb10f1ba198d9582325aa70fac42))
+* **worker:** cache Docker Hub base image pulls ([#354](https://github.com/compartmentdev/compartment/issues/354)) ([48c4b24](https://github.com/compartmentdev/compartment/commit/48c4b24246c21a96adeaf40211cbe1d8393a395e))
+
+
+### Bug Fixes
+
+* **api:** bound product log retention per app ([#314](https://github.com/compartmentdev/compartment/issues/314)) ([98f3bcd](https://github.com/compartmentdev/compartment/commit/98f3bcd6c1dd20d148774cb79af5edfb18d27363))
+* **api:** decide Kubernetes Job submission under the resource claim locks ([#328](https://github.com/compartmentdev/compartment/issues/328)) ([9ac8107](https://github.com/compartmentdev/compartment/commit/9ac8107b41bbfc7d08285260d6c7301ec8a02bb2))
+* **api:** fence resource reconciles on Kubernetes Job submission ([#327](https://github.com/compartmentdev/compartment/issues/327)) ([88c4265](https://github.com/compartmentdev/compartment/commit/88c42655fa5c9a9cc448fb529bfabac1f3a0ae66))
+* **api:** judge reconcile claim leases on the Postgres clock ([#320](https://github.com/compartmentdev/compartment/issues/320)) ([abf9e97](https://github.com/compartmentdev/compartment/commit/abf9e9706ea49c3c2de0d11add4607c81eadfb8a))
+* **api:** keep active routes during redeploy ([#358](https://github.com/compartmentdev/compartment/issues/358)) ([33d312a](https://github.com/compartmentdev/compartment/commit/33d312a89320aac189f3844078ed4828f8f055a2))
+* **api:** keep unchanged resources available during redeploy ([#359](https://github.com/compartmentdev/compartment/issues/359)) ([4a5ad28](https://github.com/compartmentdev/compartment/commit/4a5ad28fba53fcf9a02374ee2e12cbf2294321f7))
+* **api:** make CLI signup safe to retry ([#342](https://github.com/compartmentdev/compartment/issues/342)) ([545defe](https://github.com/compartmentdev/compartment/commit/545defe223567dfb65070362758ba584310415b5))
+* **api:** make signup sessions deploy-ready ([#343](https://github.com/compartmentdev/compartment/issues/343)) ([f7e4754](https://github.com/compartmentdev/compartment/commit/f7e475440eb960460ad1efb47c16816ea0595233))
+* **api:** make the persisted port aggregate the only network policy port source ([#324](https://github.com/compartmentdev/compartment/issues/324)) ([6f8356b](https://github.com/compartmentdev/compartment/commit/6f8356b87af296ab4685f6bb6511449b24ea662a))
+* **api:** prevent workload usage metering deadlocks ([#362](https://github.com/compartmentdev/compartment/issues/362)) ([b376f12](https://github.com/compartmentdev/compartment/commit/b376f120bc86696d1883feb7d14ba00363ec84b9))
+* **api:** repair queued deployments before project deletion ([#361](https://github.com/compartmentdev/compartment/issues/361)) ([ce7270d](https://github.com/compartmentdev/compartment/commit/ce7270d1257bd9849a8ab794e4e22c469cfef924))
+* **api:** scope git provider registrations and operations by organization ([#315](https://github.com/compartmentdev/compartment/issues/315)) ([98acf45](https://github.com/compartmentdev/compartment/commit/98acf45898047c87e0bf1bc1369703abc692896f))
+* **api:** stop queued deployments when archiving projects ([#360](https://github.com/compartmentdev/compartment/issues/360)) ([1dd53f0](https://github.com/compartmentdev/compartment/commit/1dd53f04be16570c7788e3cb94e667fc6d41ec1d))
+* **cli:** adopt current chart defaults when upgrading a release ([#335](https://github.com/compartmentdev/compartment/issues/335)) ([545785d](https://github.com/compartmentdev/compartment/commit/545785d21826a8462b0f589ef0f0647f7848a065))
+* **cli:** enforce honest platform memory capacity ([#353](https://github.com/compartmentdev/compartment/issues/353)) ([f4aefa0](https://github.com/compartmentdev/compartment/commit/f4aefa03e79adc6af215b92a2d013c1aea2dd088))
+* **cli:** enforce honest tenant capacity ([#352](https://github.com/compartmentdev/compartment/issues/352)) ([54312a1](https://github.com/compartmentdev/compartment/commit/54312a14b879460a2b24ac16bb12b597930e17a8))
+* **cli:** verify Capsule with new bundle format ([#346](https://github.com/compartmentdev/compartment/issues/346)) ([4006e63](https://github.com/compartmentdev/compartment/commit/4006e63e3ecc219fc73cc510ed8cecf73de253ae))
+* **kube-runtime:** wait for declared resources from inside the tenant Pod ([#334](https://github.com/compartmentdev/compartment/issues/334)) ([af8d951](https://github.com/compartmentdev/compartment/commit/af8d951c671ad1328e051e56313c5544373f0502))
+* **release:** raise Capsule controller memory default ([#364](https://github.com/compartmentdev/compartment/issues/364)) ([81b642c](https://github.com/compartmentdev/compartment/commit/81b642c6bcf59df4effe024bc3012af0d6989640))
+* **release:** restore registry auth memory ([#363](https://github.com/compartmentdev/compartment/issues/363)) ([f619876](https://github.com/compartmentdev/compartment/commit/f619876a736b1d6e42b58eb9f27b42ca1aaedbc4))
+* **root-config:** gate the configuration production actually ships ([#336](https://github.com/compartmentdev/compartment/issues/336)) ([e476071](https://github.com/compartmentdev/compartment/commit/e476071f2aa77472693d790595909b9a14b856d2))
+* **root-config:** repair the chart schema and revert an unverified guard change ([#340](https://github.com/compartmentdev/compartment/issues/340)) ([68b7e38](https://github.com/compartmentdev/compartment/commit/68b7e383c378d45bfa3e1fee168bc3dfae6401db))
+* **sdk:** retry source archive fetch failures ([#357](https://github.com/compartmentdev/compartment/issues/357)) ([0e49b09](https://github.com/compartmentdev/compartment/commit/0e49b091e2f1a33238b2ff3d11db48664b8849be))
+* **worker:** admit Caddy instead of Edge into tenant application Pods ([#312](https://github.com/compartmentdev/compartment/issues/312)) ([aed96bf](https://github.com/compartmentdev/compartment/commit/aed96bfd6c9680054064da2c5a8c90cfce3c1cc7))
+* **worker:** admit product Jobs only when their resources accept connections ([#325](https://github.com/compartmentdev/compartment/issues/325)) ([4a5b847](https://github.com/compartmentdev/compartment/commit/4a5b847f3c51719c0767e0ec34a52cfd38550f9f))
+* **worker:** clean up timed-out rollout resources ([#349](https://github.com/compartmentdev/compartment/issues/349)) ([96dfc3b](https://github.com/compartmentdev/compartment/commit/96dfc3b12c08b1e73a095dee0c73769a763b5c9a))
+* **worker:** converge build source fetches ([#367](https://github.com/compartmentdev/compartment/issues/367)) ([e726726](https://github.com/compartmentdev/compartment/commit/e726726db373f5c6ca8324bc976175f53f551dfd))
+* **worker:** fund the gVisor build workspace from the build Pod memory limit ([#323](https://github.com/compartmentdev/compartment/issues/323)) ([dc05d32](https://github.com/compartmentdev/compartment/commit/dc05d320932de954b03d872783035e4c173a6472))
+* **worker:** preserve resource cold-start budgets ([#366](https://github.com/compartmentdev/compartment/issues/366)) ([e3a6720](https://github.com/compartmentdev/compartment/commit/e3a6720c6c9f02ce15fcd930711e3d8a86749678))
+* **worker:** schedule build Jobs at tenant priority ([#313](https://github.com/compartmentdev/compartment/issues/313)) ([58d06cc](https://github.com/compartmentdev/compartment/commit/58d06cc8c856b93ca651d76b2764434b14487c0b))
+* **worker:** scope build Job credentials to a single artifact ([#329](https://github.com/compartmentdev/compartment/issues/329)) ([f3b23b5](https://github.com/compartmentdev/compartment/commit/f3b23b5e928483213d1b8decd2c7bff7f558dc31))
+* **worker:** separate resource storage and readiness deadlines ([#365](https://github.com/compartmentdev/compartment/issues/365)) ([1673a53](https://github.com/compartmentdev/compartment/commit/1673a53df2a6c24a7ab239eadc2afe7a70f2af67))
+
+
+### Performance Improvements
+
+* **root-config:** consolidate post-build CI gates ([#355](https://github.com/compartmentdev/compartment/issues/355)) ([e1274c7](https://github.com/compartmentdev/compartment/commit/e1274c7da6a366ae5036b2b7851d797a8e2a10ea))
+
 ## [0.10.8](https://github.com/compartmentdev/compartment/compare/v0.10.7...v0.10.8) (2026-08-07)
 
 
