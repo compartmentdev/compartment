@@ -767,7 +767,10 @@
       "properties": {
         "enabled": { "type": "boolean" },
         "namespace": { "type": "string", "minLength": 1 },
-        "dataSizeLimit": { "$ref": "#/definitions/kubernetesQuantity" },
+        "dataSizeLimit": {
+          "type": "string",
+          "pattern": "^([1-9][0-9]{0,2}|[1-7][0-9]{3}|80[0-9]{2}|81[0-8][0-9]|819[01])(Mi|Gi|Ti)$"
+        },
         "gcKeepStorageMb": { "type": "integer", "minimum": 1 },
         "maximumConcurrentBuilds": { "type": "integer", "minimum": 1 },
         "maximumConcurrentBuildsPerOrganization": { "type": "integer", "minimum": 1 },

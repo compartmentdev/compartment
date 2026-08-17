@@ -7,11 +7,11 @@ import { parseKubernetesQuantity } from './kubernetes-quantity';
  * `dev.gvisor.spec.mount.<name>.type=tmpfs` hints, so the whole workspace is charged to the build
  * Pod memory cgroup alongside the BuildKit, runner, and Sentry process memory. A build that
  * exhausted that cgroup was killed with `oom_memcg` naming the Pod slice, not either container.
- * The Sentry never reads the Kubernetes `sizeLimit`, and kubelet cannot measure a mount it does not
- * own, so the Pod memory limit is the only bound that exists. These sizes therefore state what the
- * Pod memory limit must fund, and the installed limits must cover them plus the processes writing
- * into them. The shipped chart defaults sit exactly on that line: 3072Mi of workspace and 1024Mi of
- * process memory against a 4096Mi Pod memory limit.
+ * Kubernetes cannot enforce `emptyDir.sizeLimit` on a mount owned by Sentry, so the Job projection
+ * passes the same limits through gVisor's tmpfs `size=` option. That produces synchronous ENOSPC at
+ * the declared boundary, while the Pod memory limit must still fund the whole workspace plus the
+ * processes writing into it. The shipped chart defaults sit exactly on that line: 5120Mi of
+ * workspace and 1024Mi of process memory against a 6144Mi Pod memory limit.
  */
 const buildkitRunSizeLimit: string = '128Mi';
 const buildkitTmpSizeLimit: string = '512Mi';

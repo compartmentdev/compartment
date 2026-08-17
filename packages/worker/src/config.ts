@@ -3,10 +3,11 @@ import {
   buildInternalHttpUrl,
   parseOptionalTrustedOutboundHostList,
 } from '@compartment/utils';
-import type {
-  KubeDataWorkloadScheduling,
-  KubeLeaderElectionConfig,
-  KubeWorkloadScheduling,
+import {
+  normalizeGvisorTmpfsSizeLimit,
+  type KubeDataWorkloadScheduling,
+  type KubeLeaderElectionConfig,
+  type KubeWorkloadScheduling,
 } from '@compartment/kube-runtime';
 import { z } from 'zod';
 import type { WorkerArtifactRegistryConfig } from './worker-artifact-registry.types';
@@ -188,10 +189,11 @@ function buildWorkerBuildConfig(parsed: WorkerBuildConfigEnvironment): WorkerBui
 
 function readMemoryQuantity(value: string, name: string): string {
   try {
+    normalizeGvisorTmpfsSizeLimit(value);
     parseKubernetesQuantity(value, 'memory');
     return value;
   } catch {
-    throw new Error(`${name} must be a valid Kubernetes memory quantity.`);
+    throw new Error(`${name} must be 1-8191 whole Mi, Gi, or Ti.`);
   }
 }
 
