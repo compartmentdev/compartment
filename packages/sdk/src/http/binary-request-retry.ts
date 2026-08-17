@@ -8,19 +8,19 @@ import {
 } from './request-error';
 import type { CompartmentBinaryRequestExecution, CompartmentRequestMethod } from './request.types';
 
-const binaryGetMaxAttempts: number = 4;
 const binaryGetRetryBaseMs: number = 250;
 const binaryGetRetryCapMs: number = 2_000;
 
 export async function executeCompartmentBinaryRequest({
   execute,
+  maximumAttempts,
   method,
   path,
   url,
 }: CompartmentBinaryRequestExecution): Promise<Buffer> {
-  const maximumAttempts: number = method === 'GET' ? binaryGetMaxAttempts : 1;
+  const requestMaximumAttempts: number = method === 'GET' ? maximumAttempts : 1;
 
-  for (let attempt: number = 1; attempt <= maximumAttempts; attempt += 1) {
+  for (let attempt: number = 1; attempt <= requestMaximumAttempts; attempt += 1) {
     try {
       return await execute();
     } catch (error) {
@@ -28,8 +28,8 @@ export async function executeCompartmentBinaryRequest({
       if (method !== 'GET') {
         throw failure;
       }
-      if (attempt === maximumAttempts || !isRetryableRequestError(failure)) {
-        throw createBinaryRequestFailure(failure, method, path, url, attempt, maximumAttempts);
+      if (attempt === requestMaximumAttempts || !isRetryableRequestError(failure)) {
+        throw createBinaryRequestFailure(failure, method, path, url, attempt, requestMaximumAttempts);
       }
       await waitForAbortOrTimeout(readBinaryGetRetryDelayMs(attempt));
     }

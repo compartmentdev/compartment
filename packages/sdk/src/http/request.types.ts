@@ -21,9 +21,14 @@ export interface CompartmentBinaryRequestOptions {
 
 export interface CompartmentBinaryRequestExecution {
   execute: () => Promise<Buffer>;
+  maximumAttempts: number;
   method: CompartmentRequestMethod;
   path: string;
   url: string;
+}
+
+export interface CompartmentBinaryRequestRetryOptions {
+  maximumAttempts: number;
 }
 
 export interface CompartmentRawRequestOptions<TResult> {

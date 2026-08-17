@@ -224,6 +224,87 @@ describe('runWorkerBuildJob', (): void => {
     );
     expect(finalize).toHaveBeenCalledOnce();
   });
+
+  it('streams and preserves source-fetch retry diagnostics separately from BuildKit output', async (): Promise<void> => {
+    const finalize: Mock<() => Promise<void>> = vi.fn(async (): Promise<void> => await Promise.resolve());
+    const retryMessage: string =
+      'Source archive fetch /internal/artifacts/artifact_123/source-archive attempt 1/96 failed: ' +
+      'connection refused; nested cause: TypeError; code: ECONNREFUSED; retrying in 250ms.';
+    const retryRecord: string = JSON.stringify({
+      progress: { message: retryMessage, stream: 'stderr' },
+      type: 'progress',
+    });
+    const runJob: Mock<
+      (spec: KubeJobSpec, persisted: undefined, options: KubeRunJobOptions) => Promise<KubeJobResult>
+    > = vi.fn(async (_spec: KubeJobSpec, _persisted: undefined, options: KubeRunJobOptions): Promise<KubeJobResult> => {
+      await options.onLogChunk?.(`${retryRecord}\n`);
+      return await Promise.resolve({
+        completedAt: new Date(),
+        exitCode: 1,
+        finalize,
+        jobName: 'job-art-123',
+        logs: `${retryRecord}\n${JSON.stringify({ message: 'source fetch failed', type: 'failure' })}\n`,
+        podName: 'job-art-123-pod',
+        status: 'failed',
+      });
+    });
+    const reporter: Mock = vi.fn();
+
+    await expect(runWorkerBuildJob({ runJob }, createWorkerTestConfig(), buildInput(reporter))).rejects.toThrow(
+      'Sandboxed build Job job-art-123 failed: source fetch failed\n' +
+        'Source archive fetch diagnostics:\n' +
+        'Source archive fetch /internal/artifacts/artifact_123/source-archive attempt 1/96 failed: ' +
+        'connection refused; nested cause: TypeError; code: ECONNREFUSED; retrying in 250ms.',
+    );
+    expect(reporter).toHaveBeenCalledWith({
+      message:
+        'Source archive fetch /internal/artifacts/artifact_123/source-archive attempt 1/96 failed: ' +
+        'connection refused; nested cause: TypeError; code: ECONNREFUSED; retrying in 250ms.',
+      stream: 'stderr',
+    });
+    expect(finalize).toHaveBeenCalledOnce();
+  });
+
+  it('publishes captured progress that was missed after a streamed source-fetch retry', async (): Promise<void> => {
+    const retryMessage: string =
+      'Source archive fetch /internal/artifacts/artifact_123/source-archive attempt 1/96 failed: ' +
+      'connection refused; nested cause: TypeError; code: ECONNREFUSED; retrying in 250ms.';
+    const retryRecord: string = JSON.stringify({
+      progress: { message: retryMessage, stream: 'stderr' },
+      type: 'progress',
+    });
+    const buildRecord: string = JSON.stringify({
+      progress: { message: '#1 building', stream: 'stdout' },
+      type: 'progress',
+    });
+    const resultRecord: string = JSON.stringify({
+      result: { imageRef: `registry.example/web@sha256:${'a'.repeat(64)}`, pushed: true },
+      type: 'result',
+    });
+    const runJob: Mock<
+      (spec: KubeJobSpec, persisted: undefined, options: KubeRunJobOptions) => Promise<KubeJobResult>
+    > = vi.fn(async (_spec: KubeJobSpec, _persisted: undefined, options: KubeRunJobOptions): Promise<KubeJobResult> => {
+      await options.onLogChunk?.(`${retryRecord}\n`);
+      return await Promise.resolve({
+        completedAt: new Date(),
+        exitCode: 0,
+        finalize: vi.fn(),
+        jobName: 'job-art-123',
+        logs: `${retryRecord}\n${buildRecord}\n${resultRecord}\n`,
+        podName: 'job-art-123-pod',
+        status: 'succeeded',
+      });
+    });
+    const reporter: Mock = vi.fn();
+
+    await expect(runWorkerBuildJob({ runJob }, createWorkerTestConfig(), buildInput(reporter))).resolves.toMatchObject({
+      pushed: true,
+    });
+    expect(reporter.mock.calls).toEqual([
+      [{ message: retryMessage, stream: 'stderr' }],
+      [{ message: '#1 building', stream: 'stdout' }],
+    ]);
+  });
 });
 
 describe('build Job credential environment', (): void => {
