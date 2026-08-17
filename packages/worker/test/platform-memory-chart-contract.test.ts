@@ -193,6 +193,21 @@ describe('shipped platform memory contract', (): void => {
     );
     expect(dataVolumeValidation?.expression).toContain(`quantity('${dataSizeLimit}')`);
     expect(dataVolumeValidation?.message).toBe(`Build Jobs must use a ${dataSizeLimit} buildkit-data emptyDir.`);
+    const mountHintValidation: RenderedValidation | undefined = admissionPolicy?.spec?.validations?.find(
+      (validation: RenderedValidation): boolean => validation.message?.includes('gVisor tmpfs mount hints') ?? false,
+    );
+    expect(mountHintValidation?.expression).toContain(
+      "annotations['dev.gvisor.spec.mount.buildkit-data.options'] == 'rw,rprivate,size=3g'",
+    );
+    expect(mountHintValidation?.expression).toContain(
+      "annotations['dev.gvisor.spec.mount.buildkit-run.options'] == 'rw,rprivate,size=128m'",
+    );
+    expect(mountHintValidation?.expression).toContain(
+      "annotations['dev.gvisor.spec.mount.buildkit-tmp.options'] == 'rw,rprivate,size=512m'",
+    );
+    expect(mountHintValidation?.expression).toContain(
+      "annotations['dev.gvisor.spec.mount.tmp.options'] == 'rw,rprivate,size=384m'",
+    );
   }, 30_000);
 });
 

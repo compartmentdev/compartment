@@ -2,6 +2,18 @@
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
+{{- define "compartment.gvisorTmpfsSizeLimit" -}}
+{{- $value := printf "%v" . -}}
+{{- if not (regexMatch "^[1-9][0-9]{0,3}(Mi|Gi|Ti)$" $value) -}}
+{{- fail (printf "gVisor tmpfs size limit must be 1-8191 whole Mi, Gi, or Ti: %s" $value) -}}
+{{- end -}}
+{{- $amount := regexFind "^[0-9]+" $value | atoi -}}
+{{- if gt $amount 8191 -}}
+{{- fail (printf "gVisor tmpfs size limit must be 1-8191 whole Mi, Gi, or Ti: %s" $value) -}}
+{{- end -}}
+{{- regexReplaceAll "i$" (lower $value) "" -}}
+{{- end }}
+
 {{- define "compartment.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}

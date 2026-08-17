@@ -263,15 +263,16 @@ Pod Security `enforce=privileged` with
 Pod Security. Per-build ephemerality gives every build a fresh Pod and a fresh `emptyDir` workspace, then deletes that
 Pod after result capture; it does not create a separate kernel boundary.
 
-The Sentry serves those mounts from its own memory, so the build workspace is charged to the build Pod memory cgroup
-and the Pod memory limit is the only bound that exists: the Sentry never reads the Kubernetes `sizeLimit`, and kubelet
-cannot measure a mount it does not own. The declared volume sizes state what the Pod memory limit must fund, so the
-build resource limits and the declared workspace are one contract. A build fails before it starts unless
+The Sentry serves those mounts from its own memory, so the build workspace is charged to the build Pod memory cgroup.
+Kubelet cannot enforce `emptyDir.sizeLimit` on a mount it does not own, so the Job projects the same 1-8191 whole
+`Mi`, `Gi`, or `Ti` limits into gVisor's tmpfs `size=` option. The sandbox then returns synchronous `ENOSPC` at
+the declared boundary instead of growing until the Pod is OOM-killed. The Pod memory limit must still fund the whole
+declared workspace, so the build resource limits and volume sizes remain one contract. A build fails before it starts unless
 `resources.buildkit` and `resources.buildRunner` together fund the whole declared workspace plus the BuildKit, runner,
 and Sentry process memory that writes into it, and unless `buildkit.gcKeepStorageMb` reserves no more than the
-`buildkit.dataSizeLimit` memory-backed BuildKit data volume. The defaults give each build Pod a 4Gi memory request and
-limit covering the default 2Gi data volume, the other 1Gi of workspace, and 1Gi of process memory. Together with the
-honest platform footprint and node reservations, one build fits the 12 GiB single-node host documented for
+`buildkit.dataSizeLimit` memory-backed BuildKit data volume. The defaults give each build Pod a 6Gi memory request and
+limit covering the default 4Gi data volume, the other 1Gi of workspace, and 1Gi of process memory. Together with the
+honest platform footprint and node reservations, one build fits the 16 GiB single-node host documented for
 application builds.
 
 The build Pod runs tenant-authored code, so it never carries the installation runtime control token. The worker mints

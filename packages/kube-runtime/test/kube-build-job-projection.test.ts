@@ -67,10 +67,10 @@ describe('sandboxed build Job projection', (): void => {
       },
     });
     expect(manifest.spec!.template.metadata.annotations).toMatchObject({
-      'dev.gvisor.spec.mount.buildkit-data.options': 'rw,rprivate',
+      'dev.gvisor.spec.mount.buildkit-data.options': 'rw,rprivate,size=3g',
       'dev.gvisor.spec.mount.buildkit-data.share': 'container',
       'dev.gvisor.spec.mount.buildkit-data.type': 'tmpfs',
-      'dev.gvisor.spec.mount.tmp.options': 'rw,rprivate',
+      'dev.gvisor.spec.mount.tmp.options': 'rw,rprivate,size=1g',
       'dev.gvisor.spec.mount.tmp.share': 'container',
       'dev.gvisor.spec.mount.tmp.type': 'tmpfs',
     });
@@ -88,6 +88,16 @@ describe('sandboxed build Job projection', (): void => {
       'gVisor BuildKit sidecars require a build Job with an explicit sandbox RuntimeClass',
     );
   });
+
+  it.each([undefined, '0Gi', '2G', '+2Gi', '1Ki', '1.5Gi', '8192Ti'])(
+    'rejects the unsupported gVisor tmpfs size %s without an unbounded fallback',
+    (sizeLimit: string | undefined): void => {
+      const spec: KubeJobSpec = buildJobSpec();
+      spec.emptyDirVolumes = [{ gvisorTmpfs: true, name: 'buildkit-data', sizeLimit }];
+
+      expect((): KubeJobManifest => kubeJobManifest(spec, 'job-art-123', {})).toThrow(/gVisor tmpfs/u);
+    },
+  );
 });
 
 function buildJobSpec(): KubeJobSpec {

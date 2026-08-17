@@ -26,7 +26,7 @@ Add `--verbose` to show Cosign, ORAS, and checksum diagnostics during installati
 
 Use a fresh x86_64 VM with systemd, cgroup v2, sudo access, a public IPv4 address, and at least 40 GiB free storage.
 Ubuntu 24.04 LTS is tested; for the platform and already-built applications, use at least 2 vCPU, 8 GiB memory, and 50 GiB free storage. A 4 GiB host no longer fits.
-For source builds, use 4 vCPU, 12 GiB memory, and 80 GiB storage for one concurrent build; add 4 GiB memory for each additional build.
+For source builds, use 4 vCPU, 16 GiB memory, and 80 GiB storage for one concurrent build; add 6 GiB memory for each additional build.
 Ports 80 and 443 must be available and reachable. Compartment never changes port 22 or cloud security-group rules.
 
 The installer blocks Kubernetes API, etcd, kubelet, and overlay ports on the public interface with persistent,
@@ -183,14 +183,15 @@ Build concurrency has separate logical and physical limits. Size the queue limit
 
 Builds run inside gVisor, which serves the build workspace from sandbox memory. A build Pod's memory limit therefore
 covers its whole scratch space, not just its processes. `buildkit.dataSizeLimit` configures the per-build memory-backed
-BuildKit data volume and defaults to `2Gi`. Keep the two container memory limits at least 2Gi above that value in
-total; otherwise the build fails before it starts. Raise the limits with the data volume for larger source builds,
-and keep `buildkit.gcKeepStorageMb` within the configured data volume.
+BuildKit data volume and defaults to `4Gi`. Set it to 1-8191 whole `Mi`, `Gi`, or `Ti`. gVisor
+returns `no space left on device` when a build reaches this limit. Keep the two container memory limits at least 2Gi
+above that value in total; otherwise the build fails before it starts. Raise the limits with the data volume for
+larger source builds, and keep `buildkit.gcKeepStorageMb` within the configured data volume.
 
 The namespace quota requires every build container to declare CPU and memory limits. Before upgrading, replace the
 removed `buildkit.maximumConcurrentBuildsPerProject` key with `buildkit.maximumConcurrentBuildsPerOrganization`.
 Values files that pin earlier build resources must either remove those pins or keep the two memory limits at least
-4 GiB in total and set `buildkit.gcKeepStorageMb` to 2147 or less.
+6 GiB in total and set `buildkit.gcKeepStorageMb` to 4294 or less.
 
 The namespace quota does not return a claimed build to Compartment's fair queue. If the quota blocks its Pod, the
 Kubernetes Job continues consuming the configured build timeout while it waits for capacity. Sustained quota

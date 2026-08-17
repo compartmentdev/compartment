@@ -71,6 +71,7 @@ tests:
           name: compartment-project-provisioning
           any: true
         template: project-provisioner-rbac.yaml
+
       - contains:
           path: spec.template.spec.containers[0].env
           content:
@@ -90,6 +91,26 @@ tests:
           path: data.COMPARTMENT_ORGANIZATION_QUOTA
           value: '{"limitsCpu":"8","limitsMemory":"8Gi","requestsCpu":"2","requestsMemory":"8Gi","requestsStorage":"20Gi"}'
         template: configmap.yaml
+
+  - it: normalizes a Mi BuildKit data limit for the exact gVisor admission contract
+    set:
+      platform:
+        startupStage: full
+        installationId: test-buildkit-mi-limit
+        baseDomain: apps.example.com
+      secrets: *normalizedSecrets
+      buildkit:
+        dataSizeLimit: 2048Mi
+      resources:
+        buildkit:
+          requests: { cpu: 250m, memory: 3Gi }
+          limits: { cpu: 1750m, memory: 3Gi }
+    asserts:
+      - matchRegex:
+          path: spec.validations[1].expression
+          pattern: "buildkit-data.options'\\] == 'rw,rprivate,size=2048m'"
+        template: buildkit.yaml
+        documentIndex: 4
 
   - it: configures the service Deployment infrastructure timeout for the worker
     set:
@@ -232,7 +253,7 @@ tests:
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BUILDKIT_RESOURCES
-          value: '{"limits":{"cpu":"1750m","memory":"3Gi"},"requests":{"cpu":"250m","memory":"3Gi"}}'
+          value: '{"limits":{"cpu":"1750m","memory":"5Gi"},"requests":{"cpu":"250m","memory":"5Gi"}}'
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_PROJECT_CONTAINER_DEFAULTS
@@ -252,7 +273,7 @@ tests:
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT
-          value: '2Gi'
+          value: '4Gi'
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB
@@ -711,8 +732,13 @@ tests:
         template: buildkit.yaml
         documentIndex: 4
       - matchRegex:
+          path: spec.validations[1].expression
+          pattern: "buildkit-data.options'\\] == 'rw,rprivate,size=4g'.*buildkit-run.options'\\] == 'rw,rprivate,size=128m'.*buildkit-tmp.options'\\] == 'rw,rprivate,size=512m'.*tmp.options'\\] == 'rw,rprivate,size=384m'"
+        template: buildkit.yaml
+        documentIndex: 4
+      - matchRegex:
           path: spec.validations[6].expression
-          pattern: "volume.name == 'buildkit-data' && quantity\\(volume.emptyDir.sizeLimit\\).compareTo\\(quantity\\('2Gi'\\)\\) == 0"
+          pattern: "volume.name == 'buildkit-data' && quantity\\(volume.emptyDir.sizeLimit\\).compareTo\\(quantity\\('4Gi'\\)\\) == 0"
         template: buildkit.yaml
         documentIndex: 4
       - matchRegex:

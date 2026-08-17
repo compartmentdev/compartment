@@ -7,6 +7,34 @@ values:
 release:
   name: compartment
 tests:
+  - it: rejects a BuildKit data size above the exact arithmetic range
+    set:
+      buildkit.dataSizeLimit: 8192Ti
+    asserts:
+      - failedTemplate:
+          errorPattern: buildkit.dataSizeLimit.*pattern
+
+  - it: rejects a zero BuildKit data size
+    set:
+      buildkit.dataSizeLimit: 0Gi
+    asserts:
+      - failedTemplate:
+          errorPattern: buildkit.dataSizeLimit.*pattern
+
+  - it: rejects a BuildKit data size that gVisor cannot parse
+    set:
+      buildkit.dataSizeLimit: 2G
+    asserts:
+      - failedTemplate:
+          errorPattern: buildkit.dataSizeLimit.*pattern
+
+  - it: rejects a sub-page BuildKit data size
+    set:
+      buildkit.dataSizeLimit: 1Ki
+    asserts:
+      - failedTemplate:
+          errorPattern: buildkit.dataSizeLimit.*pattern
+
   - it: rejects malformed enabled Docker Hub cache storage
     set:
       dockerHubCache.enabled: true

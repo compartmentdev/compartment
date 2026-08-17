@@ -125,27 +125,27 @@ describe('readWorkerConfig', (): void => {
     ).toThrow('COMPARTMENT_BUILDKIT_RESOURCES must be a JSON object declaring limits.memory.');
   });
 
-  it('fails closed when the BuildKit data size limit is not a Kubernetes memory quantity', (): void => {
-    expect(
-      (): WorkerBuildConfig =>
-        readWorkerBuildConfig({
-          ...validEnvironment(),
-          COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: 'two gigabytes',
-        }),
-    ).toThrow('must be a valid Kubernetes memory quantity');
-  });
-
-  it.each(['+2Gi', '2147483648000000u', '2147483648000000000n'])(
-    'accepts the %s Kubernetes quantity allowed by the chart schema',
+  it.each(['two gigabytes', '0Gi', '+2Gi', '2G', '1Ki', '1.5Gi', '8192Ti', '2147483648000000u'])(
+    'rejects the unsupported BuildKit data size limit %s',
     (dataSizeLimit: string): void => {
-      const config: WorkerBuildConfig = readWorkerBuildConfig({
-        ...validEnvironment(),
-        COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: dataSizeLimit,
-      });
-
-      expect(config.buildSandbox.dataSizeLimit).toBe(dataSizeLimit);
+      expect(
+        (): WorkerBuildConfig =>
+          readWorkerBuildConfig({
+            ...validEnvironment(),
+            COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: dataSizeLimit,
+          }),
+      ).toThrow('must be 1-8191 whole Mi, Gi, or Ti');
     },
   );
+
+  it.each(['2048Mi', '8Gi'])('accepts the bounded BuildKit data size limit %s', (dataSizeLimit: string): void => {
+    const config: WorkerBuildConfig = readWorkerBuildConfig({
+      ...validEnvironment(),
+      COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: dataSizeLimit,
+    });
+
+    expect(config.buildSandbox.dataSizeLimit).toBe(dataSizeLimit);
+  });
 
   it('rejects unsafe worker trusted outbound host entries', (): void => {
     expect((): WorkerConfig => {

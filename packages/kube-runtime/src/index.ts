@@ -6,6 +6,7 @@ export {
 export type { KubeLeaderElectionConfig, KubeLeaderElector } from './kube-leader-election.types';
 export { KubeRuntime } from './kube-runtime';
 export { KubeJobLogAttachmentError } from './kube-job-log-stream';
+export { normalizeGvisorTmpfsSizeLimit } from './kube-gvisor-mount-annotations';
 export {
   kubeApplicationIdentityName,
   kubeNamespaceName,
