@@ -93,7 +93,7 @@ function buildKubeJobSpec(config: WorkerBuildConfig, input: RunWorkerBuildJobInp
     cleanupPolicy: 'delete',
     command: workerJobCommand(workerJobEntrypoints.build),
     configMapVolumes: [{ configMapName: config.buildSandbox.buildKitConfigMapName, name: 'buildkit-config' }],
-    emptyDirVolumes: buildSandboxVolumes(),
+    emptyDirVolumes: buildSandboxVolumes(config.buildSandbox),
     env: buildJobEnvironment(input),
     id: input.id,
     image: config.workerImage,

@@ -39,6 +39,7 @@ export function createWorkerTestConfig(overrides: Partial<WorkerConfig> = {}): W
     artifactRegistry: createArtifactRegistryTestConfig(),
     buildSandbox: {
       buildKitConfigMapName: 'compartment-buildkit',
+      dataSizeLimit: '2Gi',
       buildKitResources: { limits: { memory: '3Gi' } },
       gcKeepStorageMb: 1024,
       namespace: 'compartment-build',

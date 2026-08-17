@@ -13,7 +13,6 @@ import { parseKubernetesQuantity } from './kubernetes-quantity';
  * into them. The shipped chart defaults sit exactly on that line: 3072Mi of workspace and 1024Mi of
  * process memory against a 4096Mi Pod memory limit.
  */
-const buildkitDataSizeLimit: string = '2Gi';
 const buildkitRunSizeLimit: string = '128Mi';
 const buildkitTmpSizeLimit: string = '512Mi';
 const runnerTmpSizeLimit: string = '384Mi';
@@ -21,9 +20,9 @@ const buildSandboxProcessMemory: string = '1Gi';
 const megabyte: number = 1_000_000;
 const mebibyte: number = 1_048_576;
 
-export function buildSandboxVolumes(): KubeJobEmptyDirVolume[] {
+export function buildSandboxVolumes(config: WorkerBuildSandboxConfig): KubeJobEmptyDirVolume[] {
   return [
-    { gvisorTmpfs: true, name: 'buildkit-data', sizeLimit: buildkitDataSizeLimit },
+    { gvisorTmpfs: true, name: 'buildkit-data', sizeLimit: config.dataSizeLimit },
     { gvisorTmpfs: true, name: 'buildkit-run', sizeLimit: buildkitRunSizeLimit },
     { gvisorTmpfs: true, name: 'buildkit-tmp', sizeLimit: buildkitTmpSizeLimit },
     { containerMountPath: '/tmp', gvisorTmpfs: true, name: 'tmp', sizeLimit: runnerTmpSizeLimit },
@@ -36,7 +35,7 @@ export function assertBuildSandboxMemoryBudget(config: WorkerBuildSandboxConfig)
 }
 
 function assertWorkspaceFitsPodMemory(config: WorkerBuildSandboxConfig): void {
-  const workspace: number = readWorkspaceBytes();
+  const workspace: number = readWorkspaceBytes(config);
   const processMemory: number = parseKubernetesQuantity(buildSandboxProcessMemory, 'memory');
   const budget: number =
     readConfiguredMemoryLimit(config.buildKitResources.limits.memory, 'resources.buildkit.limits.memory') +
@@ -57,7 +56,7 @@ function assertWorkspaceFitsPodMemory(config: WorkerBuildSandboxConfig): void {
  * this only refuses retention the memory-backed data volume can never hold.
  */
 function assertRetainedCacheFitsDataVolume(config: WorkerBuildSandboxConfig): void {
-  const dataVolume: number = parseKubernetesQuantity(buildkitDataSizeLimit, 'memory');
+  const dataVolume: number = readConfiguredMemoryLimit(config.dataSizeLimit, 'buildkit.dataSizeLimit');
   const retained: number = config.gcKeepStorageMb * megabyte;
   if (retained > dataVolume) {
     throw new Error(
@@ -76,8 +75,8 @@ function readConfiguredMemoryLimit(value: string, valuePath: string): number {
   }
 }
 
-function readWorkspaceBytes(): number {
-  return [buildkitDataSizeLimit, buildkitRunSizeLimit, buildkitTmpSizeLimit, runnerTmpSizeLimit].reduce(
+function readWorkspaceBytes(config: WorkerBuildSandboxConfig): number {
+  return [config.dataSizeLimit, buildkitRunSizeLimit, buildkitTmpSizeLimit, runnerTmpSizeLimit].reduce(
     (total: number, sizeLimit: string): number => total + parseKubernetesQuantity(sizeLimit, 'memory'),
     0,
   );

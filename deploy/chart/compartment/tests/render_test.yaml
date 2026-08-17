@@ -251,6 +251,10 @@ tests:
           value: '{"limits":{"cpu":"250m","memory":"1Gi"},"requests":{"cpu":"100m","memory":"1Gi"}}'
         template: configmap.yaml
       - equal:
+          path: data.COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT
+          value: '2Gi'
+        template: configmap.yaml
+      - equal:
           path: data.COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB
           value: '1024'
         template: configmap.yaml

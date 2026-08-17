@@ -21,15 +21,17 @@ const memoryByteFactors: Readonly<Record<string, number>> = {
   M: 1e6,
   Mi: 2 ** 20,
   m: 0.001,
+  n: 0.000_000_001,
   P: 1e15,
   Pi: 2 ** 50,
   T: 1e12,
   Ti: 2 ** 40,
+  u: 0.000_001,
 };
 
 export function parseKubernetesQuantity(value: string, kind: 'cpu' | 'memory'): number {
   const match: RegExpExecArray | null =
-    /^(?<amount>(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?)(?<suffix>[a-zA-Z]*)$/u.exec(value);
+    /^\+?(?<amount>(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?)(?<suffix>[a-zA-Z]*)$/u.exec(value);
   if (match?.groups === undefined) {
     throw new Error(`Invalid Kubernetes ${kind} quantity: ${value}.`);
   }

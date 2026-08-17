@@ -2,6 +2,7 @@
 {{- if and .Values.buildkit.enabled (eq $installState.effective.platform.startupStage "full") }}
 {{- $workerImage := include "compartment.image" .Values.images.worker -}}
 {{- $buildkitGcKeepStorage := printf "%v" .Values.buildkit.gcKeepStorageMb -}}
+{{- $buildkitDataSizeLimit := .Values.buildkit.dataSizeLimit -}}
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -92,8 +93,8 @@ spec:
       message: Build Jobs must use exactly five volumes.
     - expression: "object.spec.template.spec.volumes.all(volume, has(volume.emptyDir) || (volume.name == 'buildkit-config' && has(volume.configMap) && volume.configMap.name == '{{ include "compartment.fullname" . }}-buildkit'))"
       message: Build Jobs may use only bounded emptyDir volumes and the platform BuildKit ConfigMap.
-    - expression: "object.spec.template.spec.volumes.exists(volume, volume.name == 'buildkit-data' && quantity(volume.emptyDir.sizeLimit).compareTo(quantity('2Gi')) == 0)"
-      message: Build Jobs must use a 2Gi buildkit-data emptyDir.
+    - expression: {{ printf "object.spec.template.spec.volumes.exists(volume, volume.name == 'buildkit-data' && quantity(volume.emptyDir.sizeLimit).compareTo(quantity('%s')) == 0)" $buildkitDataSizeLimit | quote }}
+      message: {{ printf "Build Jobs must use a %s buildkit-data emptyDir." $buildkitDataSizeLimit | quote }}
     - expression: "object.spec.template.spec.volumes.exists(volume, volume.name == 'buildkit-run' && quantity(volume.emptyDir.sizeLimit).compareTo(quantity('128Mi')) == 0)"
       message: Build Jobs must use a 128Mi buildkit-run emptyDir.
     - expression: "object.spec.template.spec.volumes.exists(volume, volume.name == 'buildkit-tmp' && quantity(volume.emptyDir.sizeLimit).compareTo(quantity('512Mi')) == 0)"

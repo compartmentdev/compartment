@@ -168,9 +168,10 @@ Build concurrency has separate logical and physical limits. Size the queue limit
 `resources.buildkit` and `resources.buildRunner` together for the concurrency the cluster can support.
 
 Builds run inside gVisor, which serves the build workspace from sandbox memory. A build Pod's memory limit therefore
-covers its whole scratch space, not just its processes. Keep the two container memory limits at least 4 GiB in total;
-otherwise the build fails before it starts. Raise both limits together for larger source builds, and keep
-`buildkit.gcKeepStorageMb` within the memory-backed BuildKit data volume.
+covers its whole scratch space, not just its processes. `buildkit.dataSizeLimit` configures the per-build memory-backed
+BuildKit data volume and defaults to `2Gi`. Keep the two container memory limits at least 2Gi above that value in
+total; otherwise the build fails before it starts. Raise the limits with the data volume for larger source builds,
+and keep `buildkit.gcKeepStorageMb` within the configured data volume.
 
 The namespace quota requires every build container to declare CPU and memory limits. Before upgrading, replace the
 removed `buildkit.maximumConcurrentBuildsPerProject` key with `buildkit.maximumConcurrentBuildsPerOrganization`.

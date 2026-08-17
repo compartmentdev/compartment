@@ -34,6 +34,7 @@ data:
   COMPARTMENT_LEADER_ELECTION_RENEW_DEADLINE_MS: {{ .Values.leaderElection.renewDeadlineMs | quote }}
   COMPARTMENT_LEADER_ELECTION_RETRY_PERIOD_MS: {{ .Values.leaderElection.retryPeriodMs | quote }}
   COMPARTMENT_USAGE_METERING_INTERVAL_MS: {{ .Values.platform.usageMeteringIntervalMs | quote }}
+  COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: {{ .Values.buildkit.dataSizeLimit | quote }}
   COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: {{ .Values.buildkit.gcKeepStorageMb | quote }}
   COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME: {{ printf "%s-buildkit" (include "compartment.fullname" .) | quote }}
   COMPARTMENT_BUILDKIT_RESOURCES: {{ .Values.resources.buildkit | toJson | quote }}
