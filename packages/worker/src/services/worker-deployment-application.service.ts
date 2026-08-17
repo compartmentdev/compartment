@@ -112,7 +112,7 @@ export async function deleteApplication(
   );
 }
 
-export async function recoverFailedRollout(
+async function recoverFailedRollout(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
   tenantSecretsKek: TenantSecretsKeyring,

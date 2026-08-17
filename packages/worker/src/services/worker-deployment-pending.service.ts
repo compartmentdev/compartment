@@ -15,7 +15,6 @@ import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
 import {
   applyPendingApplication,
   cleanupFailedRollout,
-  recoverFailedRollout,
   type AppliedPendingApplication,
 } from './worker-deployment-application.service';
 import { persistDeploymentObservation, rolloutFailureMessage } from './worker-deployment-reconcile.helpers';
@@ -36,8 +35,6 @@ type PendingArguments = readonly [
   number,
   string,
 ];
-type PendingFailureEffect = 'cleanup-candidate' | 'recover-active';
-
 export async function reconcilePendingDeployment(
   request: CompartmentRequester,
   runtime: KubeRuntime,
@@ -85,7 +82,7 @@ async function resolvePendingRollout(
         rolloutStarts,
         scheduling,
       )
-    : await failPendingDeployment(...pendingArguments, quotaFailure, rolloutStarts, scheduling, 'recover-active');
+    : await failPendingDeployment(...pendingArguments, quotaFailure, rolloutStarts, scheduling);
 }
 
 async function readAppliedCandidateRollout(
@@ -197,7 +194,6 @@ async function handleRolloutStatus(
     rolloutFailureMessage(status),
     rolloutStarts,
     scheduling,
-    'cleanup-candidate',
   );
 }
 
@@ -211,13 +207,8 @@ async function failPendingDeployment(
   message: string,
   rolloutStarts: DeploymentRolloutStartTracker,
   scheduling: KubeWorkloadScheduling | undefined,
-  effect: PendingFailureEffect,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
-  if (effect === 'cleanup-candidate') {
-    await cleanupFailedRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
-  } else {
-    await recoverFailedRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
-  }
+  await cleanupFailedRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
   const persisted: WorkerObserveDeploymentReconcileResponse = await persistDeploymentObservation(
     request,
     target,

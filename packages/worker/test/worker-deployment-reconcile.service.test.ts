@@ -357,23 +357,23 @@ describe('deployment reconciliation', (): void => {
     });
   });
 
-  it('fails immediately when Capsule reports exhausted organization quota', async (): Promise<void> => {
+  it('deletes a Capsule-rejected candidate before persisting terminal failure', async (): Promise<void> => {
     const namespace: string = kubeNamespaceName('prj_1');
     const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
     const message: string =
       'admission webhook "calculation.custom-quotas.validating.projectcapsule.dev" denied the request: creating resource exceeds limit for GlobalCustomQuota "org-quota-limits-cpu" (requested=2, currentUsed=9, available=0, limit=8)';
-    const runtime: KubeRuntime & { read: Mock } = pendingRuntimeStub(false);
+    const runtime: KubeRuntime & { delete: Mock; read: Mock } = pendingRuntimeStub(false);
     runtime.read.mockResolvedValue(quotaFailedDeployment(namespace, name, message));
     const pendingTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'pending' };
 
     await reconcileAt('2026-07-12T12:00:01.000Z', runtime, pendingTarget);
 
-    expect(persistedObservation()).toMatchObject({
-      deploymentId: 'dep_candidate',
-      message: `Kubernetes resource quota exceeded. Reduce resource usage or ask an operator to increase the tenant quota. ${message}`,
-      observation: 'failed',
-      revision: 0,
-    });
+    const deleted: KubeManifest[] = runtime.delete.mock.calls[0]?.[0] as KubeManifest[];
+    expect(deleted.map((object: KubeManifest): string => object.kind)).toEqual(['Secret', 'Deployment', 'Service']);
+    expect(deleted).not.toContainEqual(expect.objectContaining({ kind: 'PersistentVolumeClaim' }));
+    expect(runtime.delete.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.observeDeploymentReconcile.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('starts a fresh application window after restarting an unhealthy active Deployment', async (): Promise<void> => {

@@ -12,6 +12,8 @@ import {
  */
 export class CapturingKubernetesObjectApi extends KubernetesObjectApi {
   public body: string | null = null;
+  public method: HttpMethod | null = null;
+  public url: string | null = null;
 
   private readonly uriPath: string;
 
@@ -30,7 +32,13 @@ export class CapturingKubernetesObjectApi extends KubernetesObjectApi {
   }
 
   protected override async requestPromise<T extends KubernetesObject>(requestContext: RequestContext): Promise<T> {
+    this.method = requestContext.getHttpMethod();
+    this.url = requestContext.getUrl();
     const body: RequestBody = requestContext.getBody();
+    if (body === undefined) {
+      this.body = null;
+      return await Promise.resolve({} as T);
+    }
     if (typeof body !== 'string') {
       throw new Error('Expected the Kubernetes request body to be serialized JSON.');
     }

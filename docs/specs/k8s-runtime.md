@@ -86,15 +86,16 @@ The durable protocol follows the immutable T9 evidence linked below:
    never blocks the controller on a second observation loop.
 
 A terminal rollout is cleaned up before failure is persisted, including an
-application-readiness timeout or `ProgressDeadlineExceeded`. A cleanup error
-leaves the failure unpersisted so reconciliation can retry. A first deployment
-removes its projected Deployment, Service, and deployment-specific Secret. A
-replacement rollout first restores the distinct active manifests, then removes
-only the candidate Secret and ReplicaSets selected by the complete immutable
-candidate ownership labels. Deployment and ReplicaSet deletion uses foreground
-propagation and treats an absent object as already converged. A failed recovery
-of the current active revision reapplies and retains that revision. Progressing,
-intermediate, quota-admission, and transport-error observations never trigger
+application-readiness timeout, `ProgressDeadlineExceeded`, or a candidate Pod
+quota-admission failure observed through its Deployment. A cleanup error leaves
+the failure unpersisted so reconciliation can retry. A first deployment removes
+its projected Deployment, Service, and deployment-specific Secret. A replacement
+rollout first restores the distinct active manifests, then removes only the
+candidate Secret and ReplicaSets selected by the complete immutable candidate
+ownership labels. Deployment and ReplicaSet deletion uses foreground propagation
+and treats an absent object as already converged. A failed recovery of the current
+active revision reapplies and retains that revision. Progressing, intermediate,
+apply-time admission errors, and transport-error observations never trigger
 cleanup.
 
 The controller ClusterRole grants its namespace-bound operator identity
