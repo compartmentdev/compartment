@@ -28,6 +28,7 @@ export const selfHostedBuildMatrixPartitions: Readonly<Record<string, SelfHosted
         'dockerfile-monorepo',
         'python',
         'vite-react',
+        'static-html',
         'static-vite-react',
         'static-poison',
       ]),

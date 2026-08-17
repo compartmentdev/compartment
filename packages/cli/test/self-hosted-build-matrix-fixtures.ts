@@ -104,6 +104,15 @@ export const selfHostedSingleServiceBuildFixtures: readonly SelfHostedSingleServ
     name: 'vite-react',
   },
   {
+    directory: resolve(__dirname, '../../../examples/static-html'),
+    expectedAuthorizedBodyText: 'Descriptor-native static HTML',
+    expectedRuntimeCommand: {
+      command: ['sh', '-c', 'test -s /app/Caddyfile && echo static-html-caddyfile-present'],
+      expectedText: 'static-html-caddyfile-present',
+    },
+    name: 'static-html',
+  },
+  {
     buildVariables: [
       {
         key: 'VITE_PUBLIC_GREETING',
@@ -112,6 +121,10 @@ export const selfHostedSingleServiceBuildFixtures: readonly SelfHostedSingleServ
     ],
     directory: resolve(__dirname, '../../../examples/static-vite-react'),
     expectedAuthorizedBodyText: 'hello from compartment static build env',
+    expectedRuntimeCommand: {
+      command: ['sh', '-c', 'test -s /Caddyfile && echo static-vite-caddyfile-present'],
+      expectedText: 'static-vite-caddyfile-present',
+    },
     name: 'static-vite-react',
   },
 ] as const;

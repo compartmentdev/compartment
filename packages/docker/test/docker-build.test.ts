@@ -21,6 +21,36 @@ interface DockerBuildTestMocks {
   runBuildctlCommandWithOptionalProgressReporter: Mock<RunBuildctlCommandWithOptionalProgressReporter>;
 }
 
+interface NormalizedRailpackPlanTestCommand {
+  name?: string;
+  path?: string;
+}
+
+interface NormalizedRailpackPlanTestStep {
+  commands: NormalizedRailpackPlanTestCommand[];
+}
+
+interface NormalizedRailpackPlanTestInput {
+  include: string[];
+  step: string;
+}
+
+interface NormalizedRailpackPlanTestDeploy {
+  inputs: NormalizedRailpackPlanTestInput[];
+  startCommand: string;
+}
+
+interface NormalizedRailpackPlanTestDocument {
+  deploy: NormalizedRailpackPlanTestDeploy;
+  steps: NormalizedRailpackPlanTestStep[];
+}
+
+interface StaticCaddyfilePathTestCase {
+  caddyStepName: string;
+  planPath: string;
+  shippedPath: string;
+}
+
 const mocks: DockerBuildTestMocks = vi.hoisted(
   (): DockerBuildTestMocks => ({
     prepareRailpackPlan: vi.fn<PrepareRailpackPlan>(),
@@ -278,96 +308,93 @@ describe('buildDockerImage', (): void => {
     );
   });
 
-  it('builds a static image with a narrowed deploy plan', async (): Promise<void> => {
+  it('builds a static image with a narrowed deploy plan and its shipped Caddyfile path', async (): Promise<void> => {
     const digest: string = testImageDigest;
-    let normalizedPlanText: string = '';
+    const caddyfilePathCases: StaticCaddyfilePathTestCase[] = [
+      { caddyStepName: 'caddy', planPath: '/Caddyfile', shippedPath: '/Caddyfile' },
+      { caddyStepName: 'build', planPath: 'Caddyfile', shippedPath: '/app/Caddyfile' },
+    ];
 
     process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
-    mocks.prepareRailpackPlan.mockImplementationOnce(async (input: PrepareRailpackPlanInput): Promise<void> => {
-      await writeFile(
-        input.planPath,
-        JSON.stringify(
-          {
+    for (const caddyfilePathCase of caddyfilePathCases) {
+      let normalizedPlanText: string = '';
+      mocks.prepareRailpackPlan.mockImplementationOnce(async (input: PrepareRailpackPlanInput): Promise<void> => {
+        await writeFile(
+          input.planPath,
+          JSON.stringify({
             deploy: {
               inputs: [
-                {
-                  include: ['/railpack/caddy'],
-                  step: 'packages:caddy',
-                },
-                {
-                  include: ['/Caddyfile'],
-                  step: 'caddy',
-                },
-                {
-                  include: ['public-docs/dist'],
-                  step: 'build',
-                },
-                {
-                  include: ['.'],
-                  step: 'build',
-                },
+                { include: ['/railpack/caddy'], step: 'packages:caddy' },
+                ...(caddyfilePathCase.caddyStepName === 'caddy'
+                  ? [{ include: [caddyfilePathCase.planPath], step: 'caddy' }]
+                  : []),
+                { include: ['public-docs/dist'], step: 'build' },
+                { include: ['.'], step: 'build' },
               ],
+              startCommand: 'caddy run --config Caddyfile --adapter caddyfile 2>&1',
             },
-            steps: [],
-          },
-          null,
-          2,
-        ),
-        'utf8',
-      );
-    });
-    mocks.runBuildctlCommandWithOptionalProgressReporter.mockImplementationOnce(
-      async (args: string[]): Promise<void> => {
-        const railpackInput: PrepareRailpackPlanInput | undefined = mocks.prepareRailpackPlan.mock.calls[0]?.[0];
-        if (railpackInput === undefined) {
-          throw new Error('Expected Railpack plan input.');
-        }
-        normalizedPlanText = await readFile(railpackInput.planPath, 'utf8');
-        await writeBuildKitMetadata(args, digest);
-      },
-    );
-
-    await expect(
-      buildDockerImage({
-        buildCommand: 'pnpm docs:build',
-        contextDirectory: '/tmp/source',
-        imageTag: 'registry.example/compartment-web:art_123',
-        labels: {
-          'compartment.namespace': 'compartment-e2e',
+            steps: [
+              {
+                commands: [{ name: 'Caddyfile', path: caddyfilePathCase.planPath }],
+                name: caddyfilePathCase.caddyStepName,
+              },
+            ],
+          }),
+          'utf8',
+        );
+      });
+      mocks.runBuildctlCommandWithOptionalProgressReporter.mockImplementationOnce(
+        async (args: string[]): Promise<void> => {
+          const callIndex: number = mocks.runBuildctlCommandWithOptionalProgressReporter.mock.calls.length - 1;
+          const railpackInput: PrepareRailpackPlanInput | undefined =
+            mocks.prepareRailpackPlan.mock.calls[callIndex]?.[0];
+          if (railpackInput === undefined) {
+            throw new Error('Expected Railpack plan input.');
+          }
+          normalizedPlanText = await readFile(railpackInput.planPath, 'utf8');
+          await writeBuildKitMetadata(args, digest);
         },
-        packer: 'static',
-        runtimeAptPackages: ['jq'],
-        staticOutputDirectory: 'public-docs/dist',
-      }),
-    ).resolves.toEqual({
-      imageRef: `registry.example/compartment-web@${digest}`,
-      pushed: true,
-    });
+      );
 
-    const railpackInput: PrepareRailpackPlanInput | undefined = mocks.prepareRailpackPlan.mock.calls[0]?.[0];
-    expect(railpackInput?.appPath).toBeUndefined();
-    expect(railpackInput?.buildCommand).toBe('pnpm docs:build');
-    expect(railpackInput?.runtimeAptPackages).toEqual(['jq']);
-    expect(railpackInput?.staticOutputDirectory).toBe('public-docs/dist');
-    expect(JSON.parse(normalizedPlanText)).toMatchObject({
-      deploy: {
-        inputs: [
-          {
-            include: ['/railpack/caddy'],
-            step: 'packages:caddy',
-          },
-          {
-            include: ['/Caddyfile'],
-            step: 'caddy',
-          },
-          {
-            include: ['public-docs/dist'],
-            step: 'build',
-          },
-        ],
-      },
-    });
-    expect(normalizedPlanText).not.toContain('"include": [\n          "."\n        ]');
+      await expect(
+        buildDockerImage({
+          buildCommand: 'pnpm docs:build',
+          contextDirectory: '/tmp/source',
+          imageTag: 'registry.example/compartment-web:art_123',
+          labels: { 'compartment.namespace': 'compartment-e2e' },
+          packer: 'static',
+          runtimeAptPackages: ['jq'],
+          staticOutputDirectory: 'public-docs/dist',
+        }),
+      ).resolves.toEqual({ imageRef: `registry.example/compartment-web@${digest}`, pushed: true });
+
+      const callIndex: number = mocks.prepareRailpackPlan.mock.calls.length - 1;
+      const railpackInput: PrepareRailpackPlanInput | undefined = mocks.prepareRailpackPlan.mock.calls[callIndex]?.[0];
+      expect(railpackInput?.appPath).toBeUndefined();
+      expect(railpackInput?.buildCommand).toBe('pnpm docs:build');
+      expect(railpackInput?.runtimeAptPackages).toEqual(['jq']);
+      expect(railpackInput?.staticOutputDirectory).toBe('public-docs/dist');
+
+      const normalizedPlan: NormalizedRailpackPlanTestDocument = JSON.parse(
+        normalizedPlanText,
+      ) as NormalizedRailpackPlanTestDocument;
+      expect(normalizedPlan.deploy.inputs).toMatchObject([
+        { include: ['/railpack/caddy'], step: 'packages:caddy' },
+        ...(caddyfilePathCase.caddyStepName === 'caddy'
+          ? [{ include: [caddyfilePathCase.planPath], step: 'caddy' }]
+          : []),
+        {
+          include: [
+            'public-docs/dist',
+            ...(caddyfilePathCase.caddyStepName === 'build' ? [caddyfilePathCase.planPath] : []),
+          ],
+          step: 'build',
+        },
+      ]);
+      expect(normalizedPlan.deploy.startCommand).toBe(
+        `cd /app && caddy run --config ${caddyfilePathCase.shippedPath} --adapter caddyfile 2>&1`,
+      );
+    }
   });
 
   it('recovers cleanly after a failed build writes invalid metadata', async (): Promise<void> => {

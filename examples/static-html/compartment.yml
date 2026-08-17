@@ -1,0 +1,8 @@
+name: static-html
+
+services:
+  web:
+    kind: static
+    path: static
+    build:
+      outputDirectory: site
