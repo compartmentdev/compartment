@@ -54,6 +54,7 @@ describe('platform k3d e2e command boundary', () => {
     expect(args.join(' ')).not.toContain('30900@server');
     expect(args.join(' ')).not.toContain('31500@server');
     expect(args).toContain('rancher/k3s:v1.35.5-k3s1');
+    expect(args).toContain('--node-label=compartment.dev/node-pool=data@server:*');
     expect(
       args.some((arg) =>
         arg.endsWith(
@@ -444,6 +445,9 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).not.toContain('ports:\n  http: 18080');
     expect(values).not.toContain('startupStage:');
     expect(values).toContain(
+      'nodePools:\n  data:\n    nodeSelector:\n      compartment.dev/node-pool: data\n    tolerations: []',
+    );
+    expect(values).toContain(
       "resources:\n  projectQuota:\n    requestsCpu: '10'\n    requestsMemory: 10Gi\n    limitsCpu: '20'\n    limitsMemory: 20Gi\n    requestsStorage: 100Gi\n  organizationQuota:\n    requestsCpu: '20'\n    requestsMemory: 20Gi\n    limitsCpu: '20'\n    limitsMemory: 20Gi\n    requestsStorage: 100Gi",
     );
   });
@@ -465,6 +469,7 @@ describe('platform k3d e2e command boundary', () => {
       'registry:\n  clusterIP: 10.43.250.250\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer',
     );
     expect(values).not.toContain('tls:\n  issuerRef:');
+    expect(values).toContain('compartment.dev/node-pool: data');
   });
 
   it('uses one mandatory sandbox runtime contract for builds and tenant workloads', () => {
@@ -498,6 +503,7 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).toContain(`digest: sha256:${'d'.repeat(64)}`);
     expect(values).not.toContain('hostname:');
     expect(values).not.toContain('compartment.localhost');
+    expect(values).toContain('compartment.dev/node-pool: data');
     expect(values).toContain(
       'registry:\n  clusterIP: 10.43.250.250\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer',
     );
@@ -515,5 +521,6 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).not.toContain('tls:\n  issuerRef:');
     expect(values).not.toContain('baseDomain:');
     expect(values).not.toContain('hostname:');
+    expect(values).toContain('compartment.dev/node-pool: data');
   });
 });

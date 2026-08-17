@@ -153,7 +153,8 @@ function compareNames(left: string, right: string): number {
 
 /**
  * The Caddy workload only renders in the full startup stage, and the chart refuses to render at all
- * without an installation identity and a registry issuer, so the gate supplies exactly those.
+ * without installation identity, registry issuer, and data-pool placement, so the gate supplies
+ * exactly those.
  */
 function readRenderedCaddyContainerEnvironment(): Record<string, string> {
   const result: SpawnSyncReturns<string> = spawnSync(
@@ -174,6 +175,8 @@ function readRenderedCaddyContainerEnvironment(): Record<string, string> {
       'registry.issuerRef.kind=Issuer',
       '--set',
       'registry.issuerRef.name=compartment',
+      '--set-string',
+      'nodePools.data.nodeSelector.compartment\\.dev/node-pool=data',
       '--set',
       `secrets.productLogIngestToken=${renderedSecretPlaceholder}`,
     ],
