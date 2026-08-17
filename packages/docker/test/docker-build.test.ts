@@ -307,6 +307,7 @@ describe('buildDockerImage', (): void => {
                   step: 'build',
                 },
               ],
+              startCommand: 'caddy run --config Caddyfile --adapter caddyfile 2>&1',
             },
             steps: [],
           },
@@ -367,6 +368,9 @@ describe('buildDockerImage', (): void => {
         ],
       },
     });
+    expect(normalizedPlanText).toContain(
+      '"startCommand": "cd /app && caddy run --config /app/Caddyfile --adapter caddyfile 2>&1"',
+    );
     expect(normalizedPlanText).not.toContain('"include": [\n          "."\n        ]');
   });
 

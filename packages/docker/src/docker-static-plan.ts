@@ -1,6 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
 const staticBuildStepName: string = 'build';
+const staticStartCommand: string = 'cd /app && caddy run --config /app/Caddyfile --adapter caddyfile 2>&1';
 
 type RailpackPlanJsonValue = boolean | null | number | RailpackPlanJsonObject | RailpackPlanJsonValue[] | string;
 
@@ -14,6 +15,7 @@ type RailpackPlanDocument = RailpackPlanRecord & {
 };
 type RailpackDeploySection = RailpackPlanRecord & {
   inputs?: RailpackDeployInput[] | undefined;
+  startCommand?: string | undefined;
 };
 type RailpackDeployInput = RailpackPlanRecord & {
   include?: string[] | undefined;
@@ -27,6 +29,7 @@ export async function normalizeStaticRailpackPlan(planPath: string, staticOutput
   plan.deploy = {
     ...deploy,
     inputs: normalizeStaticDeployInputs(deploy.inputs ?? [], staticOutputDirectory),
+    startCommand: staticStartCommand,
   };
 
   await writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`, 'utf8');
