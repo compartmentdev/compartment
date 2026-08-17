@@ -7,6 +7,7 @@ import {
 } from '../errors/api-business-error';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { hasBlockingProjectDeployments } from '../queries/deployments.query';
+import { stopInactiveQueuedProjectDeploymentsForArchivedProject } from '../queries/deployment-archive.query';
 import { setProjectArchivedAtWithExecutor } from '../queries/projects.query';
 import {
   activateProjectTeardownWithTransaction,
@@ -80,14 +81,17 @@ export async function archiveProjectForPrincipal(input: ProjectScopeInput): Prom
         projectScope.organization.id,
         projectScope.project.id,
       );
-      await excludeGitSourceProjectBindingWithinTransaction(transaction, project.id, input.principalId, new Date());
+      const archivedAt: Date = new Date();
+      await excludeGitSourceProjectBindingWithinTransaction(transaction, project.id, input.principalId, archivedAt);
       const persistedArchivedProject: ProjectRow = await ensureArchivedProject(
         transaction,
         projectScope.organization.id,
         project,
+        archivedAt,
       );
-      await cancelProjectProductJobsForArchive(transaction, project.id, new Date());
-      await cancelResourceReconcileRunsForProjectArchive(transaction, project.id, new Date());
+      await stopInactiveQueuedProjectDeploymentsForArchivedProject(transaction, project.id, archivedAt);
+      await cancelProjectProductJobsForArchive(transaction, project.id, archivedAt);
+      await cancelResourceReconcileRunsForProjectArchive(transaction, project.id, archivedAt);
       return persistedArchivedProject;
     },
   );
@@ -199,6 +203,7 @@ async function requireArchivedDeletableProject(
   if (project.archivedAt === null) {
     throw createProjectDeleteRequiresArchiveError();
   }
+  await stopInactiveQueuedProjectDeploymentsForArchivedProject(transaction, project.id, new Date());
   if (await hasBlockingProjectDeployments(transaction, project.id)) {
     throw createProjectDeleteBlockedError();
   }

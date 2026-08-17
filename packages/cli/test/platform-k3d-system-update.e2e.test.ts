@@ -41,6 +41,11 @@ interface ChartResourceLimits {
 
 interface ChartResourceEntry {
   limits: ChartResourceLimits;
+  requests: ChartResourceRequests;
+}
+
+interface ChartResourceRequests {
+  memory: string;
 }
 
 interface ChartValues {
@@ -186,6 +191,7 @@ async function plantSupersededChartDefaults(): Promise<void> {
   const valuesPath: string = join(supersededChartPath, 'values.yaml');
   const values: ChartValues = parse(await readFile(valuesPath, 'utf8')) as ChartValues;
   for (const [name, memory] of Object.entries(supersededBuildResourceMemory)) {
+    values.resources[name]!.requests.memory = memory;
     values.resources[name]!.limits.memory = memory;
   }
   await writeFile(valuesPath, stringify(values));

@@ -66,6 +66,12 @@ export const resourceReconcileRuns: DeploySchemaTypes.ResourceReconcileRunsTable
     activeOrderIndex: index('resource_reconcile_runs_active_order_idx')
       .on(table.createdAt, table.id)
       .where(sql`${table.phase} IN ('bootstrap-pending', 'reconcile-pending', 'running')`),
+    resourceOperationOrderIndex: index('resource_reconcile_runs_resource_operation_order_idx').on(
+      table.projectResourceId,
+      table.operationType,
+      table.createdAt,
+      table.id,
+    ),
   }),
 );
 

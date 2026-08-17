@@ -17,6 +17,7 @@ import type {
   WorkerRegistryVerificationBuildJobInput,
   WorkerSourceBuildJobInput,
 } from './worker-build-job.types';
+import { isBuildSourceArchiveFetchRetryLine } from '../build-source-archive-fetch';
 import { readBuildLogRecord, readBuildLogRecords } from './worker-build-log-record';
 import { workerJobCommand, workerJobEntrypoints } from '../worker-entrypoints';
 
@@ -91,6 +92,7 @@ function buildKubeJobSpec(config: WorkerBuildConfig, input: RunWorkerBuildJobInp
   return {
     cleanupPolicy: 'delete',
     command: workerJobCommand(workerJobEntrypoints.build),
+    configMapVolumes: [{ configMapName: config.buildSandbox.buildKitConfigMapName, name: 'buildkit-config' }],
     emptyDirVolumes: buildSandboxVolumes(),
     env: buildJobEnvironment(input),
     id: input.id,
@@ -122,6 +124,8 @@ function buildKitSidecar(config: WorkerBuildConfig): KubeJobSidecar {
     args: [
       '--addr',
       buildKitAddress,
+      '--config',
+      '/etc/buildkit/buildkitd.toml',
       '--oci-worker=true',
       '--oci-worker-binary=/usr/local/bin/buildkit-runc-gvisor',
       '--oci-worker-gc-keepstorage',
@@ -136,13 +140,14 @@ function buildKitSidecar(config: WorkerBuildConfig): KubeJobSidecar {
       { mountPath: '/var/lib/buildkit', name: 'buildkit-data' },
       { mountPath: '/run', name: 'buildkit-run' },
       { mountPath: '/buildkit-tmp', name: 'buildkit-tmp' },
+      { mountPath: '/etc/buildkit/buildkitd.toml', name: 'buildkit-config', readOnly: true, subPath: 'buildkitd.toml' },
     ],
   };
 }
 
 class BuildProgressStream {
   private error: Error | null = null;
-  private publishedProgressCount: number = 0;
+  private readonly publishedProgressCounts: Map<string, number> = new Map<string, number>();
   private unprocessed: string = '';
 
   public constructor(private readonly reporter: (line: DockerProgressLine) => void | Promise<void>) {}
@@ -167,12 +172,9 @@ class BuildProgressStream {
   }
 
   public async publishCapturedFallback(logs: string): Promise<void> {
-    if (this.publishedProgressCount !== 0) {
-      return;
-    }
     for (const record of readBuildLogRecords(logs)) {
-      if (record.type === 'progress') {
-        await this.publishProgress(record.progress);
+      if (record.type === 'progress' && !this.consumePublishedProgress(record.progress)) {
+        await this.publishProgress(record.progress, false);
       }
     }
   }
@@ -192,10 +194,27 @@ class BuildProgressStream {
     }
   }
 
-  private async publishProgress(progress: DockerProgressLine): Promise<void> {
+  private async publishProgress(progress: DockerProgressLine, track: boolean = true): Promise<void> {
     await this.reporter(progress);
-    this.publishedProgressCount += 1;
+    if (track) {
+      const signature: string = readProgressSignature(progress);
+      this.publishedProgressCounts.set(signature, (this.publishedProgressCounts.get(signature) ?? 0) + 1);
+    }
   }
+
+  private consumePublishedProgress(progress: DockerProgressLine): boolean {
+    const signature: string = readProgressSignature(progress);
+    const count: number = this.publishedProgressCounts.get(signature) ?? 0;
+    if (count === 0) {
+      return false;
+    }
+    this.publishedProgressCounts.set(signature, count - 1);
+    return true;
+  }
+}
+
+function readProgressSignature(progress: DockerProgressLine): string {
+  return `${progress.stream}\u0000${progress.message}`;
 }
 
 function readCapturedBuildResult(logs: string): DockerBuildImageResult {
@@ -214,12 +233,30 @@ function readCapturedBuildFailure(logs: string): string {
     (candidate: WorkerBuildJobLogRecord): boolean => candidate.type === 'failure',
   );
   const message: string = record?.type === 'failure' ? record.message : 'runner exited without a structured failure';
+  const sourceFetchDiagnostics: string = records
+    .filter(
+      (candidate: WorkerBuildJobLogRecord): boolean =>
+        candidate.type === 'progress' && isBuildSourceArchiveFetchRetryLine(candidate.progress.message),
+    )
+    .map((candidate: WorkerBuildJobLogRecord): string =>
+      candidate.type === 'progress' ? candidate.progress.message : '',
+    )
+    .join('\n');
   const terminalProgress: string = records
-    .filter((candidate: WorkerBuildJobLogRecord): boolean => candidate.type === 'progress')
+    .filter(
+      (candidate: WorkerBuildJobLogRecord): boolean =>
+        candidate.type === 'progress' && !isBuildSourceArchiveFetchRetryLine(candidate.progress.message),
+    )
     .slice(-20)
     .map((candidate: WorkerBuildJobLogRecord): string =>
       candidate.type === 'progress' ? `[${candidate.progress.stream}] ${candidate.progress.message}` : '',
     )
     .join('\n');
-  return terminalProgress === '' ? message : `${message}\nBuildKit terminal output:\n${terminalProgress}`;
+  return [
+    message,
+    sourceFetchDiagnostics === '' ? '' : `Source archive fetch diagnostics:\n${sourceFetchDiagnostics}`,
+    terminalProgress === '' ? '' : `BuildKit terminal output:\n${terminalProgress}`,
+  ]
+    .filter((section: string): boolean => section !== '')
+    .join('\n');
 }

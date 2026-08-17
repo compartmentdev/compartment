@@ -56,4 +56,15 @@ spec:
       ports:
         - {port: {{ .Values.ports.api }}, protocol: TCP}
         - {port: {{ .Values.ports.registryInternal }}, protocol: TCP}
+    {{- if .Values.dockerHubCache.enabled }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+          podSelector:
+            matchLabels:
+              {{- include "compartment.componentLabels" (dict "root" . "component" "dockerhub-cache") | nindent 14 }}
+      ports:
+        - {port: {{ .Values.ports.dockerHubCache }}, protocol: TCP}
+    {{- end }}
 {{- end }}

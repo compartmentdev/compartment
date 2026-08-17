@@ -12,6 +12,7 @@ import type {
   EdgeTrafficUsageRow,
   RecordEdgeTrafficUsageInput,
 } from './edge-traffic-metering.query.types';
+import { compareWorkloadUsageLockKeys } from './workload-usage-lock-order.support';
 
 export async function recordEdgeTrafficUsage(input: RecordEdgeTrafficUsageInput): Promise<boolean> {
   return await getApiDatabase().transaction(async (tx: ApiDatabaseTransaction): Promise<boolean> => {
@@ -23,19 +24,30 @@ export async function recordEdgeTrafficUsage(input: RecordEdgeTrafficUsageInput)
     if (receipt === undefined) {
       return false;
     }
+    const rows: EdgeTrafficUsageRow[] = [];
     for (const metric of input.metrics) {
-      await recordEdgeTrafficMetric(tx, metric);
+      const row: EdgeTrafficUsageRow | undefined = await resolveEdgeTrafficUsageRow(tx, metric);
+      if (row !== undefined) {
+        rows.push(row);
+      }
+    }
+    rows.sort(compareWorkloadUsageLockKeys);
+    for (const row of rows) {
+      await incrementEdgeTrafficHour(tx, row);
     }
     return true;
   });
 }
 
-async function recordEdgeTrafficMetric(tx: ApiDatabaseTransaction, metric: EdgeTrafficUsageMetricInput): Promise<void> {
+async function resolveEdgeTrafficUsageRow(
+  tx: ApiDatabaseTransaction,
+  metric: EdgeTrafficUsageMetricInput,
+): Promise<EdgeTrafficUsageRow | undefined> {
   const owner: DeploymentUsageOwner | undefined = await readDeploymentUsageOwnerByUpstreamHost(tx, metric.upstreamHost);
   if (owner === undefined) {
-    return;
+    return undefined;
   }
-  await incrementEdgeTrafficHour(tx, buildEdgeTrafficUsageRow(owner, metric));
+  return buildEdgeTrafficUsageRow(owner, metric);
 }
 
 async function incrementEdgeTrafficHour(tx: ApiDatabaseTransaction, row: EdgeTrafficUsageRow): Promise<void> {

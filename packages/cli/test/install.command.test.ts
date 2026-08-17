@@ -199,6 +199,43 @@ describe('install command boundary', (): void => {
     expect(mocks.deployInstall).not.toHaveBeenCalled();
   });
 
+  it('rejects a public TLS issuer flag for a managed domain', async (): Promise<void> => {
+    const capture: CliCommandCapture = createCliCapture();
+    const exitCode: number = await runCli(
+      ['install', '--target', 'kubernetes', '--managed-domain', '--tls-issuer', 'Issuer/public-dns01'],
+      capture.io,
+    );
+    expect(exitCode).toBe(1);
+    expect(readCliStderr(capture)).toContain('--tls-issuer');
+    expect(readCliStderr(capture)).not.toContain('Missing required install input');
+    expect(mocks.resolveKubeconfig).not.toHaveBeenCalled();
+  });
+
+  it('accepts both issuer flags for an operator-owned domain at the CLI boundary', async (): Promise<void> => {
+    const capture: CliCommandCapture = createCliCapture();
+    const exitCode: number = await runCli(
+      [
+        'install',
+        '--target',
+        'kubernetes',
+        '--base-domain',
+        'apps.example.com',
+        '--tls-issuer',
+        'ClusterIssuer/public-dns01',
+        '--registry-issuer',
+        'Issuer/registry-ca',
+        '--ingress-class',
+        'traefik',
+        '--storage-class',
+        'local-path',
+      ],
+      capture.io,
+    );
+    expect(exitCode).toBe(1);
+    expect(readCliStderr(capture)).toContain('Missing required install input: --email');
+    expect(readCliStderr(capture)).not.toContain('--tls-issuer');
+  });
+
   it('reports conflicting domain flags at the domain boundary', async (): Promise<void> => {
     const materializedDirectory: string = await mkdtemp(resolve(tmpdir(), 'compartment-command-kubeconfig-'));
     mocks.resolveKubeconfig.mockResolvedValueOnce({

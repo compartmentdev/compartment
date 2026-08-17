@@ -8,6 +8,8 @@ export interface ManagedResourceUpdatePlan {
   rollback: KubeManifest[] | null;
 }
 
+export type ResourceReconcileWork = (signal: AbortSignal) => Promise<void>;
+
 export interface CompleteResourceReconcileClaim extends Omit<
   WorkerClaimResourceReconcileResponse,
   'intent' | 'leaseId' | 'operationId' | 'type'

@@ -23,6 +23,7 @@ export function createApiTestConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     bindHost: '127.0.0.1',
     controlPlaneHost: 'console.localhost',
     databaseUrl: 'postgresql://postgres:postgres@127.0.0.1:5432/compartment_test',
+    deploymentInfrastructureTimeoutMs: 600_000,
     edgeToken: 'test-edge-token',
     edgeUrl: 'http://127.0.0.1:9081',
     logLevel: 'silent',

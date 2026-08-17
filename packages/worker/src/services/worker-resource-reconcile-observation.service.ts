@@ -1,4 +1,4 @@
-import type { ResourceClaimIdentity } from '@compartment/contracts';
+import { resourceReconcileLifecycleTimeoutMs, type ResourceClaimIdentity } from '@compartment/contracts';
 import {
   assertResourceClaimIdentity,
   assertResourceClaimOwnership,
@@ -16,7 +16,11 @@ import {
   type ResourceVolumeProjection,
 } from '@compartment/kube-runtime';
 import { readLiveResourceClaims, toObservedResourceClaim } from './worker-resource-claim-observation.service';
-import { findObservedManifest, waitUntil } from './worker-resource-reconcile-wait.service';
+import {
+  assertResourceReconcileActive,
+  findObservedManifest,
+  waitUntil,
+} from './worker-resource-reconcile-wait.service';
 
 interface ObservedRollbackManifestData {
   data?: Record<string, string> | undefined;
@@ -62,17 +66,21 @@ export async function readLiveClaims(
   return await readLiveResourceClaims(runtime, projectResourceBootstrapClaims(row));
 }
 
+export function projectManagedResourceManifests(
+  row: ResourceProjectionRow,
+  replicas: 0 | 1,
+  infrastructureTimeoutMs: number,
+): KubeManifest[] {
+  return projectResourceManifests(row, infrastructureTimeoutMs, replicas);
+}
+
 export function assertFinalClaimState(
   expectedClaims: ResourceClaimIdentity[],
   observedClaims: ObservedResourceClaim[],
   row: ResourceProjectionRow,
 ): void {
   assertResourceClaimOwnership(expectedClaims, observedClaims);
-  const mountedNames: Set<string> = new Set<string>(
-    row.volumes.map((volume: ResourceVolumeProjection): string =>
-      kubeResourceVolumeName(row.resourceId, volume.volumeHandle),
-    ),
-  );
+  const mountedNames: Set<string> = mountedClaimNames(row);
   if (mountedNames.size === 0) {
     return;
   }
@@ -82,14 +90,58 @@ export function assertFinalClaimState(
   );
 }
 
+export async function waitForMountedResourceClaims(
+  observation: KubeObservation,
+  expectedClaims: ResourceClaimIdentity[],
+  row: ResourceProjectionRow,
+  manifests: KubeManifest[],
+  infrastructureTimeoutMs: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  const mountedNames: Set<string> = mountedClaimNames(row);
+  const startsWorkload: boolean = manifests.some(
+    (manifest: KubeManifest): boolean => manifest.kind === 'Deployment' && manifest.spec?.replicas === 1,
+  );
+  if (!startsWorkload || mountedNames.size === 0) {
+    return;
+  }
+  await waitUntil(
+    observation,
+    (): true | null => {
+      const observedClaims: ObservedResourceClaim[] = readObservedClaims(observation);
+      assertResourceClaimOwnership(expectedClaims, observedClaims);
+      return observedClaims
+        .filter((claim: ObservedResourceClaim): boolean => mountedNames.has(claim.claimName))
+        .every((claim: ObservedResourceClaim): boolean => claim.bound)
+        ? true
+        : null;
+    },
+    infrastructureTimeoutMs,
+    signal,
+  );
+}
+
+function mountedClaimNames(row: ResourceProjectionRow): Set<string> {
+  return new Set<string>(
+    row.volumes.map((volume: ResourceVolumeProjection): string =>
+      kubeResourceVolumeName(row.resourceId, volume.volumeHandle),
+    ),
+  );
+}
+
 export async function scaleDownAndAwaitTermination(
   runtime: KubeRuntime,
   observation: KubeObservation,
   row: ResourceProjectionRow,
+  signal?: AbortSignal,
 ): Promise<void> {
-  await runtime.apply({ objects: projectResourceManifests(row, 0) });
-  await waitUntil(observation, (): true | null =>
-    resourcePodsFullyTerminated(readResourcePods(observation)) ? true : null,
+  assertResourceReconcileActive(signal);
+  await runtime.apply({ objects: projectManagedResourceManifests(row, 0, resourceReconcileLifecycleTimeoutMs) });
+  await waitUntil(
+    observation,
+    (): true | null => (resourcePodsFullyTerminated(readResourcePods(observation)) ? true : null),
+    resourceReconcileLifecycleTimeoutMs,
+    signal,
   );
 }
 

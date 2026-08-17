@@ -1,21 +1,19 @@
 import type { WorkerPodResourceMetric } from '@compartment/contracts';
+import type { UsageHourSlice } from './usage-aggregation.support.types';
+import type { WorkloadUsageOwner } from './workload-usage-lock-order.support.types';
 
 export interface RecordPodUsageInput {
   maximumIntervalMs: number;
   pods: WorkerPodResourceMetric[];
 }
 
-export interface UsageOwner {
-  environmentId: string;
-  organizationId: string;
-  projectId: string;
-  resourceId: string | null;
-  serviceId: string | null;
-}
+export type UsageOwner = WorkloadUsageOwner;
 
 export interface UsageCheckpoint {
   observedAt: Date;
 }
+
+export type UsageHourIncrement = UsageOwner & UsageHourSlice;
 
 export interface DeleteExpiredUsageBatchInput {
   before: Date;

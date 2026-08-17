@@ -1,5 +1,7 @@
 import { consumeSourceUploadAndCreateQueuedDeploymentBatch } from '../queries/deployment-batch.query';
+import { createProjectArchivedError } from '../errors/api-business-error';
 import type {
+  ConsumeSourceUploadAndCreateQueuedDeploymentBatchResult,
   ConsumeSourceUploadAndCreateQueuedDeploymentBatchInput,
   CreateQueuedDeploymentBatchItem,
   DeploymentRow,
@@ -47,9 +49,13 @@ export async function queuePreparedDeployments(
   label: string | undefined,
 ): Promise<DeploymentRow[]> {
   const consumedAt: Date = new Date();
-  const queuedDeployments: DeploymentRow[] | undefined = await consumeSourceUploadAndCreateQueuedDeploymentBatch(
-    buildQueuedDeploymentBatchInput(preparedStates, sourceUploadScope, label, consumedAt),
-  );
+  const queuedDeployments: ConsumeSourceUploadAndCreateQueuedDeploymentBatchResult =
+    await consumeSourceUploadAndCreateQueuedDeploymentBatch(
+      buildQueuedDeploymentBatchInput(preparedStates, sourceUploadScope, label, consumedAt),
+    );
+  if (queuedDeployments === 'project-archived') {
+    throw createProjectArchivedError();
+  }
   return queuedDeployments ?? (await throwSourceUploadNoLongerDeployableError(sourceUploadScope));
 }
 

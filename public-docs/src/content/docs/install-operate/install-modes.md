@@ -60,6 +60,10 @@ setup stops with the prerequisite and exact next commands before collecting an i
 install an ingress controller, change node container-runtime or CA-trust configuration, or take ownership of cluster
 upgrades and backups.
 
+For autoscaled clusters, `capacityHeadroom.replicas` controls preemptible tenant-capacity placeholders that signal an
+operator-installed compatible autoscaler. Set it to zero to accept saturation or increase it to reserve more free
+allocations. You remain responsible for node reservations, eviction headroom, and cloud-node bootstrap.
+
 The Helm release installs Capsule 0.13.11 and its cluster-scoped quota resources. Pod and persistent volume claim
 creates and updates fail closed in Compartment-managed project namespaces, so those operations are rejected while
 the webhook is unavailable. Delete notifications fail open so teardown remains available; periodic reconciliation

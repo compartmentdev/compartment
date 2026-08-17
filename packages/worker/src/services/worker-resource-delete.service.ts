@@ -1,16 +1,25 @@
 import {
   assertResourceClaimOwnership,
   projectResourceClaimDeleteTargets,
-  projectResourceManifests,
   type KubeObservation,
   type KubeRuntime,
   type ObservedResourceClaim,
   type ResourceProjectionRow,
 } from '@compartment/kube-runtime';
-import type { ResourceClaimIdentity } from '@compartment/contracts';
-import { acknowledgeResourceReconcile, type CompartmentRequester } from '@compartment/sdk';
-import { readLiveClaims, scaleDownAndAwaitTermination } from './worker-resource-reconcile-observation.service';
+import { resourceReconcileLifecycleTimeoutMs, type ResourceClaimIdentity } from '@compartment/contracts';
+import type { CompartmentRequester } from '@compartment/sdk';
+import {
+  projectManagedResourceManifests,
+  readLiveClaims,
+  scaleDownAndAwaitTermination,
+} from './worker-resource-reconcile-observation.service';
 import type { CompleteResourceReconcileClaim } from './worker-resource-reconcile.service.types';
+import {
+  acknowledgeCurrentResourceReconcile,
+  rethrowResourceReconcileLeaseError,
+  runWithResourceReconcileLease,
+} from './worker-resource-reconcile-lease.service';
+import { assertResourceReconcileActive } from './worker-resource-reconcile-wait.service';
 
 export async function executeManagedDelete(
   request: CompartmentRequester,
@@ -21,12 +30,19 @@ export async function executeManagedDelete(
 ): Promise<void> {
   const { leaseId, operationId } = claimed;
   try {
-    await acknowledgeResourceReconcile(request, { leaseId, operationId, status: 'running' });
-    await stopAndDeleteManagedManifests(runtime, observation, claimed, row);
-    await acknowledgeResourceReconcile(request, { leaseId, operationId, status: 'succeeded' });
+    await acknowledgeCurrentResourceReconcile(request, { leaseId, operationId, status: 'running' });
+    await runWithResourceReconcileLease(
+      request,
+      leaseId,
+      operationId,
+      async (signal: AbortSignal): Promise<void> =>
+        await stopAndDeleteManagedManifests(runtime, observation, claimed, row, signal),
+    );
+    await acknowledgeCurrentResourceReconcile(request, { leaseId, operationId, status: 'succeeded' });
   } catch (error) {
+    rethrowResourceReconcileLeaseError(typeof error === 'object' ? error : null);
     const failureMessage: string = error instanceof Error ? error.message : 'Resource reconcile failed.';
-    await acknowledgeResourceReconcile(request, { failureMessage, leaseId, operationId, status: 'failed' });
+    await acknowledgeCurrentResourceReconcile(request, { failureMessage, leaseId, operationId, status: 'failed' });
     throw error;
   }
 }
@@ -36,13 +52,15 @@ async function stopAndDeleteManagedManifests(
   observation: KubeObservation,
   claimed: CompleteResourceReconcileClaim,
   row: ResourceProjectionRow,
+  signal: AbortSignal,
 ): Promise<void> {
   assertManagedClaimOwnership(claimed.expectedClaims, await readLiveClaims(runtime, row), row.deleteData);
-  await scaleDownAndAwaitTermination(runtime, observation, row);
+  await scaleDownAndAwaitTermination(runtime, observation, row, signal);
   assertManagedClaimOwnership(claimed.expectedClaims, await readLiveClaims(runtime, row), row.deleteData);
-  await runtime.delete(projectResourceManifests(row, 0));
+  assertResourceReconcileActive(signal);
+  await runtime.delete(projectManagedResourceManifests(row, 0, resourceReconcileLifecycleTimeoutMs));
   if (row.deleteData) {
-    await deleteManagedData(runtime, claimed.expectedClaims, row);
+    await deleteManagedData(runtime, claimed.expectedClaims, row, signal);
   }
 }
 
@@ -50,12 +68,14 @@ async function deleteManagedData(
   runtime: KubeRuntime,
   expected: ResourceClaimIdentity[],
   row: ResourceProjectionRow,
+  signal: AbortSignal,
 ): Promise<void> {
   const liveClaims: ObservedResourceClaim[] = assertRemainingResourceClaimOwnership(
     expected,
     await readLiveClaims(runtime, row),
   );
   if (liveClaims.length > 0) {
+    assertResourceReconcileActive(signal);
     await runtime.delete(projectResourceClaimDeleteTargets(row, liveClaims));
   }
 }

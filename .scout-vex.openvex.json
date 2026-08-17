@@ -1,82 +1,47 @@
 {
   "@context": "https://openvex.dev/ns/v0.2.0",
-  "@id": "https://github.com/compartmentdev/compartment/security/vex/2026-07-22-grpc-buildctl-railpack",
+  "@id": "https://github.com/compartmentdev/compartment/security/vex/2026-08-14-worker-go-sumdb",
   "author": "compartment maintainers",
-  "timestamp": "2026-07-22T05:40:00Z",
-  "version": 3,
+  "timestamp": "2026-08-14T20:25:00Z",
+  "version": 1,
   "statements": [
     {
       "vulnerability": {
-        "name": "GHSA-hrxh-6v49-42gf"
+        "name": "CVE-2026-56864"
       },
       "products": [
         {
-          "@id": "pkg:oci/compartment-worker?repository_url=ghcr.io/compartmentdev/compartment-worker",
-          "subcomponents": [
-            {
-              "@id": "pkg:golang/google.golang.org/grpc@1.80.0"
-            },
-            {
-              "@id": "pkg:golang/google.golang.org/grpc@1.79.3"
-            },
-            {
-              "@id": "pkg:golang/google.golang.org/grpc@v1.80.0"
-            },
-            {
-              "@id": "pkg:golang/google.golang.org/grpc@v1.79.3"
-            }
-          ]
+          "@id": "pkg:oci/compartment-worker?repository_url=ghcr.io/compartmentdev/compartment-worker"
         },
         {
-          "@id": "pkg:oci/compartment-worker?repository_url=ghcr.io%2Fcompartmentdev%2Fcompartment-worker",
-          "subcomponents": [
-            {
-              "@id": "pkg:golang/google.golang.org/grpc@1.80.0"
-            },
-            {
-              "@id": "pkg:golang/google.golang.org/grpc@1.79.3"
-            },
-            {
-              "@id": "pkg:golang/google.golang.org/grpc@v1.80.0"
-            },
-            {
-              "@id": "pkg:golang/google.golang.org/grpc@v1.79.3"
-            }
-          ]
+          "@id": "pkg:oci/compartment-worker?repository_url=ghcr.io%2Fcompartmentdev%2Fcompartment-worker"
         },
         {
-          "@id": "pkg:docker/compartmentdev/compartment-worker",
-          "subcomponents": [
-            {
-              "@id": "pkg:golang/google.golang.org/grpc@1.80.0"
-            },
-            {
-              "@id": "pkg:golang/google.golang.org/grpc@1.79.3"
-            },
-            {
-              "@id": "pkg:golang/google.golang.org/grpc@v1.80.0"
-            },
-            {
-              "@id": "pkg:golang/google.golang.org/grpc@v1.79.3"
-            }
-          ]
-        },
-        {
-          "@id": "pkg:golang/google.golang.org/grpc@1.80.0"
-        },
-        {
-          "@id": "pkg:golang/google.golang.org/grpc@1.79.3"
-        },
-        {
-          "@id": "pkg:golang/google.golang.org/grpc@v1.80.0"
-        },
-        {
-          "@id": "pkg:golang/google.golang.org/grpc@v1.79.3"
+          "@id": "pkg:docker/compartmentdev/compartment-worker"
         }
       ],
       "status": "not_affected",
-      "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "Upstream buildkit v0.30.0 (buildctl) and railpack v0.23.0 binaries in the worker image embed grpc-go 1.80.0/1.79.3. The vulnerable surfaces are the grpc xDS RBAC filter and HTTP/2 server, which these CLI invocations do not expose as network listeners. No upstream releases built with the patched grpc 1.82.1 exist yet; drop this statement on the next buildkit/railpack version bump (mirrors the .trivyignore.yaml entry)."
+      "justification": "vulnerable_code_not_present",
+      "impact_statement": "The worker runtime does not ship cmd/go, and no shipped binary links golang.org/x/mod, so the vulnerable sumdb.Client.Lookup implementation is absent. The shipped buildctl, buildkitd, buildkit-runc-gvisor, and railpack binaries report the fixed Go 1.26.6 toolchain. Remove this statement if cmd/go enters the runtime, a shipped binary links golang.org/x/mod below 0.40.0, or the Go builder regresses below 1.26.6."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-56865"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/compartment-worker?repository_url=ghcr.io/compartmentdev/compartment-worker"
+        },
+        {
+          "@id": "pkg:oci/compartment-worker?repository_url=ghcr.io%2Fcompartmentdev%2Fcompartment-worker"
+        },
+        {
+          "@id": "pkg:docker/compartmentdev/compartment-worker"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_present",
+      "impact_statement": "The worker runtime does not ship cmd/go, and no shipped binary links golang.org/x/mod, so the vulnerable sumdb/tlog tile verification implementation is absent. The shipped buildctl, buildkitd, buildkit-runc-gvisor, and railpack binaries report the fixed Go 1.26.6 toolchain. Remove this statement if cmd/go enters the runtime, a shipped binary links golang.org/x/mod below 0.40.0, or the Go builder regresses below 1.26.6."
     }
   ]
 }

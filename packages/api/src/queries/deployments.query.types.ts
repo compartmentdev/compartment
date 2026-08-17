@@ -35,6 +35,8 @@ export type {
 } from './deployments.query.write.types';
 
 export type DeploymentTransaction = ApiDatabaseTransaction;
+export type CreateQueuedExistingArtifactDeploymentBatchResult = DeploymentRow[] | 'project-archived';
+export type ConsumeSourceUploadAndCreateQueuedDeploymentBatchResult = DeploymentRow[] | 'project-archived' | undefined;
 export type PersistedDeploymentRow = typeof deployments.$inferSelect;
 export type PersistedEnvironmentRow = typeof environments.$inferSelect;
 export type PersistedOperationRow = typeof operations.$inferSelect;
@@ -84,6 +86,16 @@ export interface EnvironmentRow {
   name: string;
   projectId: string;
   updatedAt: Date;
+}
+
+export interface LockedDeploymentProjectRow {
+  archivedAt: Date | null;
+  environmentId: string;
+  projectId: string;
+}
+
+export interface PersistedStoppedDeploymentOperationRow {
+  operationId: string;
 }
 export type BuildArtifactImageRetentionState = 'available' | 'cleaned';
 

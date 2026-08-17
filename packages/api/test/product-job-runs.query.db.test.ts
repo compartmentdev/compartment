@@ -20,7 +20,6 @@ import {
   organizations,
   jobUsageHourly,
   productJobRuns,
-  projectKubeProvisioning,
   projectResources,
   projectServices,
   projects,
@@ -42,7 +41,7 @@ import { claimResourceReconcileRun } from '../src/queries/resource-reconcile-run
 import { finalizeProjectResourceDeletion } from '../src/queries/resource-reconcile-deletion.query';
 import { readResourceReconcileRunWaitState } from '../src/queries/resource-reconcile-wait.query';
 import type { ResourceReconcileRunWaitState } from '../src/queries/resource-reconcile-runs.query.types';
-import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
+import { seedCurrentProjectProvisioning, useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import { createApiTestConfig } from './api-config-test.fixtures';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
@@ -69,7 +68,7 @@ describe('product Job persistence', (): void => {
     await db
       .insert(projects)
       .values({ defaultAccessMode: 'authenticated', id: 'prj-job', name: 'jobs', organizationId: 'org_job' });
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj-job', state: 'succeeded' });
+    await seedCurrentProjectProvisioning(db, 'prj-job');
     await db.insert(environments).values({ id: 'env-job', name: 'production', projectId: 'prj-job' });
     await db
       .insert(projectServices)
@@ -602,7 +601,7 @@ describe('product Job persistence', (): void => {
     await persistProductJobIntent({ identityId: 'op_first', intent: resourceOperationIntent('op_first') });
     await persistProductJobIntent({ identityId: 'op_waiting', intent: resourceOperationIntent('op_waiting') });
 
-    await expect(readProductJobQueueWaitState('resource-operation', 'op_waiting')).resolves.toMatchObject({
+    await expect(readProductJobQueueWaitState('resource-operation', 'op_waiting', 600_000)).resolves.toMatchObject({
       queueBudgetMs: 60_000,
     });
     await persistProductJobResult({
@@ -616,7 +615,7 @@ describe('product Job persistence', (): void => {
       status: 'succeeded',
     });
     await persistProductJobFinalized('resource-operation', 'op_first');
-    await expect(readProductJobQueueWaitState('resource-operation', 'op_waiting')).resolves.toMatchObject({
+    await expect(readProductJobQueueWaitState('resource-operation', 'op_waiting', 600_000)).resolves.toMatchObject({
       queueBudgetMs: 30_000,
     });
 
@@ -649,6 +648,7 @@ describe('product Job persistence', (): void => {
     const state: ProductJobQueueWaitState | null = await readProductJobQueueWaitState(
       'resource-operation',
       'job_waits_for_reconcile_budget',
+      600_000,
     );
     expect(state?.queueBudgetMs).toBeGreaterThan(30_000);
   });

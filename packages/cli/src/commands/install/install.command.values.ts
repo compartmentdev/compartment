@@ -147,16 +147,10 @@ function listRequiredOperatorTlsIssues(values: YamlFileObject | undefined): z.Zo
   const tls: YamlFileObject | undefined = readYamlObject(values?.tls);
   const registry: YamlFileObject | undefined = readYamlObject(values?.registry);
   const existingSecret: string = typeof tls?.existingSecret === 'string' ? tls.existingSecret.trim() : '';
-  const publicProtocol: string = readOperatorPublicProtocol(platform, existingSecret);
+  const hasIssuer: boolean = tls?.issuerRef !== undefined;
+  const publicProtocol: string = readOperatorPublicProtocol(platform, existingSecret, hasIssuer);
   const issues: z.ZodIssue[] = [];
-  if (tls?.issuerRef !== undefined) {
-    issues.push({
-      code: z.ZodIssueCode.custom,
-      message: 'is not supported for operator-owned domain TLS; use external HTTP or tls.existingSecret',
-      path: ['tls', 'issuerRef'],
-    });
-  }
-  issues.push(...listOperatorProtocolIssues(publicProtocol, existingSecret));
+  issues.push(...listOperatorProtocolIssues(publicProtocol, existingSecret, hasIssuer));
   if (registry?.issuerRef === undefined) {
     issues.push({
       code: z.ZodIssueCode.custom,
@@ -167,19 +161,26 @@ function listRequiredOperatorTlsIssues(values: YamlFileObject | undefined): z.Zo
   return issues;
 }
 
-function readOperatorPublicProtocol(platform: YamlFileObject | undefined, existingSecret: string): string {
+function readOperatorPublicProtocol(
+  platform: YamlFileObject | undefined,
+  existingSecret: string,
+  hasIssuer: boolean,
+): string {
   if (typeof platform?.publicProtocol === 'string') {
     return platform.publicProtocol;
   }
-  return existingSecret === '' ? 'http' : 'https';
+  return existingSecret !== '' || hasIssuer ? 'https' : 'http';
 }
 
-function listOperatorProtocolIssues(publicProtocol: string, existingSecret: string): z.ZodIssue[] {
-  if (publicProtocol === 'https' && existingSecret === '') {
-    return [operatorValueIssue('is required when platform.publicProtocol is https')];
+function listOperatorProtocolIssues(publicProtocol: string, existingSecret: string, hasIssuer: boolean): z.ZodIssue[] {
+  const hasTlsSource: boolean = existingSecret !== '' || hasIssuer;
+  if (publicProtocol === 'https' && !hasTlsSource) {
+    return [
+      operatorValueIssue('tls.existingSecret or tls.issuerRef is required when platform.publicProtocol is https'),
+    ];
   }
-  if (publicProtocol === 'http' && existingSecret !== '') {
-    return [operatorValueIssue('cannot be used when platform.publicProtocol is http')];
+  if (publicProtocol === 'http' && hasTlsSource) {
+    return [operatorValueIssue('TLS sources cannot be used when platform.publicProtocol is http')];
   }
   return [];
 }
@@ -197,6 +198,7 @@ function readOperatorInputValues(
   includePublicProtocol: boolean,
 ): OperatorInstallInputValues {
   const existingSecret: string = values.tls?.existingSecret?.trim() ?? '';
+  const hasIssuer: boolean = values.tls?.issuerRef !== undefined;
   return {
     clearIngressEndpoint: values.ingress?.endpoint?.value === '',
     ingressClass: values.ingress?.className ?? '',
@@ -204,7 +206,7 @@ function readOperatorInputValues(
       ? {}
       : { ingressEndpoint: values.ingress.endpoint.value }),
     ...(includePublicProtocol
-      ? { publicProtocol: values.platform?.publicProtocol ?? (existingSecret === '' ? 'http' : 'https') }
+      ? { publicProtocol: values.platform?.publicProtocol ?? (existingSecret !== '' || hasIssuer ? 'https' : 'http') }
       : {}),
     storageClass: values.storage?.storageClass ?? '',
   };

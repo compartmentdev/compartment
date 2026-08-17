@@ -5,6 +5,7 @@ import type { ClientOptions } from '../client.types';
 import type {
   CompartmentRequestMethod,
   CompartmentBinaryRequestOptions,
+  CompartmentBinaryRequestRetryOptions,
   CompartmentRequestOptions,
   CompartmentRequestErrorFields,
   CompartmentBinaryRequester,
@@ -14,41 +15,20 @@ import type {
   CompartmentRequester,
 } from './request.types';
 import {
+  executeCompartmentBinaryRequest,
+  sanitizeBinaryRequestPath,
+  sanitizeBinaryRequestTarget,
+} from './binary-request-retry';
+import {
   CompartmentRequestError,
   createRequestSignal,
   createTransportRequestError,
-  isRetryableTransportRequestError,
   type RequestTransportFailure,
   type RequestTransportOptions,
 } from './request-error';
 import { createRawRequestHeaders, createRequestHeaders } from './request-headers';
 
-export function isCompartmentRequestError(
-  value: Error | null | undefined,
-): value is Error & CompartmentRequestErrorFields {
-  const candidate: Partial<CompartmentRequestErrorFields> & { name?: string | undefined } =
-    (value as (Partial<CompartmentRequestErrorFields> & { name?: string | undefined }) | null | undefined) ?? {};
-
-  return (
-    value instanceof Error &&
-    candidate.name === 'CompartmentRequestError' &&
-    typeof candidate.code === 'string' &&
-    typeof candidate.statusCode === 'number' &&
-    typeof candidate.method === 'string' &&
-    typeof candidate.url === 'string'
-  );
-}
-
-/**
- * A request is worth another attempt when the transport never delivered a verdict, or when the server answered with
- * one it invites the caller to retry.
- */
-export function isRetryableRequestError(error: Error | null | undefined): boolean {
-  return (
-    (isCompartmentRequestError(error) && (error.statusCode === 429 || error.statusCode >= 500)) ||
-    isRetryableTransportRequestError(error)
-  );
-}
+export { isCompartmentRequestError, isRetryableRequestError } from './request-error';
 
 export function createCompartmentRequester(defaultOptions: ClientOptions): CompartmentRequester {
   return async function request<TResult, TBody>({
@@ -74,20 +54,40 @@ export function createCompartmentRequester(defaultOptions: ClientOptions): Compa
   };
 }
 
-export function createCompartmentBinaryRequester(defaultOptions: ClientOptions): CompartmentBinaryRequester {
+export function createCompartmentBinaryRequester(
+  defaultOptions: ClientOptions,
+  retryOptions?: CompartmentBinaryRequestRetryOptions,
+): CompartmentBinaryRequester {
+  const maximumAttempts: number = retryOptions?.maximumAttempts ?? 4;
+  if (!Number.isSafeInteger(maximumAttempts) || maximumAttempts < 1) {
+    throw new Error('Binary request maximumAttempts must be a positive integer.');
+  }
   return async function request({ method, path, ...requestOptions }: CompartmentBinaryRequestOptions): Promise<Buffer> {
     const headers: Headers = createRequestHeaders(undefined, requestOptions, defaultOptions);
     const url: string = createRequestUrl(defaultOptions, path);
-    const response: Response = await fetchCompartmentResponse(
-      url,
-      createRequestInit(undefined, headers, method, defaultOptions.requestTimeoutMs),
-      { method, path, requestTimeoutMs: defaultOptions.requestTimeoutMs, url },
-    );
+    return await executeCompartmentBinaryRequest({
+      execute: async (): Promise<Buffer> => {
+        const response: Response = await fetchCompartmentResponse(
+          url,
+          createRequestInit(undefined, headers, method, defaultOptions.requestTimeoutMs),
+          {
+            method,
+            path: sanitizeBinaryRequestPath(path),
+            requestTimeoutMs: defaultOptions.requestTimeoutMs,
+            url: sanitizeBinaryRequestTarget(url, path),
+          },
+        );
 
-    if (!response.ok) {
-      throw await createBinaryRequestError(response, { method, url });
-    }
-    return Buffer.from(await response.arrayBuffer());
+        if (!response.ok) {
+          throw await createBinaryRequestError(response, { method, url });
+        }
+        return Buffer.from(await response.arrayBuffer());
+      },
+      maximumAttempts,
+      method,
+      path,
+      url,
+    });
   };
 }
 

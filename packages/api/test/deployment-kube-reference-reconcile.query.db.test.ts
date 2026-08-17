@@ -36,6 +36,7 @@ import { upsertDeploymentKubeReference } from '../src/queries/deployment-kube-re
 import {
   createDeploymentKubeReferenceDatabaseTestContext,
   seedCandidate,
+  seedCurrentProjectProvisioning,
   seedDeployment,
   useApiRuntimeDatabaseTestHarness,
 } from './deployment-kube-reference.query.db.harness';
@@ -96,6 +97,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
         revision: 0,
       }),
     ).toBe(true);
+
     expect(
       await persistDeploymentReconcileObservation({
         deploymentId: 'dep_candidate',
@@ -154,6 +156,55 @@ describe('deployment Kubernetes transition persistence', (): void => {
     expect(route).toEqual({ deploymentId: 'dep_kube' });
   });
 
+  it('keeps a pending active route published until the replacement is Ready', async (): Promise<void> => {
+    await seedCandidate(db);
+    await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
+    await db.update(deploymentRoutes).set({ deploymentId: 'dep_kube' });
+    const observedAt: Date = new Date('2026-07-12T10:00:00.000Z');
+
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_kube',
+        failureMessage: 'active workload reconciliation pending',
+        observation: 'pending',
+        observedAt,
+        revision: 0,
+      }),
+    ).toBe(true);
+
+    await expect(findActiveDeploymentRouteByHost('kube.localhost', 'localhost')).resolves.toMatchObject({
+      deploymentId: 'dep_kube',
+    });
+
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_candidate',
+        failureMessage: null,
+        observation: 'pending',
+        observedAt,
+        revision: 0,
+      }),
+    ).toBe(true);
+
+    await expect(findActiveDeploymentRouteByHost('kube.localhost', 'localhost')).resolves.toMatchObject({
+      deploymentId: 'dep_kube',
+    });
+
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_candidate',
+        failureMessage: null,
+        observation: 'ready',
+        observedAt: new Date('2026-07-12T10:00:01.000Z'),
+        revision: 1,
+      }),
+    ).toBe(true);
+
+    await expect(findActiveDeploymentRouteByHost('kube.localhost', 'localhost')).resolves.toMatchObject({
+      deploymentId: 'dep_candidate',
+    });
+  });
+
   it('returns an active deployment to pending with one drift audit', async (): Promise<void> => {
     const observedAt: Date = new Date('2026-07-12T10:00:00.000Z');
     expect(
@@ -177,7 +228,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
   it('keeps a succeeded deployment claimable after active readiness drift', async (): Promise<void> => {
     await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await seedCurrentProjectProvisioning(db, 'prj_kube');
     await persistDeploymentReconcileObservation({
       deploymentId: 'dep_kube',
       failureMessage: 'active pod missing',
@@ -222,7 +273,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
   it('does not orphan an active deployment when its recovery rollout exceeds the progress deadline', async (): Promise<void> => {
     await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await seedCurrentProjectProvisioning(db, 'prj_kube');
     await persistDeploymentReconcileObservation({
       deploymentId: 'dep_kube',
       failureMessage: 'active pod missing',
@@ -294,7 +345,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
   it('does not reconcile the active workload while its replacement claim is leased', async (): Promise<void> => {
     await seedCandidate(db);
     await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await seedCurrentProjectProvisioning(db, 'prj_kube');
 
     const replacement: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
     const duringReplacementLease: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
@@ -305,7 +356,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
   it('accepts the first desired apply acknowledgement after the lease is reclaimed', async (): Promise<void> => {
     await seedCandidate(db);
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await seedCurrentProjectProvisioning(db, 'prj_kube');
     const firstClaim: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
     await db
       .update(deploymentKubeReferences)
@@ -335,7 +386,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
   it('accepts a desired apply acknowledgement after repeated lease reclaims', async (): Promise<void> => {
     await seedCandidate(db);
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await seedCurrentProjectProvisioning(db, 'prj_kube');
     const firstClaim: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
 
     for (let reclaim: number = 0; reclaim < 5; reclaim += 1) {
@@ -548,7 +599,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
   }, 10_000);
 
   it('claims a requested stop and accepts the worker acknowledgement', async (): Promise<void> => {
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await seedCurrentProjectProvisioning(db, 'prj_kube');
     await requestDeploymentKubeStop('dep_kube', new Date('2026-07-12T10:00:00.000Z'));
 
     const claimed: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
@@ -569,7 +620,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
   it('rejects an in-flight observation after a stop request advances the revision', async (): Promise<void> => {
     await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await seedCurrentProjectProvisioning(db, 'prj_kube');
     const inFlight: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
     expect(inFlight?.candidate).toMatchObject({ deploymentId: 'dep_kube', revision: 1, state: 'active' });
 
@@ -655,7 +706,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
         { deploymentId: 'dep_kube', state: 'stopped' },
       ]),
     );
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await seedCurrentProjectProvisioning(db, 'prj_kube');
     expect(await findNextDeploymentReconcilePair()).toMatchObject({
       candidate: { deploymentId: 'dep_candidate', state: 'active' },
     });
@@ -1128,7 +1179,7 @@ async function seedDeclaredResource(): Promise<void> {
 
 async function claimablePendingCandidate(): Promise<void> {
   await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
-  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+  await seedCurrentProjectProvisioning(db, 'prj_kube');
   await persistDeploymentReconcileObservation({
     deploymentId: 'dep_kube',
     failureMessage: 'active pod missing',

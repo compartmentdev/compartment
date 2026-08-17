@@ -74,6 +74,11 @@ export function readWorkflowJob(workflowPath: string, jobName: string): Workflow
   return job;
 }
 
+export function readWorkflowJobNames(workflowPath: string): string[] {
+  const workflow: WorkflowFile = parseDocument(readFileSync(workflowPath, 'utf8')).toJS() as WorkflowFile;
+  return Object.keys(workflow.jobs);
+}
+
 export function readChartCaddyEnvironmentValue(name: string): string {
   const value: string | undefined = readChartCaddyEnvironment()[name];
   if (value === undefined) {

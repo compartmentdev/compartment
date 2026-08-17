@@ -97,7 +97,8 @@ Resource fields:
   connected to it. `readiness.timeoutMs` is the budget for that wait, per resource. A command that exhausts it fails
   naming the resource it could not reach, and never waits longer than the command itself has left to run. A service
   instance that exhausts it never starts serving, and the deploy then fails on its usual deploy timeout. A resource
-  you stopped is not expected to answer, so nothing waits on it.
+  you stopped is not expected to answer, so nothing waits on it. Infrastructure startup delays are budgeted
+  separately, so `readiness.timeoutMs` remains reserved for accepting connections after the resource starts.
 - `operations`: optional `backup` and `restore` commands, backup schedule, and backup retention.
 
 Use the generated schema reference for the exact current contract.
@@ -240,8 +241,9 @@ compartment resource bootstrap --resource db
 compartment deploy
 ```
 
-Bootstrap fails when its storage was already bootstrapped. Later deploys fail
-closed if a claim is missing, unbound, or has a different identity; Compartment does not replace it with an empty volume.
+Bootstrap fails when its storage was already bootstrapped. Later deploys fail closed if recorded storage is missing or
+has a different identity, or if storage required by a running resource is not ready. Unused backup storage does not
+block deploy. Compartment does not replace storage with empty volumes.
 For an update, Compartment stops the existing resource, waits until its pod is absent, verifies the storage identities,
 and only then starts the replacement. If start or readiness fails, it restores the previous executable manifest with the
 same storage; rollback does not downgrade data written in a newer format.

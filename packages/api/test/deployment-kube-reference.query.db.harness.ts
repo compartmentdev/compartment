@@ -19,6 +19,7 @@ import { upsertDeploymentKubeReference } from '../src/queries/deployment-kube-re
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import { createApiTestConfig } from './api-config-test.fixtures';
 
+export { seedCurrentProjectProvisioning } from './api-db-test.harness';
 export { useApiRuntimeDatabaseTestHarness };
 
 interface DeploymentKubeReferenceDatabaseTestContext {

@@ -8,7 +8,8 @@ import {
   type DockerBuildImageResult,
   type DockerRegistryCredentials,
 } from '@compartment/docker';
-import { createCompartmentBinaryRequester, getArtifactSourceArchive } from '@compartment/sdk';
+import { fetchBuildSourceArchive, readBuildSourceArchiveFetchRetryLine } from './build-source-archive-fetch';
+import type { BuildSourceArchiveFetchRetryDiagnostic } from './build-source-archive-fetch.types';
 import { readWorkerBuildJobInputEnvironment, writeWorkerBuildJobLog } from './services/worker-build-job.service';
 import type {
   WorkerBuildJobDockerInput,
@@ -56,10 +57,12 @@ async function buildSourceImage(
 ): Promise<DockerBuildImageResult> {
   const directory: string = await mkdtemp(join(tmpdir(), 'compartment-build-job-'));
   try {
-    const archive: Buffer = await getArtifactSourceArchive(
-      createCompartmentBinaryRequester({ apiUrl: input.apiUrl, internalToken: sourceArchiveCredential }),
-      input.artifactId,
-    );
+    const archive: Buffer = await fetchBuildSourceArchive({
+      apiUrl: input.apiUrl,
+      artifactId: input.artifactId,
+      onRetry: reportSourceFetchRetry,
+      sourceArchiveCredential,
+    });
     const prepared: PreparedWorkerSource = await prepareServiceDirectory(
       directory,
       archive,
@@ -118,6 +121,10 @@ function requirePreparedSourceBuildInput(prepared: PreparedWorkerSource): Prepar
 
 function reportProgress(progress: { message: string; stream: 'stderr' | 'stdout' }): void {
   writeWorkerBuildJobLog({ progress, type: 'progress' });
+}
+
+function reportSourceFetchRetry(diagnostic: BuildSourceArchiveFetchRetryDiagnostic): void {
+  reportProgress({ message: readBuildSourceArchiveFetchRetryLine(diagnostic), stream: 'stderr' });
 }
 
 void main().catch((error: Error): void => {

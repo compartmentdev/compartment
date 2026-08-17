@@ -51,6 +51,20 @@ tests:
           name: compartment-observability
           any: true
         template: product-log-agent.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            requests: { cpu: 50m, memory: 256Mi, ephemeral-storage: 320Mi }
+            limits: { cpu: '1', memory: 256Mi, ephemeral-storage: 384Mi }
+        template: product-log-agent.yaml
+        documentIndex: 4
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+        template: registry-auth.yaml
+        documentIndex: 2
       - containsDocument:
           apiVersion: v1
           kind: Namespace
@@ -64,6 +78,18 @@ tests:
             value: '600000'
           any: true
         template: worker.yaml
+      - equal:
+          path: data.COMPARTMENT_PROJECT_CONTAINER_DEFAULTS
+          value: '{"limit":{"cpu":"1","memory":"512Mi"},"request":{"cpu":"50m","memory":"512Mi"}}'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_PROJECT_QUOTA
+          value: '{"limitsCpu":"8","limitsMemory":"8Gi","requestsCpu":"2","requestsMemory":"8Gi","requestsStorage":"20Gi"}'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_ORGANIZATION_QUOTA
+          value: '{"limitsCpu":"8","limitsMemory":"8Gi","requestsCpu":"2","requestsMemory":"8Gi","requestsStorage":"20Gi"}'
+        template: configmap.yaml
 
   - it: configures the service Deployment infrastructure timeout for the worker
     set:
@@ -150,6 +176,12 @@ tests:
           path: spec.template.spec.containers[0].command
           value: ['node', 'dist/db/migrate.js']
         template: api-migrate.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            requests: { cpu: 50m, memory: 512Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+        template: api-migrate.yaml
   - it: renders only foundation resources during the foundation stage
     set:
       platform:
@@ -200,23 +232,23 @@ tests:
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BUILDKIT_RESOURCES
-          value: '{"limits":{"cpu":"1750m","memory":"3Gi"},"requests":{"cpu":"250m","memory":"512Mi"}}'
+          value: '{"limits":{"cpu":"1750m","memory":"3Gi"},"requests":{"cpu":"250m","memory":"3Gi"}}'
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_PROJECT_CONTAINER_DEFAULTS
-          value: '{"limit":{"cpu":"1","memory":"1Gi"},"request":{"cpu":"50m","memory":"256Mi"}}'
+          value: '{"limit":{"cpu":"1","memory":"512Mi"},"request":{"cpu":"50m","memory":"512Mi"}}'
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_PROJECT_QUOTA
-          value: '{"limitsCpu":"8","limitsMemory":"8Gi","requestsCpu":"2","requestsMemory":"2Gi","requestsStorage":"20Gi"}'
+          value: '{"limitsCpu":"8","limitsMemory":"8Gi","requestsCpu":"2","requestsMemory":"8Gi","requestsStorage":"20Gi"}'
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_ORGANIZATION_QUOTA
-          value: '{"limitsCpu":"8","limitsMemory":"8Gi","requestsCpu":"2","requestsMemory":"2Gi","requestsStorage":"20Gi"}'
+          value: '{"limitsCpu":"8","limitsMemory":"8Gi","requestsCpu":"2","requestsMemory":"8Gi","requestsStorage":"20Gi"}'
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BUILD_RUNNER_RESOURCES
-          value: '{"limits":{"cpu":"250m","memory":"1Gi"},"requests":{"cpu":"100m","memory":"256Mi"}}'
+          value: '{"limits":{"cpu":"250m","memory":"1Gi"},"requests":{"cpu":"100m","memory":"1Gi"}}'
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB
@@ -307,7 +339,7 @@ tests:
       resources:
         projectContainerDefaults:
           request: { cpu: +75m, memory: +384Mi }
-          limit: { cpu: 750m, memory: 768Mi }
+          limit: { cpu: 750m, memory: 384Mi }
         projectQuota:
           requestsCpu: '3'
           requestsMemory: 3Gi
@@ -324,7 +356,7 @@ tests:
     asserts:
       - equal:
           path: data.COMPARTMENT_PROJECT_CONTAINER_DEFAULTS
-          value: '{"limit":{"cpu":"750m","memory":"768Mi"},"request":{"cpu":"+75m","memory":"+384Mi"}}'
+          value: '{"limit":{"cpu":"750m","memory":"384Mi"},"request":{"cpu":"+75m","memory":"+384Mi"}}'
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_PROJECT_QUOTA
@@ -1260,7 +1292,7 @@ tests:
           value: ghcr.io/compartmentdev/compartment-worker:latest
         template: configmap.yaml
       - hasDocuments:
-          count: 3
+          count: 4
         template: pvc.yaml
       - equal:
           path: spec.template.spec.volumes[?(@.name == "snapshots")].emptyDir

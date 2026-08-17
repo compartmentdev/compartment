@@ -35,7 +35,7 @@ run the Trivy gate only; internal pull requests, main CI, and publish workflows 
 The rolling main publisher scans the exact staged artifacts with Trivy and Docker Scout, signs and verifies their
 published digests, and generates and attaches their SBOM and provenance attestations before mutable promotion.
 
-The root `.trivyignore.yaml` is the only allowed suppression point for Trivy self-hosted image scans. Docker Scout has no repository suppression path in the CI or publish gates.
+The root `.trivyignore.yaml` is the only allowed suppression point for Trivy self-hosted image scans. Evidence-backed Docker Scout exceptions belong in the root `.scout-vex.openvex.json`; each exception must identify the affected product and explain why the shipped artifact is not affected.
 
 Before promoting Docker Hub tags, the publish job pushes each attested image to a workflow-scoped staging tag, scans
 that staged image with Trivy and Docker Scout, and only then promotes the same image index to the public `main`,

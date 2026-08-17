@@ -86,14 +86,10 @@ export function resolveLoginApiUrl(
     };
   }
 
-  if (hasText(compartmentManagedCloudControlPlaneUrl)) {
-    return {
-      apiUrl: compartmentManagedCloudControlPlaneUrl,
-      source: 'managed-cloud',
-    };
-  }
-
-  throw new Error(`API URL is required. Run \`compartment login --remote ${remoteName} --api-url <url>\` first.`);
+  return {
+    apiUrl: compartmentManagedCloudControlPlaneUrl,
+    source: 'managed-cloud',
+  };
 }
 
 export function createApiContext(apiUrl: string): ApiContext {

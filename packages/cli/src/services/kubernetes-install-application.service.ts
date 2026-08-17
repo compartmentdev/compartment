@@ -27,9 +27,17 @@ import type {
   KubernetesInstallApplicationInput,
   KubernetesInstallApplicationResult,
 } from './kubernetes-install-input.service.types';
-import { readOperatorOwnedKubernetesTlsSecretName } from './kubernetes-install-tls.service';
+import {
+  readKubernetesTlsIssuerReference,
+  readOperatorOwnedKubernetesTlsSecretName,
+  usesOperatorOwnedKubernetesTlsSecret,
+} from './kubernetes-install-tls.service';
 import { isReservedKubernetesInstallLocalhostDomain } from '../kubernetes-install-domain';
-import { assertRegistryIpIssuerAssessment } from './kubernetes-operator-issuer-trust.service';
+import {
+  assertPublicDns01IssuerAssessment,
+  assertRegistryIpIssuerAssessment,
+  inspectOperatorIssuer,
+} from './kubernetes-operator-issuer-trust.service';
 import { verifyKubernetesSandboxRuntime } from './kubernetes-sandbox-runtime-preflight.service';
 import type { KubernetesSandboxRuntimeVerification } from './kubernetes-sandbox-runtime-preflight.service.types';
 import { resolveKubernetesSandboxRuntimeClassName } from './kubernetes-sandbox-runtime-values.service';
@@ -86,7 +94,12 @@ async function verifyOperatorCertificateSources(input: KubernetesInstallDeployme
   if (isReservedKubernetesInstallLocalhostDomain(input.baseDomain)) {
     return;
   }
-  await assertOperatorTlsSecret(input, await readOperatorOwnedKubernetesTlsSecretName(input.valuesPath));
+  if (await usesOperatorOwnedKubernetesTlsSecret(input.valuesPath)) {
+    await assertOperatorTlsSecret(input, await readOperatorOwnedKubernetesTlsSecretName(input.valuesPath));
+    return;
+  }
+  const issuerRef = await readKubernetesTlsIssuerReference(input.valuesPath);
+  assertPublicDns01IssuerAssessment(issuerRef, await inspectOperatorIssuer(input, issuerRef));
 }
 
 async function resolveInstallSandboxRuntime(input: KubernetesInstallDeploymentInput): Promise<string> {

@@ -24,11 +24,9 @@ Add `--verbose` to show Cosign, ORAS, and checksum diagnostics during installati
 
 ## Prepare a clean VM
 
-Use a fresh x86_64 VM with systemd, cgroup v2, sudo access, a public IPv4 address, and at least 20 GiB free storage.
-Ubuntu 24.04 LTS is tested; 2 vCPU, 4 GiB memory, and 50 GiB free storage are recommended for a host that only runs
-the platform and already-built applications. Source builds need their own headroom: a build Pod is limited to 2 CPU and
-4 GiB, and gVisor holds its whole workspace in memory, so use 4 vCPU, 8 GiB memory, and 80 GiB storage for one build at
-a time and add 4 GiB per additional concurrent build.
+Use a fresh x86_64 VM with systemd, cgroup v2, sudo access, a public IPv4 address, and at least 40 GiB free storage.
+Ubuntu 24.04 LTS is tested; for the platform and already-built applications, use at least 2 vCPU, 8 GiB memory, and 50 GiB free storage. A 4 GiB host no longer fits.
+For source builds, use 4 vCPU, 12 GiB memory, and 80 GiB storage for one concurrent build; add 4 GiB memory for each additional build.
 Ports 80 and 443 must be available and reachable. Compartment never changes port 22 or cloud security-group rules.
 
 The installer blocks Kubernetes API, etcd, kubelet, and overlay ports on the public interface with persistent,
@@ -58,7 +56,7 @@ Before installation, also provide:
 - `helm` 4.0.0 or newer on `PATH` (`helm version --short`);
 - `kubectl` 1.30.0 or newer on `PATH` and within one minor version of the target Kubernetes API server
   (`kubectl version --client`);
-- an Issuer or ClusterIssuer for operator-owned public domains;
+- for issuer-managed public TLS, a Ready Issuer or ClusterIssuer with an ACME DNS-01 solver;
 - a separate cert-manager CA Issuer or ClusterIssuer for the private registry, with its CA already trusted by every
   node container runtime and the machine running the CLI;
 - NetworkPolicy enforcement;
@@ -119,75 +117,55 @@ The value is saved on each project when that project is created. Changing it lat
 explicit service `accessMode` in `compartment.yml` overrides the saved project default. This controls hosted app
 access, not project permissions or RBAC.
 
-Tenant CPU, memory, and storage budgets are installation values. The defaults reserve 50m CPU and 256 MiB for each
-container, cap each container at 1 CPU and 1 GiB, and give each project and organization a 2 CPU / 2 GiB request budget,
-an 8 CPU / 8 GiB limit budget, and 20 GiB of requested storage. Override them together when sizing tenant capacity:
+Tenant CPU, memory, and storage budgets are installation values. The defaults reserve and cap each container at
+512Mi of memory, request 50m CPU, and retain a 1 CPU hard limit. Each project and organization has matching 8 GiB
+memory request and limit budgets, a 2 CPU request budget, an 8 CPU limit, and 20 GiB of requested storage. The matching memory values admit at
+up to 16 default containers by memory without scheduling them more densely than their possible memory use. The 8 CPU
+limit remains binding at eight default containers overall. Override the values together when sizing tenant capacity:
 
 ```yaml
 resources:
   projectContainerDefaults:
-    request: { cpu: 75m, memory: 384Mi }
-    limit: { cpu: '1', memory: 1Gi }
+    request: { cpu: 75m, memory: 512Mi }
+    limit: { cpu: '1', memory: 512Mi }
   projectQuota:
     requestsCpu: '3'
-    requestsMemory: 3Gi
+    requestsMemory: 12Gi
     limitsCpu: '12'
     limitsMemory: 12Gi
     requestsStorage: 30Gi
   organizationQuota:
     requestsCpu: '4'
-    requestsMemory: 4Gi
+    requestsMemory: 16Gi
     limitsCpu: '16'
     limitsMemory: 16Gi
     requestsStorage: 40Gi
 ```
 
-Organization quota changes are applied by periodic reconciliation. Project quotas and container defaults are used when
-a project namespace is provisioned; changing these values does not requeue existing projects. Application capacity is
-constrained by configured resource and object-count quotas and by workload requests and limits; there is no separate
-application-count value. Project object-count quotas remain fixed.
+Organization quota changes are applied by periodic reconciliation. This release advances the project isolation
+revision, so a system upgrade requeues every existing managed project after its organization quota is ready and
+server-side-applies the current project quota and container defaults. Later value-only changes require a newer
+isolation revision to requeue projects that already completed this revision. Application capacity is constrained by
+configured resource and object-count quotas and by workload requests and limits; there is no separate application-count
+value. Project object-count quotas remain fixed.
 
-Each configured CPU or memory request must be less than or equal to its corresponding limit. The worker and project
-provisioner refuse to start when these values are inconsistent or are not valid Kubernetes quantities.
+The configured CPU and memory requests must not exceed their limits. The worker and project provisioner reject
+invalid Kubernetes quantities and requests above their limits. Lowering a memory request below its limit permits
+overcommit: the scheduler can admit more memory than the node has, and under pressure the kernel may kill a
+neighbouring application or PostgreSQL.
 
-Build concurrency has separate logical and physical limits. By default, Compartment admits up to 100 in-flight build
-claims, allows two active builds per organization, and applies a build-namespace quota of 48 CPU and 64 GiB. Each
-default build Pod is limited to 2 CPU and 4 GiB, so memory limits the namespace to 16 concurrently admitted build Pods.
-Set the queue limits, namespace quota, and per-container resources together when sizing a cluster:
-
-If the values file already contains a top-level `resources` mapping, add `buildkit` and `buildRunner` to that mapping
-instead of declaring a second `resources` key.
-
-```yaml
-buildkit:
-  maximumConcurrentBuilds: 100
-  maximumConcurrentBuildsPerOrganization: 2
-  gcKeepStorageMb: 1024
-  resourceQuota:
-    limits: { cpu: '48', memory: 64Gi }
-resources:
-  buildkit:
-    requests: { cpu: 250m, memory: 512Mi }
-    limits: { cpu: 1750m, memory: 3Gi }
-  buildRunner:
-    requests: { cpu: 100m, memory: 256Mi }
-    limits: { cpu: 250m, memory: 1Gi }
-```
+Build concurrency has separate logical and physical limits. Size the queue limits, namespace quota, and
+`resources.buildkit` and `resources.buildRunner` together for the concurrency the cluster can support.
 
 Builds run inside gVisor, which serves the build workspace from sandbox memory. A build Pod's memory limit therefore
-covers its whole scratch space, not just the BuildKit and runner processes: the default 4 GiB is a 3 GiB workspace plus
-1 GiB of process memory. If the two memory limits together fall below that total, the build fails immediately with a
-message naming both values instead of being killed later by the kernel. `buildkit.gcKeepStorageMb` reserves BuildKit
-cache in the same memory and is checked separately: it cannot exceed 2147, the size of the memory-backed BuildKit data
-volume. Raise both memory limits together for source builds that pull large base images or install large system
-packages, and size the host for one build Pod per concurrent build you allow.
+covers its whole scratch space, not just its processes. Keep the two container memory limits at least 4 GiB in total;
+otherwise the build fails before it starts. Raise both limits together for larger source builds, and keep
+`buildkit.gcKeepStorageMb` within the memory-backed BuildKit data volume.
 
-The namespace quota requires every build container to declare CPU and memory limits. During an upgrade, replace the
-removed `buildkit.maximumConcurrentBuildsPerProject` value with
-`buildkit.maximumConcurrentBuildsPerOrganization`; the chart rejects the old key. A values file that pins the earlier
-build defaults is incompatible with the build workspace. Remove those pins to take the new defaults before upgrading.
-To keep the overrides instead, raise `resources.buildkit.limits.memory` and `resources.buildRunner.limits.memory` to at
-least 4 GiB in total, and separately lower `buildkit.gcKeepStorageMb` to 2147 or less.
+The namespace quota requires every build container to declare CPU and memory limits. Before upgrading, replace the
+removed `buildkit.maximumConcurrentBuildsPerProject` key with `buildkit.maximumConcurrentBuildsPerOrganization`.
+Values files that pin earlier build resources must either remove those pins or keep the two memory limits at least
+4 GiB in total and set `buildkit.gcKeepStorageMb` to 2147 or less.
 
 The namespace quota does not return a claimed build to Compartment's fair queue. If the quota blocks its Pod, the
 Kubernetes Job continues consuming the configured build timeout while it waits for capacity. Sustained quota
@@ -229,13 +207,15 @@ hostnames into unstable IPs; choose an operator-owned base domain instead. Both 
 node-trusted registry CA issuer described below.
 
 When you select an operator-owned base domain, the wizard also asks how public TLS is provided. Choose an existing
-cert-manager `Issuer` or `ClusterIssuer`, or choose an existing `kubernetes.io/tls` Secret. The Secret option also asks
-for an issuer for the private registry certificate. A namespaced `Issuer` or Secret must exist in the release namespace
-(`--namespace`, default `compartment`); a `ClusterIssuer` is cluster-scoped. Create the namespace first when you use
-namespaced certificate resources.
+cert-manager `Issuer` or `ClusterIssuer`, choose an existing `kubernetes.io/tls` Secret, or terminate TLS externally
+and let Compartment serve HTTP. The private registry always needs its own issuer. Existing Secret mode requires the
+namespaced Secret in the release namespace (`--namespace`, default `compartment`). Issuer mode requires a namespaced
+`Issuer` there or a cluster-scoped `ClusterIssuer`. External TLS mode requires neither public certificate resource.
+Create the namespace first when you use namespaced certificate resources.
 
-Do not select an issuer with `spec.selfSigned`. A public ACME issuer is appropriate for operator-owned public TLS but
-cannot issue the registry's private ClusterIP certificate. The registry issuer must use `spec.ca`, and that private CA
+The public issuer must report `Ready=True` and have at least one ACME DNS-01 solver because HTTP-01 cannot issue a
+wildcard certificate. Do not select an issuer with `spec.selfSigned`. A public ACME issuer cannot issue the registry's
+private ClusterIP certificate. The registry issuer must use `spec.ca`, and that private CA
 must be installed in the trust stores of every Kubernetes node and the machine running the CLI; the wizard requires
 confirmation.
 Install the CA on every node before installing Compartment. If you add it after the node container runtime starts,
@@ -253,6 +233,10 @@ tls:
   issuerRef:
     kind: ClusterIssuer
     name: letsencrypt-production
+registry:
+  issuerRef:
+    kind: Issuer
+    name: registry-ca
 storage:
   storageClass: local-path
 ```
@@ -351,6 +335,12 @@ Dockerfile and Railpack builds use an ephemeral BuildKit sidecar inside gVisor, 
 deploy immutable digest-pinned references. Build cache is stored in the project/service registry repository; no
 persistent cache volume is shared between tenants, and every Dockerfile or Railpack source deployment starts a fresh
 build Job.
+
+Docker Hub base images are fetched through a platform-owned pull-through cache. Its retained PVC defaults to `20Gi`;
+set `storage.dockerHubCache` to a bounded size that fits the installation's base-image working set. For authenticated
+Docker Hub pulls, set `dockerHubCache.credentials.existingSecret` to a Secret in the Compartment release namespace
+with `username` and `password` keys. Do not put Docker Hub credentials in values files. BuildKit prefers the cache;
+if it is unavailable or rejects a mirrored request, BuildKit falls back directly to Docker Hub so builds can continue.
 Project NetworkPolicies preserve tenant isolation and the configured RFC1918 egress policy.
 
 Kubernetes cluster administrators and anyone able to escape a container remain outside the tenant-isolation boundary.

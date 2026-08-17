@@ -7,6 +7,30 @@ values:
 release:
   name: compartment
 tests:
+  - it: rejects malformed enabled Docker Hub cache storage
+    set:
+      dockerHubCache.enabled: true
+      storage.dockerHubCache: unbounded
+    asserts:
+      - failedTemplate:
+          errorPattern: storage/dockerHubCache.*pattern
+
+  - it: rejects a malformed Docker Hub credential Secret name
+    set:
+      dockerHubCache.enabled: true
+      dockerHubCache.credentials.existingSecret: Invalid_Secret
+    asserts:
+      - failedTemplate:
+          errorPattern: dockerHubCache/credentials/existingSecret
+
+  - it: rejects a Docker Hub credential Secret name longer than 253 characters
+    set:
+      dockerHubCache.enabled: true
+      dockerHubCache.credentials.existingSecret: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+    asserts:
+      - failedTemplate:
+          errorPattern: dockerHubCache/credentials/existingSecret
+
   - it: rejects a non-boolean new-project privacy default
     set:
       platform:
@@ -256,6 +280,17 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: resources.buildRunner.limits.memory.*pattern
+
+  - it: accepts a platform memory request below its limit
+    set:
+      resources:
+        api:
+          requests:
+            memory: 256Mi
+          limits:
+            memory: 384Mi
+    asserts:
+      - notFailedTemplate: {}
 
   - it: rejects Capsule cluster-admin RBAC generation
     set:

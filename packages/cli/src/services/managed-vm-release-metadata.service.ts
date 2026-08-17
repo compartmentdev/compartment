@@ -18,7 +18,7 @@ export const managedVmReleaseMetadata: ManagedVmCurrentReleaseMetadata = {
   k3sChannel: managedCompatibility.k3sChannel,
   k3sVersion: managedCompatibility.k3s.version,
   kubernetesMinor: managedCompatibility.kubernetesMinor,
-  metadataVersion: 3,
+  metadataVersion: 4,
   podCidr: `${['10', '42', '0', '0'].join('.')}/16`,
   serviceCidr: `${['10', '43', '0', '0'].join('.')}/16`,
 };

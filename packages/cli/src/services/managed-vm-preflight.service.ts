@@ -12,7 +12,7 @@ import { areIpv4CidrsOverlapping, isGloballyRoutableIpv4 } from './managed-vm-ne
 
 const gibibyte: number = 1024 * 1024 * 1024;
 const recommendedCpuCount: number = 2;
-const recommendedMemoryBytes: number = 4 * gibibyte;
+const recommendedMemoryBytes: number = 8 * gibibyte;
 const minimumFreeBytes: number = 20 * gibibyte;
 const recommendedFreeBytes: number = 50 * gibibyte;
 const recommendedFreeInodes: number = 100_000;

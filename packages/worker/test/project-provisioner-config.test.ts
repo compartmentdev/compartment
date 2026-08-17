@@ -63,12 +63,12 @@ describe('readProjectProvisionerConfig', (): void => {
     const config: ProjectProvisionerConfig = readProjectProvisionerConfig({
       ...projectProvisionerEnvironment(),
       COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
-        '{"request":{"cpu":"+50m","memory":"256Mi"},"limit":{"cpu":"1","memory":"+1Gi"}}',
+        '{"request":{"cpu":"+50m","memory":"1Gi"},"limit":{"cpu":"1","memory":"+1Gi"}}',
     });
 
     expect(config.resourceConfiguration.containerDefaults).toEqual({
       limit: { cpu: '1', memory: '+1Gi' },
-      request: { cpu: '+50m', memory: '256Mi' },
+      request: { cpu: '+50m', memory: '1Gi' },
     });
   });
 
@@ -89,6 +89,19 @@ describe('readProjectProvisionerConfig', (): void => {
             '{"request":{"cpu":"50m","memory":"1025Mi"},"limit":{"cpu":"1","memory":"1Gi"}}',
         }),
     ).toThrow('COMPARTMENT_PROJECT_CONTAINER_DEFAULTS request.memory must not exceed limit.memory.');
+  });
+
+  it('accepts a container memory request below its limit', (): void => {
+    const config: ProjectProvisionerConfig = readProjectProvisionerConfig({
+      ...projectProvisionerEnvironment(),
+      COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
+        '{"request":{"cpu":"50m","memory":"256Mi"},"limit":{"cpu":"1","memory":"512Mi"}}',
+    });
+
+    expect(config.resourceConfiguration.containerDefaults).toEqual({
+      limit: { cpu: '1', memory: '512Mi' },
+      request: { cpu: '50m', memory: '256Mi' },
+    });
   });
 
   it('rejects project requests that exceed their quota limits', (): void => {
@@ -162,7 +175,7 @@ function projectProvisionerEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_PLATFORM_NAMESPACE: 'compartment',
     COMPARTMENT_PROJECT_PROVISIONER_IMAGE: 'registry.internal/compartment-worker@sha256:worker',
     COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
-      '{"request":{"cpu":"50m","memory":"256Mi"},"limit":{"cpu":"1","memory":"1Gi"}}',
+      '{"request":{"cpu":"50m","memory":"512Mi"},"limit":{"cpu":"1","memory":"512Mi"}}',
     COMPARTMENT_PROJECT_QUOTA:
       '{"requestsCpu":"2","requestsMemory":"2Gi","limitsCpu":"8","limitsMemory":"8Gi","requestsStorage":"20Gi"}',
     COMPARTMENT_PROVISIONING_NAMESPACE: 'compartment-project-provisioning',

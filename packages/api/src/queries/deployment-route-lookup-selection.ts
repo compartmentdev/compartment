@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import {
   deploymentKubeReferences,
   deploymentRoutes,
@@ -23,8 +23,12 @@ export function createDeploymentRouteLookupQuery(): DeploymentRouteLookupQuery {
     .innerJoin(projectServices, eq(deployments.projectServiceId, projectServices.id))
     .innerJoin(
       deploymentKubeReferences,
-      and(eq(deploymentKubeReferences.deploymentId, deployments.id), eq(deploymentKubeReferences.state, 'active')),
+      and(eq(deploymentKubeReferences.deploymentId, deployments.id), buildPublishedDeploymentReferenceFilter()),
     );
+}
+
+export function buildPublishedDeploymentReferenceFilter(): SQL {
+  return inArray(deploymentKubeReferences.state, ['active', 'pending']);
 }
 
 export function createDeploymentRouteLookupSelection(): DeploymentRouteLookupSelection {

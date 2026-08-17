@@ -62,7 +62,7 @@ import type { ProjectResourceRow, ResourceTransaction } from '../src/queries/res
 import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisioning.query.types';
 import type { ProjectRow } from '../src/queries/projects.query.types';
 import { parseStoredResourceOperations } from '../src/services/resources.service.storage';
-import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
+import { seedCurrentProjectProvisioning, useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import { seedOrganizationWithReadyQuota } from './organization-quota-test.fixture';
 import { createApiTestConfig } from './api-config-test.fixtures';
 
@@ -382,21 +382,25 @@ describe('resource backup queries', (): void => {
     const recovered: ClaimedResourceReconcileRun | null = await claimResourceReconcileRun();
     expect(recovered?.leaseId).not.toBe(ordinary?.leaseId);
     expect(recovered?.operationId).toBe(ordinary?.operationId);
-    await acknowledgeResourceReconcileRun({
-      leaseId: ordinary!.leaseId,
-      operationId: ordinary!.operationId,
-      status: 'succeeded',
-    });
+    await expect(
+      acknowledgeResourceReconcileRun({
+        leaseId: ordinary!.leaseId,
+        operationId: ordinary!.operationId,
+        status: 'succeeded',
+      }),
+    ).resolves.toBe(false);
     const [stillRunning] = await db
       .select()
       .from(resourceReconcileRuns)
       .where(eq(resourceReconcileRuns.id, ordinary!.operationId));
     expect(stillRunning?.phase).toBe('running');
-    await acknowledgeResourceReconcileRun({
-      leaseId: recovered!.leaseId,
-      operationId: recovered!.operationId,
-      status: 'running',
-    });
+    await expect(
+      acknowledgeResourceReconcileRun({
+        leaseId: recovered!.leaseId,
+        operationId: recovered!.operationId,
+        status: 'running',
+      }),
+    ).resolves.toBe(true);
     const [renewed] = await db
       .select()
       .from(resourceReconcileRuns)
@@ -1302,7 +1306,7 @@ describe('resource backup queries', (): void => {
     const holder: PoolClient = await pool.connect();
     const advisoryKey: number = 73_106_001;
     let reclaim: Promise<ClaimedResourceReconcileRun | null> | null = null;
-    let acknowledgement: Promise<void> | null = null;
+    let acknowledgement: Promise<boolean> | null = null;
     try {
       await holder.query('select pg_advisory_lock($1)', [advisoryKey]);
       await holder.query(`
@@ -1331,7 +1335,7 @@ describe('resource backup queries', (): void => {
       await Promise.race([reclaim.then((): void => undefined), waitForDatabaseLock(holder, 'transactionid')]);
       await holder.query('select pg_advisory_unlock($1)', [advisoryKey]);
 
-      await expect(Promise.all([reclaim, acknowledgement])).resolves.toEqual([null, undefined]);
+      await expect(Promise.all([reclaim, acknowledgement])).resolves.toEqual([null, true]);
     } finally {
       await holder.query('select pg_advisory_unlock($1)', [advisoryKey]);
       await Promise.allSettled([
@@ -1422,7 +1426,7 @@ async function seedResourceBackupScope(): Promise<void> {
     name: 'internal-tools',
     organizationId: 'org_resource_backups',
   });
-  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_internal_tools', state: 'succeeded' });
+  await seedCurrentProjectProvisioning(db, 'prj_internal_tools');
   await db.insert(environments).values({
     id: 'env_production',
     name: 'production',

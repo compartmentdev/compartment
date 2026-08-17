@@ -190,7 +190,8 @@ export interface WorkflowFile {
 export interface WorkflowJob {
   env?: Record<string, string>;
   needs?: string[];
-  steps: WorkflowStep[];
+  steps?: WorkflowStep[];
+  uses?: string;
 }
 
 export interface WorkflowStep {

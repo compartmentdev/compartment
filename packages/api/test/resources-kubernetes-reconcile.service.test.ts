@@ -2,6 +2,7 @@ import type { ResourceReconcileIntent, TenantSecretEnvironment } from '@compartm
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ProjectResourceRow, ResourceTransaction } from '../src/queries/resources.query.types';
 import type { EffectiveVariable } from '../src/services/effective-variables.service.types';
+import type { ResourceReconcileRunState } from '../src/queries/resource-reconcile-runs.query.types';
 import {
   bootstrapKubernetesResource,
   deleteKubernetesResource,
@@ -10,6 +11,7 @@ import {
 } from '../src/services/resources-kubernetes-reconcile.service';
 import type { ResourceEnvironmentContext } from '../src/services/resources.service.types';
 import { decryptTenantVariableValueFromStorage } from '../src/lib/variables-crypto';
+import { resolveResourceIntent } from '../src/services/resources.service.helpers';
 
 type LoadVariables = (
   environmentId: string,
@@ -46,12 +48,18 @@ const persistIntent: Mock = vi.hoisted((): Mock => vi.fn());
 const prepareVariables: Mock = vi.hoisted((): Mock => vi.fn());
 const transaction: Mock<TestTransaction> = vi.hoisted((): Mock<TestTransaction> => vi.fn());
 const withResourceOperationLocks: Mock = vi.hoisted((): Mock => vi.fn());
+const readLatestReconcile: Mock<
+  (tx: ResourceTransaction, resourceId: string) => Promise<ResourceReconcileRunState | null>
+> = vi.hoisted((): Mock => vi.fn());
 
 vi.mock('../src/services/resources-effective-variables.service', (): object => ({
   loadResourceEffectiveVariables: loadVariables,
 }));
 vi.mock('../src/queries/resource-reconcile-create.query', (): object => ({
   updateActiveResourceBootstrapIntent: updateBootstrapIntent,
+}));
+vi.mock('../src/queries/resource-reconcile-runs.query', (): object => ({
+  readLatestResourceReconcileRunStateWithExecutor: readLatestReconcile,
 }));
 vi.mock('../src/queries/resource-reconcile-deletion.query', (): object => ({
   finalizeProjectResourceDeletion: finalizeDeletion,
@@ -105,6 +113,7 @@ describe('Kubernetes resource reconcile boundary', (): void => {
     updateStatus.mockResolvedValue(resource());
     persistIntent.mockResolvedValue(resource());
     prepareVariables.mockResolvedValue([]);
+    readLatestReconcile.mockResolvedValue({ failureMessage: null, phase: 'succeeded' });
     loadVariables.mockResolvedValue([]);
     transaction.mockImplementation(
       async (callback: TestTransactionCallback): Promise<ProjectResourceRow> =>
@@ -157,6 +166,65 @@ describe('Kubernetes resource reconcile boundary', (): void => {
       expect.anything(),
       expect.objectContaining({ image: 'postgres:16' }),
     );
+  });
+
+  it('persists an unchanged running resource without queueing a disruptive reconcile', async (): Promise<void> => {
+    const existing: ProjectResourceRow = runningResource();
+    lockResource.mockResolvedValue(existing);
+    persistIntent.mockResolvedValue(existing);
+
+    await reconcileKubernetesResource('prn_admin', context(), 'postgres', { image: 'postgres:16' });
+
+    expect(persistIntent).toHaveBeenCalledOnce();
+    expect(readLatestReconcile).toHaveBeenCalledWith(expect.anything(), existing.id);
+    expect(requestReconcile).not.toHaveBeenCalled();
+  });
+
+  it('retries an unchanged resource after its latest reconcile failed', async (): Promise<void> => {
+    const existing: ProjectResourceRow = runningResource();
+    lockResource.mockResolvedValue(existing);
+    persistIntent.mockResolvedValue(existing);
+    readLatestReconcile.mockResolvedValue({ failureMessage: 'replacement failed', phase: 'failed' });
+
+    await reconcileKubernetesResource('prn_admin', context(), 'postgres', { image: 'postgres:16' });
+
+    expect(requestReconcile).toHaveBeenCalledOnce();
+  });
+
+  it('queues a real runtime change for an active resource', async (): Promise<void> => {
+    const existing: ProjectResourceRow = runningResource();
+    lockResource.mockResolvedValue(existing);
+    persistIntent.mockResolvedValue({ ...existing, image: 'postgres:17' });
+
+    await reconcileKubernetesResource('prn_admin', context(), 'postgres', { image: 'postgres:17' });
+
+    expect(requestReconcile).toHaveBeenCalledOnce();
+  });
+
+  it('queues a readiness change that is outside the runtime hash', async (): Promise<void> => {
+    const existing: ProjectResourceRow = runningResource();
+    lockResource.mockResolvedValue(existing);
+    persistIntent.mockResolvedValue({
+      ...existing,
+      readinessJson: JSON.stringify({ port: 5432, timeoutMs: 60_000, type: 'tcp' }),
+    });
+
+    await reconcileKubernetesResource('prn_admin', context(), 'postgres', {
+      image: 'postgres:16',
+      readiness: { port: 5432, timeoutMs: 60_000, type: 'tcp' },
+    });
+
+    expect(requestReconcile).toHaveBeenCalledOnce();
+  });
+
+  it('queues an unchanged stopped resource so deploy reconciliation can start it', async (): Promise<void> => {
+    const existing: ProjectResourceRow = { ...runningResource(), status: 'stopped' };
+    lockResource.mockResolvedValue(existing);
+    persistIntent.mockResolvedValue(existing);
+
+    await reconcileKubernetesResource('prn_admin', context(), 'postgres', { image: 'postgres:16' });
+
+    expect(requestReconcile).toHaveBeenCalledOnce();
   });
 
   it('finishes deletion when terminal provisioning failed before the namespace existed', async (): Promise<void> => {
@@ -360,6 +428,15 @@ function resource(): ProjectResourceRow {
     status: 'running',
     updatedAt: new Date(),
     volumesJson: '[]',
+  };
+}
+
+function runningResource(): ProjectResourceRow {
+  const runtimeDefinitionHash: string = resolveResourceIntent('postgres', { image: 'postgres:16' }, []).runtimeHash;
+  return {
+    ...resource(),
+    expectedClaimsJson: '[{"claimName":"data","uid":"uid-data"}]',
+    runtimeDefinitionHash,
   };
 }
 

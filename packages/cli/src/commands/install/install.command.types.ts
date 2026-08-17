@@ -22,8 +22,10 @@ export interface InstallCommandOptions {
   privilegedVmInstall?: boolean | undefined;
   privilegedVmHandoff?: string | undefined;
   releaseName?: string | undefined;
+  registryIssuer?: string | undefined;
   remote?: string | undefined;
   storageClass?: string | undefined;
+  tlsIssuer?: string | undefined;
   target?: 'kubernetes' | 'vm' | undefined;
   values?: string | undefined;
   yes?: boolean | undefined;

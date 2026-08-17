@@ -5,14 +5,12 @@ import type {
   ResourceProjectionRow,
   ResourceVolumeProjection,
 } from './kube-resource-projection.types';
-import type { KubeContainerPort, KubeReadinessProbe } from './kube-application-projection.types';
 import type {
   KubeDeploymentManifest,
   KubeManifest,
   KubePodTemplate,
   KubePodVolume,
   KubeProjectedContainer,
-  KubeServicePort,
   KubeVolumeMount,
 } from './kube-runtime.types';
 import { kubeNamespaceName, kubeResourceName, kubeResourceVolumeName, kubeSecretName } from './kube-naming';
@@ -22,6 +20,12 @@ import {
   resourcePodSecurityContext,
   restrictedContainerSecurityContext,
 } from './kube-security-context';
+import {
+  resourceReadinessProbe,
+  resourceReadinessTimeoutAnnotation,
+  resourceReadinessTimeoutMs,
+} from './kube-resource-readiness';
+import { resourceContainerPort, resourceService } from './kube-resource-networking';
 import { projectTenantScheduling } from './kube-workload-scheduling';
 
 const managedByLabel: Readonly<Record<string, string>> = { 'app.kubernetes.io/managed-by': 'compartment' };
@@ -32,7 +36,11 @@ const postgresDataMountPath: string = '/var/lib/postgresql/data';
 const resourceBackupVolumeHandle: string = 'backup-artifacts';
 
 /** Ordinary reconcile bundle. PVC creation is deliberately not representable here. */
-export function projectResourceManifests(row: ResourceProjectionRow, replicas: 0 | 1 = 1): KubeManifest[] {
+export function projectResourceManifests(
+  row: ResourceProjectionRow,
+  infrastructureTimeoutMs: number,
+  replicas: 0 | 1 = 1,
+): KubeManifest[] {
   const name: string = kubeResourceName(row.resourceId);
   const namespace: string = kubeNamespaceName(row.namespaceId);
   const labels: Record<string, string> = {
@@ -42,8 +50,8 @@ export function projectResourceManifests(row: ResourceProjectionRow, replicas: 0
     'compartment.dev/resource-id': row.resourceId,
   };
   const secret: KubeManifest = resourceSecret(row);
-  const deployment: KubeManifest = resourceDeployment(row, replicas, labels, name, namespace);
-  return [secret, deployment, resourceService(row, labels, name, namespace)];
+  const deployment: KubeManifest = resourceDeployment(row, infrastructureTimeoutMs, replicas, labels, name, namespace);
+  return [secret, resourceService(row, labels, name, namespace), deployment];
 }
 
 function resourceSecret(row: ResourceProjectionRow): KubeManifest {
@@ -64,17 +72,25 @@ function resourceSecret(row: ResourceProjectionRow): KubeManifest {
 
 function resourceDeployment(
   row: ResourceProjectionRow,
+  infrastructureTimeoutMs: number,
   replicas: 0 | 1,
   labels: Record<string, string>,
   name: string,
   namespace: string,
 ): KubeDeploymentManifest {
+  const readinessTimeoutMs: number = resourceReadinessTimeoutMs(row);
   return {
     apiVersion: 'apps/v1',
     kind: 'Deployment',
-    metadata: { labels, name, namespace },
+    metadata: {
+      annotations: { [resourceReadinessTimeoutAnnotation]: String(readinessTimeoutMs) },
+      labels,
+      name,
+      namespace,
+    },
     spec: {
-      progressDeadlineSeconds: resourceProgressDeadlineSeconds(row),
+      // Kubernetes starts this clock before the worker begins its two waits, so keep the worker timers authoritative.
+      progressDeadlineSeconds: Math.ceil((infrastructureTimeoutMs * 2 + readinessTimeoutMs) / 1_000),
       replicas,
       selector: { matchLabels: labels },
       strategy: { type: 'Recreate' },
@@ -137,53 +153,6 @@ function resourceContainerInvocation(row: ResourceProjectionRow): ResourceContai
     ],
     command: ['/bin/sh', '-c'],
   };
-}
-
-function resourceReadinessProbe(port: number): KubeReadinessProbe {
-  return {
-    failureThreshold: 3,
-    periodSeconds: 2,
-    successThreshold: 1,
-    tcpSocket: { port },
-    timeoutSeconds: 1,
-  };
-}
-
-function resourceContainerPort(port: number): KubeContainerPort {
-  return { containerPort: port, name: resourcePortName(port), protocol: 'TCP' };
-}
-
-function resourceProgressDeadlineSeconds(row: ResourceProjectionRow): number {
-  return row.readiness === null ? 90 : Math.ceil(row.readiness.timeoutMs / 1_000);
-}
-
-function resourceService(
-  row: ResourceProjectionRow,
-  labels: Record<string, string>,
-  name: string,
-  namespace: string,
-): KubeManifest {
-  return {
-    apiVersion: 'v1',
-    kind: 'Service',
-    metadata: { labels, name, namespace },
-    spec: {
-      clusterIP: 'None',
-      ports: row.ports.map(
-        (port: number): KubeServicePort => ({
-          name: resourcePortName(port),
-          port,
-          protocol: 'TCP',
-          targetPort: port,
-        }),
-      ),
-      selector: labels,
-    },
-  };
-}
-
-function resourcePortName(port: number): string {
-  return `tcp-${port}`;
 }
 
 export function projectResourceClaimDeleteTargets(

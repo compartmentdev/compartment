@@ -12,7 +12,7 @@ import {
 
 const defaultBaseImages = Object.freeze({
   COMPARTMENT_CADDY_RUNTIME_IMAGE: 'alpine:3.22',
-  COMPARTMENT_GO_BUILD_IMAGE: 'golang:1.26.5-bookworm',
+  COMPARTMENT_GO_BUILD_IMAGE: 'golang:1.26.6-bookworm',
   COMPARTMENT_NODE_BUILD_IMAGE: 'node:24.15.0-bookworm',
   COMPARTMENT_NODE_RUNTIME_IMAGE: 'node:24.15.0-bookworm-slim',
 });

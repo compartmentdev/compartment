@@ -2,6 +2,7 @@
 suite: node pools and workload priority
 templates:
   - templates/priority-class.yaml
+  - templates/capacity-headroom-priority-class.yaml
   - templates/configmap.yaml
   - templates/secret.yaml
   - templates/install-state-secret.yaml
@@ -25,6 +26,13 @@ tests:
       - hasDocuments:
           count: 2
         template: priority-class.yaml
+      - hasDocuments:
+          count: 1
+        template: capacity-headroom-priority-class.yaml
+      - equal:
+          path: metadata.name
+          value: compartment-capacity-headroom
+        template: capacity-headroom-priority-class.yaml
       - equal:
           path: metadata.name
           value: compartment-platform

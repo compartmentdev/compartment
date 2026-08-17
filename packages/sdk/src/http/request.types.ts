@@ -19,6 +19,18 @@ export interface CompartmentBinaryRequestOptions {
   sessionToken?: string | undefined;
 }
 
+export interface CompartmentBinaryRequestExecution {
+  execute: () => Promise<Buffer>;
+  maximumAttempts: number;
+  method: CompartmentRequestMethod;
+  path: string;
+  url: string;
+}
+
+export interface CompartmentBinaryRequestRetryOptions {
+  maximumAttempts: number;
+}
+
 export interface CompartmentRawRequestOptions<TResult> {
   body: Buffer | Uint8Array;
   contentType: string;
@@ -35,6 +47,10 @@ export interface CompartmentRequestErrorFields {
   requestId?: string | undefined;
   statusCode: number;
   url: string;
+}
+
+export interface CompartmentRequestErrorCandidate extends Partial<CompartmentRequestErrorFields> {
+  name?: string | undefined;
 }
 
 export type CompartmentRequester = <TResult, TBody>(

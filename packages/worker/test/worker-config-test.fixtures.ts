@@ -23,8 +23,8 @@ export const testOrganizationQuota: OrganizationQuotaCapacity = {
 
 export const testProjectResourceConfiguration: ProjectNamespaceResourceConfiguration = {
   containerDefaults: {
-    limit: { cpu: '1', memory: '1Gi' },
-    request: { cpu: '50m', memory: '256Mi' },
+    limit: { cpu: '1', memory: '512Mi' },
+    request: { cpu: '50m', memory: '512Mi' },
   },
   quota: testOrganizationQuota,
 };
@@ -38,6 +38,7 @@ export function createWorkerTestConfig(overrides: Partial<WorkerConfig> = {}): W
     apiUrl: 'http://127.0.0.1:9443',
     artifactRegistry: createArtifactRegistryTestConfig(),
     buildSandbox: {
+      buildKitConfigMapName: 'compartment-buildkit',
       buildKitResources: { limits: { memory: '3Gi' } },
       gcKeepStorageMb: 1024,
       namespace: 'compartment-build',

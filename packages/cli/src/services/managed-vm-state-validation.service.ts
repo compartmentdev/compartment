@@ -93,6 +93,9 @@ function isManagedVmReleaseMetadata(
       (value.metadataVersion === 2 && typeof value.gvisorVersion === 'string') ||
       (value.metadataVersion === 3 &&
         typeof value.gvisorVersion === 'string' &&
+        hasSha512VerifiedGvisor(value.artifacts)) ||
+      (value.metadataVersion === 4 &&
+        typeof value.gvisorVersion === 'string' &&
         hasSha512VerifiedGvisor(value.artifacts)))
   );
 }

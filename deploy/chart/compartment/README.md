@@ -87,6 +87,10 @@ they share `compartment-tenant` with configured tenant workloads and never preem
 Pod preempt lower-priority tenant Pods when both are eligible for the same node. Priority does not guarantee
 availability during node failure or kubelet node-pressure eviction.
 
+`capacityHeadroom.replicas` controls preemptible tenant-capacity placeholders for a compatible cluster autoscaler.
+Set it to zero to accept saturation or increase it to reserve more free allocations. The operator owns autoscaler
+installation, node bootstrap, kubelet reservations, and eviction policy.
+
 ## Public ingress
 
 Set `ingress.className` to the selected existing IngressClass. When that controller does not publish Ingress status,
@@ -141,10 +145,12 @@ used by the console and application hosts. Project custom domains use a separate
 exact hostnames are never sent to the managed-domain broker. The private registry has a separate Certificate for its
 retained Service ClusterIP and the selected `registry.issuerRef`. Operator-owned domains default to external TLS
 termination with platform HTTP. Alternatively, `tls.existingSecret` may reference an existing `kubernetes.io/tls`
-Secret in the release namespace. The chart does not create public Certificates for operator-owned domains.
+Secret in the release namespace, or `tls.issuerRef` may reference an existing Ready cert-manager Issuer or
+ClusterIssuer with a DNS-01 solver. In issuer mode, the chart creates one wildcard Certificate and cert-manager
+renews it automatically. The operator owns the issuer and its DNS provider credentials.
 
-The selected Ingress and cert-manager path own public TLS. Compartment does not create, copy, or mount operator
-certificate material.
+The selected Ingress and cert-manager path own public TLS. Compartment does not copy or mount operator certificate
+material.
 
 ## Install and recovery
 
@@ -173,6 +179,9 @@ preflight and first-owner bootstrap.
 
 ## Registry and workload isolation
 
+Size tenant container resources and project and organization quotas together. Memory requests determine scheduler
+density; memory limits and quotas bound what workloads may consume.
+
 The registry is a private ClusterIP workload. The CLI reads the retained registry Service ClusterIP and writes that
 address to `registry.hostname`; it does not derive the registry address from the public base domain. The registry
 uses `registry.issuerRef`; it is required independently of the operator-owned public TLS mode. The chart never changes
@@ -186,9 +195,15 @@ Set `registry.storage.s3.existingSecret` to a Secret in the release namespace co
 Populate the bucket before switching backends; the chart does not migrate blobs. The S3 backend leaves any retained
 registry PVC unmounted and does not create one for new installations.
 
+Docker Hub base-image pulls use a separate, internal pull-through cache with a retained `20Gi` PVC by default.
+Set `storage.dockerHubCache` to a bounded Kubernetes quantity sized for the base-image working set. To authenticate
+cache misses to Docker Hub, set `dockerHubCache.credentials.existingSecret` to a Secret in the release namespace
+containing `username` and `password`. The chart never creates or stores those credentials. BuildKit prefers this
+cache and uses its native direct Docker Hub fallback only while the cache is unavailable or a mirrored request fails.
+
 Project provisioning creates repository-scoped credentials and project-scoped image pull Secrets. NetworkPolicy
-projections retain tenant isolation and the configured RFC1918 egress policy. Dockerfile, Railpack, BuildKit, and OCI
-image behavior is unchanged.
+projections retain tenant isolation and the configured RFC1918 egress policy. OCI output and artifact-registry
+behavior are unchanged.
 
 ## Usage metering
 

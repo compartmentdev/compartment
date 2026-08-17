@@ -5,6 +5,7 @@ import type { ProductJobQueueWaitState } from '../queries/product-job-wait.query
 import { readProductJobResult } from '../queries/product-job-runs.query';
 import { resourceProductJobQueueBaseTimeoutMs } from '../queries/resource-reconcile-policy';
 import type { ResourceProductJobWaitContext } from './resource-product-job-wait.service.types';
+import { getApiConfig } from '../runtime/runtime-access';
 
 const productJobPollIntervalMs: number = 100;
 const productJobPollMaxIntervalMs: number = 5_000;
@@ -26,7 +27,11 @@ export async function waitForResourceOperationProductJob(
 }
 
 async function createProductJobWaitContext(operationId: string): Promise<ResourceProductJobWaitContext> {
-  const state: ProductJobQueueWaitState | null = await readProductJobQueueWaitState('resource-operation', operationId);
+  const state: ProductJobQueueWaitState | null = await readProductJobQueueWaitState(
+    'resource-operation',
+    operationId,
+    getApiConfig().deploymentInfrastructureTimeoutMs,
+  );
   if (state === null) {
     throw new Error(`Kubernetes resource operation ${operationId} disappeared before queue settlement.`);
   }
@@ -59,7 +64,11 @@ async function refreshProductJobQueueIfDue(operationId: string, context: Resourc
   if (Date.now() < context.nextQueueRefreshAt && Date.now() < context.deadlineAt) {
     return;
   }
-  const state: ProductJobQueueWaitState | null = await readProductJobQueueWaitState('resource-operation', operationId);
+  const state: ProductJobQueueWaitState | null = await readProductJobQueueWaitState(
+    'resource-operation',
+    operationId,
+    getApiConfig().deploymentInfrastructureTimeoutMs,
+  );
   if (state === null) {
     throw new Error(`Kubernetes resource operation ${operationId} disappeared while waiting for queue settlement.`);
   }

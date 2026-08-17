@@ -1,40 +1,29 @@
 import type { ResourceClaimIdentity, WorkerClaimResourceReconcileResponse } from '@compartment/contracts';
 import {
-  assertResourceClaimOwnership,
   kubeNamespaceName,
   projectResourceBootstrapClaims,
-  projectResourceManifests,
   type KubeManifest,
   type KubeObservation,
   type KubeRuntime,
   type KubeWorkloadScheduling,
-  type ObservedResourceClaim,
   type ResourceProjectionRow,
 } from '@compartment/kube-runtime';
 import { acknowledgeResourceReconcile, type CompartmentRequester } from '@compartment/sdk';
-import {
-  assertFinalClaimState,
-  readCreatedClaims,
-  readLiveClaims,
-  readResourcePods,
-  readRollbackManifest,
-  scaleDownAndAwaitTermination,
-} from './worker-resource-reconcile-observation.service';
-import { waitForFreshResourceDeployment, waitUntil } from './worker-resource-reconcile-wait.service';
+import { readCreatedClaims } from './worker-resource-reconcile-observation.service';
+import { waitUntil } from './worker-resource-reconcile-wait.service';
 import { executeManagedDelete } from './worker-resource-delete.service';
-import type {
-  CompleteResourceReconcileClaim,
-  ManagedResourceUpdatePlan,
-} from './worker-resource-reconcile.service.types';
+import type { CompleteResourceReconcileClaim } from './worker-resource-reconcile.service.types';
 import { applyProjectNetworkPolicies } from './worker-network-policy.service';
 import { decryptTenantProjection } from '../tenant-workload-projections';
 import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
+import { executeManagedResourceUpdate } from './worker-resource-managed-update.service';
 
 export async function executeResourceReconcile(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   claimed: WorkerClaimResourceReconcileResponse,
   tenantSecretsKek: TenantSecretsKeyring,
+  infrastructureTimeoutMs: number,
   scheduling?: KubeWorkloadScheduling,
 ): Promise<void> {
   const complete: CompleteResourceReconcileClaim = requireCompleteClaim(claimed);
@@ -44,7 +33,7 @@ export async function executeResourceReconcile(
     if (row.operation !== 'delete') {
       await applyProjectNetworkPolicies(runtime, row.namespaceId, complete.networkPolicy);
     }
-    await executeClaimedResource(request, runtime, observation, complete, row);
+    await executeClaimedResource(request, runtime, observation, complete, row, infrastructureTimeoutMs);
     if (row.operation === 'delete') {
       await applyProjectNetworkPolicies(runtime, row.namespaceId, complete.networkPolicy);
     }
@@ -67,13 +56,14 @@ async function executeClaimedResource(
   observation: KubeObservation,
   claimed: CompleteResourceReconcileClaim,
   row: ResourceProjectionRow,
+  infrastructureTimeoutMs: number,
 ): Promise<void> {
   if (claimed.type === 'bootstrap') {
     await executeBootstrap(request, runtime, observation, claimed.leaseId, claimed.operationId, row);
   } else if (row.operation === 'delete') {
     await executeManagedDelete(request, runtime, observation, claimed, row);
   } else {
-    await executeManagedUpdate(request, runtime, observation, claimed, row);
+    await executeManagedResourceUpdate(request, runtime, observation, claimed, row, infrastructureTimeoutMs);
   }
 }
 
@@ -93,173 +83,9 @@ async function executeBootstrap(
   await acknowledgeResourceReconcile(request, { expectedClaims, leaseId, operationId, status: 'succeeded' });
 }
 
-async function executeManagedUpdate(
-  request: CompartmentRequester,
-  runtime: KubeRuntime,
-  observation: KubeObservation,
-  claimed: CompleteResourceReconcileClaim,
-  row: ResourceProjectionRow,
-): Promise<void> {
-  const plan: ManagedResourceUpdatePlan = await prepareManagedUpdateOrAcknowledgeFailure(
-    request,
-    runtime,
-    observation,
-    claimed,
-    row,
-  );
-  try {
-    await applyManagedResourceState(runtime, observation, claimed.expectedClaims, row, plan.desired);
-    await acknowledgeManagedUpdateSuccess(request, plan);
-  } catch (error) {
-    const failure: object | null = typeof error === 'object' ? error : null;
-    await recoverClaimedUpdate(request, runtime, observation, claimed, row, plan, failure);
-    throw error;
-  }
-}
-
-async function acknowledgeManagedUpdateSuccess(
-  request: CompartmentRequester,
-  plan: ManagedResourceUpdatePlan,
-): Promise<void> {
-  await acknowledgeResourceReconcile(request, {
-    leaseId: plan.leaseId,
-    operationId: plan.operationId,
-    status: 'succeeded',
-  });
-}
-
-async function prepareManagedUpdateOrAcknowledgeFailure(
-  request: CompartmentRequester,
-  runtime: KubeRuntime,
-  observation: KubeObservation,
-  claimed: CompleteResourceReconcileClaim,
-  row: ResourceProjectionRow,
-): Promise<ManagedResourceUpdatePlan> {
-  try {
-    return await prepareManagedUpdate(request, runtime, observation, claimed, row);
-  } catch (error) {
-    const failure: object | null = typeof error === 'object' ? error : null;
-    await acknowledgeFailure(request, claimed.leaseId, claimed.operationId, readError(failure).message);
-    throw error;
-  }
-}
-
-async function recoverClaimedUpdate(
-  request: CompartmentRequester,
-  runtime: KubeRuntime,
-  observation: KubeObservation,
-  claimed: CompleteResourceReconcileClaim,
-  row: ResourceProjectionRow,
-  plan: ManagedResourceUpdatePlan,
-  error: object | null,
-): Promise<void> {
-  await acknowledgeResourceReconcile(request, {
-    leaseId: plan.leaseId,
-    operationId: plan.operationId,
-    status: 'running',
-  });
-  await recoverFromFailedUpdate(request, runtime, observation, claimed, row, plan, readError(error));
-}
-
-async function prepareManagedUpdate(
-  request: CompartmentRequester,
-  runtime: KubeRuntime,
-  observation: KubeObservation,
-  claimed: CompleteResourceReconcileClaim,
-  row: ResourceProjectionRow,
-): Promise<ManagedResourceUpdatePlan> {
-  assertResourceClaimOwnership(claimed.expectedClaims, await readLiveClaims(runtime, row));
-  const desired: KubeManifest[] = projectResourceManifests(row, row.replicas);
-  const hasLivePods: boolean = readResourcePods(observation).length > 0;
-  const plan: ManagedResourceUpdatePlan = {
-    desired,
-    leaseId: claimed.leaseId,
-    operationId: claimed.operationId,
-    rollback: readRollbackManifest(claimed.previousManifestJson, observation, desired, hasLivePods),
-  };
-  await acknowledgeResourceReconcile(request, {
-    leaseId: plan.leaseId,
-    operationId: plan.operationId,
-    ...(plan.rollback === null ? {} : { previousManifestJson: JSON.stringify(plan.rollback) }),
-    status: 'running',
-  });
-  return plan;
-}
-
-async function recoverFromFailedUpdate(
-  request: CompartmentRequester,
-  runtime: KubeRuntime,
-  observation: KubeObservation,
-  claimed: CompleteResourceReconcileClaim,
-  row: ResourceProjectionRow,
-  plan: ManagedResourceUpdatePlan,
-  originalError: Error,
-): Promise<void> {
-  try {
-    await recoverResourceState(runtime, observation, claimed.expectedClaims, row, plan.rollback);
-    await acknowledgeFailure(request, plan.leaseId, plan.operationId, originalError.message);
-  } catch (rollbackError) {
-    const failure: Error = readError(typeof rollbackError === 'object' ? rollbackError : null);
-    await acknowledgeFailure(
-      request,
-      plan.leaseId,
-      plan.operationId,
-      `${originalError.message} Rollback failed: ${failure.message}`,
-    );
-  }
-}
-
-async function recoverResourceState(
-  runtime: KubeRuntime,
-  observation: KubeObservation,
-  expectedClaims: ResourceClaimIdentity[],
-  row: ResourceProjectionRow,
-  rollback: KubeManifest[] | null,
-): Promise<void> {
-  if (rollback !== null) {
-    await applyManagedResourceState(runtime, observation, expectedClaims, row, rollback);
-    return;
-  }
-  await scaleDownAndAwaitTermination(runtime, observation, row);
-}
-
-async function applyManagedResourceState(
-  runtime: KubeRuntime,
-  observation: KubeObservation,
-  expectedClaims: ResourceClaimIdentity[],
-  row: ResourceProjectionRow,
-  manifests: KubeManifest[],
-): Promise<void> {
-  const observedClaims: ObservedResourceClaim[] = await readLiveClaims(runtime, row);
-  assertResourceClaimOwnership(expectedClaims, observedClaims);
-  await scaleDownAndAwaitTermination(runtime, observation, row);
-  assertResourceClaimOwnership(expectedClaims, await readLiveClaims(runtime, row));
-  const applied: KubeManifest[] = await runtime.apply({ objects: manifests });
-  await waitForFreshResourceDeployment(observation, applied);
-  assertFinalClaimState(expectedClaims, await readLiveClaims(runtime, row), row);
-}
-
-async function acknowledgeFailure(
-  request: CompartmentRequester,
-  leaseId: string,
-  operationId: string,
-  failureMessage: string,
-): Promise<void> {
-  await acknowledgeResourceReconcile(request, {
-    failureMessage,
-    leaseId,
-    operationId,
-    status: 'failed',
-  });
-}
-
 function requireCompleteClaim(claimed: WorkerClaimResourceReconcileResponse): CompleteResourceReconcileClaim {
   if (claimed.intent === null || claimed.leaseId === null || claimed.operationId === null || claimed.type === null) {
     throw new Error('Claimed resource reconcile is incomplete.');
   }
   return claimed as CompleteResourceReconcileClaim;
-}
-
-function readError(error: object | null): Error {
-  return error instanceof Error ? error : new Error('Resource reconcile failed.');
 }

@@ -17,7 +17,6 @@ import {
   organizationQuotaReconciliation,
   organizations,
   principals,
-  projectKubeProvisioning,
   projectResources,
   projects,
   resourceReconcileRuns,
@@ -39,7 +38,7 @@ import type { ProjectResourceRow } from '../src/queries/resources.query.types';
 import { restoreResourceBackupAsForPrincipal } from '../src/services/resource-backups.restore-as.service';
 import { serializeResourceDefinitionSnapshot } from '../src/services/resources.service.storage';
 import type { ResourceRestoreAsResult } from '../src/services/resources.service.types';
-import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
+import { seedCurrentProjectProvisioning, useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import { createApiTestConfig } from './api-config-test.fixtures';
 
 const backupId: string = 'rbak_restore_as';
@@ -242,7 +241,7 @@ async function seedRestoreAsScope(): Promise<void> {
     name: 'database',
     organizationId: 'org_restore_as',
   });
-  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_restore_as', state: 'succeeded' });
+  await seedCurrentProjectProvisioning(db, 'prj_restore_as');
   await db.insert(environments).values({
     id: 'env_restore_as',
     name: 'production',

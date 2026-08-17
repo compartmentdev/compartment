@@ -14,15 +14,16 @@ import { getApiDatabase } from '../runtime/runtime-access';
 import { readDeploymentUsageOwner } from './deployment-usage-owner.query';
 import type { DeploymentUsageOwner } from './deployment-usage-owner.query.types';
 import { splitUsageIntoHours } from './usage-aggregation.support';
-import type { UsageHourSlice } from './usage-aggregation.support.types';
 import type { ApiDatabaseTransaction } from '../db/client.types';
 import type {
   DeleteExpiredUsageBatchInput,
   RecordPodUsageInput,
   UsageCheckpoint,
+  UsageHourIncrement,
   UsageOwner,
 } from './usage-metering.query.types';
 import { deleteEdgeTrafficReceiptBatch } from './edge-traffic-metering.query';
+import { compareWorkloadUsageLockKeys } from './workload-usage-lock-order.support';
 
 export async function recordPodUsage(input: RecordPodUsageInput): Promise<void> {
   await getApiDatabase().transaction(async (tx: ApiDatabaseTransaction): Promise<void> => {
@@ -33,53 +34,55 @@ export async function recordPodUsage(input: RecordPodUsageInput): Promise<void> 
     ].sort((left: WorkerPodResourceMetric, right: WorkerPodResourceMetric): number =>
       left.podUid.localeCompare(right.podUid),
     );
+    const increments: UsageHourIncrement[] = [];
     for (const pod of pods) {
-      await recordPodSample(tx, pod, input.maximumIntervalMs);
+      increments.push(...(await buildPodUsageIncrements(tx, pod, input.maximumIntervalMs)));
+    }
+    increments.sort(compareWorkloadUsageLockKeys);
+    for (const increment of increments) {
+      await incrementUsageHour(tx, increment);
     }
   });
 }
 
-async function recordPodSample(
+async function buildPodUsageIncrements(
   tx: ApiDatabaseTransaction,
   pod: WorkerPodResourceMetric,
   maximumIntervalMs: number,
-): Promise<void> {
+): Promise<UsageHourIncrement[]> {
   const observedAt: Date = new Date(pod.observedAt);
   const checkpoint: UsageCheckpoint | undefined = await readCheckpoint(tx, pod.podUid);
   if (checkpoint === undefined) {
     await tx.insert(workloadUsageCheckpoints).values({ observedAt, podUid: pod.podUid }).onConflictDoNothing();
-    return;
+    return [];
   }
   const elapsedMs: number = observedAt.getTime() - checkpoint.observedAt.getTime();
   if (elapsedMs <= 0) {
-    return;
+    return [];
   }
   await advanceCheckpoint(tx, pod.podUid, observedAt);
   if (elapsedMs > maximumIntervalMs) {
-    return;
+    return [];
   }
-  await recordElapsedUsage(tx, pod, checkpoint.observedAt, observedAt);
+  return await buildElapsedUsageIncrements(tx, pod, checkpoint.observedAt, observedAt);
 }
 
-async function recordElapsedUsage(
+async function buildElapsedUsageIncrements(
   tx: ApiDatabaseTransaction,
   pod: WorkerPodResourceMetric,
   previousObservedAt: Date,
   observedAt: Date,
-): Promise<void> {
+): Promise<UsageHourIncrement[]> {
   const owner: UsageOwner | null = await readUsageOwner(tx, pod);
   if (owner === null) {
-    return;
+    return [];
   }
-  const slices: UsageHourSlice[] = splitUsageIntoHours({
+  return splitUsageIntoHours({
     cpuMillicores: pod.cpuMillicores,
     memoryBytes: pod.memoryBytes,
     observedAt,
     previousObservedAt,
-  });
-  for (const slice of slices) {
-    await incrementUsageHour(tx, owner, slice);
-  }
+  }).map((slice): UsageHourIncrement => ({ ...owner, ...slice }));
 }
 
 async function readCheckpoint(tx: ApiDatabaseTransaction, podUid: string): Promise<UsageCheckpoint | undefined> {
@@ -126,16 +129,16 @@ async function readResourceUsageOwner(tx: ApiDatabaseTransaction, resourceId: st
   return row === undefined ? null : { ...row, serviceId: null };
 }
 
-async function incrementUsageHour(tx: ApiDatabaseTransaction, owner: UsageOwner, slice: UsageHourSlice): Promise<void> {
+async function incrementUsageHour(tx: ApiDatabaseTransaction, increment: UsageHourIncrement): Promise<void> {
   const ownerColumn: typeof workloadUsageHourly.resourceId | typeof workloadUsageHourly.serviceId =
-    owner.serviceId === null ? workloadUsageHourly.resourceId : workloadUsageHourly.serviceId;
+    increment.serviceId === null ? workloadUsageHourly.resourceId : workloadUsageHourly.serviceId;
   await tx
     .insert(workloadUsageHourly)
-    .values({ ...owner, ...slice, sampleCount: 1 })
+    .values({ ...increment, sampleCount: 1 })
     .onConflictDoUpdate({
       set: {
-        cpuMillicoreSeconds: sql`${workloadUsageHourly.cpuMillicoreSeconds} + ${slice.cpuMillicoreSeconds}`,
-        memoryByteSeconds: sql`${workloadUsageHourly.memoryByteSeconds} + ${slice.memoryByteSeconds}`,
+        cpuMillicoreSeconds: sql`${workloadUsageHourly.cpuMillicoreSeconds} + ${increment.cpuMillicoreSeconds}`,
+        memoryByteSeconds: sql`${workloadUsageHourly.memoryByteSeconds} + ${increment.memoryByteSeconds}`,
         sampleCount: sql`${workloadUsageHourly.sampleCount} + 1`,
         updatedAt: new Date(),
       },

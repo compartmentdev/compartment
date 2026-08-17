@@ -17,6 +17,7 @@ data:
   COMPARTMENT_BASE_DOMAIN: {{ $installState.effective.platform.baseDomain | quote }}
   COMPARTMENT_TLS_MODE: {{ $installState.effective.platform.tlsMode }}
   COMPARTMENT_CADDY_HTTP_PORT: {{ .Values.ports.http | quote }}
+  COMPARTMENT_DEPLOYMENT_INFRASTRUCTURE_TIMEOUT_MS: {{ .Values.worker.deploymentInfrastructureTimeoutMs | quote }}
   COMPARTMENT_EDGE_BIND_HOST: "0.0.0.0"
   COMPARTMENT_EDGE_INTERNAL_HOST: {{ printf "%s-edge" (include "compartment.fullname" .) | quote }}
   COMPARTMENT_EDGE_PORT: {{ .Values.ports.edge | quote }}
@@ -34,6 +35,7 @@ data:
   COMPARTMENT_LEADER_ELECTION_RETRY_PERIOD_MS: {{ .Values.leaderElection.retryPeriodMs | quote }}
   COMPARTMENT_USAGE_METERING_INTERVAL_MS: {{ .Values.platform.usageMeteringIntervalMs | quote }}
   COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: {{ .Values.buildkit.gcKeepStorageMb | quote }}
+  COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME: {{ printf "%s-buildkit" (include "compartment.fullname" .) | quote }}
   COMPARTMENT_BUILDKIT_RESOURCES: {{ .Values.resources.buildkit | toJson | quote }}
   COMPARTMENT_PROJECT_CONTAINER_DEFAULTS: {{ .Values.resources.projectContainerDefaults | toJson | quote }}
   COMPARTMENT_PROJECT_QUOTA: {{ .Values.resources.projectQuota | toJson | quote }}

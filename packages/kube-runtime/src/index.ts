@@ -33,6 +33,7 @@ export {
   projectResourceManifests,
   resourcePodsFullyTerminated,
 } from './kube-resource-projection';
+export { readResourceReadinessTimeoutMs } from './kube-resource-readiness';
 export type { ProjectNetworkPolicyProjection } from './kube-network-policy-projection.types';
 export { projectNamespaceDeleteTarget, projectNamespaceProvisioningBundle } from './kube-provisioning';
 export {
@@ -45,6 +46,7 @@ export {
   calculateKubeRolloutStatus,
   kubeDeploymentAvailable,
   readKubeApplicationRunningStartedAt,
+  readKubeContainerRunningStartedAt,
   readKubeRolloutObservation,
 } from './kube-rollout';
 export type {

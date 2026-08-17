@@ -49,6 +49,24 @@ export async function readResourceReconcileRunState(operationId: string): Promis
   return row ?? null;
 }
 
+export async function readLatestResourceReconcileRunStateWithExecutor(
+  executor: ApiDatabaseTransaction,
+  projectResourceId: string,
+): Promise<ResourceReconcileRunState | null> {
+  const [row]: ResourceReconcileRunState[] = await executor
+    .select({ failureMessage: resourceReconcileRuns.failureMessage, phase: resourceReconcileRuns.phase })
+    .from(resourceReconcileRuns)
+    .where(
+      and(
+        eq(resourceReconcileRuns.projectResourceId, projectResourceId),
+        eq(resourceReconcileRuns.operationType, 'reconcile'),
+      ),
+    )
+    .orderBy(desc(resourceReconcileRuns.createdAt), desc(resourceReconcileRuns.id))
+    .limit(1);
+  return row ?? null;
+}
+
 export async function readResourceBootstrapSettlement(
   projectResourceId: string,
 ): Promise<ResourceBootstrapSettlement | null> {

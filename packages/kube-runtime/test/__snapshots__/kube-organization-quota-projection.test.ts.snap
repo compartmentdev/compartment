@@ -91,7 +91,7 @@ exports[`organization GlobalCustomQuota projection > projects five deterministic
     ],
   },
   {
-    "limit": "2Gi",
+    "limit": "8Gi",
     "namespaceSelectors": [
       {
         "matchLabels": {

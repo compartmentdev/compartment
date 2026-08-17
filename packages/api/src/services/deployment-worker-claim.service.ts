@@ -1,8 +1,9 @@
 import {
-  findFirstFairQueuedDeploymentCandidateForUpdate,
+  findFirstFairQueuedDeploymentCandidate,
   markQueuedDeploymentRunningWithExecutor,
   readBuildQueueCounts,
 } from '../queries/deployment-claim.query';
+import { lockActiveDeploymentProjectsWithExecutor } from '../queries/deployments.query';
 import type { BuildQueueCountsRow, QueuedDeploymentClaimCandidateRow } from '../queries/deployment-claim.query.types';
 import type { DeploymentRow, DeploymentTransaction } from '../queries/deployments.query.types';
 import { updateOperationRecordWithExecutor } from '../queries/operations.query';
@@ -44,13 +45,15 @@ async function claimQueuedDeploymentWithReservation(
   input: BuildQueueClaimInput,
   now: Date,
 ): Promise<ClaimedDeploymentReservation | null> {
-  const candidate: QueuedDeploymentClaimCandidateRow | undefined =
-    await findFirstFairQueuedDeploymentCandidateForUpdate(
-      tx,
-      input.maximumConcurrentBuilds,
-      input.maximumConcurrentBuildsPerOrganization,
-    );
+  const candidate: QueuedDeploymentClaimCandidateRow | undefined = await findFirstFairQueuedDeploymentCandidate(
+    tx,
+    input.maximumConcurrentBuilds,
+    input.maximumConcurrentBuildsPerOrganization,
+  );
   if (candidate === undefined) {
+    return null;
+  }
+  if (!(await lockActiveDeploymentProjectsWithExecutor(tx, [candidate.environmentId]))) {
     return null;
   }
 

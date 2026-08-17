@@ -1,5 +1,5 @@
 {{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
-{{- if and (eq $installState.effective.platform.startupStage "full") (eq $installState.effective.platform.domainMode "managed") (eq $installState.effective.platform.publicProtocol "https") (empty .Values.tls.existingSecret) -}}
+{{- if and (eq $installState.effective.platform.startupStage "full") (eq $installState.effective.platform.publicProtocol "https") (empty .Values.tls.existingSecret) -}}
 {{- $baseDomain := $installState.effective.platform.baseDomain -}}
 {{- $fullname := include "compartment.fullname" . -}}
 {{- include "compartment.certManagerCertificate" (dict

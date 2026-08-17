@@ -9,6 +9,7 @@ export {
   isRetryableRequestError,
 } from './http/request';
 export { isRetryableTransportRequestError } from './http/request-error';
+export { readTransportFailureDiagnostic } from './http/request-error';
 
 export { activateCompartment } from './services/activate.service';
 export { allocateManagedDomain } from './services/managed-domain.service';

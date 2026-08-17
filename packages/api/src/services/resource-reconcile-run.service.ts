@@ -21,7 +21,7 @@ import type {
   ResourceBootstrapSettlement,
   ResourceReconcileSettlement,
 } from '../queries/resource-reconcile-runs.query.types';
-import { createProjectArchivedError } from '../errors/api-business-error';
+import { createProjectArchivedError, createResourceConflictError } from '../errors/api-business-error';
 import { archivedResourceRunFailureMessage } from '../queries/resource-reconcile-project.query';
 import { projectProvisioningAttemptLimit } from '../queries/project-provisioning-policy';
 import { resourceReconcileOperationWaitTimeoutMs } from '../queries/resource-reconcile-policy';
@@ -36,6 +36,7 @@ import {
   encryptResourceRollbackAcknowledgement,
 } from './resource-reconcile-rollback-crypto.service';
 import { assertExpectedResourceClaims, readExpectedResourceClaims } from './resource-reconcile-claims.service';
+import { getApiConfig } from '../runtime/runtime-access';
 
 const resourceClaimIdentityPollInitialDelayMs: number = 100;
 const resourceClaimIdentityPollMaxDelayMs: number = 5_000;
@@ -79,7 +80,9 @@ export async function waitForResourceBootstrap(projectResourceId: string): Promi
 
 export async function waitForResourceClaimIdentities(projectResourceId: string): Promise<ProjectResourceRow> {
   const context: ResourceClaimIdentityWaitContext = {
-    deadlineAt: Date.now() + resourceReconcileOperationWaitTimeoutMs('bootstrap'),
+    deadlineAt:
+      Date.now() +
+      resourceReconcileOperationWaitTimeoutMs('bootstrap', getApiConfig().deploymentInfrastructureTimeoutMs),
     pollDelayMs: resourceClaimIdentityPollInitialDelayMs,
   };
   for (;;) {
@@ -248,7 +251,9 @@ export async function claimNextResourceReconcile(): Promise<ClaimedResourceRecon
 }
 
 export async function acknowledgeResourceReconcile(input: WorkerAcknowledgeResourceReconcileRequest): Promise<void> {
-  await acknowledgeResourceReconcileRun(encryptResourceRollbackAcknowledgement(input));
+  if (!(await acknowledgeResourceReconcileRun(encryptResourceRollbackAcknowledgement(input)))) {
+    throw createResourceConflictError('Resource reconcile lease is no longer current.');
+  }
 }
 
 function requireCreatedResourceRun(result: CreateResourceReconcileRunResult): void {

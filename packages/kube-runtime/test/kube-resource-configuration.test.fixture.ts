@@ -6,15 +6,15 @@ import type {
 } from '../src';
 
 export const projectContainerDefaults: ProjectContainerDefaults = {
-  limit: { cpu: '1', memory: '1Gi' },
-  request: { cpu: '50m', memory: '256Mi' },
+  limit: { cpu: '1', memory: '512Mi' },
+  request: { cpu: '50m', memory: '512Mi' },
 };
 
 export const projectQuota: ProjectQuota = {
   limitsCpu: '8',
   limitsMemory: '8Gi',
   requestsCpu: '2',
-  requestsMemory: '2Gi',
+  requestsMemory: '8Gi',
   requestsStorage: '20Gi',
 };
 
@@ -27,6 +27,6 @@ export const organizationQuotaCapacity: OrganizationQuotaCapacity = {
   limitsCpu: '8',
   limitsMemory: '8Gi',
   requestsCpu: '2',
-  requestsMemory: '2Gi',
+  requestsMemory: '8Gi',
   requestsStorage: '20Gi',
 };

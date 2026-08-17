@@ -44,6 +44,15 @@ openssl rand -base64 36 >"${password_file}"
   --organization 'Managed VM E2E' \
   --admin-password-file "${password_file}" 2>&1 | tee "${install_log}"
 
+for expected_kubelet_arg in \
+  '  - "system-reserved=memory=512Mi"' \
+  '  - "kube-reserved=memory=512Mi"' \
+  '  - "eviction-hard=memory.available<512Mi,nodefs.available<10%,imagefs.available<15%,nodefs.inodesFree<5%,imagefs.inodesFree<5%"'; do
+  sudo grep --fixed-strings --line-regexp --quiet -- "${expected_kubelet_arg}" /etc/rancher/k3s/config.yaml
+done
+sudo systemctl is-active --quiet k3s.service
+sudo k3s kubectl wait node --all --for=condition=Ready --timeout=5m
+
 sudo /usr/local/bin/runsc --version | grep -q "${expected_gvisor_version}"
 
 cat >"${canary_manifest}" <<'EOF'
@@ -71,4 +80,4 @@ sudo k3s kubectl apply --filename "${canary_manifest}"
 sudo k3s kubectl wait pod/compartment-fresh-vm-gvisor-e2e --for=condition=Ready --timeout=5m
 sudo k3s kubectl exec pod/compartment-fresh-vm-gvisor-e2e -- dmesg | grep -qi gvisor
 
-echo 'Verified fresh managed-VM installation with gVisor fail-closed sandboxing.'
+echo 'Verified fresh managed-VM K3s capacity configuration and gVisor fail-closed sandboxing.'

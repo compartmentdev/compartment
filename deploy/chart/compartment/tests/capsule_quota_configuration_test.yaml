@@ -56,5 +56,14 @@ tests:
           path: spec.template.spec.priorityClassName
           value: system-cluster-critical
       - equal:
-          path: spec.template.spec.containers[0].resources.requests
-          value: { cpu: 100m, memory: 128Mi }
+          path: spec.template.spec.containers[0].resources.requests.cpu
+          value: 100m
+
+  - it: renders enough scheduled memory for the Capsule controller leader
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 512Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 512Mi
