@@ -1,7 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises';
+import { posix } from 'node:path';
 
+const railpackAppDirectory: string = '/app';
+const staticCaddyfileAssetName: string = 'Caddyfile';
 const staticBuildStepName: string = 'build';
-const staticStartCommand: string = 'cd /app && caddy run --config /app/Caddyfile --adapter caddyfile 2>&1';
 
 type RailpackPlanJsonValue = boolean | null | number | RailpackPlanJsonObject | RailpackPlanJsonValue[] | string;
 
@@ -12,6 +14,14 @@ interface RailpackPlanJsonObject {
 type RailpackPlanRecord = RailpackPlanJsonObject;
 type RailpackPlanDocument = RailpackPlanRecord & {
   deploy?: RailpackDeploySection | undefined;
+  steps?: RailpackBuildStep[] | undefined;
+};
+type RailpackBuildCommand = RailpackPlanRecord & {
+  name?: string | undefined;
+  path?: string | undefined;
+};
+type RailpackBuildStep = RailpackPlanRecord & {
+  commands?: RailpackBuildCommand[] | undefined;
 };
 type RailpackDeploySection = RailpackPlanRecord & {
   inputs?: RailpackDeployInput[] | undefined;
@@ -29,10 +39,27 @@ export async function normalizeStaticRailpackPlan(planPath: string, staticOutput
   plan.deploy = {
     ...deploy,
     inputs: normalizeStaticDeployInputs(deploy.inputs ?? [], staticOutputDirectory),
-    startCommand: staticStartCommand,
+    startCommand: buildStaticStartCommand(readShippedCaddyfilePath(plan.steps ?? [])),
   };
 
   await writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`, 'utf8');
+}
+
+function readShippedCaddyfilePath(steps: readonly RailpackBuildStep[]): string {
+  for (const step of steps) {
+    const caddyfileCommand: RailpackBuildCommand | undefined = step.commands?.find(
+      (command: RailpackBuildCommand): boolean => command.name === staticCaddyfileAssetName,
+    );
+    if (caddyfileCommand?.path !== undefined) {
+      return posix.resolve(railpackAppDirectory, caddyfileCommand.path);
+    }
+  }
+
+  throw new Error('Expected Railpack static plan to define the shipped Caddyfile path.');
+}
+
+function buildStaticStartCommand(caddyfilePath: string): string {
+  return `cd ${railpackAppDirectory} && caddy run --config ${caddyfilePath} --adapter caddyfile 2>&1`;
 }
 
 function parseRailpackPlan(planText: string): RailpackPlanDocument {
