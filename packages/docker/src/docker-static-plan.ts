@@ -22,7 +22,12 @@ type RailpackBuildCommand = RailpackPlanRecord & {
 };
 type RailpackBuildStep = RailpackPlanRecord & {
   commands?: RailpackBuildCommand[] | undefined;
+  name?: string | undefined;
 };
+interface RailpackCaddyfileArtifact {
+  path: string;
+  stepName: string;
+}
 type RailpackDeploySection = RailpackPlanRecord & {
   inputs?: RailpackDeployInput[] | undefined;
   startCommand?: string | undefined;
@@ -35,27 +40,32 @@ type RailpackDeployInput = RailpackPlanRecord & {
 export async function normalizeStaticRailpackPlan(planPath: string, staticOutputDirectory: string): Promise<void> {
   const plan: RailpackPlanDocument = parseRailpackPlan(await readFile(planPath, 'utf8'));
   const deploy: RailpackDeploySection = readRailpackDeploySection(plan);
+  const caddyfileArtifact: RailpackCaddyfileArtifact = readCaddyfileArtifact(plan.steps ?? []);
 
   plan.deploy = {
     ...deploy,
-    inputs: normalizeStaticDeployInputs(deploy.inputs ?? [], staticOutputDirectory),
-    startCommand: buildStaticStartCommand(readShippedCaddyfilePath(plan.steps ?? [])),
+    inputs: normalizeStaticDeployInputs(deploy.inputs ?? [], staticOutputDirectory, caddyfileArtifact),
+    startCommand: buildStaticStartCommand(readShippedCaddyfilePath(caddyfileArtifact)),
   };
 
   await writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`, 'utf8');
 }
 
-function readShippedCaddyfilePath(steps: readonly RailpackBuildStep[]): string {
+function readCaddyfileArtifact(steps: readonly RailpackBuildStep[]): RailpackCaddyfileArtifact {
   for (const step of steps) {
     const caddyfileCommand: RailpackBuildCommand | undefined = step.commands?.find(
       (command: RailpackBuildCommand): boolean => command.name === staticCaddyfileAssetName,
     );
-    if (caddyfileCommand?.path !== undefined) {
-      return posix.resolve(railpackAppDirectory, caddyfileCommand.path);
+    if (caddyfileCommand?.path !== undefined && step.name !== undefined) {
+      return { path: caddyfileCommand.path, stepName: step.name };
     }
   }
 
-  throw new Error('Expected Railpack static plan to define the shipped Caddyfile path.');
+  throw new Error('Expected Railpack static plan to define the Caddyfile artifact and owning step.');
+}
+
+function readShippedCaddyfilePath(caddyfileArtifact: RailpackCaddyfileArtifact): string {
+  return posix.resolve(railpackAppDirectory, caddyfileArtifact.path);
 }
 
 function buildStaticStartCommand(caddyfilePath: string): string {
@@ -87,9 +97,13 @@ function readRailpackDeploySection(plan: RailpackPlanDocument): RailpackDeploySe
 function normalizeStaticDeployInputs(
   inputs: readonly RailpackDeployInput[],
   staticOutputDirectory: string,
+  caddyfileArtifact: RailpackCaddyfileArtifact,
 ): RailpackDeployInput[] {
   const normalizedStaticOutputInput: RailpackDeployInput = {
-    include: [staticOutputDirectory],
+    include: [
+      staticOutputDirectory,
+      ...(caddyfileArtifact.stepName === staticBuildStepName ? [caddyfileArtifact.path] : []),
+    ],
     step: staticBuildStepName,
   };
   const preservedInputs: RailpackDeployInput[] = inputs.filter(

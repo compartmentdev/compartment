@@ -383,7 +383,13 @@ describe('buildDockerImage', (): void => {
         ...(caddyfilePathCase.caddyStepName === 'caddy'
           ? [{ include: [caddyfilePathCase.planPath], step: 'caddy' }]
           : []),
-        { include: ['public-docs/dist'], step: 'build' },
+        {
+          include: [
+            'public-docs/dist',
+            ...(caddyfilePathCase.caddyStepName === 'build' ? [caddyfilePathCase.planPath] : []),
+          ],
+          step: 'build',
+        },
       ]);
       expect(normalizedPlan.deploy.startCommand).toBe(
         `cd /app && caddy run --config ${caddyfilePathCase.shippedPath} --adapter caddyfile 2>&1`,
