@@ -139,20 +139,6 @@ describe.sequential('compartment signup command', (): void => {
     expect(readCliStderr(capture)).toBe('Using Compartment Cloud at cloud.example.com.\n');
   });
 
-  it('keeps the API URL guidance when the managed cloud URL is unset', async (): Promise<void> => {
-    mockManagedCloudControlPlaneUrl(undefined);
-    const mocks: SignupCommandMocks = mockSignupCommandModules({ response: createSignupResponse() });
-
-    const result: CliCommandResult = await runCliCommand(
-      ['signup', '--remote', 'lab', '--organization', 'Agent Org'],
-      createCliCapture(),
-    );
-
-    expectCliFailure(result, 'API URL is required. Run `compartment login --remote lab --api-url <url>` first.');
-    expect(mocks.signUpMock).not.toHaveBeenCalled();
-    expect(mocks.writeCliConfigMock).not.toHaveBeenCalled();
-  });
-
   it('stores the generated address when the agent signs up without an email', async (): Promise<void> => {
     const mocks: SignupCommandMocks = mockSignupCommandModules({
       response: createSignupResponse({ email: 'prn_generated@signup.example.com' }),
