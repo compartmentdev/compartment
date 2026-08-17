@@ -85,16 +85,17 @@ The durable protocol follows the immutable T9 evidence linked below:
    rules. Failed candidate recovery reapplies the previous active manifests but
    never blocks the controller on a second observation loop.
 
-A terminal `timed-out` rollout is cleaned up only after the configured
-infrastructure deadline has elapsed, and cleanup completes before failure is
-persisted. A cleanup error leaves the failure unpersisted so reconciliation can
-retry. A first deployment removes its projected Deployment, Service, and
-deployment-specific Secret. A replacement rollout first restores the distinct
-active manifests, then removes only the candidate Secret and ReplicaSets
-selected by the complete immutable candidate ownership labels. Deployment and
-ReplicaSet deletion uses foreground propagation and treats an absent object as
-already converged. Progressing, progress-deadline-exceeded, intermediate, and
-transport-error observations never trigger this cleanup.
+A terminal rollout is cleaned up before failure is persisted, including an
+application-readiness timeout or `ProgressDeadlineExceeded`. A cleanup error
+leaves the failure unpersisted so reconciliation can retry. A first deployment
+removes its projected Deployment, Service, and deployment-specific Secret. A
+replacement rollout first restores the distinct active manifests, then removes
+only the candidate Secret and ReplicaSets selected by the complete immutable
+candidate ownership labels. Deployment and ReplicaSet deletion uses foreground
+propagation and treats an absent object as already converged. A failed recovery
+of the current active revision reapplies and retains that revision. Progressing,
+intermediate, quota-admission, and transport-error observations never trigger
+cleanup.
 
 The controller ClusterRole grants its namespace-bound operator identity
 `get`, `list`, `watch`, and `delete` on ReplicaSets. Helm manages that role for

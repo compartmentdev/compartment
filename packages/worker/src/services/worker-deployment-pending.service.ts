@@ -14,7 +14,7 @@ import type { CompartmentRequester } from '@compartment/sdk';
 import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
 import {
   applyPendingApplication,
-  cleanupTimedOutRollout,
+  cleanupFailedRollout,
   recoverFailedRollout,
   type AppliedPendingApplication,
 } from './worker-deployment-application.service';
@@ -36,6 +36,7 @@ type PendingArguments = readonly [
   number,
   string,
 ];
+type PendingFailureEffect = 'cleanup-candidate' | 'recover-active';
 
 export async function reconcilePendingDeployment(
   request: CompartmentRequester,
@@ -84,7 +85,7 @@ async function resolvePendingRollout(
         rolloutStarts,
         scheduling,
       )
-    : await failPendingDeployment(...pendingArguments, quotaFailure, rolloutStarts, scheduling);
+    : await failPendingDeployment(...pendingArguments, quotaFailure, rolloutStarts, scheduling, 'recover-active');
 }
 
 async function readAppliedCandidateRollout(
@@ -153,7 +154,7 @@ async function handleMissingPendingDeployment(
   if (await restartActiveCandidate(...restartArguments, rolloutStarts, scheduling)) {
     return [];
   }
-  await cleanupTimedOutRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
+  await cleanupFailedRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
   const applied: boolean = (
     await persistDeploymentObservation(request, target, 'failed', 'Kubernetes rollout timed out.')
   ).applied;
@@ -186,11 +187,6 @@ async function handleRolloutStatus(
   if (status === 'progressing' || (await restartActiveCandidate(...restartArguments, rolloutStarts, scheduling))) {
     return [];
   }
-  const cleanup: boolean =
-    status === 'timed-out' && Date.now() >= infrastructureRolloutDeadlineAt(target, infrastructureTimeoutMs).getTime();
-  if (cleanup) {
-    await cleanupTimedOutRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
-  }
   return await failPendingDeployment(
     request,
     runtime,
@@ -201,7 +197,7 @@ async function handleRolloutStatus(
     rolloutFailureMessage(status),
     rolloutStarts,
     scheduling,
-    !cleanup,
+    'cleanup-candidate',
   );
 }
 
@@ -215,9 +211,11 @@ async function failPendingDeployment(
   message: string,
   rolloutStarts: DeploymentRolloutStartTracker,
   scheduling: KubeWorkloadScheduling | undefined,
-  recover: boolean = true,
+  effect: PendingFailureEffect,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
-  if (recover) {
+  if (effect === 'cleanup-candidate') {
+    await cleanupFailedRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
+  } else {
     await recoverFailedRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
   }
   const persisted: WorkerObserveDeploymentReconcileResponse = await persistDeploymentObservation(

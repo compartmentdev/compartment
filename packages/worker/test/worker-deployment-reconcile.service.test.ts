@@ -588,16 +588,15 @@ describe('deployment reconciliation', (): void => {
     );
   });
 
-  it('fails an already-running application that remains unready beyond its 10-second window', async (): Promise<void> => {
-    const runtime: KubeRuntime = pendingRuntimeStub(false, [
-      applicationPod('dep_candidate', '2026-07-12T12:00:00.000Z'),
-    ]);
+  it('deletes an unready first deployment before persisting failure so its quota is released', async (): Promise<void> => {
+    const runtime = pendingRuntimeStub(false, [applicationPod('dep_candidate', '2026-07-12T12:00:00.000Z')]);
 
     await reconcileAt('2026-07-12T12:00:10.001Z', runtime, pendingTargetWithReadinessTimeout(10_000));
 
-    expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
-      expect.any(Function),
-      expect.objectContaining({ observation: 'failed', revision: 0 }),
+    const deleted: KubeManifest[] = runtime.delete.mock.calls[0]?.[0] as KubeManifest[];
+    expect(deleted.map((object: KubeManifest): string => object.kind)).toEqual(['Secret', 'Deployment', 'Service']);
+    expect(runtime.delete.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.observeDeploymentReconcile.mock.invocationCallOrder[0]!,
     );
   });
 
