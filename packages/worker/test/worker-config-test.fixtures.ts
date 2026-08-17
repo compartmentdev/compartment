@@ -1,5 +1,9 @@
 import type { WorkerConfig } from '../src/config';
-import type { OrganizationQuotaCapacity, ProjectNamespaceResourceConfiguration } from '@compartment/kube-runtime';
+import type {
+  KubeDataWorkloadScheduling,
+  OrganizationQuotaCapacity,
+  ProjectNamespaceResourceConfiguration,
+} from '@compartment/kube-runtime';
 import type { EdgePodLabels } from '../src/project-network-policy';
 import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
 import { testTenantSecretsKek } from './tenant-secret-test.fixtures';
@@ -19,6 +23,12 @@ export const testOrganizationQuota: OrganizationQuotaCapacity = {
   requestsCpu: '2',
   requestsMemory: '2Gi',
   requestsStorage: '20Gi',
+};
+
+export const testDataScheduling: KubeDataWorkloadScheduling = {
+  nodeSelector: { 'compartment.dev/node-pool': 'data' },
+  runtimeClassName: 'gvisor',
+  tolerations: [],
 };
 
 export const testProjectResourceConfiguration: ProjectNamespaceResourceConfiguration = {
@@ -53,6 +63,7 @@ export function createWorkerTestConfig(overrides: Partial<WorkerConfig> = {}): W
       issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
       namespace: 'compartment',
     },
+    dataScheduling: testDataScheduling,
     deploymentInfrastructureTimeoutMs: 600_000,
     organizationQuota: testOrganizationQuota,
     logLevel: 'silent',

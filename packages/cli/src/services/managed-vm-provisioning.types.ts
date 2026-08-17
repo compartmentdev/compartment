@@ -48,16 +48,22 @@ export interface ManagedVmNodeIdentityReleaseMetadata extends ManagedVmReleaseMe
   metadataVersion: 3;
 }
 
-export interface ManagedVmCurrentReleaseMetadata extends ManagedVmReleaseMetadataBase {
+export interface ManagedVmRuntimeConfigReleaseMetadata extends ManagedVmReleaseMetadataBase {
   gvisorVersion: string;
   metadataVersion: 4;
+}
+
+export interface ManagedVmCurrentReleaseMetadata extends ManagedVmReleaseMetadataBase {
+  gvisorVersion: string;
+  metadataVersion: 5;
 }
 
 export type ManagedVmReleaseMetadata =
   | ManagedVmCurrentReleaseMetadata
   | ManagedVmNodeIdentityReleaseMetadata
   | ManagedVmLegacyReleaseMetadata
-  | ManagedVmPreviousReleaseMetadata;
+  | ManagedVmPreviousReleaseMetadata
+  | ManagedVmRuntimeConfigReleaseMetadata;
 
 export interface ManagedVmHostInventory {
   archiveExtractorAvailable: boolean;

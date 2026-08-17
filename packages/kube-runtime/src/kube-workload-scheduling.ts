@@ -1,4 +1,4 @@
-import type { KubeDeploymentManifest, KubeManifest, KubeProjectedPodSpec } from './kube-runtime.types';
+import type { KubeManifest, KubeProjectedPodSpec } from './kube-runtime.types';
 import type { KubeWorkloadScheduling } from './kube-workload-scheduling.types';
 
 export const tenantPriorityClassName: string = 'compartment-tenant';
@@ -17,18 +17,18 @@ export function projectTenantScheduling(
   };
 }
 
-export function projectWorkloadScheduling(manifests: KubeManifest[], desired: KubeManifest[]): KubeManifest[] {
-  const desiredDeployment: KubeDeploymentManifest | undefined = desired.find(
-    (manifest: KubeManifest): manifest is KubeDeploymentManifest => manifest.kind === 'Deployment',
-  );
-  if (desiredDeployment?.spec === undefined) {
-    return manifests;
-  }
-  const desiredPodSpec: KubeProjectedPodSpec = desiredDeployment.spec.template.spec;
-  return manifests.map((manifest: KubeManifest): KubeManifest => projectManifestScheduling(manifest, desiredPodSpec));
+export function projectConfiguredWorkloadScheduling(
+  manifests: KubeManifest[],
+  scheduling: KubeWorkloadScheduling | undefined,
+): KubeManifest[] {
+  const projected = projectTenantScheduling(scheduling);
+  return manifests.map((manifest: KubeManifest): KubeManifest => projectManifestScheduling(manifest, projected));
 }
 
-function projectManifestScheduling(manifest: KubeManifest, desiredPodSpec: KubeProjectedPodSpec): KubeManifest {
+function projectManifestScheduling(
+  manifest: KubeManifest,
+  desiredPodSpec: Pick<KubeProjectedPodSpec, 'nodeSelector' | 'priorityClassName' | 'runtimeClassName' | 'tolerations'>,
+): KubeManifest {
   if (manifest.kind !== 'Deployment' || manifest.spec === undefined) {
     return manifest;
   }

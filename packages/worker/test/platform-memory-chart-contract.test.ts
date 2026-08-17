@@ -209,6 +209,7 @@ function managedPlatformValues(): string[] {
     'platform.publicProtocol': 'https',
     'platform.tlsMode': 'broker-dns01',
     'platform.acmeEmail': 'admin@example.com',
+    'nodePools.data.nodeSelector.compartment\\.dev/node-pool': 'data',
     'registry.hostname': ['10', '43', '250', '250'].join('.'),
     'registry.issuerRef.kind': 'Issuer',
     'registry.issuerRef.name': 'compartment-platform',

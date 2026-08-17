@@ -108,15 +108,23 @@ function resourceRuntimeUserId(image: string): number | undefined {
 }
 
 export function isPostgresResourceImage(image: string): boolean {
+  if (!isPostgresResourceRepository(image)) {
+    return false;
+  }
+  const versionSeparatorIndex: number = image.search(/[:@]/u);
+  const version: string = versionSeparatorIndex === -1 ? '' : image.slice(versionSeparatorIndex);
+  return !version.startsWith('@');
+}
+
+export function isPostgresResourceRepository(image: string): boolean {
   const versionSeparatorIndex: number = image.search(/[:@]/u);
   const repository: string = versionSeparatorIndex === -1 ? image : image.slice(0, versionSeparatorIndex);
-  const isOfficialRepository: boolean =
+  return (
     repository === 'postgres' ||
     repository === 'docker.io/library/postgres' ||
     repository === 'index.docker.io/library/postgres' ||
-    repository === 'registry-1.docker.io/library/postgres';
-  const version: string = versionSeparatorIndex === -1 ? '' : image.slice(versionSeparatorIndex);
-  return isOfficialRepository && !version.startsWith('@');
+    repository === 'registry-1.docker.io/library/postgres'
+  );
 }
 
 function resourceImageName(image: string): string {

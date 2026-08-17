@@ -1,4 +1,4 @@
-import type { KubeToleration, KubeWorkloadScheduling } from '@compartment/kube-runtime';
+import type { KubeDataWorkloadScheduling, KubeToleration, KubeWorkloadScheduling } from '@compartment/kube-runtime';
 import { z } from 'zod';
 import type { WorkerBuildScheduling } from './config.types';
 
@@ -27,6 +27,17 @@ export function readBuildWorkloadScheduling(value: string): WorkerBuildSchedulin
   const scheduling: KubeWorkloadScheduling = tenantWorkloadSchedulingSchema.parse(JSON.parse(value));
   if (scheduling.runtimeClassName === undefined) {
     throw new Error('Build scheduling must configure a gVisor RuntimeClass.');
+  }
+  return { ...scheduling, runtimeClassName: scheduling.runtimeClassName };
+}
+
+export function readDataWorkloadScheduling(value: string): KubeDataWorkloadScheduling {
+  const scheduling: KubeWorkloadScheduling = tenantWorkloadSchedulingSchema.parse(JSON.parse(value));
+  if (Object.keys(scheduling.nodeSelector).length === 0) {
+    throw new Error('Data scheduling must select dedicated data workers.');
+  }
+  if (scheduling.runtimeClassName === undefined) {
+    throw new Error('Data scheduling must configure a gVisor RuntimeClass.');
   }
   return { ...scheduling, runtimeClassName: scheduling.runtimeClassName };
 }

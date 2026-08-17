@@ -18,6 +18,11 @@ import { secretChecksum } from '../src/kube-secret-projection';
 
 const row: ResourceProjectionRow = {
   command: ['postgres', '-c', 'shared_buffers=256MB'],
+  dataScheduling: {
+    nodeSelector: { 'compartment.dev/node-pool': 'data' },
+    runtimeClassName: 'gvisor',
+    tolerations: [],
+  },
   deleteData: false,
   environmentId: 'env-01jz',
   env: { POSTGRES_PASSWORD: 'generated' },
@@ -129,7 +134,8 @@ describe('resource projection and fencing', (): void => {
         },
       },
     });
-    for (const forbiddenField of ['hostIPC', 'hostNetwork', 'hostPID', 'hostPath', 'runtimeClassName']) {
+    expect(deployment.spec).toHaveProperty('template.spec.runtimeClassName', 'gvisor');
+    for (const forbiddenField of ['hostIPC', 'hostNetwork', 'hostPID', 'hostPath']) {
       expect(deployment.spec).not.toHaveProperty(`template.spec.${forbiddenField}`);
     }
     expect(deployment.spec).not.toHaveProperty('template.spec.volumes.0.hostPath');
@@ -167,6 +173,7 @@ describe('resource projection and fencing', (): void => {
 
     expect(deployment.spec).toHaveProperty('template.spec.securityContext.fsGroup', 10_001);
     expect(deployment.spec).toHaveProperty('template.spec.securityContext.runAsUser', 10_001);
+    expect(deployment.spec).toHaveProperty(['template', 'spec', 'nodeSelector', 'compartment.dev/node-pool'], 'data');
     expect(deployment.spec).not.toHaveProperty('template.spec.containers.0.command');
   });
 

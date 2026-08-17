@@ -5,7 +5,7 @@ import {
   kubeResourceVolumeName,
   projectResourceBootstrapClaims,
   projectResourceManifests,
-  projectWorkloadScheduling,
+  projectResourceRollbackScheduling,
   resourcePodsFullyTerminated,
   type KubeManifest,
   type KubeObservation,
@@ -155,10 +155,11 @@ export function readRollbackManifest(
   previousJson: string | null,
   observation: KubeObservation,
   desired: KubeManifest[],
+  row: ResourceProjectionRow,
   hasLivePods: boolean,
 ): KubeManifest[] | null {
   if (previousJson !== null) {
-    return projectWorkloadScheduling(JSON.parse(previousJson) as KubeManifest[], desired);
+    return projectResourceRollbackScheduling(JSON.parse(previousJson) as KubeManifest[], row);
   }
   const active: KubeManifest[] = readActiveManifests(observation, desired);
   const deployment: KubeManifest | undefined = active.find(
@@ -166,7 +167,7 @@ export function readRollbackManifest(
   );
   const replicas: number | undefined = (deployment?.spec as ObservedRollbackDeploymentSpec | undefined)?.replicas;
   if (active.length === desired.length && deployment !== undefined && replicas !== undefined) {
-    return projectWorkloadScheduling(active, desired);
+    return projectResourceRollbackScheduling(active, row);
   }
   if (hasLivePods || deployment !== undefined) {
     throw new Error('Managed resource update requires a complete rollback snapshot before mutating live state.');

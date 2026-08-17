@@ -395,6 +395,16 @@ tolerations:
 {{- $scheduling | toJson -}}
 {{- end }}
 
+{{- define "compartment.dataSchedulingJson" -}}
+{{- $pool := .Values.nodePools.data -}}
+{{- if empty $pool.nodeSelector -}}
+{{- fail "nodePools.data.nodeSelector must select dedicated data workers" -}}
+{{- end -}}
+{{- $scheduling := dict "nodeSelector" $pool.nodeSelector "tolerations" $pool.tolerations -}}
+{{- $_ := set $scheduling "runtimeClassName" .Values.sandboxRuntime.runtimeClassName -}}
+{{- $scheduling | toJson -}}
+{{- end }}
+
 {{- define "compartment.storageClass" -}}
 {{- if .Values.storage.storageClass }}
 storageClassName: {{ .Values.storage.storageClass | quote }}

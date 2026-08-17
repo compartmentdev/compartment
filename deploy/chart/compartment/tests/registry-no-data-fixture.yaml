@@ -3,8 +3,3 @@ registry:
   issuerRef:
     kind: ClusterIssuer
     name: registry-test-issuer
-
-nodePools:
-  data:
-    nodeSelector: { compartment.dev/node-pool: data }
-    tolerations: []

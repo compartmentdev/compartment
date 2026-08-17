@@ -26,6 +26,7 @@ import {
   projectResourceBootstrapClaims,
   projectResourceClaimDeleteTargets,
   projectResourceManifests,
+  projectResourceRollbackScheduling,
 } from '../src/kube-resource-projection';
 import type { ObservedResourceClaim, ResourceProjectionRow } from '../src/kube-resource-projection.types';
 import type { KubeResourceReachabilityProbe } from '../src/kube-resource-reachability-projection.types';
@@ -58,11 +59,11 @@ const jobLabels: Readonly<Record<string, string>> = { 'compartment.dev/job-class
  * registered case already audits their fields.
  */
 const podFragmentProjections: ReadonlySet<string> = new Set<string>([
+  'projectConfiguredWorkloadScheduling',
   'projectPodSecurityContext',
   'projectResourceReachabilityInitContainer',
   'projectTenantScheduling',
   'projectVolumeSecurityContext',
-  'projectWorkloadScheduling',
 ]);
 
 const transportAuditRegistry: readonly TransportAuditCase[] = [
@@ -73,6 +74,14 @@ const transportAuditRegistry: readonly TransportAuditCase[] = [
   {
     manifests: (): KubeManifest[] => projectResourceManifests(resourceRow(), infrastructureTimeoutMs),
     projection: 'projectResourceManifests',
+  },
+  {
+    manifests: (): KubeManifest[] =>
+      projectResourceRollbackScheduling(
+        projectResourceManifests(resourceRow(), infrastructureTimeoutMs),
+        resourceRow(),
+      ),
+    projection: 'projectResourceRollbackScheduling',
   },
   {
     manifests: (): KubeManifest[] => projectResourceBootstrapClaims(resourceRow()),
@@ -217,6 +226,11 @@ function applicationRow(): ApplicationProjectionRow {
 function resourceRow(): ResourceProjectionRow {
   return {
     command: ['postgres', '-c', 'shared_buffers=256MB'],
+    dataScheduling: {
+      nodeSelector: { 'compartment.dev/node-pool': 'data' },
+      runtimeClassName: 'gvisor',
+      tolerations: [],
+    },
     deleteData: false,
     environmentId: 'env-01jz',
     env: { POSTGRES_PASSWORD: 'generated' },

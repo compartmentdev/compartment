@@ -11,3 +11,7 @@ export interface KubeWorkloadScheduling {
   runtimeClassName?: string | undefined;
   tolerations: readonly KubeToleration[];
 }
+
+export interface KubeDataWorkloadScheduling extends KubeWorkloadScheduling {
+  runtimeClassName: string;
+}

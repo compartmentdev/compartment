@@ -101,6 +101,7 @@ describe('managed VM cluster installation', (): void => {
       'secrets-encryption': true,
       'write-kubeconfig-mode': '0600',
       'node-external-ip': '203.0.113.10',
+      'node-label': ['compartment.dev/node-pool=data'],
       'etcd-snapshot-schedule-cron': '0 */12 * * *',
       'etcd-snapshot-retention': 5,
       'kubelet-arg': [
@@ -110,6 +111,17 @@ describe('managed VM cluster installation', (): void => {
       ],
     });
     expect(configCall?.[2]).toBe(0o600);
+    const valuesCall: ManagedVmInstalledFileCall | undefined = mocks.installNewManagedVmFile.mock.calls.find(
+      (call): boolean => call[0] === '/etc/compartment/values.yaml',
+    ) as ManagedVmInstalledFileCall | undefined;
+    expect(parse(String(valuesCall?.[1]))).toMatchObject({
+      nodePools: {
+        data: {
+          nodeSelector: { 'compartment.dev/node-pool': 'data' },
+          tolerations: [],
+        },
+      },
+    });
   });
 
   it('accepts a complete K3s-owned file inventory', async (): Promise<void> => {
