@@ -17,6 +17,7 @@ import type {
 } from './config.types';
 import { readBuildWorkloadScheduling, readTenantWorkloadScheduling } from './tenant-workload-scheduling';
 import { readOrganizationQuota } from './resource-quota-config';
+import { parseKubernetesQuantity } from './services/kubernetes-quantity';
 
 export type { WorkerBuildConfig, WorkerConfig, WorkerCustomDomainConfig, WorkerProcessConfig } from './config.types';
 
@@ -41,6 +42,7 @@ interface WorkerProcessConfigEnvironment {
 
 interface WorkerBuildConfigEnvironment extends WorkerProcessConfigEnvironment {
   COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME: string;
+  COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: string;
   COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: number;
   COMPARTMENT_BUILDKIT_RESOURCES: string;
   COMPARTMENT_BUILD_NAMESPACE: string;
@@ -95,6 +97,7 @@ const buildResourceRequirementsSchema = z
 const workerBuildConfigSchema: z.ZodType<WorkerBuildConfigEnvironment> = workerProcessConfigSchema.and(
   z.object({
     COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME: z.string().trim().min(1),
+    COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: z.string().trim().min(1),
     COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: z.coerce.number().int().positive(),
     COMPARTMENT_BUILDKIT_RESOURCES: z.string().trim().min(1),
     COMPARTMENT_BUILD_NAMESPACE: z.string().trim().min(1),
@@ -194,6 +197,10 @@ function buildWorkerBuildConfig(parsed: WorkerBuildConfigEnvironment): WorkerBui
     workerImage: parsed.COMPARTMENT_WORKER_IMAGE,
     buildSandbox: {
       buildKitConfigMapName: parsed.COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME,
+      dataSizeLimit: readMemoryQuantity(
+        parsed.COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT,
+        'COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT',
+      ),
       buildKitResources: readResourceRequirements(
         parsed.COMPARTMENT_BUILDKIT_RESOURCES,
         'COMPARTMENT_BUILDKIT_RESOURCES',
@@ -208,6 +215,15 @@ function buildWorkerBuildConfig(parsed: WorkerBuildConfigEnvironment): WorkerBui
       timeoutMs: parsed.COMPARTMENT_BUILD_TIMEOUT_MS,
     },
   };
+}
+
+function readMemoryQuantity(value: string, name: string): string {
+  try {
+    parseKubernetesQuantity(value, 'memory');
+    return value;
+  } catch {
+    throw new Error(`${name} must be a valid Kubernetes memory quantity.`);
+  }
 }
 
 function readResourceRequirements(value: string, name: string): WorkerBuildResourceRequirements {

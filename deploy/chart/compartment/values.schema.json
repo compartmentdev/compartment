@@ -755,6 +755,7 @@
       "required": [
         "enabled",
         "namespace",
+        "dataSizeLimit",
         "gcKeepStorageMb",
         "maximumConcurrentBuilds",
         "maximumConcurrentBuildsPerOrganization",
@@ -766,6 +767,7 @@
       "properties": {
         "enabled": { "type": "boolean" },
         "namespace": { "type": "string", "minLength": 1 },
+        "dataSizeLimit": { "$ref": "#/definitions/kubernetesQuantity" },
         "gcKeepStorageMb": { "type": "integer", "minimum": 1 },
         "maximumConcurrentBuilds": { "type": "integer", "minimum": 1 },
         "maximumConcurrentBuildsPerOrganization": { "type": "integer", "minimum": 1 },

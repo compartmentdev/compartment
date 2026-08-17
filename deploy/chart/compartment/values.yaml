@@ -192,6 +192,9 @@ sandboxRuntime:
 buildkit:
   enabled: true
   namespace: compartment-build
+  # Per-build memory-backed BuildKit data volume. Build Pod memory resources must fund this value,
+  # the other 1Gi of tmpfs workspace, and 1Gi of BuildKit, runner, and Sentry process memory.
+  dataSizeLimit: 2Gi
   # BuildKit keeps this much cache in its memory-backed data volume. Every build Job is deleted
   # after its result is captured, so retention above the live working set only consumes Pod memory.
   gcKeepStorageMb: 1024
@@ -317,8 +320,8 @@ resources:
     requests: { cpu: 50m, memory: 512Mi }
     limits: { cpu: 500m, memory: 512Mi }
   # gVisor serves the build Job's emptyDir volumes from Sentry memory, so these two limits also fund
-  # the 3Gi tmpfs build workspace. The worker refuses to start when they no longer cover that
-  # workspace plus 1Gi of BuildKit, runner, and Sentry process memory.
+  # buildkit.dataSizeLimit plus the other 1Gi of tmpfs workspace. The worker refuses to start when
+  # they no longer cover that workspace plus 1Gi of BuildKit, runner, and Sentry process memory.
   buildkit:
     requests: { cpu: 250m, memory: 3Gi }
     limits: { cpu: 1750m, memory: 3Gi }

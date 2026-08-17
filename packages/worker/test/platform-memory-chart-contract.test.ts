@@ -45,7 +45,15 @@ interface RenderedMetadata {
 interface RenderedWorkloadSpec extends RenderedPodSpec {
   jobTemplate?: RenderedJobTemplate;
   template?: RenderedPodTemplate;
+  validations?: RenderedValidation[];
 }
+
+interface RenderedValidation {
+  expression?: string;
+  message?: string;
+}
+
+type HelmValues = Record<string, string>;
 
 interface RenderedJobTemplate {
   spec?: RenderedJobTemplateSpec;
@@ -123,8 +131,13 @@ describe('shipped platform memory contract', (): void => {
     expect(sortedRenderedIdentities).toEqual(sortedExpectedIdentities);
   }, 30_000);
 
-  it('submits honest chart memory in the Kubernetes build Job request', async (): Promise<void> => {
-    const documents: RenderedWorkload[] = await renderManagedPlatform();
+  it('submits the configured BuildKit data size through the rendered worker contract', async (): Promise<void> => {
+    const dataSizeLimit: string = '3Gi';
+    const documents: RenderedWorkload[] = await renderManagedPlatformWithValues({
+      'buildkit.dataSizeLimit': dataSizeLimit,
+      'resources.buildkit.limits.memory': '4Gi',
+      'resources.buildkit.requests.memory': '4Gi',
+    });
     const configMap: RenderedConfigMap | undefined = documents.find(
       (document: RenderedWorkload): boolean =>
         document.kind === 'ConfigMap' && 'COMPARTMENT_API_INTERNAL_HOST' in (document.data ?? {}),
@@ -135,6 +148,7 @@ describe('shipped platform memory contract', (): void => {
       COMPARTMENT_LEADER_ELECTION_IDENTITY: 'memory-contract-worker',
       COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-token',
     });
+    expect(config.buildSandbox.dataSizeLimit).toBe(dataSizeLimit);
     const runtime = new CapturingBuildJobRuntime();
 
     await expect(
@@ -159,6 +173,10 @@ describe('shipped platform memory contract', (): void => {
     ).rejects.toThrow(/Sandboxed build Job memory-contract failed/u);
     const spec: KubeJobSpec | undefined = runtime.spec;
     expect(spec?.sidecars?.map((sidecar): string => sidecar.name)).toEqual(['buildkit']);
+    expect(spec?.emptyDirVolumes?.find((volume): boolean => volume.name === 'buildkit-data')).toMatchObject({
+      gvisorTmpfs: true,
+      sizeLimit: dataSizeLimit,
+    });
     const resources: object[] = [spec?.sidecars?.[0]?.resources, spec?.resources].filter(
       (resource): resource is object => resource !== undefined,
     );
@@ -167,6 +185,14 @@ describe('shipped platform memory contract', (): void => {
       const containerResources: RenderedContainerResources = resource;
       expect(containerResources.requests?.memory).toBe(containerResources.limits?.memory);
     }
+    const admissionPolicy: RenderedWorkload | undefined = documents.find(
+      (document: RenderedWorkload): boolean => document.kind === 'ValidatingAdmissionPolicy',
+    );
+    const dataVolumeValidation: RenderedValidation | undefined = admissionPolicy?.spec?.validations?.find(
+      (validation: RenderedValidation): boolean => validation.message?.includes('buildkit-data') ?? false,
+    );
+    expect(dataVolumeValidation?.expression).toContain(`quantity('${dataSizeLimit}')`);
+    expect(dataVolumeValidation?.message).toBe(`Build Jobs must use a ${dataSizeLimit} buildkit-data emptyDir.`);
   }, 30_000);
 });
 
@@ -178,14 +204,18 @@ async function renderManagedPlatform(): Promise<RenderedWorkload[]> {
   return await renderedPlatform;
 }
 
-async function renderManagedPlatformOnce(): Promise<RenderedWorkload[]> {
+async function renderManagedPlatformWithValues(values: HelmValues): Promise<RenderedWorkload[]> {
+  return await renderManagedPlatformOnce(values);
+}
+
+async function renderManagedPlatformOnce(values: HelmValues = {}): Promise<RenderedWorkload[]> {
   const { stdout } = await executeFile('helm', [
     'template',
     'memory-contract',
     chartDirectory,
     '--namespace',
     'compartment',
-    ...managedPlatformValues(),
+    ...managedPlatformValues(values),
   ]);
   return parseAllDocuments(stdout).map((document: Document): RenderedWorkload => document.toJSON() as RenderedWorkload);
 }
@@ -200,7 +230,7 @@ function readRenderedPodSpec(workload: RenderedWorkload): RenderedPodSpec | unde
   return workload.spec?.template?.spec;
 }
 
-function managedPlatformValues(): string[] {
+function managedPlatformValues(overrides: HelmValues = {}): string[] {
   const values: Record<string, string> = {
     'platform.startupStage': 'full',
     'platform.installationId': 'test-memory',
@@ -223,6 +253,7 @@ function managedPlatformValues(): string[] {
     'secrets.tenantSecretsKek': 'a'.repeat(64),
     'secrets.variablesMasterKey': 'test-variables-master-key',
     'secrets.managedDomainAcmeDnsToken': 'broker-token',
+    ...overrides,
   };
   return Object.entries(values).flatMap(([name, value]: [string, string]): string[] => [
     '--set-string',

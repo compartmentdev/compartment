@@ -14,6 +14,7 @@ describe('readWorkerConfig', (): void => {
     });
     expect(config.buildSandbox).toEqual({
       buildKitConfigMapName: 'compartment-buildkit',
+      dataSizeLimit: '2Gi',
       buildKitResources: { limits: { cpu: '2', memory: '3Gi' }, requests: { cpu: '250m', memory: '3Gi' } },
       gcKeepStorageMb: 1024,
       namespace: 'compartment-build',
@@ -94,6 +95,28 @@ describe('readWorkerConfig', (): void => {
         }),
     ).toThrow('COMPARTMENT_BUILDKIT_RESOURCES must be a JSON object declaring limits.memory.');
   });
+
+  it('fails closed when the BuildKit data size limit is not a Kubernetes memory quantity', (): void => {
+    expect(
+      (): WorkerBuildConfig =>
+        readWorkerBuildConfig({
+          ...validEnvironment(),
+          COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: 'two gigabytes',
+        }),
+    ).toThrow('must be a valid Kubernetes memory quantity');
+  });
+
+  it.each(['+2Gi', '2147483648000000u', '2147483648000000000n'])(
+    'accepts the %s Kubernetes quantity allowed by the chart schema',
+    (dataSizeLimit: string): void => {
+      const config: WorkerBuildConfig = readWorkerBuildConfig({
+        ...validEnvironment(),
+        COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: dataSizeLimit,
+      });
+
+      expect(config.buildSandbox.dataSizeLimit).toBe(dataSizeLimit);
+    },
+  );
 
   it('rejects unsafe worker trusted outbound host entries', (): void => {
     expect((): WorkerConfig => {
@@ -206,6 +229,7 @@ const tenantSchedulingJson: string = JSON.stringify({
 function validEnvironment(): NodeJS.ProcessEnv {
   return {
     COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME: 'compartment-buildkit',
+    COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: '2Gi',
     COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: '1024',
     COMPARTMENT_BUILDKIT_RESOURCES: '{"limits":{"cpu":"2","memory":"3Gi"},"requests":{"cpu":"250m","memory":"3Gi"}}',
     COMPARTMENT_BUILD_NAMESPACE: 'compartment-build',

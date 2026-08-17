@@ -2,12 +2,11 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
-import type { KubeJobEmptyDirVolume } from '@compartment/kube-runtime';
-import { assertBuildSandboxMemoryBudget, buildSandboxVolumes } from '../src/services/build-sandbox-workspace';
+import { assertBuildSandboxMemoryBudget } from '../src/services/build-sandbox-workspace';
 import type { WorkerBuildSandboxConfig } from '../src/config.types';
 
 interface ChartBuildValues {
-  buildkit: { gcKeepStorageMb: number };
+  buildkit: { dataSizeLimit: string; gcKeepStorageMb: number };
   resources: { buildRunner: ChartContainerResources; buildkit: ChartContainerResources };
 }
 
@@ -16,7 +15,6 @@ interface ChartContainerResources {
 }
 
 const chartDirectory: string = resolve(__dirname, '../../../deploy/chart/compartment');
-const admissionPolicyPath: string = resolve(chartDirectory, 'templates/buildkit.yaml');
 const valuesPath: string = resolve(chartDirectory, 'values.yaml');
 
 describe('build sandbox workspace', (): void => {
@@ -39,35 +37,24 @@ describe('build sandbox workspace', (): void => {
       assertBuildSandboxMemoryBudget(
         buildSandboxConfig({
           buildKitMemory: values.resources.buildkit.limits.memory,
+          dataSizeLimit: values.buildkit.dataSizeLimit,
           gcKeepStorageMb: values.buildkit.gcKeepStorageMb,
           runnerMemory: values.resources.buildRunner.limits.memory,
         }),
       ),
     ).not.toThrow();
   });
-
-  it('declares exactly the volume set the admission policy admits', async (): Promise<void> => {
-    const policy: string = await readFile(admissionPolicyPath, 'utf8');
-    const volumes: KubeJobEmptyDirVolume[] = buildSandboxVolumes();
-
-    for (const volume of volumes) {
-      expect(policy).toContain(
-        `object.spec.template.spec.volumes.exists(volume, volume.name == '${volume.name}' && ` +
-          `quantity(volume.emptyDir.sizeLimit).compareTo(quantity('${String(volume.sizeLimit)}')) == 0)`,
-      );
-    }
-    expect(policy).toContain(`object.spec.template.spec.volumes.size() == ${String(volumes.length + 1)}`);
-    expect(policy.match(/quantity\(volume\.emptyDir\.sizeLimit\)/gu)).toHaveLength(volumes.length);
-  });
 });
 
 function buildSandboxConfig(overrides: {
   buildKitMemory?: string;
+  dataSizeLimit?: string;
   gcKeepStorageMb?: number;
   runnerMemory?: string;
 }): WorkerBuildSandboxConfig {
   return {
     buildKitConfigMapName: 'compartment-buildkit',
+    dataSizeLimit: overrides.dataSizeLimit ?? '2Gi',
     buildKitResources: { limits: { memory: overrides.buildKitMemory ?? '3Gi' } },
     gcKeepStorageMb: overrides.gcKeepStorageMb ?? 1024,
     namespace: 'compartment-build',
