@@ -139,7 +139,7 @@ export async function recoverFailedRollout(
   });
 }
 
-export async function cleanupTimedOutRollout(
+export async function cleanupFailedRollout(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
   tenantSecretsKek: TenantSecretsKeyring,
@@ -154,11 +154,15 @@ export async function cleanupTimedOutRollout(
     scheduling,
     workerImage,
   );
-  if (target.active === null || target.active.deploymentId === target.candidate.deploymentId) {
+  if (target.active?.deploymentId === target.candidate.deploymentId) {
+    await recoverFailedRollout(runtime, target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage);
+    return;
+  }
+  if (target.active === null) {
     await runtime.delete(candidateObjects);
     return;
   }
-  await cleanupDistinctTimedOutRollout(
+  await cleanupDistinctFailedRollout(
     runtime,
     target,
     candidateObjects,
@@ -169,7 +173,7 @@ export async function cleanupTimedOutRollout(
   );
 }
 
-async function cleanupDistinctTimedOutRollout(
+async function cleanupDistinctFailedRollout(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
   candidateObjects: KubeManifest[],
