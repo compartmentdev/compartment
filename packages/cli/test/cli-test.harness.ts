@@ -119,7 +119,7 @@ export function restoreCliCommandModules(modulePaths: readonly string[]): void {
   }
 }
 
-export function mockManagedCloudControlPlaneUrl(apiUrl: string | undefined): void {
+export function mockManagedCloudControlPlaneUrl(apiUrl: string): void {
   vi.doMock('@compartment/contracts', async (importOriginal): Promise<ContractsModule> => {
     const contracts: ContractsModule = await importOriginal<ContractsModule>();
     return {

@@ -1,2 +1,2 @@
-/** Managed Compartment Cloud control-plane URL. Set this value when the managed cloud launches. */
-export const compartmentManagedCloudControlPlaneUrl: string | undefined = undefined;
+/** Managed Compartment Cloud control-plane URL. */
+export const compartmentManagedCloudControlPlaneUrl: string = 'https://console.up.compartment.run';

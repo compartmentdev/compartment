@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { loginResponseSchema, type LoginResponse } from '@compartment/contracts';
+import {
+  compartmentManagedCloudControlPlaneUrl,
+  loginResponseSchema,
+  type LoginResponse,
+} from '@compartment/contracts';
 import type { CliIo } from '../src/app.types';
 import type { ApiContext } from '../src/services/context.types';
 import type { CliConfig } from '../src/store/config.types';
@@ -11,7 +15,6 @@ import {
   createCliCapture,
   expectCliFailure,
   expectCliSuccess,
-  mockManagedCloudControlPlaneUrl,
   readCliStderr,
   resetCliCommandModules,
   restoreCliCommandModules,
@@ -81,7 +84,6 @@ describe.sequential('compartment login command', (): void => {
   });
 
   it('uses and announces the managed cloud when logging in without flags', async (): Promise<void> => {
-    mockManagedCloudControlPlaneUrl('https://cloud.example.com/control-plane');
     const response: LoginResponse = createLoginResponseFixture();
     const mocks: LoginCommandMocks = mockLoginCommandModules({
       config: {},
@@ -94,17 +96,19 @@ describe.sequential('compartment login command', (): void => {
     expectCliSuccess(result);
     expect(mocks.performLoginCommandFlowMock).toHaveBeenCalledWith(
       expect.objectContaining({ io: capture.io }),
-      { apiUrl: 'https://cloud.example.com/control-plane' },
+      { apiUrl: compartmentManagedCloudControlPlaneUrl },
       undefined,
       undefined,
       undefined,
     );
-    expect(readCliStderr(capture)).toContain('Using Compartment Cloud at cloud.example.com.\n');
+    expect(readCliStderr(capture)).toContain(
+      `Using Compartment Cloud at ${new URL(compartmentManagedCloudControlPlaneUrl).host}.\n`,
+    );
     expect(mocks.writeCliConfigMock).toHaveBeenCalledWith({
       currentRemote: 'default',
       remotes: {
         default: {
-          apiUrl: 'https://cloud.example.com/control-plane',
+          apiUrl: compartmentManagedCloudControlPlaneUrl,
           currentOrganization: {
             id: 'org_123',
             name: 'Acme Dev',
