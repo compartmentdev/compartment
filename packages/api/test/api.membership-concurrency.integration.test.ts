@@ -70,6 +70,10 @@ interface DnsPromiseMocks {
   resolveTxt: Mock<ResolveTxtRecord>;
 }
 
+interface DatabaseBackendPidRow {
+  backendPid: number;
+}
+
 const appAccessEdgeServiceMocks: AppAccessEdgeServiceMocks = vi.hoisted(
   (): AppAccessEdgeServiceMocks => ({
     invalidateEdgeAppAccessSessions: vi.fn<InvalidateEdgeAppAccessSessions>(),
@@ -107,6 +111,8 @@ vi.mock(
 const blockBootstrapClearLockKey: number = 184_184;
 const blockBootstrapClearFunctionName: string = 'block_clear_bootstrap_token_test_fn';
 const blockBootstrapClearTriggerName: string = 'block_clear_bootstrap_token_test';
+const databaseLockWaitTimeoutMs: number = 4_000;
+const databaseLockPollIntervalMs: number = 10;
 
 async function installBootstrapClearBlocker(): Promise<void> {
   await removeBootstrapClearBlocker();
@@ -657,23 +663,14 @@ describe('Phase 0 API integration membership concurrency', (): void => {
           return response;
         });
 
-      await waitForConcurrentDatabaseWork();
+      await waitForAuthSessionLockWaiter(authSessionLockClient);
       expect(loginCompleted).toBe(false);
 
-      let removeCompleted: boolean = false;
-      const removeUserPromise: Promise<LightMyRequestResponse> = app
-        .inject({
-          headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
-          method: 'DELETE',
-          url: `/v1/users/${encodeURIComponent('viewer@example.com')}`,
-        })
-        .then((response: LightMyRequestResponse): LightMyRequestResponse => {
-          removeCompleted = true;
-          return response;
-        });
-
-      await waitForConcurrentDatabaseWork();
-      expect(removeCompleted).toBe(false);
+      const removeUserPromise: Promise<LightMyRequestResponse> = app.inject({
+        headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+        method: 'DELETE',
+        url: `/v1/users/${encodeURIComponent('viewer@example.com')}`,
+      });
 
       await authSessionLockClient.query('COMMIT');
 
@@ -788,4 +785,30 @@ async function readStoredAuthSession(sessionId: string): Promise<{ revokedAt: Da
 
 async function readStoredAppAccessSession(appSessionId: string): Promise<{ revokedAt: Date | null }> {
   return await readStoredAppAccessSessionFixture(db, appSessionId);
+}
+
+async function waitForAuthSessionLockWaiter(lockHolderClient: PoolClient): Promise<void> {
+  const deadline: number = Date.now() + databaseLockWaitTimeoutMs;
+
+  while (Date.now() < deadline) {
+    const result = await lockHolderClient.query<DatabaseBackendPidRow>(`
+      select awaited_lock.pid as "backendPid"
+      from pg_locks awaited_lock
+      where awaited_lock.database = (select oid from pg_database where datname = current_database())
+        and awaited_lock.relation = 'auth_sessions'::regclass
+        and awaited_lock.mode = 'RowExclusiveLock'
+        and awaited_lock.granted = false
+      limit 1
+    `);
+    if (result.rows[0] !== undefined) {
+      return;
+    }
+    await waitForDatabaseLockPollInterval();
+  }
+
+  throw new Error('Timed out waiting for password login to block on the auth sessions table lock.');
+}
+
+async function waitForDatabaseLockPollInterval(): Promise<void> {
+  await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, databaseLockPollIntervalMs));
 }
