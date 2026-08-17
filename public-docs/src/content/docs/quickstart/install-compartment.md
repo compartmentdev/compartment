@@ -72,9 +72,13 @@ foundation stage and requests a Certificate with the address in its IP SAN. It d
 modify node host/runtime configuration. Public ACME issuers cannot issue this private IP certificate; configure
 `registry.issuerRef` with the node-trusted CA issuer. Reinstalling recomputes the address and registry Certificate.
 
-Optional Helm values can assign the remaining platform workloads, builds, tenant workloads, and the bundled
-PostgreSQL and private registry to separately labeled and tainted nodes through `nodePools.system`, `nodePools.build`,
-`nodePools.tenant`, and `nodePools.data`. Leave all four pools empty for single-node clusters.
+Helm values can assign the remaining platform workloads, builds, tenant workloads, user-created PostgreSQL
+resources, and the bundled PostgreSQL and private registry to separately labeled and tainted nodes through
+`nodePools.system`, `nodePools.build`, `nodePools.tenant`, and `nodePools.data`. Leave all four pools empty for
+single-node clusters only during the foundation stage. The managed-VM installer labels its node and configures the
+data selector automatically. For an existing Kubernetes cluster, label at least one node for data workloads and
+configure `nodePools.data.nodeSelector` before installation. This can be the same physical node in a single-node
+cluster, but the explicit selector prevents user-created PostgreSQL from inheriting tenant or system placement.
 When pools are enabled, a pending platform Pod can preempt lower-priority tenant Pods that are eligible for the same
 node. Build Pods run at tenant priority, so a build never preempts a running application. Priority does not guarantee
 availability during node failure or kubelet node-pressure eviction.
@@ -83,6 +87,14 @@ For production installations, configure `nodePools.data` before PostgreSQL or th
 Moving either service later interrupts it. If storage must be reattached, follow your storage provider's recovery
 procedure before resuming builds or deployments. For the default registry storage, see
 [Recover the bundled registry](#recover-the-bundled-registry).
+New user-created PostgreSQL resources use the data pool immediately. After an update changes `nodePools.data`, run
+`compartment resource start --resource <name> --project <name> --env <name>` for each existing PostgreSQL resource.
+The command moves the resource onto the new pool and interrupts it while Kubernetes recreates it; the Helm update does
+not restart every existing resource automatically. Plan for any storage-provider recovery requirements.
+Before upgrading an existing-cluster installation that still has an empty `nodePools.data.nodeSelector`, label a data
+node, add the selector to `compartment-values.yaml`, and run
+`compartment system update --values compartment-values.yaml`. The full-stage render fails until this placement
+contract is configured.
 
 Hosted application traffic is limited per application to 300 requests per second with a burst of 600, per client IP
 within an application to 60 requests per second with a burst of 120, and to 512 simultaneous in-flight requests per
@@ -112,8 +124,10 @@ nodePools:
       - { key: compartment.dev/node-pool, operator: Equal, value: data, effect: NoSchedule }
 ```
 
-Empty system and tenant pools omit scheduling constraints. Empty build and data pools use the system pool's selector
-and tolerations. Pass the file to `compartment install` with `--values compartment-values.yaml`.
+Empty system and tenant pools omit scheduling constraints. An empty build pool uses the system pool's selector and
+tolerations. Bundled PostgreSQL and the private registry can use the system pool while the installer is in its
+foundation stage, but a full installation rejects an empty data selector. Pass the file to `compartment install` with
+`--values compartment-values.yaml`.
 
 New projects require authentication for hosted application routes by default. To make omitted service access public
 for projects created after installation or upgrade, set the following Helm value:

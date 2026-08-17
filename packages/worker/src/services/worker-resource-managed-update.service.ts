@@ -142,7 +142,7 @@ async function prepareManagedUpdate(
     desired,
     leaseId: claimed.leaseId,
     operationId: claimed.operationId,
-    rollback: readRollbackManifest(claimed.previousManifestJson, observation, desired, hasLivePods),
+    rollback: readRollbackManifest(claimed.previousManifestJson, observation, desired, row, hasLivePods),
   };
   await acknowledgeCurrentResourceReconcile(request, {
     leaseId: plan.leaseId,

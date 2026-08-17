@@ -141,9 +141,13 @@ Resource rollouts use the same operator-configured infrastructure deadline indep
 provisioning and for reaching the resource container's first Running state. Their declared readiness budget starts at
 that container's observed `Running.startedAt`; unused operation-only claims do not consume either budget.
 
-Tenant node-pool scheduling is installation-owned and opt-in. When configured, application and resource Deployments
-plus product and provisioning Jobs project the tenant selector, tolerations, and `compartment-tenant` PriorityClass.
-When it is absent, all three Pod fields are omitted so existing server-side-apply ownership remains unchanged.
+Tenant node-pool scheduling is installation-owned and opt-in. When configured, application and generic-resource
+Deployments plus product and provisioning Jobs project the tenant selector, tolerations, and `compartment-tenant`
+PriorityClass. Official PostgreSQL resource images instead project the required worker data-scheduling contract,
+which reads `nodePools.data` directly and never inherits the bundled-service system fallback. When a selected pool is
+empty, its selector and tolerations are omitted from the desired Pod spec. A full installation rejects an empty data
+selector, so user-created PostgreSQL cannot reach that unconstrained state. Empty optional tenant scheduling removes
+previously applied tenant constraints when that workload next reconciles.
 Build Jobs run tenant-authored code, so they carry the same `compartment-tenant` PriorityClass through their
 always-configured build scheduling and never preempt tenant workloads.
 Platform scheduling and the build node pool remain owned by the Helm chart.
@@ -152,6 +156,8 @@ through `compartment.dataNodePool`. The helper falls back to `nodePools.system` 
 tolerations are empty. Changing either single-replica workload's placement after it carries data updates its Pod spec,
 recreates the Pod, and interrupts service. Storage reattachment and recovery depend on the provider and volume
 topology.
+Changing `nodePools.data` rolls the worker but does not enqueue tenant resources. Existing user-created PostgreSQL
+Deployments adopt the new scheduling when an operator starts them again; fresh resources use it immediately.
 
 Kernel sandboxing is installation-owned and required through `sandboxRuntime.runtimeClassName`.
 The selected RuntimeClass is projected onto build Jobs, application Deployments, resource Deployments, product Jobs,

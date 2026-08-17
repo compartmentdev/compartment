@@ -7,6 +7,12 @@ import { managedVmReleaseMetadata } from './managed-vm-release-metadata.service'
 import { ensureManagedVmDirectory, installNewManagedVmFile } from './managed-vm-owned-file.service';
 import { readManagedVmPathIdentity } from './managed-vm-state.service';
 import { managedVmK3sGeneratedOwnedPaths } from './managed-vm-install-paths.service';
+import {
+  renderK3sConfig,
+  renderK3sUnitDropIn,
+  renderManagedVmValues,
+  renderRegistryIssuer,
+} from './managed-vm-cluster-values';
 
 export { isManagedVmStageHealthy } from './managed-vm-cluster-health.service';
 
@@ -152,49 +158,6 @@ async function waitForManagedVmDeployment(deployment: string): Promise<void> {
   ]);
 }
 
-function renderK3sConfig(publicAddress: string): string {
-  return `cluster-init: true
-secrets-encryption: true
-write-kubeconfig-mode: "0600"
-node-external-ip: "${publicAddress}"
-etcd-snapshot-schedule-cron: "0 */12 * * *"
-etcd-snapshot-retention: 5
-kubelet-arg:
-  - "system-reserved=memory=512Mi"
-  - "kube-reserved=memory=512Mi"
-  - "eviction-hard=memory.available<512Mi,nodefs.available<10%,imagefs.available<15%,nodefs.inodesFree<5%,imagefs.inodesFree<5%"
-`;
-}
-
-function renderManagedVmValues(publicAddress: string): string {
-  return `ingress:
-  className: traefik
-  endpoint:
-    type: A
-    value: ${publicAddress}
-storage:
-  storageClass: local-path
-sandboxRuntime:
-  runtimeClassName: gvisor
-registry:
-  issuerRef:
-    kind: Issuer
-    name: compartment-registry-ca
-`;
-}
-
-function renderRegistryIssuer(): string {
-  return `apiVersion: cert-manager.io/v1
-kind: Issuer
-metadata:
-  name: compartment-registry-ca
-  namespace: compartment
-spec:
-  ca:
-    secretName: compartment-registry-ca
-`;
-}
-
 async function createRegistryCa(): Promise<Readonly<Record<string, string>>> {
   const directory: string = await mkdtemp(join(tmpdir(), 'compartment-registry-ca-'));
   const temporaryKeyPath: string = join(directory, 'registry-ca.key');
@@ -258,11 +221,4 @@ export async function verifyManagedVmComponentVersions(): Promise<void> {
   await execa('k3s', ['kubectl', 'get', 'storageclass', 'local-path']);
   await execa('k3s', ['kubectl', '--namespace', 'kube-system', 'get', 'deployment', 'coredns']);
   await execa('k3s', ['kubectl', '--namespace', 'kube-system', 'get', 'deployment', 'traefik']);
-}
-
-function renderK3sUnitDropIn(): string {
-  return `[Unit]
-Requires=compartment-firewall.service
-After=network-online.target compartment-firewall.service
-`;
 }

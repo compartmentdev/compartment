@@ -31,6 +31,7 @@ export {
   projectResourceBootstrapClaims,
   projectResourceClaimDeleteTargets,
   projectResourceManifests,
+  projectResourceRollbackScheduling,
   resourcePodsFullyTerminated,
 } from './kube-resource-projection';
 export { readResourceReadinessTimeoutMs } from './kube-resource-readiness';
@@ -70,8 +71,11 @@ export type {
   ObservePodMetrics,
 } from './kube-pod-metrics.types';
 export type { KubeRolloutObservation, KubeRolloutStatus } from './kube-rollout.types';
-export type { KubeToleration, KubeWorkloadScheduling } from './kube-workload-scheduling.types';
-export { projectWorkloadScheduling } from './kube-workload-scheduling';
+export type {
+  KubeDataWorkloadScheduling,
+  KubeToleration,
+  KubeWorkloadScheduling,
+} from './kube-workload-scheduling.types';
 export type {
   ObservedResourceClaim,
   ResourceProjectionRow,

@@ -123,6 +123,11 @@ function claimedDelete(): CompleteResourceReconcileClaim {
 function deleteRow(): ResourceProjectionRow {
   return {
     command: [],
+    dataScheduling: {
+      nodeSelector: { 'compartment.dev/node-pool': 'data' },
+      runtimeClassName: 'gvisor',
+      tolerations: [],
+    },
     deleteData: true,
     environmentId: 'environment',
     env: {},

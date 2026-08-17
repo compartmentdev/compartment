@@ -1,4 +1,9 @@
-import type { KubeIssuerReference, KubeWorkloadScheduling, OrganizationQuotaCapacity } from '@compartment/kube-runtime';
+import type {
+  KubeDataWorkloadScheduling,
+  KubeIssuerReference,
+  KubeWorkloadScheduling,
+  OrganizationQuotaCapacity,
+} from '@compartment/kube-runtime';
 import type { TenantSecretsKeyring } from './tenant-secret-environment.types';
 import type { WorkerArtifactRegistryConfig } from './worker-artifact-registry.types';
 
@@ -55,6 +60,7 @@ export interface WorkerBuildScheduling extends KubeWorkloadScheduling {
 export interface WorkerConfig extends WorkerBuildConfig {
   buildQueue: WorkerBuildQueueConfig;
   customDomains: WorkerCustomDomainConfig;
+  dataScheduling: KubeDataWorkloadScheduling;
   deploymentInfrastructureTimeoutMs: number;
   organizationQuota: OrganizationQuotaCapacity;
   tenantScheduling?: KubeWorkloadScheduling | undefined;

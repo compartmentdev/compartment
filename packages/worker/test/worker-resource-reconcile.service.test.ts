@@ -10,7 +10,7 @@ import {
   type KubeManifest,
   type KubeObservation,
   type KubeObservedManifest,
-  type KubeWorkloadScheduling,
+  type KubeDataWorkloadScheduling,
 } from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
 import type * as CompartmentSdk from '@compartment/sdk';
@@ -18,6 +18,7 @@ import { immutableKubeName } from '@compartment/utils';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { readCreatedClaims } from '../src/services/worker-resource-reconcile-observation.service';
 import { executeResourceReconcile as executeResourceReconcileWithKek } from '../src/services/worker-resource-reconcile.service';
+import { testDataScheduling } from './worker-config-test.fixtures';
 import { testTenantSecretsKek } from './tenant-secret-test.fixtures';
 import { resourceReconcileRequestError } from './resource-reconcile-request-error.fixture';
 
@@ -67,7 +68,7 @@ async function executeResourceReconcile(
   request: CompartmentRequester,
   kubeRuntime: KubeRuntime,
   claimed: WorkerClaimResourceReconcileResponse,
-  scheduling?: KubeWorkloadScheduling,
+  scheduling: KubeDataWorkloadScheduling = testDataScheduling,
 ): Promise<void> {
   return await executeResourceReconcileWithKek(
     request,
@@ -75,6 +76,7 @@ async function executeResourceReconcile(
     claimed,
     testTenantSecretsKek,
     infrastructureTimeoutMs,
+    undefined,
     scheduling,
   );
 }
@@ -537,7 +539,8 @@ describe('worker resource reconcile lifecycle', (): void => {
     });
     await expect(
       executeResourceReconcile(requester(), runtime(apply, observation), claim(null), {
-        nodeSelector: { 'compartment.dev/node-pool': 'tenant' },
+        nodeSelector: { 'compartment.dev/node-pool': 'data' },
+        runtimeClassName: 'gvisor',
         tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Exists' }],
       }),
     ).rejects.toThrow('new image failed');
@@ -548,17 +551,15 @@ describe('worker resource reconcile lifecycle', (): void => {
     expect(apply).toHaveBeenCalledTimes(4);
     const rollbackJson: string = JSON.stringify(bundles[3]?.objects);
     expect(rollbackJson).toContain('postgres:16');
-    expect(rollbackJson).not.toContain('resourceVersion');
-    expect(rollbackJson).not.toContain('managedFields');
-    expect(rollbackJson).not.toContain('"status"');
+    expect(rollbackJson).not.toMatch(/resourceVersion|managedFields|"status"/u);
     const rollbackDeployment: KubeManifest | undefined = bundles[3]?.objects.find(
       (object: KubeManifest): boolean => object.kind === 'Deployment',
     );
     expect(rollbackDeployment?.spec).toMatchObject({
       template: {
         spec: {
-          nodeSelector: { 'compartment.dev/node-pool': 'tenant' },
-          priorityClassName: 'compartment-tenant',
+          nodeSelector: { 'compartment.dev/node-pool': 'data' },
+          runtimeClassName: 'gvisor',
           tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Exists' }],
         },
       },

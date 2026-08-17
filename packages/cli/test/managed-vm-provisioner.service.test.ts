@@ -110,7 +110,7 @@ describe('managed VM provisioner runtime boundary', (): void => {
     }
     const state: ManagedVmProvisionerState = {
       ...resumedState(),
-      releaseMetadata: { ...managedVmReleaseMetadata, metadataVersion: 2 },
+      releaseMetadata: { ...managedVmReleaseMetadata, metadataVersion: 4 },
     };
     vi.doMock('../src/sea', (): ManagedVmSeaTestModule => ({ isSeaRuntime: (): boolean => true }));
     vi.doMock(
@@ -149,7 +149,7 @@ describe('managed VM provisioner runtime boundary', (): void => {
             throw new Error('Provisioning reached a mutation stage.');
           },
         }),
-      ).rejects.toThrow('metadata version 2 cannot resume with installer metadata version 4');
+      ).rejects.toThrow('metadata version 4 cannot resume with installer metadata version 5');
     } finally {
       process.getuid = getuid;
     }

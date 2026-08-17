@@ -21,6 +21,10 @@ function registryHelmArgs(clusterIp) {
   return ['--set', `registry.hostname=${clusterIp}`, '--set', 'registry.issuerRef.name=retained-registry-issuer'];
 }
 
+function dataNodePoolHelmArgs() {
+  return ['--set-string', 'nodePools.data.nodeSelector.compartment\\.dev/node-pool=data'];
+}
+
 function helm(args) {
   runCommand('helm', [...args, '--kube-context', context], repositoryRoot);
 }
@@ -97,6 +101,7 @@ async function runRetainedInstallStateGate() {
       'edge.replicas=1',
       '--set',
       'edge.snapshots.enabled=true',
+      ...dataNodePoolHelmArgs(),
       ...registryHelmArgs(registryClusterIp),
     ]);
     const postgresPodName = await waitForDeploymentPod(`${platformName}-postgres`, 'postgres');
@@ -135,6 +140,7 @@ async function runRetainedInstallStateGate() {
       `buildkit.namespace=${buildNamespace}`,
       '--set',
       'productLogs.enabled=false',
+      ...dataNodePoolHelmArgs(),
       ...registryHelmArgs(registryClusterIp),
     ]);
     const reinstalledRegistryClusterIp = readServiceClusterIp();
@@ -163,6 +169,7 @@ async function runRetainedInstallStateGate() {
       'edge.replicas=1',
       '--set',
       'edge.snapshots.enabled=true',
+      ...dataNodePoolHelmArgs(),
       ...registryHelmArgs(reinstalledRegistryClusterIp),
     ]);
     const installationId = readSecretValue(secretName, 'installation-id');

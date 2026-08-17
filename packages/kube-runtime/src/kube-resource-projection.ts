@@ -17,6 +17,7 @@ import { kubeNamespaceName, kubeResourceName, kubeResourceVolumeName, kubeSecret
 import { projectSecretManifest, secretChecksum, secretEnvironment } from './kube-secret-projection';
 import {
   isPostgresResourceImage,
+  isPostgresResourceRepository,
   resourcePodSecurityContext,
   restrictedContainerSecurityContext,
 } from './kube-security-context';
@@ -26,7 +27,8 @@ import {
   resourceReadinessTimeoutMs,
 } from './kube-resource-readiness';
 import { resourceContainerPort, resourceService } from './kube-resource-networking';
-import { projectTenantScheduling } from './kube-workload-scheduling';
+import { projectConfiguredWorkloadScheduling, projectTenantScheduling } from './kube-workload-scheduling';
+import type { KubeWorkloadScheduling } from './kube-workload-scheduling.types';
 
 const managedByLabel: Readonly<Record<string, string>> = { 'app.kubernetes.io/managed-by': 'compartment' };
 const postgresDataDirectorySelector: string =
@@ -100,12 +102,13 @@ function resourceDeployment(
 }
 
 function resourcePodTemplate(row: ResourceProjectionRow, labels: Record<string, string>): KubePodTemplate {
+  const scheduling: KubeWorkloadScheduling | undefined = resourceScheduling(row.image, row);
   return {
     metadata: { annotations: { 'compartment.dev/secret-checksum': secretChecksum(row.env) }, labels },
     spec: {
       automountServiceAccountToken: false,
       containers: [resourceContainer(row)],
-      ...projectTenantScheduling(row.scheduling),
+      ...projectTenantScheduling(scheduling),
       securityContext: resourcePodSecurityContext(row.image),
       serviceAccountName: kubeNamespaceName(row.namespaceId),
       terminationGracePeriodSeconds: 60,
@@ -117,6 +120,32 @@ function resourcePodTemplate(row: ResourceProjectionRow, labels: Record<string, 
       ),
     },
   };
+}
+
+export function projectResourceRollbackScheduling(
+  manifests: KubeManifest[],
+  row: ResourceProjectionRow,
+): KubeManifest[] {
+  return manifests.flatMap((manifest: KubeManifest): KubeManifest[] => {
+    if (manifest.kind !== 'Deployment' || manifest.spec === undefined) {
+      return [manifest];
+    }
+    const image: string | undefined = manifest.spec.template.spec.containers[0]?.image;
+    if (image === undefined) {
+      throw new Error('Resource rollback Deployment image is missing.');
+    }
+    return projectConfiguredWorkloadScheduling([manifest], resourceScheduling(image, row));
+  });
+}
+
+function resourceScheduling(image: string, row: ResourceProjectionRow): KubeWorkloadScheduling | undefined {
+  if (!isPostgresResourceRepository(image)) {
+    return row.scheduling;
+  }
+  if (Object.keys(row.dataScheduling.nodeSelector).length === 0) {
+    throw new Error('PostgreSQL data scheduling must select dedicated data workers.');
+  }
+  return row.dataScheduling;
 }
 
 function resourceContainer(row: ResourceProjectionRow): KubeProjectedContainer {

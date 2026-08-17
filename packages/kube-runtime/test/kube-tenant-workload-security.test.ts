@@ -9,7 +9,7 @@ import type {
   KubeProjectedPodSpec,
 } from '../src/kube-runtime.types';
 import type { ResourceProjectionRow } from '../src/kube-resource-projection.types';
-import type { KubeWorkloadScheduling } from '../src/kube-workload-scheduling.types';
+import type { KubeDataWorkloadScheduling, KubeWorkloadScheduling } from '../src/kube-workload-scheduling.types';
 
 interface TenantPodProjection {
   expectedRuntimeUserId: number;
@@ -58,7 +58,7 @@ describe('tenant workload restricted Pod Security', (): void => {
   it('projects configured tenant scheduling for every tenant workload class', (): void => {
     for (const podSpec of [
       applicationPodSpec(tenantScheduling),
-      resourcePodSpec(undefined, tenantScheduling),
+      resourcePodSpec('registry.example/acme/database:1', tenantScheduling),
       releaseJobPodSpec(tenantScheduling),
       provisioningJobPodSpec(tenantScheduling),
     ]) {
@@ -69,6 +69,22 @@ describe('tenant workload restricted Pod Security', (): void => {
         { effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Equal', value: 'tenant' },
       ]);
     }
+  });
+
+  it('projects data scheduling only for official PostgreSQL resources', (): void => {
+    const postgresPodSpec: KubeProjectedPodSpec = resourcePodSpec(undefined, tenantScheduling, dataScheduling);
+    const genericPodSpec: KubeProjectedPodSpec = resourcePodSpec(
+      'registry.example/acme/database:1',
+      tenantScheduling,
+      dataScheduling,
+    );
+
+    expect(postgresPodSpec.nodeSelector).toEqual({ 'compartment.dev/node-pool': 'data' });
+    expect(postgresPodSpec.tolerations).toEqual([
+      { effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Equal', value: 'data' },
+    ]);
+    expect(genericPodSpec.nodeSelector).toEqual({ 'compartment.dev/node-pool': 'tenant' });
+    expect(genericPodSpec.tolerations).toEqual(tenantScheduling.tolerations);
   });
 
   it('uses the shared project group for resource-operation backup volumes', (): void => {
@@ -83,7 +99,12 @@ describe('tenant workload restricted Pod Security', (): void => {
   });
 
   it('omits tenant scheduling fields when tenant configuration is absent', (): void => {
-    for (const podSpec of [applicationPodSpec(), resourcePodSpec(), releaseJobPodSpec(), provisioningJobPodSpec()]) {
+    for (const podSpec of [
+      applicationPodSpec(),
+      resourcePodSpec('registry.example/acme/database:1'),
+      releaseJobPodSpec(),
+      provisioningJobPodSpec(),
+    ]) {
       expect(podSpec).not.toHaveProperty('nodeSelector');
       expect(podSpec).not.toHaveProperty('priorityClassName');
       expect(podSpec).not.toHaveProperty('runtimeClassName');
@@ -98,6 +119,12 @@ const tenantScheduling: KubeWorkloadScheduling = {
   tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Equal', value: 'tenant' }],
 };
 
+const dataScheduling: KubeDataWorkloadScheduling = {
+  nodeSelector: { 'compartment.dev/node-pool': 'data' },
+  runtimeClassName: 'gvisor',
+  tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Equal', value: 'data' }],
+};
+
 function applicationPodSpec(scheduling?: KubeWorkloadScheduling): KubeProjectedPodSpec {
   const deployment: KubeManifest = projectApplicationManifests(
     {
@@ -109,12 +136,17 @@ function applicationPodSpec(scheduling?: KubeWorkloadScheduling): KubeProjectedP
   return (deployment as KubeDeploymentManifest).spec!.template.spec;
 }
 
-function resourcePodSpec(image?: string, scheduling?: KubeWorkloadScheduling): KubeProjectedPodSpec {
+function resourcePodSpec(
+  image?: string,
+  scheduling?: KubeWorkloadScheduling,
+  resourceDataScheduling?: KubeDataWorkloadScheduling,
+): KubeProjectedPodSpec {
   const deployment: KubeManifest = projectResourceManifests(
     {
       ...resourceRow(),
       ...(image === undefined ? {} : { image }),
       ...(scheduling === undefined ? {} : { scheduling }),
+      ...(resourceDataScheduling === undefined ? {} : { dataScheduling: resourceDataScheduling }),
     },
     600_000,
   ).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
@@ -207,6 +239,7 @@ function applicationRow(): ApplicationProjectionRow {
 function resourceRow(): ResourceProjectionRow {
   return {
     command: [],
+    dataScheduling,
     deleteData: false,
     environmentId: 'environment',
     env: {},

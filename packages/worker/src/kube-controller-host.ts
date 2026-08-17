@@ -128,6 +128,7 @@ class ResourceReconcileArea implements KubeControllerHost {
         this.config.tenantSecretsKek,
         this.config.deploymentInfrastructureTimeoutMs,
         this.config.tenantScheduling,
+        this.config.dataScheduling,
       );
       reconciled = true;
     }

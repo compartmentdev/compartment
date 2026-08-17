@@ -3,6 +3,7 @@ import {
   kubeNamespaceName,
   projectResourceBootstrapClaims,
   type KubeManifest,
+  type KubeDataWorkloadScheduling,
   type KubeObservation,
   type KubeRuntime,
   type KubeWorkloadScheduling,
@@ -24,10 +25,14 @@ export async function executeResourceReconcile(
   claimed: WorkerClaimResourceReconcileResponse,
   tenantSecretsKek: TenantSecretsKeyring,
   infrastructureTimeoutMs: number,
-  scheduling?: KubeWorkloadScheduling,
+  tenantScheduling: KubeWorkloadScheduling | undefined,
+  dataScheduling: KubeDataWorkloadScheduling,
 ): Promise<void> {
   const complete: CompleteResourceReconcileClaim = requireCompleteClaim(claimed);
-  const row: ResourceProjectionRow = decryptTenantProjection(complete.intent, scheduling, tenantSecretsKek);
+  const row: ResourceProjectionRow = {
+    ...decryptTenantProjection(complete.intent, tenantScheduling, tenantSecretsKek),
+    dataScheduling,
+  };
   const observation: KubeObservation = await observeResource(runtime, row);
   try {
     if (row.operation !== 'delete') {

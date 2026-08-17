@@ -38,14 +38,24 @@ installation only for managed VMs; the chart never installs runtimes or adopts a
 ## Node pools and workload priority
 
 `nodePools.system` schedules the remaining platform components, `nodePools.build` schedules ephemeral BuildKit Jobs,
-`nodePools.tenant` schedules application, resource, product, and provisioning workloads, and `nodePools.data`
-schedules the bundled PostgreSQL and private registry. An empty system or tenant pool adds no selector or toleration.
-An empty build or data pool falls back to `nodePools.system` and uses its selector and tolerations.
+`nodePools.tenant` schedules applications, generic resources, product Jobs, and provisioning Jobs, and
+`nodePools.data` schedules user-created PostgreSQL resources plus the bundled PostgreSQL and private registry. An
+empty system or tenant pool adds no selector or toleration. An empty build pool falls back to `nodePools.system`.
+Bundled data services also fall back to `nodePools.system` during the foundation stage. A full installation requires
+`nodePools.data.nodeSelector`; user-created PostgreSQL receives that data pool configuration directly and never
+inherits system scheduling.
+
+Managed-VM installation writes the data selector and labels its node automatically. Existing-cluster installs and
+upgrades from releases with an empty data selector must label a data node and provide `nodePools.data.nodeSelector`
+before rendering the full stage.
 
 Production installations should separate bundled PostgreSQL and the private registry from platform workloads that
 are rescheduled on every upgrade. Moving either Deployment later recreates its Pod and interrupts the service;
 bundled PostgreSQL and a filesystem-backed registry also reattach persistent volumes. Configure `nodePools.data`
-before the installation carries real data.
+before the installation carries real data. After updating `nodePools.data`, run
+`compartment resource start --resource <name> --project <name> --env <name>` for each existing PostgreSQL resource.
+The command reconciles the resource onto the new pool and interrupts it while Kubernetes recreates its Pod; the chart
+does not enqueue all existing resources during an upgrade.
 
 Label and taint the nodes before enabling a pool:
 

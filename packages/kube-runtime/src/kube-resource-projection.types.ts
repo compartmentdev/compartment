@@ -1,7 +1,8 @@
-import type { KubeWorkloadScheduling } from './kube-workload-scheduling.types';
+import type { KubeDataWorkloadScheduling, KubeWorkloadScheduling } from './kube-workload-scheduling.types';
 
 export interface ResourceProjectionRow {
   command: string[];
+  dataScheduling: KubeDataWorkloadScheduling;
   deleteData: boolean;
   environmentId: string;
   env: Readonly<Record<string, string>>;

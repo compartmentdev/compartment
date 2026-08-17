@@ -65,6 +65,8 @@ const registryTestCaPath = join(dirname(platformValuesPath), `${clusterName}-reg
 const registryTestCaKeyPath = join(dirname(platformValuesPath), `${clusterName}-registry-test-ca.key`);
 const platformImageTag = 'e2e';
 const registryNodePullResourceName = 'registry-node-pull';
+const dataNodePoolLabelKey = 'compartment.dev/node-pool';
+const dataNodePoolLabelValue = 'data';
 const imageDigestPattern = /^sha256:[a-f0-9]{64}$/u;
 const kubernetesReadinessTimeoutSeconds = 240;
 const kubernetesReadinessTimeout = `${kubernetesReadinessTimeoutSeconds}s`;
@@ -264,25 +266,29 @@ export function renderPlatformK3dValues(
   gvisorAvailable = platformEnvironment.gvisorAvailable,
   highAvailability = platformEnvironment.highAvailability,
 ) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorAvailable)}${renderHighAvailabilityValues(highAvailability)}ingress:\n  className: ${ingressClassName}\n${renderRegistryTlsValues()}platform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\nbuildkit:\n  namespace: ${platformNamespace}-build\n${renderE2eTenantResourceValues()}`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorAvailable)}${renderDataNodePoolValues()}${renderHighAvailabilityValues(highAvailability)}ingress:\n  className: ${ingressClassName}\n${renderRegistryTlsValues()}platform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\nbuildkit:\n  namespace: ${platformNamespace}-build\n${renderE2eTenantResourceValues()}`;
 }
 
 export function renderPreviousPlatformK3dValues() {
-  return `ingress:\n  className: ${ingressClassName}\n${renderRegistryTlsValues()}platform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\nbuildkit:\n  namespace: ${platformNamespace}-build\n`;
+  return `${renderDataNodePoolValues()}ingress:\n  className: ${ingressClassName}\n${renderRegistryTlsValues()}platform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\nbuildkit:\n  namespace: ${platformNamespace}-build\n`;
 }
 
 export function renderManagedPlatformK3dValues(
   imageDigestsByServiceName,
   gvisorAvailable = platformEnvironment.gvisorAvailable,
 ) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorAvailable)}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\n  targetsJson: '[{"type":"A","value":"8.8.4.4"}]'\n${renderRegistryTlsValues()}tls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nbuildkit:\n  namespace: ${managedNamespace}-build\n`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorAvailable)}${renderDataNodePoolValues()}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\n  targetsJson: '[{"type":"A","value":"8.8.4.4"}]'\n${renderRegistryTlsValues()}tls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nbuildkit:\n  namespace: ${managedNamespace}-build\n`;
 }
 
 export function renderPublicOperatorPlatformK3dValues(
   imageDigestsByServiceName,
   gvisorAvailable = platformEnvironment.gvisorAvailable,
 ) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorAvailable)}ingress:\n  className: ${ingressClassName}\nstorage:\n  storageClass: local-path\n${renderRegistryTlsValues()}platform:\n  publicProtocol: http\nbuildkit:\n  namespace: ${managedNamespace}-public-operator-build\n`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorAvailable)}${renderDataNodePoolValues()}ingress:\n  className: ${ingressClassName}\nstorage:\n  storageClass: local-path\n${renderRegistryTlsValues()}platform:\n  publicProtocol: http\nbuildkit:\n  namespace: ${managedNamespace}-public-operator-build\n`;
+}
+
+function renderDataNodePoolValues() {
+  return `nodePools:\n  data:\n    nodeSelector:\n      ${dataNodePoolLabelKey}: ${dataNodePoolLabelValue}\n    tolerations: []\n`;
 }
 
 function renderRegistryTlsValues() {
@@ -700,6 +706,8 @@ export function buildPlatformK3dClusterCreateArgs() {
     ...publicPortArgs,
     '--registry-use',
     registryClusterHost,
+    '--k3s-arg',
+    `--node-label=${dataNodePoolLabelKey}=${dataNodePoolLabelValue}@server:*`,
     '--volume',
     `${registryTestCaPath}:/etc/ssl/certs/compartment-registry-test-ca.crt@server:*;agent:*`,
     ...(platformEnvironment.gvisorAvailable

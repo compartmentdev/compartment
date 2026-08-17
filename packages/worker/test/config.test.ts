@@ -32,6 +32,11 @@ describe('readWorkerConfig', (): void => {
       issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
       namespace: 'compartment',
     });
+    expect(config.dataScheduling).toEqual({
+      nodeSelector: { 'compartment.dev/node-pool': 'data' },
+      runtimeClassName: 'gvisor',
+      tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Equal', value: 'data' }],
+    });
     expect(config.deploymentInfrastructureTimeoutMs).toBe(600_000);
     expect(config.organizationQuota).toEqual({
       limitsCpu: '8',
@@ -84,6 +89,30 @@ describe('readWorkerConfig', (): void => {
           COMPARTMENT_KUBE_BUILD_SCHEDULING: '{"nodeSelector":{"compartment.dev/node-pool":"build"},"tolerations":[]}',
         }),
     ).toThrow('Build scheduling must configure a gVisor RuntimeClass.');
+  });
+
+  it('requires valid data scheduling with the sandbox RuntimeClass', (): void => {
+    const missingEnvironment: NodeJS.ProcessEnv = validEnvironment();
+    delete missingEnvironment.COMPARTMENT_KUBE_DATA_SCHEDULING;
+    expect((): WorkerConfig => readWorkerConfig(missingEnvironment)).toThrow();
+    expect(
+      (): WorkerConfig =>
+        readWorkerConfig({ ...validEnvironment(), COMPARTMENT_KUBE_DATA_SCHEDULING: '{"nodeSelector":' }),
+    ).toThrow();
+    expect(
+      (): WorkerConfig =>
+        readWorkerConfig({
+          ...validEnvironment(),
+          COMPARTMENT_KUBE_DATA_SCHEDULING: '{"nodeSelector":{},"runtimeClassName":"gvisor","tolerations":[]}',
+        }),
+    ).toThrow('Data scheduling must select dedicated data workers.');
+    expect(
+      (): WorkerConfig =>
+        readWorkerConfig({
+          ...validEnvironment(),
+          COMPARTMENT_KUBE_DATA_SCHEDULING: '{"nodeSelector":{"compartment.dev/node-pool":"data"},"tolerations":[]}',
+        }),
+    ).toThrow('Data scheduling must configure a gVisor RuntimeClass.');
   });
 
   it('fails closed when build resources omit the memory limit that funds the sandbox workspace', (): void => {
@@ -239,6 +268,8 @@ function validEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_BUILD_TIMEOUT_MS: '900000',
     COMPARTMENT_KUBE_BUILD_SCHEDULING:
       '{"nodeSelector":{"compartment.dev/node-pool":"build"},"runtimeClassName":"gvisor","tolerations":[]}',
+    COMPARTMENT_KUBE_DATA_SCHEDULING:
+      '{"nodeSelector":{"compartment.dev/node-pool":"data"},"runtimeClassName":"gvisor","tolerations":[{"effect":"NoSchedule","key":"compartment.dev/node-pool","operator":"Equal","value":"data"}]}',
     COMPARTMENT_MAX_CONCURRENT_BUILDS: '2',
     COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_ORGANIZATION: '1',
     COMPARTMENT_ORGANIZATION_QUOTA:

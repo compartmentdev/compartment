@@ -18,10 +18,14 @@ templates:
   - templates/product-log-agent.yaml
   - templates/buildkit.yaml
 values:
-  - registry-values.yaml
+  - registry-no-data-fixture.yaml
   - node-pools-values.yaml
 tests:
-  - it: renders priority classes while omitting empty node pools
+  - it: renders priority classes while omitting empty system, build, and tenant pools
+    set:
+      nodePools.data: &defaultDataPool
+        nodeSelector: { compartment.dev/node-pool: data }
+        tolerations: []
     asserts:
       - hasDocuments:
           count: 2
@@ -108,7 +112,9 @@ tests:
       - equal: *platformPriority
         template: postgres.yaml
         documentIndex: 1
-      - notExists: *noNodeSelector
+      - equal: &defaultDataSelector
+          path: spec.template.spec.nodeSelector
+          value: { compartment.dev/node-pool: data }
         template: postgres.yaml
         documentIndex: 1
       - notExists: *noTolerations
@@ -117,7 +123,7 @@ tests:
       - equal: *platformPriority
         template: registry.yaml
         documentIndex: 1
-      - notExists: *noNodeSelector
+      - equal: *defaultDataSelector
         template: registry.yaml
         documentIndex: 1
       - notExists: *noTolerations
@@ -173,6 +179,7 @@ tests:
           nodeSelector: { compartment.dev/node-pool: tenant }
           tolerations:
             - { key: compartment.dev/node-pool, operator: Equal, value: tenant, effect: NoSchedule }
+        data: *defaultDataPool
     asserts:
       - equal: &systemSelector
           path: spec.template.spec.nodeSelector
@@ -193,10 +200,10 @@ tests:
       - equal: *systemSelector
         template: caddy.yaml
         documentIndex: 1
-      - equal: *systemSelector
+      - equal: *defaultDataSelector
         template: postgres.yaml
         documentIndex: 1
-      - equal: *systemSelector
+      - equal: *defaultDataSelector
         template: registry.yaml
         documentIndex: 1
       - equal: *systemSelector
@@ -226,6 +233,7 @@ tests:
     set:
       nodePools:
         system: *systemPool
+        data: *defaultDataPool
     asserts:
       - equal:
           path: data.COMPARTMENT_KUBE_BUILD_SCHEDULING
@@ -236,6 +244,7 @@ tests:
     set:
       nodePools:
         system: *systemPool
+        data: *defaultDataPool
     asserts:
       - equal:
           path: data.COMPARTMENT_KUBE_BUILD_SCHEDULING
@@ -273,9 +282,16 @@ tests:
         documentIndex: 1
       - equal: *systemSelector
         template: worker.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_KUBE_DATA_SCHEDULING
+            value: '{"nodeSelector":{"compartment.dev/node-pool":"data"},"runtimeClassName":"gvisor","tolerations":[{"effect":"NoSchedule","key":"compartment.dev/node-pool","operator":"Equal","value":"data"}]}'
+        template: worker.yaml
 
   - it: falls back from an empty data pool to the system pool
     set:
+      platform.startupStage: foundation
       nodePools:
         system: *systemPool
     asserts:
@@ -291,3 +307,9 @@ tests:
       - equal: *systemTolerations
         template: registry.yaml
         documentIndex: 1
+
+  - it: rejects an empty user data schedule for a full installation
+    asserts:
+      - failedTemplate:
+          errorPattern: nodePools.data.nodeSelector must select dedicated data workers
+        template: worker.yaml
