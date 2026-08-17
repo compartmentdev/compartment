@@ -80,8 +80,9 @@ node. Build Pods run at tenant priority, so a build never preempts a running app
 availability during node failure or kubelet node-pressure eviction.
 
 For production installations, configure `nodePools.data` before PostgreSQL or the private registry carries real data.
-Moving either Deployment later recreates its Pod and interrupts the service. Bundled PostgreSQL and a filesystem-backed
-registry also reattach persistent volumes.
+Moving either service later interrupts it. If storage must be reattached, follow your storage provider's recovery
+procedure before resuming builds or deployments. For the default registry storage, see
+[Recover the bundled registry](#recover-the-bundled-registry).
 
 Hosted application traffic is limited per application to 300 requests per second with a burst of 600, per client IP
 within an application to 60 requests per second with a burst of 120, and to 512 simultaneous in-flight requests per
