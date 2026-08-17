@@ -108,6 +108,34 @@ describe('fetchBuildSourceArchive', (): void => {
     expect(Date.now() - startedAtMs).toBe(180_000);
     expect(failure.message).toContain('failed after 1/96 attempts within the 180 second budget');
   });
+
+  it('does not start another request when delayed timer delivery exhausts the budget', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const startedAtMs: number = Date.now();
+    let fetchCalls: number = 0;
+    vi.stubGlobal('fetch', async (): Promise<Response> => {
+      await Promise.resolve();
+      fetchCalls += 1;
+      throw createFetchConnectionError('ECONNREFUSED');
+    });
+
+    const archivePromise: Promise<Buffer> = fetchBuildSourceArchive({
+      apiUrl: 'https://console.example',
+      artifactId: 'artifact_123',
+      onRetry: (): void => {
+        vi.setSystemTime(startedAtMs + 180_000);
+      },
+      sourceArchiveCredential: 'scoped-credential',
+    });
+    const failurePromise: Promise<Error> = readRejectedError(async (): Promise<void> => {
+      await archivePromise;
+    });
+    await vi.runAllTimersAsync();
+    const failure: Error = await failurePromise;
+
+    expect(fetchCalls).toBe(1);
+    expect(failure.message).toContain('failed after 1/96 attempts within the 180 second budget');
+  });
 });
 
 function createFetchConnectionError(code: string): Error {

@@ -15,6 +15,7 @@ export interface BuildSourceArchiveFetchRetryDiagnostic {
 
 export interface BuildSourceArchiveFetchRetryInput {
   attempt: number;
+  deadlineAtMs: number;
   failure: Error;
   fetchInput: BuildSourceArchiveFetchInput;
   remainingTimeoutMs: number;
