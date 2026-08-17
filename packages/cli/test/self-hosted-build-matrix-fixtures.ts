@@ -104,6 +104,11 @@ export const selfHostedSingleServiceBuildFixtures: readonly SelfHostedSingleServ
     name: 'vite-react',
   },
   {
+    directory: resolve(__dirname, '../../../examples/static-html'),
+    expectedAuthorizedBodyText: 'Descriptor-native static HTML',
+    name: 'static-html',
+  },
+  {
     buildVariables: [
       {
         key: 'VITE_PUBLIC_GREETING',
