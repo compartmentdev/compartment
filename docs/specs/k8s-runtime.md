@@ -147,6 +147,11 @@ When it is absent, all three Pod fields are omitted so existing server-side-appl
 Build Jobs run tenant-authored code, so they carry the same `compartment-tenant` PriorityClass through their
 always-configured build scheduling and never preempt tenant workloads.
 Platform scheduling and the build node pool remain owned by the Helm chart.
+Helm projects the `nodePools.data` selector and tolerations onto the bundled PostgreSQL and private registry Pod specs
+through `compartment.dataNodePool`. The helper falls back to `nodePools.system` only when both the data selector and
+tolerations are empty. Changing either single-replica workload's placement after it carries data updates its Pod spec,
+recreates the Pod, and interrupts service. Storage reattachment and recovery depend on the provider and volume
+topology.
 
 Kernel sandboxing is installation-owned and required through `sandboxRuntime.runtimeClassName`.
 The selected RuntimeClass is projected onto build Jobs, application Deployments, resource Deployments, product Jobs,

@@ -37,9 +37,15 @@ installation only for managed VMs; the chart never installs runtimes or adopts a
 
 ## Node pools and workload priority
 
-`nodePools.system` schedules platform components, `nodePools.build` schedules ephemeral BuildKit Jobs, and
-`nodePools.tenant` schedules application, resource, product, and provisioning workloads. An empty pool adds no
-selector or toleration. An empty build pool falls back to the system pool.
+`nodePools.system` schedules the remaining platform components, `nodePools.build` schedules ephemeral BuildKit Jobs,
+`nodePools.tenant` schedules application, resource, product, and provisioning workloads, and `nodePools.data`
+schedules the bundled PostgreSQL and private registry. An empty system or tenant pool adds no selector or toleration.
+An empty build or data pool falls back to `nodePools.system` and uses its selector and tolerations.
+
+Production installations should separate bundled PostgreSQL and the private registry from platform workloads that
+are rescheduled on every upgrade. Moving either Deployment later recreates its Pod and interrupts the service;
+bundled PostgreSQL and a filesystem-backed registry also reattach persistent volumes. Configure `nodePools.data`
+before the installation carries real data.
 
 Label and taint the nodes before enabling a pool:
 
@@ -50,6 +56,8 @@ kubectl label node builder-1 compartment.dev/node-pool=build
 kubectl taint node builder-1 compartment.dev/node-pool=build:NoSchedule
 kubectl label node tenant-1 compartment.dev/node-pool=tenant
 kubectl taint node tenant-1 compartment.dev/node-pool=tenant:NoSchedule
+kubectl label node data-1 compartment.dev/node-pool=data
+kubectl taint node data-1 compartment.dev/node-pool=data:NoSchedule
 ```
 
 Then configure the matching selectors and tolerations:
@@ -68,6 +76,10 @@ nodePools:
     nodeSelector: { compartment.dev/node-pool: tenant }
     tolerations:
       - { key: compartment.dev/node-pool, operator: Equal, value: tenant, effect: NoSchedule }
+  data:
+    nodeSelector: { compartment.dev/node-pool: data }
+    tolerations:
+      - { key: compartment.dev/node-pool, operator: Equal, value: data, effect: NoSchedule }
 ```
 
 Platform Pods use the higher `compartment-platform` PriorityClass. Ephemeral BuildKit Pods run tenant-authored code, so

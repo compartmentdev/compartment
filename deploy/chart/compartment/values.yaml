@@ -178,6 +178,9 @@ nodePools:
   tenant:
     nodeSelector: {}
     tolerations: []
+  data:
+    nodeSelector: {}
+    tolerations: []
 
 capacityHeadroom:
   # One preemptible free-app allocation makes autoscalers add capacity before tenant nodes are full.

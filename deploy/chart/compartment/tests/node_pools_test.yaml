@@ -179,7 +179,7 @@ tests:
           value: { compartment.dev/node-pool: system }
         template: api.yaml
         documentIndex: 1
-      - equal:
+      - equal: &systemTolerations
           path: spec.template.spec.tolerations
           value:
             - { key: compartment.dev/node-pool, operator: Equal, value: system, effect: NoSchedule }
@@ -241,3 +241,53 @@ tests:
           path: data.COMPARTMENT_KUBE_BUILD_SCHEDULING
           value: '{"nodeSelector":{"compartment.dev/node-pool":"system"},"runtimeClassName":"gvisor","tolerations":[{"effect":"NoSchedule","key":"compartment.dev/node-pool","operator":"Equal","value":"system"}]}'
         template: configmap.yaml
+
+  - it: routes stateful workloads to the data pool when it is configured
+    set:
+      nodePools:
+        system: *systemPool
+        data:
+          nodeSelector: { compartment.dev/node-pool: data }
+          tolerations:
+            - { key: compartment.dev/node-pool, operator: Equal, value: data, effect: NoSchedule }
+    asserts:
+      - equal: &dataSelector
+          path: spec.template.spec.nodeSelector
+          value: { compartment.dev/node-pool: data }
+        template: postgres.yaml
+        documentIndex: 1
+      - equal: &dataTolerations
+          path: spec.template.spec.tolerations
+          value:
+            - { key: compartment.dev/node-pool, operator: Equal, value: data, effect: NoSchedule }
+        template: postgres.yaml
+        documentIndex: 1
+      - equal: *dataSelector
+        template: registry.yaml
+        documentIndex: 1
+      - equal: *dataTolerations
+        template: registry.yaml
+        documentIndex: 1
+      - equal: *systemSelector
+        template: api.yaml
+        documentIndex: 1
+      - equal: *systemSelector
+        template: worker.yaml
+
+  - it: falls back from an empty data pool to the system pool
+    set:
+      nodePools:
+        system: *systemPool
+    asserts:
+      - equal: *systemSelector
+        template: postgres.yaml
+        documentIndex: 1
+      - equal: *systemTolerations
+        template: postgres.yaml
+        documentIndex: 1
+      - equal: *systemSelector
+        template: registry.yaml
+        documentIndex: 1
+      - equal: *systemTolerations
+        template: registry.yaml
+        documentIndex: 1
