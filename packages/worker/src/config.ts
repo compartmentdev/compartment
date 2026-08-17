@@ -19,6 +19,12 @@ import type {
   WorkerCustomDomainConfig,
   WorkerProcessConfig,
 } from './config.types';
+import type {
+  WorkerBuildConfigEnvironment,
+  WorkerConfigEnvironment,
+  WorkerProcessConfigEnvironment,
+  WorkerTrustedOutboundHostsEnvironment,
+} from './config-env.types';
 import {
   readBuildWorkloadScheduling,
   readDataWorkloadScheduling,
@@ -28,57 +34,6 @@ import { readOrganizationQuota } from './resource-quota-config';
 import { parseKubernetesQuantity } from './services/kubernetes-quantity';
 
 export type { WorkerBuildConfig, WorkerConfig, WorkerCustomDomainConfig, WorkerProcessConfig } from './config.types';
-
-interface WorkerProcessConfigEnvironment {
-  COMPARTMENT_API_INTERNAL_HOST: string;
-  COMPARTMENT_API_PORT: number;
-  COMPARTMENT_ARTIFACT_REGISTRY_HOST: string;
-  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_HOST: string;
-  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL: string;
-  COMPARTMENT_ARTIFACT_REGISTRY_PORT: number;
-  COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY: string;
-  COMPARTMENT_LOG_LEVEL: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
-  COMPARTMENT_LEADER_ELECTION_IDENTITY: string;
-  COMPARTMENT_LEADER_ELECTION_LEASE_DURATION_MS: number;
-  COMPARTMENT_LEADER_ELECTION_RENEW_DEADLINE_MS: number;
-  COMPARTMENT_LEADER_ELECTION_RETRY_PERIOD_MS: number;
-  COMPARTMENT_WORKER_POLL_INTERVAL_MS: number;
-  COMPARTMENT_USAGE_METERING_INTERVAL_MS: number;
-  COMPARTMENT_RUNTIME_CONTROL_TOKEN: string;
-  COMPARTMENT_TRUSTED_OUTBOUND_HOSTS?: string | undefined;
-}
-
-interface WorkerBuildConfigEnvironment extends WorkerProcessConfigEnvironment {
-  COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME: string;
-  COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: string;
-  COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: number;
-  COMPARTMENT_BUILDKIT_RESOURCES: string;
-  COMPARTMENT_BUILD_NAMESPACE: string;
-  COMPARTMENT_BUILD_RUNNER_RESOURCES: string;
-  COMPARTMENT_WORKER_IMAGE: string;
-  COMPARTMENT_BUILD_TIMEOUT_MS: number;
-  COMPARTMENT_KUBE_BUILD_SCHEDULING: string;
-}
-
-interface WorkerConfigEnvironment extends WorkerBuildConfigEnvironment {
-  COMPARTMENT_CADDY_SERVICE_NAME: string;
-  COMPARTMENT_INGRESS_CLASS_NAME: string;
-  COMPARTMENT_TLS_ISSUER_KIND: 'Issuer' | 'ClusterIssuer';
-  COMPARTMENT_TLS_ISSUER_NAME: string;
-  COMPARTMENT_PLATFORM_NAMESPACE: string;
-  COMPARTMENT_DEPLOYMENT_INFRASTRUCTURE_TIMEOUT_MS: number;
-  COMPARTMENT_KUBE_DATA_SCHEDULING: string;
-  COMPARTMENT_TENANT_SECRETS_KEK: string;
-  COMPARTMENT_TENANT_SECRETS_PREVIOUS_KEK?: string | undefined;
-  COMPARTMENT_KUBE_TENANT_SCHEDULING?: string | undefined;
-  COMPARTMENT_MAX_CONCURRENT_BUILDS: number;
-  COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_ORGANIZATION: number;
-  COMPARTMENT_ORGANIZATION_QUOTA: string;
-}
-
-interface WorkerTrustedOutboundHostsEnvironment {
-  COMPARTMENT_TRUSTED_OUTBOUND_HOSTS?: string | undefined;
-}
 
 const workerProcessConfigSchema: z.ZodType<WorkerProcessConfigEnvironment> = z.object({
   COMPARTMENT_API_INTERNAL_HOST: z.string().min(1),
