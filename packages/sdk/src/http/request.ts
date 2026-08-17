@@ -5,6 +5,7 @@ import type { ClientOptions } from '../client.types';
 import type {
   CompartmentRequestMethod,
   CompartmentBinaryRequestOptions,
+  CompartmentBinaryRequestRetryOptions,
   CompartmentRequestOptions,
   CompartmentRequestErrorFields,
   CompartmentBinaryRequester,
@@ -53,7 +54,14 @@ export function createCompartmentRequester(defaultOptions: ClientOptions): Compa
   };
 }
 
-export function createCompartmentBinaryRequester(defaultOptions: ClientOptions): CompartmentBinaryRequester {
+export function createCompartmentBinaryRequester(
+  defaultOptions: ClientOptions,
+  retryOptions?: CompartmentBinaryRequestRetryOptions,
+): CompartmentBinaryRequester {
+  const maximumAttempts: number = retryOptions?.maximumAttempts ?? 4;
+  if (!Number.isSafeInteger(maximumAttempts) || maximumAttempts < 1) {
+    throw new Error('Binary request maximumAttempts must be a positive integer.');
+  }
   return async function request({ method, path, ...requestOptions }: CompartmentBinaryRequestOptions): Promise<Buffer> {
     const headers: Headers = createRequestHeaders(undefined, requestOptions, defaultOptions);
     const url: string = createRequestUrl(defaultOptions, path);
@@ -75,6 +83,7 @@ export function createCompartmentBinaryRequester(defaultOptions: ClientOptions):
         }
         return Buffer.from(await response.arrayBuffer());
       },
+      maximumAttempts,
       method,
       path,
       url,
