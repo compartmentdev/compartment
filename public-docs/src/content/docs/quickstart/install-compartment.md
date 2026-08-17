@@ -72,11 +72,16 @@ foundation stage and requests a Certificate with the address in its IP SAN. It d
 modify node host/runtime configuration. Public ACME issuers cannot issue this private IP certificate; configure
 `registry.issuerRef` with the node-trusted CA issuer. Reinstalling recomputes the address and registry Certificate.
 
-Optional Helm values can assign platform, build, and tenant workloads to separately labeled and tainted nodes through
-`nodePools.system`, `nodePools.build`, and `nodePools.tenant`. Leave all three pools empty for single-node clusters.
+Optional Helm values can assign the remaining platform workloads, builds, tenant workloads, and the bundled
+PostgreSQL and private registry to separately labeled and tainted nodes through `nodePools.system`, `nodePools.build`,
+`nodePools.tenant`, and `nodePools.data`. Leave all four pools empty for single-node clusters.
 When pools are enabled, a pending platform Pod can preempt lower-priority tenant Pods that are eligible for the same
 node. Build Pods run at tenant priority, so a build never preempts a running application. Priority does not guarantee
 availability during node failure or kubelet node-pressure eviction.
+
+For production installations, configure `nodePools.data` before PostgreSQL or the private registry carries real data.
+Moving either Deployment later recreates its Pod and interrupts the service. Bundled PostgreSQL and a filesystem-backed
+registry also reattach persistent volumes.
 
 Hosted application traffic is limited per application to 300 requests per second with a burst of 600, per client IP
 within an application to 60 requests per second with a burst of 120, and to 512 simultaneous in-flight requests per
@@ -100,10 +105,14 @@ nodePools:
     nodeSelector: { compartment.dev/node-pool: tenant }
     tolerations:
       - { key: compartment.dev/node-pool, operator: Equal, value: tenant, effect: NoSchedule }
+  data:
+    nodeSelector: { compartment.dev/node-pool: data }
+    tolerations:
+      - { key: compartment.dev/node-pool, operator: Equal, value: data, effect: NoSchedule }
 ```
 
-An empty build pool uses the system pool. Pass the file to `compartment install` with `--values
-compartment-values.yaml`.
+Empty system and tenant pools omit scheduling constraints. Empty build and data pools use the system pool's selector
+and tolerations. Pass the file to `compartment install` with `--values compartment-values.yaml`.
 
 New projects require authentication for hosted application routes by default. To make omitted service access public
 for projects created after installation or upgrade, set the following Helm value:

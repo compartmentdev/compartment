@@ -179,7 +179,7 @@ tests:
           value: { compartment.dev/node-pool: system }
         template: api.yaml
         documentIndex: 1
-      - equal:
+      - equal: &systemTolerations
           path: spec.template.spec.tolerations
           value:
             - { key: compartment.dev/node-pool, operator: Equal, value: system, effect: NoSchedule }
@@ -256,13 +256,16 @@ tests:
           value: { compartment.dev/node-pool: data }
         template: postgres.yaml
         documentIndex: 1
-      - equal:
+      - equal: &dataTolerations
           path: spec.template.spec.tolerations
           value:
             - { key: compartment.dev/node-pool, operator: Equal, value: data, effect: NoSchedule }
         template: postgres.yaml
         documentIndex: 1
       - equal: *dataSelector
+        template: registry.yaml
+        documentIndex: 1
+      - equal: *dataTolerations
         template: registry.yaml
         documentIndex: 1
       - equal: *systemSelector
@@ -279,6 +282,12 @@ tests:
       - equal: *systemSelector
         template: postgres.yaml
         documentIndex: 1
+      - equal: *systemTolerations
+        template: postgres.yaml
+        documentIndex: 1
       - equal: *systemSelector
+        template: registry.yaml
+        documentIndex: 1
+      - equal: *systemTolerations
         template: registry.yaml
         documentIndex: 1

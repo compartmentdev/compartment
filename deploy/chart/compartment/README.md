@@ -37,15 +37,15 @@ installation only for managed VMs; the chart never installs runtimes or adopts a
 
 ## Node pools and workload priority
 
-`nodePools.system` schedules platform components, `nodePools.build` schedules ephemeral BuildKit Jobs,
+`nodePools.system` schedules the remaining platform components, `nodePools.build` schedules ephemeral BuildKit Jobs,
 `nodePools.tenant` schedules application, resource, product, and provisioning workloads, and `nodePools.data`
-schedules the stateful platform components — PostgreSQL and the private registry. An empty pool adds no
-selector or toleration. An empty build or data pool falls back to the system pool.
+schedules the bundled PostgreSQL and private registry. An empty system or tenant pool adds no selector or toleration.
+An empty build or data pool falls back to `nodePools.system` and uses its selector and tolerations.
 
-Production installations should separate stateful from stateless components: PostgreSQL and the registry own
-persistent volumes, so they should not share nodes with workloads that are rescheduled on every upgrade.
-Moving them later means recreating their Pods and reattaching their volumes, which is downtime — configure
-`nodePools.data` before the installation carries real data.
+Production installations should separate bundled PostgreSQL and the private registry from platform workloads that
+are rescheduled on every upgrade. Moving either Deployment later recreates its Pod and interrupts the service;
+bundled PostgreSQL and a filesystem-backed registry also reattach persistent volumes. Configure `nodePools.data`
+before the installation carries real data.
 
 Label and taint the nodes before enabling a pool:
 
