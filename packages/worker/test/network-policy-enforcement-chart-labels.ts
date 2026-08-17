@@ -17,6 +17,7 @@ const chartValues: Record<string, string> = {
   'platform.baseDomain': 'apps.example.com',
   'platform.installationId': 'network-policy-gate',
   'platform.startupStage': 'full',
+  'nodePools.data.nodeSelector.compartment\\.dev/node-pool': 'data',
   'registry.hostname': registryHostname,
   'registry.issuerRef.name': 'network-policy-gate-issuer',
   'secrets.productLogIngestToken': 'network-policy-gate-product-log-token',
