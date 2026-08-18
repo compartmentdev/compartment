@@ -35,6 +35,8 @@ import {
 import type { ClaimedResourceReconcileRun } from '../src/queries/resource-reconcile-runs.query.types';
 import { findProjectResourceByName } from '../src/queries/resources.query';
 import type { ProjectResourceRow } from '../src/queries/resources.query.types';
+import type { RbacTransaction } from '../src/queries/rbac.query.types';
+import { assignOrganizationSystemRoleToPrincipalWithExecutor } from '../src/services/rbac-seed.service';
 import { restoreResourceBackupAsForPrincipal } from '../src/services/resource-backups.restore-as.service';
 import { serializeResourceDefinitionSnapshot } from '../src/services/resources.service.storage';
 import type { ResourceRestoreAsResult } from '../src/services/resources.service.types';
@@ -234,6 +236,9 @@ async function seedRestoreAsScope(): Promise<void> {
     id: 'mem_restore_as',
     organizationId: 'org_restore_as',
     principalId: 'prn_restore_as',
+  });
+  await db.transaction(async (tx: RbacTransaction): Promise<void> => {
+    await assignOrganizationSystemRoleToPrincipalWithExecutor(tx, 'org_restore_as', 'prn_restore_as', 'deployer');
   });
   await db.insert(projects).values({
     defaultAccessMode: 'authenticated',
