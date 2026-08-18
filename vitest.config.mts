@@ -25,6 +25,7 @@ const packageWorkspaceAliases = Object.fromEntries(
 );
 export const workspaceAliases = {
   '@compartment/contracts/browser': resolve(packagesRoot, 'contracts', 'src', 'index.browser.ts'),
+  '@compartment/utils/metrics': resolve(packagesRoot, 'utils', 'src', 'prometheus-metrics.ts'),
   ...packageWorkspaceAliases,
 };
 

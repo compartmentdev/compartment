@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { readWorkerBuildConfig, readWorkerConfig, type WorkerBuildConfig, type WorkerConfig } from '../src/config';
 
 describe('readWorkerConfig', (): void => {
+  it('rejects a metrics port outside the TCP port range', (): void => {
+    expect(
+      (): WorkerConfig => readWorkerConfig({ ...validEnvironment(), COMPARTMENT_WORKER_METRICS_PORT: '65536' }),
+    ).toThrow();
+  });
+
   it('reads the private node-pull and internal registry endpoints', (): void => {
     const config: WorkerConfig = readWorkerConfig(validEnvironment());
 
@@ -282,6 +288,7 @@ function validEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL: 'https://registry.apps.example.com',
     COMPARTMENT_ARTIFACT_REGISTRY_PORT: '443',
     COMPARTMENT_LOG_LEVEL: 'info',
+    COMPARTMENT_WORKER_METRICS_PORT: '9465',
     COMPARTMENT_LEADER_ELECTION_IDENTITY: 'worker-1',
     COMPARTMENT_LEADER_ELECTION_LEASE_DURATION_MS: '15000',
     COMPARTMENT_LEADER_ELECTION_RENEW_DEADLINE_MS: '10000',

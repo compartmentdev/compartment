@@ -19,6 +19,7 @@ import { runGitSourceSyncIteration } from './worker-git-source-sync.service';
 import type {
   AttemptClaimedDeploymentCompletionInput,
   AttemptedClaimedDeploymentResult,
+  WorkerBuildResult,
   WorkerBuildTask,
   WorkerRequesterInput,
 } from './worker-iteration.types';
@@ -64,7 +65,7 @@ export async function startNextBuild(
       deployment: claimed.deployment,
       request,
       runtime,
-    }).then((): void => undefined),
+    }),
   };
 }
 
@@ -80,13 +81,16 @@ function logBuildQueueObservation(logger: Logger<never, boolean>, claimed: Worke
   );
 }
 
-async function completeAndPersistClaimedDeployment(input: AttemptClaimedDeploymentCompletionInput): Promise<boolean> {
+async function completeAndPersistClaimedDeployment(
+  input: AttemptClaimedDeploymentCompletionInput,
+): Promise<WorkerBuildResult> {
   const result: AttemptedClaimedDeploymentResult = await attemptClaimedDeploymentCompletion(input);
   if (result.failureError === undefined) {
-    return true;
+    return 'succeeded';
   }
 
-  return await reportWorkerIterationFailure(input.request, input.deployment, result.failureError, result.imageRef);
+  await reportWorkerIterationFailure(input.request, input.deployment, result.failureError, result.imageRef);
+  return 'failed';
 }
 
 async function attemptClaimedDeploymentCompletion(
@@ -110,7 +114,7 @@ async function reportWorkerIterationFailure(
   deployment: WorkerClaimedDeployment,
   failureError: Error,
   imageRef: string | undefined,
-): Promise<boolean> {
+): Promise<void> {
   if (!isExpectedCompletionFollowUpError(failureError)) {
     const failureMessage: string = readWorkerFailureMessage(failureError, 'Unknown deployment failure.');
     await appendDeploymentStepEventSafely(
@@ -127,8 +131,6 @@ async function reportWorkerIterationFailure(
       message: failureMessage,
     });
   }
-
-  return true;
 }
 
 function isExpectedCompletionFollowUpError(error: Error): boolean {

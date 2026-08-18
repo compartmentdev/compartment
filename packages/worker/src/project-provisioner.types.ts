@@ -15,6 +15,7 @@ export interface ProjectProvisionerConfig {
   installationId: string;
   leaderElection: KubeLeaderElectionConfig;
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
+  metricsPort: number;
   platformNamespace: string;
   podCidr: string;
   pollIntervalMs: number;

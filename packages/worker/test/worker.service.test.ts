@@ -13,6 +13,7 @@ import { runAuxiliaryWorkerIteration, startNextBuild } from '../src/services/wor
 import type { WorkerConfig } from '../src/config';
 import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
 import type { WorkerDeploymentEventContext } from '../src/services/worker-deployment-event.types';
+import type { WorkerBuildResult } from '../src/services/worker-iteration.types';
 import { createArtifactRegistryTestConfig, createWorkerTestConfig } from './worker-config-test.fixtures';
 
 type AppendDeploymentStepEventSafely = (
@@ -153,14 +154,14 @@ async function runNextBuild(
   internalToken: string,
   artifactRegistry: WorkerArtifactRegistryConfig,
   iterationLogger: Logger<never, boolean>,
-): Promise<void> {
+): Promise<WorkerBuildResult> {
   const task = await startNextBuild(
     createWorkerConfig(apiUrl, internalToken, artifactRegistry),
     runtime,
     iterationLogger,
   );
   expect(task).not.toBeNull();
-  await task?.completion;
+  return await task!.completion;
 }
 
 async function runAuxiliaryIteration(
@@ -211,7 +212,7 @@ describe('worker service iterations', (): void => {
       queue: { activeBuildCount: 1, queueDepth: 0, waitTimeMs: 25 },
     });
 
-    await expect(runNextBuild('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBeUndefined();
+    await expect(runNextBuild('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe('succeeded');
 
     expect(mocks.buildReleaseImageFromSource).toHaveBeenCalledWith(
       mocks.request,
@@ -234,7 +235,7 @@ describe('worker service iterations', (): void => {
     });
     mocks.handoffBuiltDeploymentToKube.mockRejectedValueOnce(new Error('namespace provisioning failed'));
 
-    await expect(runNextBuild('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBeUndefined();
+    await expect(runNextBuild('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe('failed');
 
     expect(mocks.failDeployment).toHaveBeenCalledWith(mocks.request, {
       deploymentId: 'dep_123',
@@ -252,7 +253,7 @@ describe('worker service iterations', (): void => {
       });
       mocks.handoffBuiltDeploymentToKube.mockRejectedValueOnce(createCompartmentRequestError(code));
 
-      await expect(runNextBuild('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBeUndefined();
+      await expect(runNextBuild('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe('failed');
 
       expect(mocks.failDeployment).not.toHaveBeenCalled();
       expect(mocks.appendDeploymentStepEventSafely).not.toHaveBeenCalled();
@@ -266,7 +267,7 @@ describe('worker service iterations', (): void => {
     });
     mocks.buildReleaseImageFromSource.mockRejectedValueOnce('build failed');
 
-    await expect(runNextBuild('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBeUndefined();
+    await expect(runNextBuild('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe('failed');
 
     expect(mocks.failDeployment).toHaveBeenCalledWith(mocks.request, {
       deploymentId: 'dep_123',

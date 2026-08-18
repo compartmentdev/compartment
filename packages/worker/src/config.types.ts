@@ -25,6 +25,7 @@ export interface WorkerLeaderElectionProcessConfig {
 
 export interface WorkerBuildConfig extends WorkerProcessConfig {
   buildSandbox: WorkerBuildSandboxConfig;
+  metricsPort: number;
   /** The platform image this worker itself runs, reused for every container the worker injects into a tenant Pod. */
   workerImage: string;
 }

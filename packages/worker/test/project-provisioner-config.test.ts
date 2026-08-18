@@ -11,6 +11,16 @@ const podCidr: string = ['10', '42', '0', '0/16'].join('.');
 const serviceCidr: string = ['10', '43', '0', '0/16'].join('.');
 
 describe('readProjectProvisionerConfig', (): void => {
+  it('rejects a metrics port outside the TCP port range', (): void => {
+    expect(
+      (): ProjectProvisionerConfig =>
+        readProjectProvisionerConfig({
+          ...projectProvisionerEnvironment(),
+          COMPARTMENT_PROJECT_PROVISIONER_METRICS_PORT: '65536',
+        }),
+    ).toThrow();
+  });
+
   it('starts without worker controller-only custom-domain configuration', (): void => {
     const config: ProjectProvisionerConfig = readProjectProvisionerConfig(projectProvisionerEnvironment());
 
@@ -35,6 +45,7 @@ describe('readProjectProvisionerConfig', (): void => {
         retryPeriodMs: 2000,
       },
       logLevel: 'info',
+      metricsPort: 9467,
       platformNamespace: 'compartment',
       podCidr,
       pollIntervalMs: 1000,
@@ -168,6 +179,7 @@ function projectProvisionerEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_KUBE_POD_CIDR: podCidr,
     COMPARTMENT_KUBE_SERVICE_CIDR: serviceCidr,
     COMPARTMENT_LOG_LEVEL: 'info',
+    COMPARTMENT_PROJECT_PROVISIONER_METRICS_PORT: '9467',
     COMPARTMENT_LEADER_ELECTION_IDENTITY: 'project-provisioner-1',
     COMPARTMENT_LEADER_ELECTION_LEASE_DURATION_MS: '15000',
     COMPARTMENT_LEADER_ELECTION_RENEW_DEADLINE_MS: '10000',

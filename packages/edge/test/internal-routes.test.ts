@@ -8,26 +8,6 @@ afterEach((): void => {
 });
 
 describe('edge internal routes', (): void => {
-  it('exposes snapshot metrics only to authenticated internal callers', async (): Promise<void> => {
-    const { app } = createEdgeTestApp();
-
-    try {
-      const unauthorized: LightMyRequestResponse = await app.inject({ method: 'GET', url: '/internal/metrics' });
-      const authorized: LightMyRequestResponse = await app.inject({
-        method: 'GET',
-        url: '/internal/metrics',
-        headers: { authorization: 'Bearer test-edge-token' },
-      });
-
-      expect(unauthorized.statusCode).toBe(401);
-      expect(authorized.statusCode).toBe(200);
-      expect(authorized.headers['content-type']).toContain('text/plain');
-      expect(authorized.body).toContain('compartment_edge_snapshot_age_seconds');
-    } finally {
-      await app.close();
-    }
-  });
-
   it('rejects unauthenticated state updates', async (): Promise<void> => {
     const { app } = createEdgeTestApp();
 

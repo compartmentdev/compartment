@@ -85,3 +85,38 @@ spec:
       ports:
         - {protocol: TCP, port: {{ .Values.ports.edge }}}
 {{- end }}
+{{- if eq $installState.effective.platform.startupStage "full" }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "compartment.fullname" . }}-platform-metrics
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [api, worker, project-provisioner, edge]
+    matchLabels:
+      app.kubernetes.io/name: {{ include "compartment.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes: [Ingress]
+  {{- if .Values.platformMetrics.enabled }}
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.platformMetrics.namespaceSelector | nindent 14 }}
+          {{- with .Values.platformMetrics.podSelector }}
+          podSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+          {{- end }}
+      ports:
+        - {protocol: TCP, port: {{ .Values.ports.metrics }}}
+  {{- else }}
+  ingress: []
+  {{- end }}
+{{- end }}

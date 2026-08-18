@@ -630,6 +630,7 @@ function config(tenantScheduling?: KubeWorkloadScheduling): ProjectProvisionerCo
       retryPeriodMs: 2_000,
     },
     logLevel: 'info',
+    metricsPort: 9464,
     platformNamespace: 'compartment',
     podCidr,
     pollIntervalMs: 1_000,

@@ -1,6 +1,6 @@
 import { and, desc, eq, ne } from 'drizzle-orm';
 import { deploymentKubeReferences, deployments } from '../db/schema';
-import type { SupersedeCandidateContext } from './deployment-reconcile-supersede.query';
+import type { SupersedeCandidateContext } from './deployment-reconcile.query.types';
 import type { DeploymentTransaction } from './deployments.query.types';
 
 export type DeploymentReferenceRow = Pick<typeof deploymentKubeReferences.$inferSelect, 'revision' | 'state'>;
@@ -25,6 +25,7 @@ export async function findReconcileCandidate(
   return (
     await tx
       .select({
+        createdAt: deployments.createdAt,
         deploymentRunId: deployments.deploymentRunId,
         environmentId: deployments.environmentId,
         isActive: deployments.isActive,

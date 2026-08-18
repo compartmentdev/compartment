@@ -13,6 +13,7 @@ const docsSidebar = [
       'install-operate/install-modes',
       'install-operate/install-domain',
       'install-operate/system-operations',
+      'install-operate/platform-metrics',
       'guides/operate-managed-vm',
     ],
   },

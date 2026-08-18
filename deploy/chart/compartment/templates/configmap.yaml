@@ -25,6 +25,10 @@ data:
   COMPARTMENT_ENV: self-hosted
   COMPARTMENT_INSTALLATION_ID: {{ $installState.effective.platform.installationId | quote }}
   COMPARTMENT_LOG_LEVEL: {{ .Values.platform.logLevel | quote }}
+  COMPARTMENT_API_METRICS_PORT: {{ .Values.ports.metrics | quote }}
+  COMPARTMENT_WORKER_METRICS_PORT: {{ .Values.ports.metrics | quote }}
+  COMPARTMENT_EDGE_METRICS_PORT: {{ .Values.ports.metrics | quote }}
+  COMPARTMENT_PROJECT_PROVISIONER_METRICS_PORT: {{ .Values.ports.metrics | quote }}
   COMPARTMENT_PUBLIC_PROTOCOL: {{ $installState.effective.platform.publicProtocol | quote }}
   COMPARTMENT_PUBLIC_HTTP_PORT: "80"
   COMPARTMENT_PUBLIC_HTTPS_PORT: "443"

@@ -112,6 +112,14 @@ The chart renders exact console and application host rules with no catch-all hos
 controller-specific annotation. Caddy is reachable only through a ClusterIP Service on the internal HTTP port. Its
 NetworkPolicy admits that port from cluster ingress sources.
 
+## Platform metrics
+
+Set `platformMetrics.enabled: true` to render a `PodMonitor` for API, worker, project-provisioner, and Edge Pods. The
+dedicated metrics port defaults to `9464` and is never added to public ingress or a Service. Configure
+`platformMetrics.namespaceSelector` and, when needed, `platformMetrics.podSelector` for the Prometheus Pods; the chart
+always denies other access to the metrics port and, when enabled, admits exactly those peers. The namespace selector
+must not be empty.
+
 ## High availability
 
 The chart runs `api`, `edge`, `caddy`, `worker`, and `project-provisioner` with one replica by default. Each Deployment uses a rolling update with

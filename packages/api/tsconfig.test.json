@@ -9,6 +9,7 @@
       "@compartment/contracts": ["../contracts/src/index.ts"],
       "@compartment/console": ["../console/src/index.ts"],
       "@compartment/test-support": ["../test-support/src/index.ts"],
+      "@compartment/utils/metrics": ["../utils/src/prometheus-metrics.ts"],
       "@compartment/utils": ["../utils/src/index.ts"]
     }
   },

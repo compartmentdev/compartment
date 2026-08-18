@@ -8,6 +8,7 @@
       "@compartment/contracts": ["../contracts/src/index.ts"],
       "@compartment/contracts/browser": ["../contracts/src/index.browser.ts"],
       "@compartment/sdk": ["../sdk/src/index.ts"],
+      "@compartment/utils/metrics": ["../utils/src/prometheus-metrics.ts"],
       "@compartment/utils": ["../utils/src/index.ts"]
     }
   },

@@ -17,12 +17,14 @@ import { readProjectContainerDefaults, readProjectQuota } from './resource-quota
 interface ProjectProvisionerEnvironment extends ProjectProvisioningEnvironment {
   COMPARTMENT_KUBE_TENANT_SCHEDULING?: string | undefined;
   COMPARTMENT_PROJECT_PROVISIONER_IMAGE: string;
+  COMPARTMENT_PROJECT_PROVISIONER_METRICS_PORT: number;
 }
 
 const projectProvisionerEnvironmentSchema: z.ZodType<ProjectProvisionerEnvironment> =
   projectProvisioningEnvironmentSchema.and(
     z.object({
       COMPARTMENT_PROJECT_PROVISIONER_IMAGE: z.string().min(1),
+      COMPARTMENT_PROJECT_PROVISIONER_METRICS_PORT: z.coerce.number().int().min(1).max(65_535),
       COMPARTMENT_KUBE_TENANT_SCHEDULING: z.string().min(1).optional(),
     }),
   );
@@ -48,6 +50,7 @@ export function readProjectProvisionerConfig(env: NodeJS.ProcessEnv = process.en
     installationId: parsed.COMPARTMENT_INSTALLATION_ID,
     leaderElection,
     logLevel: worker.logLevel,
+    metricsPort: parsed.COMPARTMENT_PROJECT_PROVISIONER_METRICS_PORT,
     platformNamespace: parsed.COMPARTMENT_PLATFORM_NAMESPACE,
     provisioningNamespace: parsed.COMPARTMENT_PROVISIONING_NAMESPACE,
     resourceConfiguration,

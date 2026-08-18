@@ -3,7 +3,7 @@ import type { CompartmentRequester } from '@compartment/sdk';
 import type { KubeLeaderElector, KubeRuntime } from '@compartment/kube-runtime';
 import type { WorkerConfig } from '../src/config';
 import type { KubeControllerHost } from '../src/kube-controller-host';
-import type { WorkerBuildTask } from '../src/services/worker-iteration.types';
+import type { WorkerBuildResult, WorkerBuildTask } from '../src/services/worker-iteration.types';
 import { runWorker } from '../src/app';
 import { DeferredValue } from './worker-app-test.fixtures';
 import { createWorkerTestConfig } from './worker-config-test.fixtures';
@@ -124,9 +124,9 @@ describe('runWorker', (): void => {
 
   it('fills the configured build capacity without multiplying auxiliary polling', async (): Promise<void> => {
     const config: WorkerConfig = workerConfig(3);
-    const completions: DeferredValue<void>[] = Array.from(
+    const completions: DeferredValue<WorkerBuildResult>[] = Array.from(
       { length: 3 },
-      (): DeferredValue<void> => new DeferredValue<void>(),
+      (): DeferredValue<WorkerBuildResult> => new DeferredValue<WorkerBuildResult>(),
     );
     const auxiliaryCompletions: DeferredValue<boolean>[] = createAuxiliaryCompletions();
     const fourthClaim: DeferredValue<WorkerBuildTask | null> = new DeferredValue<WorkerBuildTask | null>();
@@ -142,13 +142,15 @@ describe('runWorker', (): void => {
     await vi.waitFor((): void => expect(mocks.startNextBuild).toHaveBeenCalledTimes(3));
 
     expect(mocks.runAuxiliaryWorkerIteration).toHaveBeenCalledTimes(2);
-    completions[0]?.resolve(undefined);
+    completions[0]?.resolve('succeeded');
     await vi.waitFor((): void => expect(mocks.startNextBuild).toHaveBeenCalledTimes(4));
 
     mocks.controller.abort();
     fourthClaim.resolve(null);
     auxiliaryCompletions.forEach((completion: DeferredValue<boolean>): void => completion.resolve(false));
-    completions.slice(1).forEach((completion: DeferredValue<void>): void => completion.resolve(undefined));
+    completions
+      .slice(1)
+      .forEach((completion: DeferredValue<WorkerBuildResult>): void => completion.resolve('succeeded'));
     await expect(workerPromise).resolves.toBeUndefined();
 
     expect(mocks.runAuxiliaryWorkerIteration).toHaveBeenCalledTimes(2);
@@ -177,7 +179,7 @@ describe('runWorker', (): void => {
   });
 
   it('releases build capacity after a completion rejects', async (): Promise<void> => {
-    const failedCompletion: DeferredValue<void> = new DeferredValue<void>();
+    const failedCompletion: DeferredValue<WorkerBuildResult> = new DeferredValue<WorkerBuildResult>();
     mocks.startNextBuild
       .mockResolvedValueOnce({ completion: failedCompletion.promise })
       .mockImplementationOnce(async (): Promise<null> => {
@@ -193,7 +195,7 @@ describe('runWorker', (): void => {
   });
 
   it('drains active builds before shutdown completes', async (): Promise<void> => {
-    const completion: DeferredValue<void> = new DeferredValue<void>();
+    const completion: DeferredValue<WorkerBuildResult> = new DeferredValue<WorkerBuildResult>();
     mocks.startNextBuild.mockResolvedValueOnce({ completion: completion.promise });
     const workerPromise: Promise<void> = runWorker(workerConfig(1));
     let workerSettled: boolean = false;
@@ -206,7 +208,7 @@ describe('runWorker', (): void => {
     await Promise.resolve();
     expect(workerSettled).toBe(false);
     expect(mocks.startNextBuild).toHaveBeenCalledTimes(1);
-    completion.resolve(undefined);
+    completion.resolve('succeeded');
     await expect(workerPromise).resolves.toBeUndefined();
     expect(workerSettled).toBe(true);
   });
@@ -219,6 +221,7 @@ function createAuxiliaryCompletions(): DeferredValue<boolean>[] {
 function workerConfig(maximumConcurrentBuilds: number): WorkerConfig {
   return createWorkerTestConfig({
     buildQueue: { maximumConcurrentBuilds, maximumConcurrentBuildsPerOrganization: 1 },
+    metricsPort: 0,
     pollIntervalMs: 10,
   });
 }

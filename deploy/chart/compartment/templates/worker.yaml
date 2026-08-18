@@ -50,6 +50,9 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "compartment.fullname" . }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.ports.metrics }}
           env:
             - name: COMPARTMENT_LEADER_ELECTION_IDENTITY
               valueFrom:

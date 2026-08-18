@@ -18,6 +18,7 @@ export interface WorkerProcessConfigEnvironment {
 }
 
 export interface WorkerBuildConfigEnvironment extends WorkerProcessConfigEnvironment {
+  COMPARTMENT_WORKER_METRICS_PORT: number;
   COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME: string;
   COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: string;
   COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: number;

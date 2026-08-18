@@ -12,14 +12,12 @@ import {
   markReadyRunOperationsSucceeded,
   markRunOperationsFailed,
 } from './deployment-reconcile-run-completion.query';
-import {
-  supersedePreviousKubeDeployment,
-  type SupersedeCandidateContext,
-} from './deployment-reconcile-supersede.query';
+import { supersedePreviousKubeDeployment } from './deployment-reconcile-supersede.query';
 import type { DeploymentTransaction } from './deployments.query.types';
 import type {
   PersistDeploymentReconcileObservationInput,
   PersistDeploymentReconcileObservationResult,
+  SupersedeCandidateContext,
 } from './deployment-reconcile.query.types';
 import type { AuditEventRow } from './audit-events.query.types';
 
@@ -72,7 +70,11 @@ export async function persistReadyDeploymentObservation(
   if (candidate.isActive) {
     return { applied: await updateReference(tx, input, 'active'), auditEvents: [] };
   }
-  return { applied: true, auditEvents: await promoteReadyCandidate(tx, input, candidate) };
+  return {
+    applied: true,
+    auditEvents: await promoteReadyCandidate(tx, input, candidate),
+    readyDurationSeconds: Math.max(0, (input.observedAt.getTime() - candidate.createdAt.getTime()) / 1_000),
+  };
 }
 
 async function promoteReadyCandidate(

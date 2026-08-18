@@ -12,6 +12,7 @@ import { persistStoppedReconcileObservation } from './deployment-reconcile-stop.
 import type { DeploymentTransaction } from './deployments.query.types';
 import type {
   HandleCommittedDeploymentAuditEvents,
+  HandleCommittedDeploymentReadyDuration,
   PersistDeploymentReconcileObservationInput,
   PersistDeploymentReconcileObservationResult,
 } from './deployment-reconcile.query.types';
@@ -19,10 +20,14 @@ import type {
 export async function persistDeploymentReconcileObservation(
   input: PersistDeploymentReconcileObservationInput,
   handleCommittedAuditEvents?: HandleCommittedDeploymentAuditEvents,
+  handleCommittedReadyDuration?: HandleCommittedDeploymentReadyDuration,
 ): Promise<boolean> {
   const result: PersistDeploymentReconcileObservationResult =
     await persistDeploymentReconcileObservationWithAuditEvents(input);
   handleCommittedAuditEvents?.(result.auditEvents);
+  if (result.readyDurationSeconds !== undefined) {
+    handleCommittedReadyDuration?.(result.readyDurationSeconds);
+  }
   return result.applied;
 }
 
