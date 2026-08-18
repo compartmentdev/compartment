@@ -348,7 +348,8 @@ cache import and export use the project/service-scoped cache repository for both
 
 The bootstrap role and controller role are derived from the immutable T5 artifacts. No
 production or seeded Compartment principal receives either role by default.
-Fresh installs require Kubernetes 1.33 or newer for the image-volume API and install a fail-closed
+Fresh installs require Kubernetes 1.35 or newer, or `ImageVolume=true` on kube-apiserver and every eligible kubelet,
+and install a fail-closed
 `ValidatingAdmissionPolicy`. Every short-lived bootstrap ServiceAccount is
 named after its immutable `cpt-*` target namespace. Admission permits that
 identity to create the namespace and canonical controller RoleBindings only

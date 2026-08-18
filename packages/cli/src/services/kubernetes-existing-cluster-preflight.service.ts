@@ -16,6 +16,7 @@ import type {
   KubernetesExistingClusterPreflightResult,
 } from './kubernetes-existing-cluster-preflight.service.types';
 import { assertKubernetesInstallAcmeEmail } from './kubernetes-install-email.service';
+import { assertKubernetesImageVolumeCapability } from './kubernetes-image-volume-preflight.service';
 
 export async function runKubernetesExistingClusterPreflight(
   input: KubernetesExistingClusterPreflightInput,
@@ -23,6 +24,7 @@ export async function runKubernetesExistingClusterPreflight(
   assertKubernetesInstallAcmeEmail(input.install.owner.email);
   const kubernetesVersion: string = await assertClusterVersion(input.install);
   await assertRequiredApiResources(input.install);
+  await assertKubernetesImageVolumeCapability(input.install);
   await assertPermissions(input.install);
   await assertReleaseOwnership(input.install, input.chartFullname);
   await assertIngressClass(input.install);

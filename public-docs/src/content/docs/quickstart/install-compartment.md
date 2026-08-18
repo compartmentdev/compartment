@@ -44,10 +44,10 @@ Do not put the password on the command line.
 
 ## Use an existing Kubernetes cluster
 
-The existing-Kubernetes path remains available for operator-managed clusters. Compartment requires Kubernetes 1.33
-or newer for the image volumes used by sandboxed builds, and verifies the required APIs and runtime capabilities
-before installation. The exact managed k3s version is an installation pin, not an upper compatibility limit for
-existing clusters.
+The existing-Kubernetes path remains available for operator-managed clusters. Compartment requires Kubernetes 1.35
+or newer, or `ImageVolume=true` on kube-apiserver and every eligible kubelet. Installation and updates use a
+server-side dry-run to verify that the API preserves the BuildKit seed volume and mount. The exact managed k3s
+version is an installation pin, not an upper compatibility limit for existing clusters.
 
 A single-node installation is not highly available: a node outage interrupts the control plane and any tenant
 workloads scheduled on that node.

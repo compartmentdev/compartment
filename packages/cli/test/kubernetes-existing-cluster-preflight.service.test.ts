@@ -29,6 +29,10 @@ interface PreflightFixture {
   webhookConfigurations: object[];
 }
 
+interface PreflightDryRunManifest {
+  kind?: string | undefined;
+}
+
 type CommandCall = [command: readonly string[], env?: NodeJS.ProcessEnv | undefined];
 type CommandWithInputCall = [command: readonly string[], input: string];
 
@@ -284,8 +288,12 @@ describe('existing Kubernetes non-persistent preflight', (): void => {
     await expect(runKubernetesExistingClusterPreflight(preflightInput())).resolves.toEqual({
       kubernetesVersion: 'v1.33.2',
     });
-    expect(mockedRunCommandWithInput).toHaveBeenCalledTimes(1);
-    expect(mockedRunCommandWithInput.mock.calls[0]?.[0]).toContain('--dry-run=server');
+    expect(mockedRunCommandWithInput).toHaveBeenCalledTimes(2);
+    expect(
+      mockedRunCommandWithInput.mock.calls.every((call: CommandWithInputCall): boolean =>
+        call[0].includes('--dry-run=server'),
+      ),
+    ).toBe(true);
     const absenceCalls: readonly string[][] = mockedRunCommand.mock.calls
       .map((call: CommandCall): string[] => [...call[0]])
       .filter((command: string[]): boolean => command.includes('compartment-preflight-' + process.pid.toString()));
@@ -297,7 +305,10 @@ describe('existing Kubernetes non-persistent preflight', (): void => {
   it('checks Certificate and Secret absence after a rejected dry-run', async (): Promise<void> => {
     const fixture: PreflightFixture = passingFixture();
     installFixture(fixture);
-    mockedRunCommandWithInput.mockResolvedValue(failure('admission denied'));
+    mockedRunCommandWithInput.mockImplementation(async (_command, input): Promise<CommandResult> => {
+      const manifest: PreflightDryRunManifest = parseDryRunManifest(input);
+      return await Promise.resolve(manifest.kind === 'Certificate' ? failure('admission denied') : success(manifest));
+    });
 
     await expect(runKubernetesExistingClusterPreflight(preflightInput())).rejects.toThrow(
       'cert-manager webhook rejected the server-side Certificate dry-run: admission denied',
@@ -313,7 +324,13 @@ function installFixture(fixture: PreflightFixture): void {
   mockedRunCommand.mockImplementation(
     async (command: readonly string[]): Promise<CommandResult> => await Promise.resolve(routeCommand(fixture, command)),
   );
-  mockedRunCommandWithInput.mockResolvedValue(success({ kind: 'Certificate' }));
+  mockedRunCommandWithInput.mockImplementation(
+    async (_command, input): Promise<CommandResult> => await Promise.resolve(success(parseDryRunManifest(input))),
+  );
+}
+
+function parseDryRunManifest(input: string): PreflightDryRunManifest {
+  return JSON.parse(input) as PreflightDryRunManifest;
 }
 
 function routeCommand(fixture: PreflightFixture, command: readonly string[]): CommandResult {

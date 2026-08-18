@@ -47,7 +47,8 @@ recovery.
 
 ## Existing Kubernetes
 
-Use this target when your organization already operates Kubernetes 1.33 or newer:
+Use this target when your organization already operates Kubernetes 1.35 or newer, or a cluster with
+`ImageVolume=true` on kube-apiserver and every eligible kubelet:
 
 ```bash
 compartment install --target kubernetes --kube-context production

@@ -130,7 +130,8 @@ The operator must provide:
 
 - local `helm` version 4.0.0 or newer and `kubectl` version 1.30.0 or newer on `PATH`, with the `kubectl` client
   compatible with the target Kubernetes server;
-- Kubernetes 1.33 or newer, which provides the image-volume API used by the BuildKit seed;
+- Kubernetes 1.35 or newer, or a Kubernetes version with `ImageVolume=true` on kube-apiserver and every eligible
+  kubelet; the installer verifies that the API preserves the image volume and mount with a server-side dry-run;
 - a working kube context;
 - permissions required by the Helm release and project bootstrap model;
 - an installed and ready Ingress Controller with an IngressClass;

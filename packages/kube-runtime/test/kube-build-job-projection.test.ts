@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { kubeJobManifest } from '../src/kube-job-projection';
 import type { KubeJobManifest, KubeJobSpec } from '../src/kube-runtime.types';
+import { serializeManifestOnTheWire } from './kube-transport-audit.harness';
 
 describe('sandboxed build Job projection', (): void => {
-  it('projects bounded tmpfs BuildKit state, tenant priority, and fail-closed security inside the gVisor Job pod', (): void => {
+  it('serializes bounded BuildKit volumes and fail-closed security onto the Kubernetes wire', async (): Promise<void> => {
     const manifest: KubeJobManifest = kubeJobManifest(buildJobSpec(), 'job-art-123', {
       'compartment.dev/job-class': 'build',
     });
@@ -77,6 +78,8 @@ describe('sandboxed build Job projection', (): void => {
     expect(manifest.spec!.template.spec.volumes).toEqual([
       { configMap: { name: 'compartment-buildkit' }, name: 'buildkit-config' },
       { emptyDir: { sizeLimit: '3Gi' }, name: 'buildkit-data' },
+      { emptyDir: { sizeLimit: '128Mi' }, name: 'buildkit-run' },
+      { emptyDir: { sizeLimit: '512Mi' }, name: 'buildkit-tmp' },
       { emptyDir: { sizeLimit: '1Gi' }, name: 'tmp' },
       {
         image: {
@@ -86,6 +89,8 @@ describe('sandboxed build Job projection', (): void => {
         name: 'buildkit-seed',
       },
     ]);
+    const serialized = await serializeManifestOnTheWire(manifest);
+    expect(serialized).toHaveProperty('spec.template.spec.volumes', manifest.spec!.template.spec.volumes);
   });
 
   it('rejects a gVisor BuildKit sidecar outside an explicitly sandboxed build Job', (): void => {
@@ -112,6 +117,8 @@ function buildJobSpec(): KubeJobSpec {
     configMapVolumes: [{ configMapName: 'compartment-buildkit', name: 'buildkit-config' }],
     emptyDirVolumes: [
       { gvisorTmpfs: true, name: 'buildkit-data', sizeLimit: '3Gi' },
+      { gvisorTmpfs: true, name: 'buildkit-run', sizeLimit: '128Mi' },
+      { gvisorTmpfs: true, name: 'buildkit-tmp', sizeLimit: '512Mi' },
       { containerMountPath: '/tmp', gvisorTmpfs: true, name: 'tmp', sizeLimit: '1Gi' },
     ],
     env: { BUILD_INPUT: 'secret' },
@@ -138,12 +145,15 @@ function buildJobSpec(): KubeJobSpec {
         name: 'buildkit',
         volumeMounts: [
           { mountPath: '/var/lib/buildkit', name: 'buildkit-data' },
+          { mountPath: '/run', name: 'buildkit-run' },
+          { mountPath: '/buildkit-tmp', name: 'buildkit-tmp' },
           {
             mountPath: '/etc/buildkit/buildkitd.toml',
             name: 'buildkit-config',
             readOnly: true,
             subPath: 'buildkitd.toml',
           },
+          { mountPath: '/var/lib/buildkit-seed', name: 'buildkit-seed', readOnly: true },
         ],
       },
     ],
