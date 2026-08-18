@@ -70,11 +70,18 @@ spec:
             - /bin/sh
             - -ec
             - |
-              wget -q -T 1 -O /dev/null {{ printf "http://%s.%s.svc/" (include "compartment.caddyReadinessService" .) (include "compartment.caddyReadinessNamespace" .) }}
-              if wget -q -T 1 -O /dev/null {{ printf "http://%s.%s.svc:81/" (include "compartment.caddyReadinessService" .) (include "compartment.caddyReadinessNamespace" .) }}; then
-                echo 'Caddy tenant-path sentinel is reachable before default-deny enforcement' >&2
-                exit 1
-              fi
+              deadline=$(( $(date +%s) + 300 ))
+              while [ "$(date +%s)" -lt "$deadline" ]; do
+                if wget -q -T 1 -O /dev/null {{ printf "http://%s.%s.svc/" (include "compartment.caddyReadinessService" .) (include "compartment.caddyReadinessNamespace" .) }}; then
+                  if ! wget -q -T 1 -O /dev/null {{ printf "http://%s.%s.svc:81/" (include "compartment.caddyReadinessService" .) (include "compartment.caddyReadinessNamespace" .) }}; then
+                    exit 0
+                  fi
+                  echo 'Caddy tenant-path sentinel is reachable before default-deny enforcement' >&2
+                fi
+                sleep 2
+              done
+              echo 'Caddy tenant path was not proven within five minutes' >&2
+              exit 1
           securityContext:
             {{- include "compartment.containerSecurityContext" . | nindent 12 }}
             runAsUser: 1000

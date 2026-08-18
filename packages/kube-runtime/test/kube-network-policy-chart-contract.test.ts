@@ -25,7 +25,7 @@ describe('Caddy readiness NetworkPolicy contract', (): void => {
     async (): Promise<void> => {
       const chartPolicies: KubeManifest[] = renderChartPolicies();
       const projectedPolicies: KubeManifest[] = projectNetworkPolicyManifests(
-        'cpt-readiness',
+        'compartment-readiness',
         'readiness',
         'readiness',
         projection(),
@@ -85,7 +85,7 @@ function requirePolicy(policies: KubeManifest[], nameFragment: string): KubeMani
 
 async function serializePolicy(policy: KubeManifest): Promise<KubeManifest> {
   const objectApi: CapturingKubernetesObjectApi = new CapturingKubernetesObjectApi(
-    `/apis/networking.k8s.io/v1/namespaces/cpt-readiness/networkpolicies/${policy.metadata?.name ?? ''}`,
+    `/apis/networking.k8s.io/v1/namespaces/compartment-readiness/networkpolicies/${policy.metadata?.name ?? ''}`,
   );
   await applyObject(objectApi, policy, false);
   return JSON.parse(objectApi.body ?? '{}') as KubeManifest;

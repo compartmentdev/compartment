@@ -125,7 +125,17 @@ tests:
         documentIndex: 1
       - matchRegex:
           path: spec.template.spec.initContainers[2].command[2]
-          pattern: http://compartment-caddy-readiness\.cpt-readiness-a5fa5665f16a\.svc:81/
+          pattern: http://compartment-caddy-readiness\.compartment-readiness-a5fa5665f16a\.svc:81/
+        template: caddy.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: spec.template.spec.initContainers[2].command[2]
+          pattern: deadline=.*300
+        template: caddy.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: spec.template.spec.initContainers[2].command[2]
+          pattern: sleep 2
         template: caddy.yaml
         documentIndex: 1
       - equal:
@@ -149,6 +159,6 @@ tests:
         documentIndex: 1
       - matchRegex:
           path: spec.template.spec.initContainers[2].command[2]
-          pattern: http://compartment-platform-with-a-maximum-length-custom-resource-name\.cpt-readiness-a5fa5665f16a\.svc/
+          pattern: http://compartment-platform-with-a-maximum-length-custom-resource-name\.compartment-readiness-a5fa5665f16a\.svc/
         template: caddy.yaml
         documentIndex: 1

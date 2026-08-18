@@ -45,7 +45,7 @@
 {{- end }}
 
 {{- define "compartment.caddyReadinessNamespace" -}}
-{{- printf "cpt-readiness-%s" (printf "%s/%s" .Release.Namespace .Release.Name | sha256sum | trunc 12) -}}
+{{- printf "compartment-readiness-%s" (printf "%s/%s" .Release.Namespace .Release.Name | sha256sum | trunc 12) -}}
 {{- end }}
 
 {{- define "compartment.caddyReadinessService" -}}
