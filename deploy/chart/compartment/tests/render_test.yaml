@@ -253,7 +253,7 @@ tests:
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BUILDKIT_RESOURCES
-          value: '{"limits":{"cpu":"1750m","memory":"5Gi"},"requests":{"cpu":"250m","memory":"5Gi"}}'
+          value: '{"limits":{"cpu":"4","memory":"5Gi"},"requests":{"cpu":"2","memory":"5Gi"}}'
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_PROJECT_CONTAINER_DEFAULTS
