@@ -26,7 +26,7 @@ Add `--verbose` to show Cosign, ORAS, and checksum diagnostics during installati
 
 Use a fresh x86_64 VM with systemd, cgroup v2, sudo access, a public IPv4 address, and at least 40 GiB free storage.
 Ubuntu 24.04 LTS is tested; for the platform and already-built applications, use at least 2 vCPU, 8 GiB memory, and 50 GiB free storage. A 4 GiB host no longer fits.
-For source builds, use 4 vCPU, 16 GiB memory, and 80 GiB storage for one concurrent build; add 6 GiB memory for each additional build.
+For source builds, use 4 vCPU, 16 GiB memory, and 80 GiB storage for one concurrent build; add 2 vCPU and 6 GiB memory for each additional build.
 Ports 80 and 443 must be available and reachable. Compartment never changes port 22 or cloud security-group rules.
 
 The installer blocks Kubernetes API, etcd, kubelet, and overlay ports on the public interface with persistent,

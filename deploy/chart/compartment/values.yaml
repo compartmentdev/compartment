@@ -324,8 +324,9 @@ resources:
   # buildkit.dataSizeLimit plus the other 1Gi of tmpfs workspace. The worker refuses to start when
   # they no longer cover that workspace plus 1Gi of BuildKit, runner, and Sentry process memory.
   buildkit:
-    requests: { cpu: 250m, memory: 5Gi }
-    limits: { cpu: 1750m, memory: 5Gi }
+    # Reserve sustained build throughput while allowing CPU-heavy extraction and compilation to burst.
+    requests: { cpu: '2', memory: 5Gi }
+    limits: { cpu: '4', memory: 5Gi }
   buildRunner:
     requests: { cpu: 100m, memory: 1Gi }
     limits: { cpu: 250m, memory: 1Gi }
