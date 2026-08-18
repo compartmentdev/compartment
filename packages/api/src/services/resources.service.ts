@@ -83,13 +83,13 @@ export async function getResourceForPrincipal(input: ResourceActionInput): Promi
 }
 
 export async function startResourceForPrincipal(input: ResourceActionInput): Promise<ResourceLookupResult> {
-  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
+  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input, 'project.lifecycle.write');
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
   return { ...context, resource: await reconcileKubernetesResourceReplicas(context, resource, 1) };
 }
 
 export async function bootstrapResourceForPrincipal(input: ResourceActionInput): Promise<ResourceLookupResult> {
-  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
+  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input, 'project.lifecycle.write');
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
   if (resource.expectedClaimsJson !== '[]') {
     throw createResourceConflictError(`Resource "${resource.name}" is already bootstrapped.`);
@@ -99,7 +99,7 @@ export async function bootstrapResourceForPrincipal(input: ResourceActionInput):
 }
 
 export async function stopResourceForPrincipal(input: ResourceActionInput): Promise<ResourceLookupResult> {
-  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
+  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input, 'project.lifecycle.write');
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
   const stopped: ProjectResourceRow = await withResourceOperationLocks(
     [resource.id],
@@ -115,7 +115,7 @@ export async function stopResourceForPrincipal(input: ResourceActionInput): Prom
 }
 
 export async function deleteResourceForPrincipal(input: ResourceDeleteInput): Promise<ResourceDeleteResult> {
-  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
+  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input, 'project.delete');
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
   const volumes: ResourceVolumeSummary[] = parseResourceVolumes(resource);
   const deletedData: boolean = await deleteKubernetesResource(context, resource, input.body.deleteData === true);

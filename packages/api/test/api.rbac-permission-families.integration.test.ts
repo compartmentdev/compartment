@@ -4,6 +4,14 @@ import {
   accessGroupResponseSchema,
   accessRoleListResponseSchema,
   accessRoleResponseSchema,
+  buildCompartmentResourceBackupCollectionPathname,
+  buildCompartmentResourceBackupRestorePathname,
+  buildCompartmentResourceBackupShowPathname,
+  buildCompartmentResourceBootstrapPathname,
+  buildCompartmentResourcePathname,
+  buildCompartmentResourceRestorePathname,
+  buildCompartmentResourceStartPathname,
+  buildCompartmentResourceStopPathname,
   buildCompartmentProjectApiPathname,
   buildCompartmentProjectArchiveApiPathname,
   compartmentAssignmentsPathname,
@@ -21,6 +29,7 @@ import {
   resourceLogsResponseSchema,
   resourceOutputResponseSchema,
   resourceResponseSchema,
+  resourceRestoreConfirmation,
   gitHubProviderBootstrapResponseSchema,
   gitSourceListResponseSchema,
   projectReadResponseSchema,
@@ -28,6 +37,9 @@ import {
   type DeploymentRunLogsResponse,
   type DeployResponse,
   type ProductLogIngestEvent,
+  type ResourceDeleteRequest,
+  type ResourceRestoreAsRequest,
+  type ResourceRestoreRequest,
   type InstallResponse,
 } from '@compartment/contracts';
 import { immutableKubeName, kubeResourceServiceDns } from '@compartment/utils';
@@ -86,8 +98,96 @@ interface IdRow {
   id: string;
 }
 
+type ResourceOperationPermission = 'deployment.create' | 'project.delete' | 'project.lifecycle.write';
+
+interface ResourceOperationRequest {
+  method: 'DELETE' | 'GET' | 'POST';
+  payload?: ResourceDeleteRequest | ResourceRestoreAsRequest | ResourceRestoreRequest | undefined;
+  requiredPermission: ResourceOperationPermission;
+  url: string;
+}
+
+interface ResourceOperationAllowedScope {
+  environmentName: string;
+  permission: ResourceOperationPermission;
+  suffix: string;
+}
+
 const harness: RbacTestHarness = createRbacTestHarness('api_rbac_permission_families_integration');
 const app: ApiApp = createApp({ config: harness.apiConfig, pool: harness.pool });
+
+function buildResourceOperationRequests(environmentName: string): ResourceOperationRequest[] {
+  const resourceName: string = 'postgres';
+  const backupId: string = 'bkp_missing';
+  const targetQuery: string = `?projectName=billing&environmentName=${encodeURIComponent(environmentName)}`;
+
+  return [
+    {
+      method: 'POST',
+      requiredPermission: 'project.lifecycle.write',
+      url: `${buildCompartmentResourceStartPathname(resourceName)}${targetQuery}`,
+    },
+    {
+      method: 'POST',
+      requiredPermission: 'project.lifecycle.write',
+      url: `${buildCompartmentResourceBootstrapPathname(resourceName)}${targetQuery}`,
+    },
+    {
+      method: 'POST',
+      requiredPermission: 'project.lifecycle.write',
+      url: `${buildCompartmentResourceStopPathname(resourceName)}${targetQuery}`,
+    },
+    {
+      method: 'DELETE',
+      payload: { deleteData: false },
+      requiredPermission: 'project.delete',
+      url: `${buildCompartmentResourcePathname(resourceName)}${targetQuery}`,
+    },
+    {
+      method: 'POST',
+      requiredPermission: 'deployment.create',
+      url: `${buildCompartmentResourceBackupCollectionPathname(resourceName)}${targetQuery}`,
+    },
+    {
+      method: 'GET',
+      requiredPermission: 'deployment.create',
+      url: `${buildCompartmentResourceBackupCollectionPathname(resourceName)}${targetQuery}`,
+    },
+    {
+      method: 'GET',
+      requiredPermission: 'deployment.create',
+      url: `${buildCompartmentResourceBackupShowPathname(backupId)}${targetQuery}`,
+    },
+    {
+      method: 'POST',
+      payload: { backupId, confirmation: resourceRestoreConfirmation },
+      requiredPermission: 'deployment.create',
+      url: `${buildCompartmentResourceRestorePathname(resourceName)}${targetQuery}`,
+    },
+    {
+      method: 'POST',
+      payload: { targetResourceName: 'restored-postgres' },
+      requiredPermission: 'deployment.create',
+      url: `${buildCompartmentResourceBackupRestorePathname(backupId)}${targetQuery}`,
+    },
+  ];
+}
+
+async function expectResourceOperationStatuses(
+  requests: ResourceOperationRequest[],
+  statusCode: number,
+): Promise<void> {
+  for (const request of requests) {
+    const response: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders('restricted-session'),
+      method: request.method,
+      ...(request.payload === undefined ? {} : { payload: request.payload }),
+      url: request.url,
+    });
+
+    expect(response.statusCode, `${request.method} ${request.url}`).toBe(statusCode);
+  }
+}
 
 describe('rbac permission-family integration', (): void => {
   beforeAll(async (): Promise<void> => {
@@ -451,6 +551,95 @@ describe('rbac permission-family integration', (): void => {
       'connection-url',
     ]);
     expect(JSON.stringify(accessEvents)).not.toContain(expectedConnectionUrl);
+  });
+
+  it('enforces nearest environment permissions for resource operations', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    await seedProject(harness, {
+      id: 'prj_resource_denied',
+      name: 'billing',
+      organizationId: installPayload.organization.id,
+    });
+    await seedEnvironment(harness, {
+      id: 'env_resource_denied',
+      name: 'production',
+      projectId: 'prj_resource_denied',
+    });
+    await seedMemberSession(harness, {
+      email: 'restricted@example.com',
+      organizationId: installPayload.organization.id,
+      principalId: 'prn_restricted',
+      sessionToken: 'restricted-session',
+    });
+    await seedCustomRole(harness, {
+      id: 'rol_resource_org_operator',
+      name: 'Resource Organization Operator',
+      organizationId: installPayload.organization.id,
+      permissionKeys: ['deployment.create', 'project.delete', 'project.lifecycle.write'],
+    });
+    await seedAssignment(harness, {
+      id: 'asg_resource_org_operator',
+      organizationId: installPayload.organization.id,
+      roleId: 'rol_resource_org_operator',
+      scopeId: installPayload.organization.id,
+      scopeType: 'organization',
+      subjectId: 'prn_restricted',
+      subjectType: 'principal',
+    });
+    await seedCustomRole(harness, {
+      id: 'rol_resource_environment_reader',
+      name: 'Resource Environment Reader',
+      organizationId: installPayload.organization.id,
+      permissionKeys: ['environment.read'],
+    });
+    await seedAssignment(harness, {
+      id: 'asg_resource_environment_reader',
+      organizationId: installPayload.organization.id,
+      roleId: 'rol_resource_environment_reader',
+      scopeId: 'env_resource_denied',
+      scopeType: 'environment',
+      subjectId: 'prn_restricted',
+      subjectType: 'principal',
+    });
+
+    const allowedScopes: ResourceOperationAllowedScope[] = [
+      { environmentName: 'lifecycle', permission: 'project.lifecycle.write', suffix: 'lifecycle' },
+      { environmentName: 'delete', permission: 'project.delete', suffix: 'delete' },
+      { environmentName: 'backups', permission: 'deployment.create', suffix: 'backups' },
+    ];
+    for (const scope of allowedScopes) {
+      const environmentId: string = `env_resource_${scope.suffix}`;
+      const roleId: string = `rol_resource_${scope.suffix}`;
+      await seedEnvironment(harness, {
+        id: environmentId,
+        name: scope.environmentName,
+        projectId: 'prj_resource_denied',
+      });
+      await seedCustomRole(harness, {
+        id: roleId,
+        name: `Resource ${scope.environmentName}`,
+        organizationId: installPayload.organization.id,
+        permissionKeys: [scope.permission],
+      });
+      await seedAssignment(harness, {
+        id: `asg_resource_${scope.suffix}`,
+        organizationId: installPayload.organization.id,
+        roleId,
+        scopeId: environmentId,
+        scopeType: 'environment',
+        subjectId: 'prn_restricted',
+        subjectType: 'principal',
+      });
+    }
+
+    await expectResourceOperationStatuses(buildResourceOperationRequests('production'), 403);
+
+    for (const scope of allowedScopes) {
+      const requests: ResourceOperationRequest[] = buildResourceOperationRequests(scope.environmentName).filter(
+        (request: ResourceOperationRequest): boolean => request.requiredPermission === scope.permission,
+      );
+      await expectResourceOperationStatuses(requests, 404);
+    }
   });
 
   it('hides explicit deployment run logs without log-read permission', async (): Promise<void> => {
