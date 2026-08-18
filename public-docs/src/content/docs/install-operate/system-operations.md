@@ -21,9 +21,10 @@ Install the current verified stable CLI before updating:
 curl -fsSL https://compartment.dev/install.sh | sh
 ```
 
-Before updating an operator-owned cluster, use Kubernetes 1.35 or newer, or enable `ImageVolume=true` on
-kube-apiserver and every eligible kubelet. The update fails before Helm if the server-side capability probe loses
-the image volume or its mount. Compartment does not upgrade operator-owned clusters.
+Before updating an operator-owned cluster, use Kubernetes 1.35 or newer, or enable `ImageVolume=true` on the API
+server, every eligible kubelet, and every autoscaler or machine-template bootstrap path. The update fails before Helm
+if the API prunes the image volume or if any current Ready schedulable node cannot mount it. Compartment does not
+upgrade operator-owned clusters.
 
 The organization quota release supports clean installations only. It does not retrofit quota state onto organizations
 from an older installation; install it on a new database instead of using `system update` for that cutover.

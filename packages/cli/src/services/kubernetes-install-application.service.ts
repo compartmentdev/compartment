@@ -45,6 +45,7 @@ import {
   type KubernetesSandboxRuntimeClassNames,
 } from './kubernetes-sandbox-runtime-values.service';
 import { readKubernetesChartValues } from './kubernetes-chart-values.service';
+import { verifyKubernetesImageVolumeRuntime } from './kubernetes-image-volume-preflight.service';
 
 export async function installIntoKubernetes(
   input: KubernetesInstallApplicationInput,
@@ -66,6 +67,7 @@ async function runCanonicalPreflight(
       chartFullname: deploymentInput.chartFullname,
       install: input,
     });
+    await verifyKubernetesImageVolumeRuntime(input);
     const runtimeClassNames: KubernetesSandboxRuntimeClassNames = await resolveInstallSandboxRuntimes(deploymentInput);
     reportSandboxRuntimeVerification(input, await inspectSandboxRuntime(input, runtimeClassNames.tenant));
     reportSandboxRuntimeVerification(input, await inspectSandboxRuntime(input, runtimeClassNames.build));

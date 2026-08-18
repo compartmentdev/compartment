@@ -28,7 +28,10 @@ import type { KubernetesOperatorTarget } from './kubernetes-operator.service.typ
 import type { KubernetesSystemUpdateInput } from './kubernetes-system-lifecycle.service.types';
 import { buildKubernetesPlatformImageVersionValues } from './kubernetes-platform-version.service';
 import { readKubernetesHelmReleaseStatus, readKubernetesPlatformWorkloads } from './kubernetes-system-status.service';
-import { assertKubernetesImageVolumeCapability } from './kubernetes-image-volume-preflight.service';
+import {
+  assertKubernetesImageVolumeCapability,
+  verifyKubernetesImageVolumeRuntime,
+} from './kubernetes-image-volume-preflight.service';
 
 const helmUpdateTimeout: string = '15m';
 const rolloutTimeout: string = '10m';
@@ -56,6 +59,7 @@ export async function updateKubernetesSystem(
   input: KubernetesSystemUpdateInput,
 ): Promise<KubernetesSystemUpdateResponse> {
   await assertKubernetesImageVolumeCapability(input);
+  await verifyKubernetesImageVolumeRuntime(input);
   const materializedDirectory: string = await createKubernetesInstallMaterializedDirectory();
   try {
     await applyMaterializedKubernetesUpdate(input, materializedDirectory);

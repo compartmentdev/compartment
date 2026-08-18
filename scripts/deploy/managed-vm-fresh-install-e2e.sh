@@ -17,32 +17,41 @@ cleanup() {
     --namespace default \
     --ignore-not-found \
     --wait=false >/dev/null 2>&1 || true
+  sudo k3s kubectl delete pod/compartment-image-volume-e2e \
+    --namespace default \
+    --ignore-not-found \
+    --wait=false >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
 render_image_volume_probe() {
   cat <<'EOF'
-apiVersion: batch/v1
-kind: Job
+apiVersion: v1
+kind: Pod
 metadata:
   name: compartment-image-volume-e2e
   namespace: default
 spec:
-  template:
-    spec:
-      restartPolicy: Never
-      containers:
-        - name: probe
-          image: registry.k8s.io/pause:3.10.1
-          volumeMounts:
-            - name: image-volume
-              mountPath: /image
-              readOnly: true
-      volumes:
+  automountServiceAccountToken: false
+  restartPolicy: Never
+  containers:
+    - name: probe
+      image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+      command: [sh, -c]
+      args: [sleep 300]
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: [ALL]
+      volumeMounts:
         - name: image-volume
-          image:
-            reference: registry.k8s.io/pause:3.10.1
-            pullPolicy: IfNotPresent
+          mountPath: /image
+          readOnly: true
+  volumes:
+    - name: image-volume
+      image:
+        reference: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        pullPolicy: IfNotPresent
 EOF
 }
 
@@ -87,11 +96,15 @@ sudo grep --fixed-strings --line-regexp --quiet -- '  - "feature-gates=ImageVolu
 sudo systemctl is-active --quiet k3s.service
 sudo k3s kubectl wait node --all --for=condition=Ready --timeout=5m
 
-image_volume_reference="$(render_image_volume_probe | sudo k3s kubectl create --dry-run=server --filename=- --output=jsonpath='{.spec.template.spec.volumes[?(@.name=="image-volume")].image.reference}')"
-test "${image_volume_reference}" = 'registry.k8s.io/pause:3.10.1'
+image_volume_reference="$(render_image_volume_probe | sudo k3s kubectl create --dry-run=server --filename=- --output=jsonpath='{.spec.volumes[?(@.name=="image-volume")].image.reference}')"
+test "${image_volume_reference}" = 'postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777'
 
-image_volume_mount="$(render_image_volume_probe | sudo k3s kubectl create --dry-run=server --filename=- --output=jsonpath='{.spec.template.spec.containers[?(@.name=="probe")].volumeMounts[?(@.name=="image-volume")].mountPath}')"
+image_volume_mount="$(render_image_volume_probe | sudo k3s kubectl create --dry-run=server --filename=- --output=jsonpath='{.spec.containers[?(@.name=="probe")].volumeMounts[?(@.name=="image-volume")].mountPath}')"
 test "${image_volume_mount}" = '/image'
+
+render_image_volume_probe | sudo k3s kubectl apply --filename=-
+sudo k3s kubectl wait pod/compartment-image-volume-e2e --for=condition=Ready --timeout=5m
+sudo k3s kubectl exec pod/compartment-image-volume-e2e -- test -f /image/etc/os-release
 
 sudo /usr/local/bin/runsc --version | grep -q "${expected_gvisor_version}"
 sudo grep --fixed-strings --quiet 'file-access-mounts = "exclusive"' /etc/containerd/runsc-build.toml

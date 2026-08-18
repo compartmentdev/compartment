@@ -131,7 +131,8 @@ The operator must provide:
 - local `helm` version 4.0.0 or newer and `kubectl` version 1.30.0 or newer on `PATH`, with the `kubectl` client
   compatible with the target Kubernetes server;
 - Kubernetes 1.35 or newer, or a Kubernetes version with `ImageVolume=true` on kube-apiserver and every eligible
-  kubelet; the installer verifies that the API preserves the image volume and mount with a server-side dry-run;
+  kubelet; the installer verifies API preservation with a server-side dry-run and a real mount on every current Ready
+  schedulable node. Operator-owned autoscaler and machine templates must enable the same gate for every future node;
 - a working kube context;
 - permissions required by the Helm release and project bootstrap model;
 - an installed and ready Ingress Controller with an IngressClass;
