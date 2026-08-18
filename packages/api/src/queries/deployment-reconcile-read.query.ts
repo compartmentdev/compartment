@@ -39,6 +39,7 @@ interface ReconcileSelection extends SelectedFields {
   image: typeof buildArtifacts.imageRef;
   organizationId: typeof organizations.id;
   organizationName: typeof organizations.name;
+  projectIsolationVersion: typeof projectKubeProvisioning.isolationVersion;
   projectId: typeof projects.id;
   projectName: typeof projects.name;
   resolvedPortsJson: typeof deployments.resolvedPortsJson;
@@ -208,6 +209,7 @@ function reconcileSelection(): ReconcileSelection {
     image: buildArtifacts.imageRef,
     organizationId: organizations.id,
     organizationName: organizations.name,
+    projectIsolationVersion: projectKubeProvisioning.isolationVersion,
     projectId: projects.id,
     projectName: projects.name,
     resolvedPortsJson: deployments.resolvedPortsJson,

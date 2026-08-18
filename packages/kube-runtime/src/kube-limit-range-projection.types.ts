@@ -1,5 +1,6 @@
 export interface KubeLimitRangeResources {
   cpu: string;
+  'ephemeral-storage': string;
   memory: string;
 }
 

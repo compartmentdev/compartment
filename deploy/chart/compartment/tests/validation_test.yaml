@@ -309,6 +309,59 @@ tests:
       - failedTemplate:
           errorPattern: resources.buildRunner.limits.memory.*pattern
 
+  - it: rejects malformed project ephemeral-storage values through the split schema
+    set:
+      resources:
+        projectQuota:
+          limitsEphemeralStorage: eight-gibibytes
+    asserts:
+      - failedTemplate:
+          errorPattern: resources.projectQuota.limitsEphemeralStorage.*pattern
+
+  - it: rejects an unbounded project ephemeral-storage exponent through the values schema
+    set:
+      resources:
+        projectQuota:
+          limitsEphemeralStorage: 1e999999999
+    asserts:
+      - failedTemplate:
+          errorPattern: resources.projectQuota.limitsEphemeralStorage.*pattern
+
+  - it: rejects a project ephemeral-storage quantity above the worker arithmetic range
+    set:
+      resources:
+        projectQuota:
+          limitsEphemeralStorage: '9223372036854775808'
+    asserts:
+      - failedTemplate:
+          errorPattern: resources.projectQuota.limitsEphemeralStorage.*allOf
+
+  - it: rejects an overflowing binary project ephemeral-storage quantity
+    set:
+      resources:
+        projectQuota:
+          limitsEphemeralStorage: 8Ei
+    asserts:
+      - failedTemplate:
+          errorPattern: resources.projectQuota.limitsEphemeralStorage.*allOf
+
+  - it: accepts the maximum project ephemeral-storage quantity
+    set:
+      resources:
+        projectQuota:
+          limitsEphemeralStorage: '9223372036854775807'
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: keeps project ephemeral storage out of organization quota
+    set:
+      resources:
+        organizationQuota:
+          limitsEphemeralStorage: 8Gi
+    asserts:
+      - failedTemplate:
+          errorPattern: resources.organizationQuota.*additional properties
+
   - it: accepts a platform memory request below its limit
     set:
       resources:

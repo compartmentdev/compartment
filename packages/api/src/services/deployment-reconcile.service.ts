@@ -140,6 +140,7 @@ function createProjection(
     namespaceId: row.projectId,
     organizationId: row.organizationId,
     organizationName: row.organizationName,
+    projectIsolationVersion: row.projectIsolationVersion,
     projectId: row.projectId,
     projectName: row.projectName,
     ...projectionBehavior(row),

@@ -308,6 +308,8 @@ function validEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_MAX_CONCURRENT_BUILDS_PER_ORGANIZATION: '1',
     COMPARTMENT_ORGANIZATION_QUOTA:
       '{"requestsCpu":"2","requestsMemory":"2Gi","limitsCpu":"8","limitsMemory":"8Gi","requestsStorage":"20Gi"}',
+    COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
+      '{"limit":{"cpu":"1","ephemeral-storage":"1Gi","memory":"512Mi"},"request":{"cpu":"50m","ephemeral-storage":"1Gi","memory":"512Mi"}}',
     COMPARTMENT_API_INTERNAL_HOST: '127.0.0.1',
     COMPARTMENT_API_PORT: '9443',
     COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY: 'registry-signing-key-with-at-least-32-characters',

@@ -64,8 +64,8 @@ describe('shipped project resource contract', (): void => {
       spec: {
         limits: [
           {
-            default: { cpu: '1', memory: '512Mi' },
-            defaultRequest: { cpu: '50m', memory: '512Mi' },
+            default: { cpu: '1', 'ephemeral-storage': '1Gi', memory: '512Mi' },
+            defaultRequest: { cpu: '50m', 'ephemeral-storage': '1Gi', memory: '512Mi' },
             type: 'Container',
           },
         ],
@@ -94,9 +94,11 @@ describe('shipped project resource contract', (): void => {
           'count/serviceaccounts': '10',
           'count/services': '50',
           'limits.cpu': '8',
+          'limits.ephemeral-storage': '9Gi',
           'limits.memory': '8Gi',
           pods: '50',
           'requests.cpu': '2',
+          'requests.ephemeral-storage': '9Gi',
           'requests.memory': '8Gi',
           'requests.storage': '20Gi',
         },

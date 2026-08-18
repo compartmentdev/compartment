@@ -49,6 +49,7 @@ describe('Kubernetes manifest projection goldens', (): void => {
         namespaceId: 'prj-01jz',
         organizationId: 'org-01jz',
         organizationName: 'Acme',
+        projectIsolationVersion: 3,
         projectId: 'prj-01jz',
         projectName: 'Checkout',
         readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
@@ -122,6 +123,19 @@ describe('Kubernetes manifest projection goldens', (): void => {
       secret.metadata?.annotations?.['compartment.dev/checksum'],
     );
     expect(spec.template.metadata.annotations['compartment.dev/secret-checksum']).toMatch(/^[a-f0-9]{64}$/);
+    expect(spec.template.metadata.annotations['compartment.dev/project-isolation-version']).toBe('3');
+  });
+
+  it('changes the pod template when the project isolation version advances', (): void => {
+    const current: DeploymentSpec = deploymentForRow(applicationRow({})).spec as DeploymentSpec;
+    const upgraded: DeploymentSpec = deploymentForRow({
+      ...applicationRow({}),
+      projectIsolationVersion: 4,
+    }).spec as DeploymentSpec;
+
+    expect(current.template.metadata.annotations['compartment.dev/project-isolation-version']).toBe('3');
+    expect(upgraded.template.metadata.annotations['compartment.dev/project-isolation-version']).toBe('4');
+    expect(upgraded.template.spec).toEqual(current.template.spec);
   });
 
   it('makes restricted workload escape fields unavailable and pins the project ServiceAccount', (): void => {
@@ -319,6 +333,7 @@ function applicationRow(env: Readonly<Record<string, string>>): ApplicationProje
     namespaceId: 'prj-01jz',
     organizationId: 'org-01jz',
     organizationName: 'Generated',
+    projectIsolationVersion: 3,
     projectId: 'prj-01jz',
     projectName: 'Generated',
     readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },

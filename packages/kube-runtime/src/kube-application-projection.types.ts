@@ -55,6 +55,7 @@ export interface ApplicationProjectionRow {
   namespaceId: string;
   organizationId: string;
   organizationName: string;
+  projectIsolationVersion: number;
   projectId: string;
   projectName: string;
   readiness: ApplicationReadinessConfig | null;

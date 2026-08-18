@@ -63,7 +63,7 @@ describe('readProjectProvisionerConfig', (): void => {
         readProjectProvisionerConfig({
           ...projectProvisionerEnvironment(),
           COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
-            '{"request":{"cpu":"50m","memory":"not-a-quantity"},"limit":{"cpu":"1","memory":"1Gi"}}',
+            '{"request":{"cpu":"50m","ephemeral-storage":"256Mi","memory":"not-a-quantity"},"limit":{"cpu":"1","ephemeral-storage":"2Gi","memory":"1Gi"}}',
         }),
     ).toThrow(
       'COMPARTMENT_PROJECT_CONTAINER_DEFAULTS request.memory must be a valid non-negative Kubernetes quantity.',
@@ -74,12 +74,12 @@ describe('readProjectProvisionerConfig', (): void => {
     const config: ProjectProvisionerConfig = readProjectProvisionerConfig({
       ...projectProvisionerEnvironment(),
       COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
-        '{"request":{"cpu":"+50m","memory":"1Gi"},"limit":{"cpu":"1","memory":"+1Gi"}}',
+        '{"request":{"cpu":"+50m","ephemeral-storage":"+256Mi","memory":"1Gi"},"limit":{"cpu":"1","ephemeral-storage":"+2Gi","memory":"+1Gi"}}',
     });
 
     expect(config.resourceConfiguration.containerDefaults).toEqual({
-      limit: { cpu: '1', memory: '+1Gi' },
-      request: { cpu: '+50m', memory: '1Gi' },
+      limit: { cpu: '1', 'ephemeral-storage': '+2Gi', memory: '+1Gi' },
+      request: { cpu: '+50m', 'ephemeral-storage': '+256Mi', memory: '1Gi' },
     });
   });
 
@@ -89,7 +89,7 @@ describe('readProjectProvisionerConfig', (): void => {
         readProjectProvisionerConfig({
           ...projectProvisionerEnvironment(),
           COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
-            '{"request":{"cpu":"1501m","memory":"256Mi"},"limit":{"cpu":"1.5","memory":"1Gi"}}',
+            '{"request":{"cpu":"1501m","ephemeral-storage":"256Mi","memory":"256Mi"},"limit":{"cpu":"1.5","ephemeral-storage":"2Gi","memory":"1Gi"}}',
         }),
     ).toThrow('COMPARTMENT_PROJECT_CONTAINER_DEFAULTS request.cpu must not exceed limit.cpu.');
     expect(
@@ -97,7 +97,7 @@ describe('readProjectProvisionerConfig', (): void => {
         readProjectProvisionerConfig({
           ...projectProvisionerEnvironment(),
           COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
-            '{"request":{"cpu":"50m","memory":"1025Mi"},"limit":{"cpu":"1","memory":"1Gi"}}',
+            '{"request":{"cpu":"50m","ephemeral-storage":"256Mi","memory":"1025Mi"},"limit":{"cpu":"1","ephemeral-storage":"2Gi","memory":"1Gi"}}',
         }),
     ).toThrow('COMPARTMENT_PROJECT_CONTAINER_DEFAULTS request.memory must not exceed limit.memory.');
   });
@@ -106,13 +106,60 @@ describe('readProjectProvisionerConfig', (): void => {
     const config: ProjectProvisionerConfig = readProjectProvisionerConfig({
       ...projectProvisionerEnvironment(),
       COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
-        '{"request":{"cpu":"50m","memory":"256Mi"},"limit":{"cpu":"1","memory":"512Mi"}}',
+        '{"request":{"cpu":"50m","ephemeral-storage":"256Mi","memory":"256Mi"},"limit":{"cpu":"1","ephemeral-storage":"2Gi","memory":"512Mi"}}',
     });
 
     expect(config.resourceConfiguration.containerDefaults).toEqual({
-      limit: { cpu: '1', memory: '512Mi' },
-      request: { cpu: '50m', memory: '256Mi' },
+      limit: { cpu: '1', 'ephemeral-storage': '2Gi', memory: '512Mi' },
+      request: { cpu: '50m', 'ephemeral-storage': '256Mi', memory: '256Mi' },
     });
+  });
+
+  it('rejects invalid and over-limit ephemeral-storage values at the canonical field path', (): void => {
+    expect(
+      (): ProjectProvisionerConfig =>
+        readProjectProvisionerConfig({
+          ...projectProvisionerEnvironment(),
+          COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
+            '{"request":{"cpu":"50m","ephemeral-storage":"invalid","memory":"256Mi"},"limit":{"cpu":"1","ephemeral-storage":"2Gi","memory":"512Mi"}}',
+        }),
+    ).toThrow(
+      'COMPARTMENT_PROJECT_CONTAINER_DEFAULTS request.ephemeral-storage must be a valid non-negative Kubernetes quantity.',
+    );
+    expect(
+      (): ProjectProvisionerConfig =>
+        readProjectProvisionerConfig({
+          ...projectProvisionerEnvironment(),
+          COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
+            '{"request":{"cpu":"50m","ephemeral-storage":"3Gi","memory":"256Mi"},"limit":{"cpu":"1","ephemeral-storage":"2Gi","memory":"512Mi"}}',
+        }),
+    ).toThrow(
+      'COMPARTMENT_PROJECT_CONTAINER_DEFAULTS request.ephemeral-storage must not exceed limit.ephemeral-storage.',
+    );
+    expect(
+      (): ProjectProvisionerConfig =>
+        readProjectProvisionerConfig({
+          ...projectProvisionerEnvironment(),
+          COMPARTMENT_PROJECT_QUOTA:
+            '{"requestsCpu":"2","requestsEphemeralStorage":"invalid","requestsMemory":"2Gi","limitsCpu":"8","limitsEphemeralStorage":"8Gi","limitsMemory":"8Gi","requestsStorage":"20Gi"}',
+        }),
+    ).toThrow('COMPARTMENT_PROJECT_QUOTA requestsEphemeralStorage must be a valid non-negative Kubernetes quantity.');
+    expect(
+      (): ProjectProvisionerConfig =>
+        readProjectProvisionerConfig({
+          ...projectProvisionerEnvironment(),
+          COMPARTMENT_PROJECT_QUOTA:
+            '{"requestsCpu":"2","requestsEphemeralStorage":"8Gi","requestsMemory":"2Gi","limitsCpu":"8","limitsEphemeralStorage":"1e999999999","limitsMemory":"8Gi","requestsStorage":"20Gi"}',
+        }),
+    ).toThrow('COMPARTMENT_PROJECT_QUOTA limitsEphemeralStorage must be a valid non-negative Kubernetes quantity.');
+    expect(
+      (): ProjectProvisionerConfig =>
+        readProjectProvisionerConfig({
+          ...projectProvisionerEnvironment(),
+          COMPARTMENT_PROJECT_QUOTA:
+            '{"requestsCpu":"2","requestsEphemeralStorage":"9Gi","requestsMemory":"2Gi","limitsCpu":"8","limitsEphemeralStorage":"8Gi","limitsMemory":"8Gi","requestsStorage":"20Gi"}',
+        }),
+    ).toThrow('COMPARTMENT_PROJECT_QUOTA requestsEphemeralStorage must not exceed limitsEphemeralStorage.');
   });
 
   it('rejects project requests that exceed their quota limits', (): void => {
@@ -121,7 +168,7 @@ describe('readProjectProvisionerConfig', (): void => {
         readProjectProvisionerConfig({
           ...projectProvisionerEnvironment(),
           COMPARTMENT_PROJECT_QUOTA:
-            '{"requestsCpu":"2","requestsMemory":"2Gi","limitsCpu":"1500m","limitsMemory":"3Gi","requestsStorage":"20Gi"}',
+            '{"requestsCpu":"2","requestsEphemeralStorage":"2Gi","requestsMemory":"2Gi","limitsCpu":"1500m","limitsEphemeralStorage":"8Gi","limitsMemory":"3Gi","requestsStorage":"20Gi"}',
         }),
     ).toThrow('COMPARTMENT_PROJECT_QUOTA requestsCpu must not exceed limitsCpu.');
     expect(
@@ -129,7 +176,7 @@ describe('readProjectProvisionerConfig', (): void => {
         readProjectProvisionerConfig({
           ...projectProvisionerEnvironment(),
           COMPARTMENT_PROJECT_QUOTA:
-            '{"requestsCpu":"2","requestsMemory":"2Gi","limitsCpu":"8","limitsMemory":"1536Mi","requestsStorage":"20Gi"}',
+            '{"requestsCpu":"2","requestsEphemeralStorage":"2Gi","requestsMemory":"2Gi","limitsCpu":"8","limitsEphemeralStorage":"8Gi","limitsMemory":"1536Mi","requestsStorage":"20Gi"}',
         }),
     ).toThrow('COMPARTMENT_PROJECT_QUOTA requestsMemory must not exceed limitsMemory.');
   });
@@ -138,9 +185,9 @@ describe('readProjectProvisionerConfig', (): void => {
     const config: ProjectProvisionerConfig = readProjectProvisionerConfig({
       ...projectProvisionerEnvironment(),
       COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
-        '{"request":{"cpu":"1e0","memory":"1024Mi"},"limit":{"cpu":"1","memory":"1Gi"}}',
+        '{"request":{"cpu":"1e0","ephemeral-storage":"1024Mi","memory":"1024Mi"},"limit":{"cpu":"1","ephemeral-storage":"1Gi","memory":"1Gi"}}',
       COMPARTMENT_PROJECT_QUOTA:
-        '{"requestsCpu":"1000m","requestsMemory":"1024Mi","limitsCpu":"1","limitsMemory":"1Gi","requestsStorage":"20Gi"}',
+        '{"requestsCpu":"1000m","requestsEphemeralStorage":"1024Mi","requestsMemory":"1024Mi","limitsCpu":"1","limitsEphemeralStorage":"1Gi","limitsMemory":"1Gi","requestsStorage":"20Gi"}',
     });
 
     expect(config.resourceConfiguration.quota.limitsMemory).toBe('1Gi');
@@ -187,9 +234,9 @@ function projectProvisionerEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_PLATFORM_NAMESPACE: 'compartment',
     COMPARTMENT_PROJECT_PROVISIONER_IMAGE: 'registry.internal/compartment-worker@sha256:worker',
     COMPARTMENT_PROJECT_CONTAINER_DEFAULTS:
-      '{"request":{"cpu":"50m","memory":"512Mi"},"limit":{"cpu":"1","memory":"512Mi"}}',
+      '{"request":{"cpu":"50m","ephemeral-storage":"1Gi","memory":"512Mi"},"limit":{"cpu":"1","ephemeral-storage":"1Gi","memory":"512Mi"}}',
     COMPARTMENT_PROJECT_QUOTA:
-      '{"requestsCpu":"2","requestsMemory":"2Gi","limitsCpu":"8","limitsMemory":"8Gi","requestsStorage":"20Gi"}',
+      '{"requestsCpu":"2","requestsEphemeralStorage":"8Gi","requestsMemory":"2Gi","limitsCpu":"8","limitsEphemeralStorage":"8Gi","limitsMemory":"8Gi","requestsStorage":"20Gi"}',
     COMPARTMENT_PROVISIONING_NAMESPACE: 'compartment-project-provisioning',
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-token',
     COMPARTMENT_WORKER_POLL_INTERVAL_MS: '1000',

@@ -61,8 +61,8 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].resources
           value:
-            requests: { cpu: 50m, memory: 512Mi }
-            limits: { cpu: '1', memory: 512Mi }
+            requests: { cpu: 50m, ephemeral-storage: 1Gi, memory: 512Mi }
+            limits: { cpu: '1', ephemeral-storage: 1Gi, memory: 512Mi }
         template: capacity-headroom.yaml
       - equal:
           path: spec.template.spec.containers[0].image
@@ -89,8 +89,8 @@ tests:
       platform.startupStage: full
       sandboxRuntime.runtimeClassName: tenant-sandbox
       resources.projectContainerDefaults:
-        request: { cpu: 125m, memory: 384Mi }
-        limit: { cpu: 500m, memory: 384Mi }
+        request: { cpu: 125m, ephemeral-storage: 128Mi, memory: 384Mi }
+        limit: { cpu: 500m, ephemeral-storage: 1Gi, memory: 384Mi }
     asserts:
       - equal:
           path: spec.template.spec.runtimeClassName
@@ -99,8 +99,8 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].resources
           value:
-            requests: { cpu: 125m, memory: 384Mi }
-            limits: { cpu: 500m, memory: 384Mi }
+            requests: { cpu: 125m, ephemeral-storage: 128Mi, memory: 384Mi }
+            limits: { cpu: 500m, ephemeral-storage: 1Gi, memory: 384Mi }
         template: capacity-headroom.yaml
 
   - it: omits tenant capacity headroom during foundation startup

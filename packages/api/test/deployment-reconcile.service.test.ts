@@ -122,6 +122,7 @@ function pair(): DeploymentReconcilePair {
       resourceEndpoints: [{ port: 5432, resourceId: 'res-db', timeoutMs: 30_000 }],
       organizationId: 'org-1',
       organizationName: 'Acme',
+      projectIsolationVersion: 3,
       projectId: 'prj-1',
       projectName: 'app',
       resolvedPortsJson: '[8080,9090]',

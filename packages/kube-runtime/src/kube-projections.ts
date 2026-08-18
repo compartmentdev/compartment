@@ -105,7 +105,11 @@ function deploymentSpec(
     strategy: { rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }, type: 'RollingUpdate' },
     template: {
       metadata: {
-        annotations: { ...context.annotations, 'compartment.dev/secret-checksum': secretChecksum(row.env) },
+        annotations: {
+          ...context.annotations,
+          'compartment.dev/project-isolation-version': row.projectIsolationVersion.toString(),
+          'compartment.dev/secret-checksum': secretChecksum(row.env),
+        },
         labels: { ...context.workloadLabels, 'compartment.dev/deployment-id': row.deploymentId },
       },
       spec: applicationPodSpec(row),

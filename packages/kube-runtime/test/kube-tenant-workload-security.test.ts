@@ -224,6 +224,7 @@ function applicationRow(): ApplicationProjectionRow {
     namespaceId: 'project',
     organizationId: 'organization',
     organizationName: 'Organization',
+    projectIsolationVersion: 3,
     projectId: 'project',
     projectName: 'Project',
     readiness: null,

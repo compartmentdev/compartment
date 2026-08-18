@@ -1,4 +1,6 @@
 import { kubeResourceQuotaName } from './kube-naming';
+import { addKubernetesQuantities } from './kube-quantity';
+import type { ProjectContainerDefaults } from './kube-limit-range-projection.types';
 import type { KubeResourceQuotaSpec, ProjectQuota } from './kube-resource-quota-projection.types';
 import type { KubeManifest } from './kube-runtime.types';
 
@@ -19,13 +21,22 @@ export function projectResourceQuotaManifest(
   namespaceId: string,
   projectId: string,
   quota: ProjectQuota,
+  containerDefaults: ProjectContainerDefaults,
 ): KubeManifest {
   const spec: KubeResourceQuotaSpec = {
     hard: {
       ...projectObjectQuota,
       'limits.cpu': quota.limitsCpu,
+      'limits.ephemeral-storage': addKubernetesQuantities(
+        quota.limitsEphemeralStorage,
+        containerDefaults.limit['ephemeral-storage'],
+      ),
       'limits.memory': quota.limitsMemory,
       'requests.cpu': quota.requestsCpu,
+      'requests.ephemeral-storage': addKubernetesQuantities(
+        quota.requestsEphemeralStorage,
+        containerDefaults.request['ephemeral-storage'],
+      ),
       'requests.memory': quota.requestsMemory,
       'requests.storage': quota.requestsStorage,
     },

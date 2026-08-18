@@ -8,6 +8,7 @@ export interface DeploymentReconcileRow {
   image: string | null;
   organizationId: string;
   organizationName: string;
+  projectIsolationVersion: number;
   projectId: string;
   projectName: string;
   resolvedPortsJson: string;

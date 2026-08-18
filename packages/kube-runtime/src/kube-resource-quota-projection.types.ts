@@ -4,8 +4,10 @@ export interface KubeResourceQuotaSpec {
 
 export interface ProjectQuota {
   limitsCpu: string;
+  limitsEphemeralStorage: string;
   limitsMemory: string;
   requestsCpu: string;
+  requestsEphemeralStorage: string;
   requestsMemory: string;
   requestsStorage: string;
 }

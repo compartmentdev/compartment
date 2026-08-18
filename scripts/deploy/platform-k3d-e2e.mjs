@@ -309,7 +309,7 @@ function renderHighAvailabilityValues(highAvailability) {
 }
 
 function renderE2eTenantResourceValues() {
-  return `resources:\n  projectQuota:\n    requestsCpu: '10'\n    requestsMemory: 10Gi\n    limitsCpu: '20'\n    limitsMemory: 20Gi\n    requestsStorage: 100Gi\n  organizationQuota:\n    requestsCpu: '20'\n    requestsMemory: 20Gi\n    limitsCpu: '20'\n    limitsMemory: 20Gi\n    requestsStorage: 100Gi\n`;
+  return `resources:\n  projectQuota:\n    requestsCpu: '10'\n    requestsEphemeralStorage: 10Gi\n    requestsMemory: 10Gi\n    limitsCpu: '20'\n    limitsEphemeralStorage: 20Gi\n    limitsMemory: 20Gi\n    requestsStorage: 100Gi\n  organizationQuota:\n    requestsCpu: '20'\n    requestsMemory: 20Gi\n    limitsCpu: '20'\n    limitsMemory: 20Gi\n    requestsStorage: 100Gi\n`;
 }
 function renderPlatformImageValues(imageDigestsByServiceName) {
   const imageValues = platformK3dServiceNames

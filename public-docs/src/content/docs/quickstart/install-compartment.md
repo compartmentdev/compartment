@@ -142,21 +142,33 @@ The value is saved on each project when that project is created. Changing it lat
 explicit service `accessMode` in `compartment.yml` overrides the saved project default. This controls hosted app
 access, not project permissions or RBAC.
 
-Tenant CPU, memory, and storage budgets are installation values. The defaults reserve and cap each container at
-512Mi of memory, request 50m CPU, and retain a 1 CPU hard limit. Each project and organization has matching 8 GiB
-memory request and limit budgets, a 2 CPU request budget, an 8 CPU limit, and 20 GiB of requested storage. The matching memory values admit at
+Tenant CPU, memory, ephemeral storage, and PVC storage budgets are installation values. The defaults reserve and cap
+each container at 512Mi of memory, request 50m CPU with a 1 CPU limit, and request and limit 1Gi of ephemeral storage.
+Each project has matching 8Gi steady-state ephemeral-storage request and limit budgets. Each project and
+organization has matching 8Gi memory request and limit budgets, a 2 CPU request budget, an 8 CPU limit, and 20Gi of
+requested PVC storage. The matching memory values admit at
 up to 16 default containers by memory without scheduling them more densely than their possible memory use. The 8 CPU
 limit remains binding at eight default containers overall. Override the values together when sizing tenant capacity:
+
+Ephemeral storage includes container writable layers, container logs, and disk-backed `emptyDir` volumes. A Pod can
+be evicted when it exceeds its limit. `requestsStorage` is separate and continues to budget PVC requests.
+
+The managed tenant-node baseline has about 134.9Gi of allocatable ephemeral storage and admits at most 110 Pods.
+Matching 1Gi requests and limits cap a full-density tenant workload at 110Gi, leaving about 24.9Gi (18.5%) for
+system and kubelet use. The project hard quota is 9Gi after one container's shared headroom is added. This avoids
+ephemeral-storage overcommit in the default admission model; lower requests or higher limits weaken that guarantee.
 
 ```yaml
 resources:
   projectContainerDefaults:
-    request: { cpu: 75m, memory: 512Mi }
-    limit: { cpu: '1', memory: 512Mi }
+    request: { cpu: 75m, ephemeral-storage: 1Gi, memory: 512Mi }
+    limit: { cpu: '1', ephemeral-storage: 1Gi, memory: 512Mi }
   projectQuota:
     requestsCpu: '3'
+    requestsEphemeralStorage: 12Gi
     requestsMemory: 12Gi
     limitsCpu: '12'
+    limitsEphemeralStorage: 12Gi
     limitsMemory: 12Gi
     requestsStorage: 30Gi
   organizationQuota:
@@ -167,14 +179,28 @@ resources:
     requestsStorage: 40Gi
 ```
 
-Organization quota changes are applied by periodic reconciliation. This release advances the project isolation
-revision, so a system upgrade requeues every existing managed project after its organization quota is ready and
-server-side-applies the current project quota and container defaults. Later value-only changes require a newer
-isolation revision to requeue projects that already completed this revision. Application capacity is constrained by
+The Kubernetes project hard quota adds one container's configured ephemeral-storage default to these steady-state
+values. This bounded disk-only headroom is shared admission capacity, not a reserved rollout slot or physical node
+reservation. Keep it unused for rolling replacement. CPU, memory, organization Capsule, and PVC storage quotas do
+not receive surge headroom.
+
+Ephemeral-storage quotas remain project-local; they are not part of the organization Capsule quota. Before upgrading
+an installation with resource overrides, include
+application and resource containers and verify that their post-migration CPU, memory, and ephemeral-storage totals fit
+the configured steady-state project and organization values. Raise those values first if they do not; the disk-only
+headroom is added automatically. CPU and memory quotas are unchanged. A single-replica application cannot roll when
+the existing application and resource Pods already consume either compute quota, or when another workload has used
+the shared ephemeral hard-quota headroom: admitting a replacement is rejected, while deleting the old Pod first would
+cause downtime. Compartment leaves the old available Pod running until all relevant project and organization quotas
+admit the replacement; inspect the Deployment's Kubernetes conditions and events for the quota rejection. Stateful
+resource workloads and their PVCs are not recreated by this migration. The namespace LimitRange gives every newly
+admitted database/resource container the same ephemeral-storage defaults for its writable layer and logs; persistent
+database data remains on its PVC and is accounted only by `requests.storage`. Later value-only changes do not
+retroactively update projects that already completed this migration. Application capacity is constrained by
 configured resource and object-count quotas and by workload requests and limits; there is no separate application-count
 value. Project object-count quotas remain fixed.
 
-The configured CPU and memory requests must not exceed their limits. The worker and project provisioner reject
+The configured CPU, memory, and ephemeral-storage requests must not exceed their limits. The worker and project provisioner reject
 invalid Kubernetes quantities and requests above their limits. Lowering a memory request below its limit permits
 overcommit: the scheduler can admit more memory than the node has, and under pressure the kernel may kill a
 neighbouring application or PostgreSQL.
