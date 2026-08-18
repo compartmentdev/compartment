@@ -123,10 +123,9 @@ must not be empty.
 ## High availability
 
 The chart runs `api`, `edge`, `caddy`, `worker`, and `project-provisioner` with one replica by default. Each Deployment
-uses a rolling update with `maxUnavailable: 0` and a soft `kubernetes.io/hostname` topology spread constraint. Caddy
-always has a `minAvailable: 1` PodDisruptionBudget; the other components receive one when more than one replica is
-configured. The soft constraint preserves support for single-node clusters; multiple schedulable nodes are required
-for node-failure tolerance.
+uses a rolling update with `maxUnavailable: 0`, a `minAvailable: 1` PodDisruptionBudget when more than one replica is
+configured, and a soft `kubernetes.io/hostname` topology spread constraint. The soft constraint preserves support for
+single-node clusters; multiple schedulable nodes are required for node-failure tolerance.
 
 API source archives are stored in PostgreSQL so either API replica can complete an in-flight deployment.
 Authentication and app-access sessions are PostgreSQL-backed; edge resolves app-session cookies through the shared
@@ -136,8 +135,10 @@ set to one replica.
 
 Caddy is an internal HTTP proxy and has no persistent storage or certificate material. A replacement Caddy Pod does
 not start until an init container reaches a chart-owned target through a Service and the same
-namespace-and-Pod-selected ingress policy used by tenant applications. Together with zero unavailable replicas and
-the Caddy disruption budget, this keeps the previous proxy serving while a policy controller admits the new Pod IP.
+namespace-and-Pod-selected ingress policy used by tenant applications. Together with zero unavailable replicas this
+keeps the previous proxy serving while a policy controller admits the new Pod IP. The proof is bounded: after five
+minutes the replacement starts anyway and logs the failure, so an unavailable readiness target can delay a rollout but
+never wedge an install or update.
 Ingress and cert-manager own platform TLS certificates and Secrets.
 
 Worker and project-provisioner use separate namespaced Kubernetes Leases so only one replica claims or reconciles

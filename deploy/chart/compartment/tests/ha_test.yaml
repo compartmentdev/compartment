@@ -109,18 +109,8 @@ tests:
         template: caddy.yaml
         documentIndex: 1
       - hasDocuments:
-          count: 1
+          count: 0
         template: pdb.yaml
-      - equal:
-          path: metadata.name
-          value: compartment-caddy
-        template: pdb.yaml
-        documentIndex: 0
-      - equal:
-          path: spec.minAvailable
-          value: 1
-        template: pdb.yaml
-        documentIndex: 0
 
   - it: renders disruption budgets when high availability is enabled
     set:

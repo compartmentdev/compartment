@@ -2,7 +2,7 @@
 {{- if eq $installState.effective.platform.startupStage "full" -}}
 {{- range $component := list "api" "edge" "caddy" "worker" "projectProvisioner" -}}
 {{- $replicas := int (dig "replicas" 1 (get $.Values $component)) -}}
-{{- if or (gt $replicas 1) (eq $component "caddy") }}
+{{- if gt $replicas 1 }}
 {{ $labelComponent := ternary "project-provisioner" $component (eq $component "projectProvisioner") }}
 ---
 apiVersion: policy/v1

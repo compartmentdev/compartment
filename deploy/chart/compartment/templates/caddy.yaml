@@ -80,8 +80,8 @@ spec:
                 fi
                 sleep 2
               done
-              echo 'Caddy tenant path was not proven within five minutes' >&2
-              exit 1
+              echo 'Caddy tenant path was not proven within five minutes; starting anyway' >&2
+              exit 0
           securityContext:
             {{- include "compartment.containerSecurityContext" . | nindent 12 }}
             runAsUser: 1000
