@@ -28,6 +28,7 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
+      maxSurge: 1
       maxUnavailable: 0
   selector:
     matchLabels:
@@ -62,6 +63,24 @@ spec:
             {{- toYaml .Values.resources.caddyInit | nindent 12 }}
           volumeMounts:
             - {name: executable, mountPath: /work}
+        - name: prove-tenant-path
+          image: {{ include "compartment.image" .Values.images.caddy }}
+          imagePullPolicy: {{ .Values.images.caddy.pullPolicy }}
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              wget -q -T 1 -O /dev/null {{ printf "http://%s.%s.svc/" (include "compartment.caddyReadinessService" .) (include "compartment.caddyReadinessNamespace" .) }}
+              if wget -q -T 1 -O /dev/null {{ printf "http://%s.%s.svc:81/" (include "compartment.caddyReadinessService" .) (include "compartment.caddyReadinessNamespace" .) }}; then
+                echo 'Caddy tenant-path sentinel is reachable before default-deny enforcement' >&2
+                exit 1
+              fi
+          securityContext:
+            {{- include "compartment.containerSecurityContext" . | nindent 12 }}
+            runAsUser: 1000
+            runAsGroup: 1000
+          resources:
+            {{- toYaml .Values.resources.caddyInit | nindent 12 }}
       containers:
         - name: caddy
           image: {{ include "compartment.image" .Values.images.caddy }}

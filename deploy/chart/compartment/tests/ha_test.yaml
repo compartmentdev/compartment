@@ -9,7 +9,7 @@ release:
   name: compartment
   namespace: default
 tests:
-  - it: renders one replica and no disruption budgets by default
+  - it: renders one replica and preserves the Caddy disruption budget by default
     set:
       platform: &fullPlatform
         startupStage: full
@@ -55,6 +55,11 @@ tests:
       - equal:
           path: spec.strategy.rollingUpdate.maxUnavailable
           value: 0
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.strategy.rollingUpdate.maxSurge
+          value: 1
         template: caddy.yaml
         documentIndex: 1
       - equal:
@@ -104,8 +109,18 @@ tests:
         template: caddy.yaml
         documentIndex: 1
       - hasDocuments:
-          count: 0
+          count: 1
         template: pdb.yaml
+      - equal:
+          path: metadata.name
+          value: compartment-caddy
+        template: pdb.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.minAvailable
+          value: 1
+        template: pdb.yaml
+        documentIndex: 0
 
   - it: renders disruption budgets when high availability is enabled
     set:

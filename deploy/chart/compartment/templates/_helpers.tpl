@@ -44,6 +44,14 @@
 {{- printf "%s-registry-auth.%s.svc" (include "compartment.fullname" .) .Release.Namespace -}}
 {{- end }}
 
+{{- define "compartment.caddyReadinessNamespace" -}}
+{{- printf "cpt-readiness-%s" (printf "%s/%s" .Release.Namespace .Release.Name | sha256sum | trunc 12) -}}
+{{- end }}
+
+{{- define "compartment.caddyReadinessService" -}}
+{{- printf "%s-caddy-readiness" (include "compartment.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
 {{- define "compartment.registryStorageBackend" -}}
 {{- dig "storage" "backend" "pvc" .Values.registry -}}
 {{- end }}

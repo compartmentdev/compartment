@@ -122,10 +122,11 @@ must not be empty.
 
 ## High availability
 
-The chart runs `api`, `edge`, `caddy`, `worker`, and `project-provisioner` with one replica by default. Each Deployment uses a rolling update with
-`maxUnavailable: 0`, a `minAvailable: 1` PodDisruptionBudget when more than one replica is configured, and a soft
-`kubernetes.io/hostname` topology spread constraint. The soft constraint preserves support for single-node clusters;
-multiple schedulable nodes are required for node-failure tolerance.
+The chart runs `api`, `edge`, `caddy`, `worker`, and `project-provisioner` with one replica by default. Each Deployment
+uses a rolling update with `maxUnavailable: 0` and a soft `kubernetes.io/hostname` topology spread constraint. Caddy
+always has a `minAvailable: 1` PodDisruptionBudget; the other components receive one when more than one replica is
+configured. The soft constraint preserves support for single-node clusters; multiple schedulable nodes are required
+for node-failure tolerance.
 
 API source archives are stored in PostgreSQL so either API replica can complete an in-flight deployment.
 Authentication and app-access sessions are PostgreSQL-backed; edge resolves app-session cookies through the shared
@@ -133,8 +134,11 @@ API contract, while each edge replica independently refreshes its route and auth
 snapshots and the optional API audit file sink are package-local recovery features and require their component to be
 set to one replica.
 
-Caddy is an internal HTTP proxy and has no persistent storage or certificate material. Ingress and cert-manager own
-platform TLS certificates and Secrets.
+Caddy is an internal HTTP proxy and has no persistent storage or certificate material. A replacement Caddy Pod does
+not start until an init container reaches a chart-owned target through a Service and the same
+namespace-and-Pod-selected ingress policy used by tenant applications. Together with zero unavailable replicas and
+the Caddy disruption budget, this keeps the previous proxy serving while a policy controller admits the new Pod IP.
+Ingress and cert-manager own platform TLS certificates and Secrets.
 
 Worker and project-provisioner use separate namespaced Kubernetes Leases so only one replica claims or reconciles
 work. Lease duration, renew deadline, and retry period default to 15 seconds, 10 seconds, and 2 seconds respectively;

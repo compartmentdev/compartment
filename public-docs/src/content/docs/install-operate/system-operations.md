@@ -38,6 +38,11 @@ compartment system update \
 The command verifies the target images, updates the Helm release, runs database migrations, and waits for platform
 readiness. Your cluster, ingress controller, storage system, and node lifecycle remain operator-owned.
 
+During an update, replacement application proxies remain unready until they can reach a policy-protected readiness
+target through the same Service path used by hosted applications. Kubernetes therefore keeps the previous proxy
+serving while the cluster network-policy controller admits each replacement, preventing that convergence delay from
+becoming tenant-facing 502 responses.
+
 An update re-reads the defaults of the chart shipped with the CLI you run, so a release picks up defaults that
 changed since it was installed. The `system domain` commands rewrite the same release and behave the same way.
 Values you set stay yours: anything from your `--values` file, or set on an earlier install or update, is reapplied
