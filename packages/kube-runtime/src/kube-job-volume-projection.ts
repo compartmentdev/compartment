@@ -1,4 +1,9 @@
-import type { KubeJobConfigMapVolume, KubeJobEmptyDirVolume, KubeJobSpec } from './kube-job-spec.types';
+import type {
+  KubeJobConfigMapVolume,
+  KubeJobEmptyDirVolume,
+  KubeJobImageVolume,
+  KubeJobSpec,
+} from './kube-job-spec.types';
 import type { KubePodVolume } from './kube-runtime.types';
 import type { KubeJobVolumeMount, KubeVolumeMount } from './kube-volume.types';
 
@@ -28,7 +33,20 @@ export function kubeJobVolumes(spec: KubeJobSpec): KubePodVolume[] {
         name,
       }),
     ) ?? [];
-  return [...persistentVolumes, ...configMaps, ...emptyDirectories, ...(kubeApiAccess === null ? [] : [kubeApiAccess])];
+  const images: KubePodVolume[] =
+    spec.imageVolumes?.map(
+      (volume: KubeJobImageVolume): KubePodVolume => ({
+        image: { pullPolicy: volume.pullPolicy, reference: volume.reference },
+        name: volume.name,
+      }),
+    ) ?? [];
+  return [
+    ...persistentVolumes,
+    ...configMaps,
+    ...emptyDirectories,
+    ...images,
+    ...(kubeApiAccess === null ? [] : [kubeApiAccess]),
+  ];
 }
 
 function kubeApiAccessVolume(spec: KubeJobSpec): KubePodVolume | null {

@@ -9,10 +9,12 @@ type ImportOriginalManagedVmStateService = () => Promise<typeof ManagedVmStateSe
 interface LifecycleMocks {
   acquireLock: Mock;
   assertFileOwnership: Mock;
+  completeBuildRuntimeMigration: Mock;
   completeUpdate: Mock;
   digest: Mock;
   execa: Mock;
   persistUpdate: Mock;
+  prepareBuildRuntimeMigration: Mock;
   readState: Mock;
   verifyComponents: Mock;
   verifySandbox: Mock;
@@ -22,10 +24,12 @@ const mocks: LifecycleMocks = vi.hoisted(
   (): LifecycleMocks => ({
     acquireLock: vi.fn(),
     assertFileOwnership: vi.fn(),
+    completeBuildRuntimeMigration: vi.fn(),
     completeUpdate: vi.fn(),
     digest: vi.fn(),
     execa: vi.fn(),
     persistUpdate: vi.fn(),
+    prepareBuildRuntimeMigration: vi.fn(),
     readState: vi.fn(),
     verifyComponents: vi.fn(),
     verifySandbox: vi.fn(),
@@ -62,6 +66,13 @@ vi.mock(
   (): Record<string, Mock> => ({ verifyManagedVmSandboxRuntime: mocks.verifySandbox }),
 );
 vi.mock(
+  '../src/services/managed-vm-build-runtime-migration.service',
+  (): Record<string, Mock> => ({
+    completeManagedVmBuildRuntimeMigration: mocks.completeBuildRuntimeMigration,
+    prepareManagedVmBuildRuntimeMigration: mocks.prepareBuildRuntimeMigration,
+  }),
+);
+vi.mock(
   '../src/services/managed-vm-state.service',
   async (importOriginal: ImportOriginalManagedVmStateService): Promise<typeof ManagedVmStateService> => {
     const actual: typeof ManagedVmStateService = await importOriginal();
@@ -82,11 +93,22 @@ describe('managed VM lifecycle ownership', (): void => {
     mocks.execa.mockResolvedValue({ exitCode: 0, stderr: '', stdout: '' });
     mocks.readState.mockResolvedValue(state);
     mocks.digest.mockImplementation((value: string): string =>
-      value.includes('"metadataVersion":2') ? 'previous-metadata' : 'metadata',
+      value.includes('"metadataVersion":4') || value.includes('"metadataVersion":5') ? 'previous-metadata' : 'metadata',
     );
     mocks.persistUpdate.mockImplementation(
       async (current: ManagedVmProvisionerState, update: ManagedVmUpdateState): Promise<ManagedVmProvisionerState> =>
         await Promise.resolve({ ...current, update }),
+    );
+    mocks.prepareBuildRuntimeMigration.mockResolvedValue(false);
+    mocks.completeBuildRuntimeMigration.mockImplementation(
+      async (current: ManagedVmProvisionerState): Promise<ManagedVmProvisionerState> =>
+        await Promise.resolve({
+          ...current,
+          metadataDigest: 'metadata',
+          ownedPaths: managedVmOwnedPaths,
+          releaseMetadata: managedVmReleaseMetadata,
+          resolvedArtifacts: managedVmReleaseMetadata.artifacts,
+        }),
     );
     mocks.completeUpdate.mockImplementation(
       async (current: ManagedVmProvisionerState, update: ManagedVmUpdateState): Promise<ManagedVmProvisionerState> =>
@@ -152,6 +174,26 @@ describe('managed VM lifecycle ownership', (): void => {
     expect(mocks.execa).not.toHaveBeenCalledWith('k3s', expect.arrayContaining(['etcd-snapshot']), expect.anything());
     expect(updatePlatform).toHaveBeenCalledOnce();
     expect(readPlatformResult).not.toHaveBeenCalled();
+  });
+
+  it('installs and records the build runtime before updating a metadata-v5 platform', async (): Promise<void> => {
+    const previousMetadata = { ...managedVmReleaseMetadata, metadataVersion: 5 as const };
+    mocks.readState.mockResolvedValue({
+      ...state,
+      metadataDigest: 'previous-metadata',
+      ownedPaths: managedVmOwnedPaths.filter((ownedPath): boolean => !ownedPath.path.endsWith('/runsc-build.toml')),
+      releaseMetadata: previousMetadata,
+      resolvedArtifacts: previousMetadata.artifacts,
+    });
+    mocks.prepareBuildRuntimeMigration.mockResolvedValue(true);
+    const updatePlatform: Mock = vi.fn().mockResolvedValue('updated result');
+    const { updateManagedVmInstallation } = await import('../src/services/managed-vm-lifecycle.service');
+
+    await expect(updateManagedVmInstallation(updatePlatform, vi.fn())).resolves.toBe('updated result');
+    expect(mocks.completeBuildRuntimeMigration).toHaveBeenCalledOnce();
+    expect(mocks.completeBuildRuntimeMigration.mock.invocationCallOrder[0]).toBeLessThan(
+      updatePlatform.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('rejects update for an older untrusted runtime state', async (): Promise<void> => {

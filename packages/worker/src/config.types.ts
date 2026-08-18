@@ -34,6 +34,7 @@ export interface WorkerBuildSandboxConfig {
   buildKitConfigMapName: string;
   dataSizeLimit: string;
   gcKeepStorageMb: number;
+  seed: WorkerBuildKitSeedConfig;
   buildKitResources: WorkerBuildResourceRequirements;
   namespace: string;
   runnerResources: WorkerBuildResourceRequirements;
@@ -41,10 +42,16 @@ export interface WorkerBuildSandboxConfig {
   timeoutMs: number;
 }
 
+export interface WorkerBuildKitSeedConfig {
+  image: string;
+  railpackBuilderImage: string;
+  railpackRuntimeImage: string;
+}
+
 /**
  * The build namespace ResourceQuota already requires every build container to declare limits, and
- * the memory limit is what funds the memory-backed build workspace, so the worker requires it and
- * projects the rest of the operator-configured requirements unchanged.
+ * the memory limit funds processes and active workspace page cache, so the worker requires it and projects the rest
+ * of the operator-configured requirements unchanged.
  */
 export interface WorkerBuildResourceRequirements {
   limits: WorkerBuildResourceLimits;

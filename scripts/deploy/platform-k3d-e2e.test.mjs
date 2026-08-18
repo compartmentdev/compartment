@@ -36,6 +36,7 @@ import {
 function createTestImageDigests() {
   return {
     api: `sha256:${'a'.repeat(64)}`,
+    'buildkit-seed': `sha256:${'f'.repeat(64)}`,
     caddy: `sha256:${'d'.repeat(64)}`,
     'dns01-solver': `sha256:${'e'.repeat(64)}`,
     edge: `sha256:${'c'.repeat(64)}`,
@@ -472,12 +473,12 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).toContain('compartment.dev/node-pool: data');
   });
 
-  it('uses one mandatory sandbox runtime contract for builds and tenant workloads', () => {
+  it('uses separate mandatory sandbox runtime contracts for builds and tenant workloads', () => {
     expect(renderPlatformK3dValues(createTestImageDigests())).toContain(
-      'sandboxRuntime:\n  runtimeClassName: compartment-e2e-runc',
+      'sandboxRuntime:\n  buildRuntimeClassName: compartment-e2e-runc-build\n  runtimeClassName: compartment-e2e-runc',
     );
     expect(renderPlatformK3dValues(createTestImageDigests(), true)).toContain(
-      'sandboxRuntime:\n  runtimeClassName: gvisor',
+      'sandboxRuntime:\n  buildRuntimeClassName: gvisor-build\n  runtimeClassName: gvisor',
     );
     expect(renderPlatformK3dValues(createTestImageDigests())).not.toContain('tenantRuntime:');
     expect(renderPlatformK3dValues(createTestImageDigests())).not.toContain('buildkit:\n  runtimeClassName:');

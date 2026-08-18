@@ -317,6 +317,9 @@ describe('build Job credential environment', (): void => {
 
     const spec: KubeJobSpec | undefined = runJob.mock.calls[0]?.[0];
     expect(spec?.configMapVolumes).toEqual([{ configMapName: 'compartment-buildkit', name: 'buildkit-config' }]);
+    expect(spec?.imageVolumes).toEqual([
+      { name: 'buildkit-seed', pullPolicy: 'IfNotPresent', reference: 'compartment-buildkit-seed@sha256:seed' },
+    ]);
     expect(spec?.sidecars?.[0]?.args).toEqual([
       '--addr',
       'tcp://127.0.0.1:1234',
@@ -362,6 +365,8 @@ describe('build Job credential environment', (): void => {
     expect(Object.keys(env).sort((left: string, right: string): number => left.localeCompare(right))).toEqual([
       'BUILDKIT_ADDR',
       'COMPARTMENT_BUILD_JOB_INPUT',
+      'COMPARTMENT_RAILPACK_BUILDER_IMAGE',
+      'COMPARTMENT_RAILPACK_RUNTIME_IMAGE',
       'TMPDIR',
     ]);
   });

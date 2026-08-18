@@ -32,6 +32,8 @@ vi.mock('../src/command-runner', (): object => ({
 
 const digestByImageName: Readonly<Record<string, string>> = Object.freeze({
   api: `sha256:${'a'.repeat(64)}`,
+  buildkitSeed: `sha256:${'0'.repeat(64)}`,
+  'buildkit-seed': `sha256:${'0'.repeat(64)}`,
   caddy: `sha256:${'d'.repeat(64)}`,
   dns01Solver: `sha256:${'e'.repeat(64)}`,
   'dns01-solver': `sha256:${'e'.repeat(64)}`,
@@ -121,6 +123,7 @@ describe('Kubernetes platform image trust', (): void => {
         JSON.stringify({
           images: {
             api: { digest: '', tag: '0.9.2' },
+            buildkitSeed: { digest: '', tag: '0.9.2' },
             caddy: { digest: '', tag: '0.9.2' },
             dns01Solver: { digest: '', tag: '0.9.2' },
             edge: { digest: '', tag: '0.9.2' },
@@ -150,6 +153,7 @@ describe('Kubernetes platform image trust', (): void => {
         },
         images: {
           api: { digest: digestByImageName.api },
+          buildkitSeed: { digest: digestByImageName.buildkitSeed },
           caddy: { digest: digestByImageName.caddy },
           dns01Solver: { digest: digestByImageName.dns01Solver },
           edge: { digest: digestByImageName.edge },
@@ -159,10 +163,10 @@ describe('Kubernetes platform image trust', (): void => {
       const cosignCalls: RunCommandCall[] = mocks.runCommand.mock.calls.filter(
         (call: RunCommandCall): boolean => call[0][1] === 'verify',
       );
-      expect(cosignCalls).toHaveLength(6);
+      expect(cosignCalls).toHaveLength(7);
       expect(cosignCalls[0]?.[0]).toContain('registry.example/compartment-api:sha-release');
-      expect(cosignCalls[1]?.[0].at(-1)).toBe('ghcr.io/compartmentdev/compartment-worker:0.9.2');
-      expect(cosignCalls[5]?.[0]).toEqual(
+      expect(cosignCalls[1]?.[0].at(-1)).toBe('ghcr.io/compartmentdev/compartment-buildkit-seed:0.9.2');
+      expect(cosignCalls[6]?.[0]).toEqual(
         expect.arrayContaining([
           '--new-bundle-format',
           'https://token.actions.githubusercontent.com',
@@ -238,7 +242,7 @@ describe('Kubernetes platform image trust', (): void => {
       ).rejects.toThrow('capsule signature mismatch');
       expect(
         mocks.runCommand.mock.calls.filter((call: RunCommandCall): boolean => call[0][1] === 'verify'),
-      ).toHaveLength(6);
+      ).toHaveLength(7);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
@@ -330,6 +334,7 @@ describe('Kubernetes platform image trust', (): void => {
         },
         images: {
           api: { digest: digestByImageName.api },
+          buildkitSeed: { digest: digestByImageName.buildkitSeed },
           caddy: { digest: digestByImageName.caddy },
           dns01Solver: { digest: digestByImageName.dns01Solver },
           edge: { digest: digestByImageName.edge },
@@ -362,7 +367,7 @@ function createVerificationHandler(): RunCommand {
     const imageName: string | undefined =
       imageRef?.includes('projectcapsule/capsule') === true
         ? 'capsule'
-        : imageRef?.match(/compartment-(api|worker|edge|caddy|dns01-solver)/u)?.[1];
+        : imageRef?.match(/compartment-(api|buildkit-seed|worker|edge|caddy|dns01-solver)/u)?.[1];
     const digest: string | undefined = imageName === undefined ? undefined : digestByImageName[imageName];
     if (digest === undefined) {
       throw new Error(`Unexpected verification command: ${command.join(' ')}`);
@@ -434,6 +439,7 @@ function chartImageValues(): string {
     image: { registry: ghcr.io, repository: projectcapsule/capsule, tag: 'v0.13.11@${digestByImageName.capsule}' }
 images:
   api: { repository: ghcr.io/compartmentdev/compartment-api, tag: latest, digest: '' }
+  buildkitSeed: { repository: ghcr.io/compartmentdev/compartment-buildkit-seed, tag: latest, digest: '' }
   worker: { repository: ghcr.io/compartmentdev/compartment-worker, tag: latest, digest: '' }
   edge: { repository: ghcr.io/compartmentdev/compartment-edge, tag: latest, digest: '' }
   caddy: { repository: ghcr.io/compartmentdev/compartment-caddy, tag: latest, digest: '' }
@@ -457,6 +463,11 @@ function releaseImageValues(): object {
         digest: `sha256:${'e'.repeat(64)}`,
         repository: 'ghcr.io/compartmentdev/compartment-api',
         tag: 'old',
+      },
+      buildkitSeed: {
+        digest: '',
+        repository: 'ghcr.io/compartmentdev/compartment-buildkit-seed',
+        tag: 'latest',
       },
       caddy: { digest: '', repository: 'ghcr.io/compartmentdev/compartment-caddy', tag: 'latest' },
       dns01Solver: {

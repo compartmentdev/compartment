@@ -328,6 +328,13 @@ function buildJobSpec(): KubeJobSpec {
     env: { BUILD_INPUT: 'secret' },
     id: 'art_123',
     image: 'compartment-worker@sha256:runner',
+    imageVolumes: [
+      {
+        name: 'buildkit-seed',
+        pullPolicy: 'IfNotPresent',
+        reference: `compartment-buildkit-seed@sha256:${'a'.repeat(64)}`,
+      },
+    ],
     jobClass: 'build',
     labels: jobLabels,
     namespace,

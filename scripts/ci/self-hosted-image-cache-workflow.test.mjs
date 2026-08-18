@@ -6,6 +6,8 @@ import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
+import { selfHostedRuntimeImageArtifacts } from '../deploy/self-hosted-runtime-services.mjs';
+
 const execFileAsync = promisify(execFile);
 const temporaryDirectories = [];
 const workflowPath = new URL('../../.github/workflows/_self-hosted-image-cache.yml', import.meta.url);
@@ -41,10 +43,10 @@ await writeFile(process.argv[outputIndex + 1], '');
 
     await expect(
       Promise.all(
-        ['api', 'caddy', 'dns01-solver', 'edge', 'worker'].map((service) =>
+        selfHostedRuntimeImageArtifacts.map((service) =>
           readFile(join(workspace, '.compartment', 'self-hosted-image-cache', `${service}.tar`)),
         ),
       ),
-    ).resolves.toHaveLength(5);
+    ).resolves.toHaveLength(selfHostedRuntimeImageArtifacts.length);
   });
 });

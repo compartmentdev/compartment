@@ -13,6 +13,8 @@ metadata:
     {{- include "compartment.labels" . | nindent 4 }}
 data:
   buildkitd.toml: |
+    [worker.oci]
+      snapshotter = "overlayfs"
     [registry."docker.io"]
       mirrors = ["{{ $cacheAddress }}"]
     [registry."{{ $cacheAddress }}"]

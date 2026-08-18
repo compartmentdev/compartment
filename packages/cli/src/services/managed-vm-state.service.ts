@@ -17,7 +17,6 @@ import { managedVmK3sGeneratedOwnedPaths } from './managed-vm-install-paths.serv
 
 export const managedVmStateDirectory: string = '/var/lib/compartment/installer';
 const managedVmStatePath: string = `${managedVmStateDirectory}/state.json`;
-type ManagedVmOwnedPathFilter = (ownedPath: ManagedVmOwnedPath) => boolean;
 export const managedVmOwnedPaths: readonly ManagedVmOwnedPath[] = [
   { path: '/etc/compartment', stage: 'preparing-host' },
   { path: '/etc/compartment/firewall.nft', stage: 'preparing-host' },
@@ -37,6 +36,7 @@ export const managedVmOwnedPaths: readonly ManagedVmOwnedPath[] = [
   { path: managedVmSandboxRuntimePaths.containerdShim, stage: 'installing-sandbox-runtime' },
   { path: managedVmSandboxRuntimePaths.gvisorBinDirectory, stage: 'installing-sandbox-runtime' },
   { path: managedVmSandboxRuntimePaths.runscConfig, stage: 'installing-sandbox-runtime' },
+  { path: managedVmSandboxRuntimePaths.buildRunscConfig, stage: 'installing-sandbox-runtime' },
   {
     path: managedVmSandboxRuntimePaths.containerdTemplate,
     stage: 'installing-sandbox-runtime',
@@ -82,7 +82,7 @@ export async function createManagedVmState(config: string): Promise<ManagedVmPro
     startedAt: now,
     updatedAt: now,
   };
-  await writeStateAtomically(state);
+  await writeManagedVmStateAtomically(state);
   return state;
 }
 
@@ -91,7 +91,7 @@ export async function persistManagedVmUpdate(
   update: ManagedVmUpdateState,
 ): Promise<ManagedVmProvisionerState> {
   const next: ManagedVmProvisionerState = { ...state, update, updatedAt: new Date().toISOString() };
-  await writeStateAtomically(next);
+  await writeManagedVmStateAtomically(next);
   return next;
 }
 
@@ -107,7 +107,7 @@ export async function completeManagedVmReleaseUpdate(
     update,
     updatedAt: new Date().toISOString(),
   };
-  await writeStateAtomically(next);
+  await writeManagedVmStateAtomically(next);
   return next;
 }
 
@@ -137,7 +137,7 @@ export async function persistManagedVmStage(
     ownedFileDigests: { ...state.ownedFileDigests, ...expectedOwnedFileDigests },
     updatedAt: new Date().toISOString(),
   };
-  await writeStateAtomically(next);
+  await writeManagedVmStateAtomically(next);
   return next;
 }
 
@@ -175,7 +175,7 @@ export async function assertManagedVmOwnedFileDigests(state: ManagedVmProvisione
   }
 }
 
-async function writeStateAtomically(state: ManagedVmProvisionerState): Promise<void> {
+export async function writeManagedVmStateAtomically(state: ManagedVmProvisionerState): Promise<void> {
   const temporaryPath: string = `${managedVmStatePath}.${String(process.pid)}.${randomUUID()}.tmp`;
   const handle: FileHandle = await open(temporaryPath, 'wx', 0o600);
   try {
@@ -211,7 +211,7 @@ async function collectManagedVmOwnedFileDigests(
 
 async function collectManagedVmOwnedFileDigestsWhere(
   state: ManagedVmProvisionerState,
-  include: ManagedVmOwnedPathFilter,
+  include: (ownedPath: ManagedVmOwnedPath) => boolean,
 ): Promise<Readonly<Record<string, string>>> {
   const entries: [string, string][] = [];
   for (const ownedPath of state.ownedPaths) {

@@ -94,9 +94,10 @@ function buildKubeJobSpec(config: WorkerBuildConfig, input: RunWorkerBuildJobInp
     command: workerJobCommand(workerJobEntrypoints.build),
     configMapVolumes: [{ configMapName: config.buildSandbox.buildKitConfigMapName, name: 'buildkit-config' }],
     emptyDirVolumes: buildSandboxVolumes(config.buildSandbox),
-    env: buildJobEnvironment(input),
+    env: buildJobEnvironment(config, input),
     id: input.id,
     image: config.workerImage,
+    imageVolumes: [{ name: 'buildkit-seed', pullPolicy: 'IfNotPresent', reference: config.buildSandbox.seed.image }],
     jobClass: 'build',
     labels: { 'compartment.dev/job-class': 'build' },
     namespace: config.buildSandbox.namespace,
@@ -108,13 +109,15 @@ function buildKubeJobSpec(config: WorkerBuildConfig, input: RunWorkerBuildJobInp
   };
 }
 
-function buildJobEnvironment(input: RunWorkerBuildJobInput): Record<string, string> {
+function buildJobEnvironment(config: WorkerBuildConfig, input: RunWorkerBuildJobInput): Record<string, string> {
   return {
     [buildJobInputEnvironmentName]: JSON.stringify(input.build),
     ...('sourceArchiveCredential' in input
       ? { [buildJobCredentialEnvironmentName]: input.sourceArchiveCredential }
       : {}),
     BUILDKIT_ADDR: buildKitAddress,
+    COMPARTMENT_RAILPACK_BUILDER_IMAGE: config.buildSandbox.seed.railpackBuilderImage,
+    COMPARTMENT_RAILPACK_RUNTIME_IMAGE: config.buildSandbox.seed.railpackRuntimeImage,
     TMPDIR: '/tmp',
   };
 }
@@ -131,8 +134,13 @@ function buildKitSidecar(config: WorkerBuildConfig): KubeJobSidecar {
       '--oci-worker-gc-keepstorage',
       String(config.buildSandbox.gcKeepStorageMb),
     ],
-    command: ['/usr/local/bin/buildkitd'],
-    env: { HOME: '/tmp', TMPDIR: '/buildkit-tmp' },
+    command: ['/usr/local/bin/start-seeded-buildkit'],
+    env: {
+      COMPARTMENT_RAILPACK_BUILDER_IMAGE: config.buildSandbox.seed.railpackBuilderImage,
+      COMPARTMENT_RAILPACK_RUNTIME_IMAGE: config.buildSandbox.seed.railpackRuntimeImage,
+      HOME: '/tmp',
+      TMPDIR: '/buildkit-tmp',
+    },
     image: config.workerImage,
     name: 'buildkit',
     resources: config.buildSandbox.buildKitResources,
@@ -141,6 +149,7 @@ function buildKitSidecar(config: WorkerBuildConfig): KubeJobSidecar {
       { mountPath: '/run', name: 'buildkit-run' },
       { mountPath: '/buildkit-tmp', name: 'buildkit-tmp' },
       { mountPath: '/etc/buildkit/buildkitd.toml', name: 'buildkit-config', readOnly: true, subPath: 'buildkitd.toml' },
+      { mountPath: '/var/lib/buildkit-seed', name: 'buildkit-seed', readOnly: true },
     ],
   };
 }

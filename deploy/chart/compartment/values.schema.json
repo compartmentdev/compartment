@@ -272,6 +272,7 @@
       "additionalProperties": false,
       "required": [
         "api",
+        "buildkitSeed",
         "worker",
         "edge",
         "caddy",
@@ -284,6 +285,7 @@
       ],
       "properties": {
         "api": { "$ref": "#/definitions/platformImage" },
+        "buildkitSeed": { "$ref": "#/definitions/platformImage" },
         "worker": { "$ref": "#/definitions/platformImage" },
         "edge": { "$ref": "#/definitions/platformImage" },
         "caddy": { "$ref": "#/definitions/platformImage" },
@@ -757,8 +759,9 @@
     "sandboxRuntime": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["runtimeClassName"],
+      "required": ["buildRuntimeClassName", "runtimeClassName"],
       "properties": {
+        "buildRuntimeClassName": { "type": "string", "minLength": 1 },
         "runtimeClassName": { "type": "string", "minLength": 1 }
       }
     },

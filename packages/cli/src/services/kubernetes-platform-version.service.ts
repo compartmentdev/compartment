@@ -28,5 +28,5 @@ export function readKubernetesPlatformImageTag(value: string): string {
 
 export function buildKubernetesPlatformImageVersionValues(version: string): KubernetesPlatformImageVersionValues {
   const image: KubernetesPlatformImageVersionValue = { digest: '', tag: version };
-  return { images: { api: image, caddy: image, dns01Solver: image, edge: image, worker: image } };
+  return { images: { api: image, buildkitSeed: image, caddy: image, dns01Solver: image, edge: image, worker: image } };
 }

@@ -40,7 +40,10 @@ import {
 } from './kubernetes-operator-issuer-trust.service';
 import { verifyKubernetesSandboxRuntime } from './kubernetes-sandbox-runtime-preflight.service';
 import type { KubernetesSandboxRuntimeVerification } from './kubernetes-sandbox-runtime-preflight.service.types';
-import { resolveKubernetesSandboxRuntimeClassName } from './kubernetes-sandbox-runtime-values.service';
+import {
+  resolveKubernetesSandboxRuntimeClassNames,
+  type KubernetesSandboxRuntimeClassNames,
+} from './kubernetes-sandbox-runtime-values.service';
 import { readKubernetesChartValues } from './kubernetes-chart-values.service';
 
 export async function installIntoKubernetes(
@@ -63,8 +66,9 @@ async function runCanonicalPreflight(
       chartFullname: deploymentInput.chartFullname,
       install: input,
     });
-    const runtimeClassName: string = await resolveInstallSandboxRuntime(deploymentInput);
-    reportSandboxRuntimeVerification(input, await inspectSandboxRuntime(input, runtimeClassName));
+    const runtimeClassNames: KubernetesSandboxRuntimeClassNames = await resolveInstallSandboxRuntimes(deploymentInput);
+    reportSandboxRuntimeVerification(input, await inspectSandboxRuntime(input, runtimeClassNames.tenant));
+    reportSandboxRuntimeVerification(input, await inspectSandboxRuntime(input, runtimeClassNames.build));
   });
 }
 
@@ -102,11 +106,13 @@ async function verifyOperatorCertificateSources(input: KubernetesInstallDeployme
   assertPublicDns01IssuerAssessment(issuerRef, await inspectOperatorIssuer(input, issuerRef));
 }
 
-async function resolveInstallSandboxRuntime(input: KubernetesInstallDeploymentInput): Promise<string> {
+async function resolveInstallSandboxRuntimes(
+  input: KubernetesInstallDeploymentInput,
+): Promise<KubernetesSandboxRuntimeClassNames> {
   const directory: string = await createKubernetesInstallMaterializedDirectory();
   try {
     const material: KubernetesInstallHelmMaterial = await prepareKubernetesInstallHelmMaterial(input, directory);
-    return await resolveKubernetesSandboxRuntimeClassName(
+    return await resolveKubernetesSandboxRuntimeClassNames(
       await readKubernetesChartValues(material.chartPath),
       input.valuesPath,
     );

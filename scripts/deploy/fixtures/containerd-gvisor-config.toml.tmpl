@@ -46,5 +46,13 @@ state = "/run/k3s/containerd"
   TypeUrl = "io.containerd.runsc.v1.options"
   ConfigPath = "/etc/containerd/runsc.toml"
 
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc-build]
+  runtime_type = "io.containerd.runsc.v1"
+  pod_annotations = ["dev.gvisor.spec.mount.*"]
+
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc-build.options]
+  TypeUrl = "io.containerd.runsc.v1.options"
+  ConfigPath = "/etc/containerd/runsc-build.toml"
+
 [plugins.'io.containerd.cri.v1.images'.registry]
   config_path = "/var/lib/rancher/k3s/agent/etc/containerd/certs.d"

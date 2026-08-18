@@ -47,7 +47,7 @@ recovery.
 
 ## Existing Kubernetes
 
-Use this target when your organization already operates Kubernetes 1.30 or newer:
+Use this target when your organization already operates Kubernetes 1.33 or newer:
 
 ```bash
 compartment install --target kubernetes --kube-context production

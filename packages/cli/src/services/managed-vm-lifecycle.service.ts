@@ -15,6 +15,10 @@ import { acquireManagedVmLock } from './managed-vm-lock.service';
 import { managedVmReleaseMetadata } from './managed-vm-release-metadata.service';
 import { isManagedVmUpdateStageComplete } from './managed-vm-stage.service';
 import { verifyManagedVmSandboxRuntime } from './managed-vm-sandbox-runtime.service';
+import {
+  completeManagedVmBuildRuntimeMigration,
+  prepareManagedVmBuildRuntimeMigration,
+} from './managed-vm-build-runtime-migration.service';
 
 export async function getManagedVmSystemStatus(): Promise<ManagedVmSystemStatus> {
   const state: ManagedVmProvisionerState = await requireManagedVmState();
@@ -52,17 +56,35 @@ export async function updateManagedVmInstallation<TResult>(
 
 async function prepareManagedVmUpdate(): Promise<ManagedVmProvisionerState> {
   let state: ManagedVmProvisionerState = await requireManagedVmState();
+  assertOwnedRelease(state);
+  const requiresBuildRuntimeMigration: boolean = await prepareManagedVmBuildRuntimeMigration(state);
+  await assertCurrentManagedVmStateUnlessMigrating(state, requiresBuildRuntimeMigration);
+  state = await beginManagedVmUpdate(state);
+  if (requiresBuildRuntimeMigration) {
+    state = await completeManagedVmBuildRuntimeMigration(state);
+  }
+  return await finishManagedVmUpdatePreparation(state);
+}
+
+async function assertCurrentManagedVmStateUnlessMigrating(
+  state: ManagedVmProvisionerState,
+  migrationRequired: boolean,
+): Promise<void> {
+  if (migrationRequired) {
+    return;
+  }
   assertCurrentManagedVmRelease(state);
   assertOwnedManifest(state);
-  assertOwnedRelease(state);
   await assertManagedVmOwnedFileDigests(state);
-  state = await beginManagedVmUpdate(state);
-  state = await installManagedVmUpdateComponents(state);
-  if (!isManagedVmUpdateStageComplete(requireManagedVmUpdate(state).stage, 'components-installed')) {
+}
+
+async function finishManagedVmUpdatePreparation(state: ManagedVmProvisionerState): Promise<ManagedVmProvisionerState> {
+  const next: ManagedVmProvisionerState = await installManagedVmUpdateComponents(state);
+  if (!isManagedVmUpdateStageComplete(requireManagedVmUpdate(next).stage, 'components-installed')) {
     throw new Error('Managed-VM update has not completed its verified component stage.');
   }
   await verifyManagedVmSandboxRuntime();
-  return state;
+  return next;
 }
 
 async function markManagedVmPlatformUpdated(state: ManagedVmProvisionerState): Promise<ManagedVmProvisionerState> {

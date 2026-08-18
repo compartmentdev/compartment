@@ -27,7 +27,7 @@ describe('sandboxed build Job projection', (): void => {
       ],
       initContainers: [
         {
-          command: ['/usr/local/bin/buildkitd'],
+          command: ['/usr/local/bin/start-seeded-buildkit'],
           image: 'compartment-worker@sha256:runner',
           name: 'buildkit',
           restartPolicy: 'Always',
@@ -78,6 +78,13 @@ describe('sandboxed build Job projection', (): void => {
       { configMap: { name: 'compartment-buildkit' }, name: 'buildkit-config' },
       { emptyDir: { sizeLimit: '3Gi' }, name: 'buildkit-data' },
       { emptyDir: { sizeLimit: '1Gi' }, name: 'tmp' },
+      {
+        image: {
+          pullPolicy: 'IfNotPresent',
+          reference: `compartment-buildkit-seed@sha256:${'a'.repeat(64)}`,
+        },
+        name: 'buildkit-seed',
+      },
     ]);
   });
 
@@ -110,6 +117,13 @@ function buildJobSpec(): KubeJobSpec {
     env: { BUILD_INPUT: 'secret' },
     id: 'art_123',
     image: 'compartment-worker@sha256:runner',
+    imageVolumes: [
+      {
+        name: 'buildkit-seed',
+        pullPolicy: 'IfNotPresent',
+        reference: `compartment-buildkit-seed@sha256:${'a'.repeat(64)}`,
+      },
+    ],
     jobClass: 'build',
     labels: { 'compartment.dev/job-class': 'build' },
     namespace: 'compartment-build',
@@ -118,7 +132,7 @@ function buildJobSpec(): KubeJobSpec {
     sidecars: [
       {
         args: ['--addr', 'tcp://127.0.0.1:1234', '--oci-worker=true'],
-        command: ['/usr/local/bin/buildkitd'],
+        command: ['/usr/local/bin/start-seeded-buildkit'],
         env: { HOME: '/tmp' },
         image: 'compartment-worker@sha256:runner',
         name: 'buildkit',

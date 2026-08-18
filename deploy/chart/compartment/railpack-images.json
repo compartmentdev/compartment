@@ -1,0 +1,4 @@
+{
+  "builder": "ghcr.io/railwayapp/railpack-builder:mise-2026.7.5@sha256:007845e88b6c78b3bf57df7c2379c336589545fa241b047f6389ba2ca0344129",
+  "runtime": "ghcr.io/railwayapp/railpack-runtime:mise-2026.7.5@sha256:122904a97579630033432d6d4652ad4eb8751b9680756a429ebc7d0942222083"
+}

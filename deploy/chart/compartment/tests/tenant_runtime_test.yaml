@@ -25,7 +25,7 @@ tests:
         template: project-provisioner.yaml
       - equal:
           path: data.COMPARTMENT_KUBE_BUILD_SCHEDULING
-          value: '{"nodeSelector":{},"runtimeClassName":"gvisor","tolerations":[]}'
+          value: '{"nodeSelector":{},"runtimeClassName":"gvisor-build","tolerations":[]}'
         template: configmap.yaml
       - notExists:
           path: spec.template.spec.runtimeClassName
@@ -34,9 +34,10 @@ tests:
           path: spec.template.spec.runtimeClassName
         template: api-migrate.yaml
 
-  - it: applies one operator RuntimeClass to both build and tenant workloads
+  - it: applies separate operator RuntimeClasses to build and tenant workloads
     set:
       sandboxRuntime:
+        buildRuntimeClassName: gke-gvisor-build
         runtimeClassName: gke-gvisor
     asserts:
       - contains: &customTenantRuntimeEnv
@@ -49,5 +50,5 @@ tests:
         template: project-provisioner.yaml
       - equal:
           path: data.COMPARTMENT_KUBE_BUILD_SCHEDULING
-          value: '{"nodeSelector":{},"runtimeClassName":"gke-gvisor","tolerations":[]}'
+          value: '{"nodeSelector":{},"runtimeClassName":"gke-gvisor-build","tolerations":[]}'
         template: configmap.yaml
