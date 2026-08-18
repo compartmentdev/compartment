@@ -9,10 +9,12 @@ import {
 } from '@compartment/kube-runtime';
 import { decryptTenantProjection, tenantApplicationProbe } from '../tenant-workload-projections';
 import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
+import {
+  includeRecoveryRestartedAnnotation,
+  recoveryRestartedAnnotation,
+} from './worker-deployment-recovery-annotation';
 import { deploymentFromObjects } from './worker-deployment-reconcile.helpers';
 import { projectProjectNetworkPolicyManifests } from './worker-network-policy.service';
-
-const recoveryRestartedAnnotation: string = 'compartment.dev/recovery-restarted';
 
 interface DeploymentCleanupIdentity {
   labels: Record<string, string>;
@@ -32,17 +34,21 @@ export async function applyApplication(
   scheduling: KubeWorkloadScheduling | undefined,
   workerImage: string,
 ): Promise<KubeDeploymentManifest> {
+  const candidateObjects: KubeManifest[] = projectApplicationObjects(
+    target.candidate,
+    tenantSecretsKek,
+    infrastructureTimeoutMs,
+    scheduling,
+    workerImage,
+  );
+  const applicationObjects: KubeManifest[] = (await readRecoveryRestarted(runtime, target, candidateObjects))
+    ? includeRecoveryRestartedAnnotation(candidateObjects)
+    : candidateObjects;
   return deploymentFromObjects(
     await runtime.apply({
       objects: [
         ...projectProjectNetworkPolicyManifests(target.candidate.projectId, target.networkPolicy),
-        ...projectApplicationObjects(
-          target.candidate,
-          tenantSecretsKek,
-          infrastructureTimeoutMs,
-          scheduling,
-          workerImage,
-        ),
+        ...applicationObjects,
       ],
     }),
   );
@@ -245,19 +251,4 @@ function activeRecoveryObjects(
   return active.deploymentId === candidate.deploymentId
     ? includeRecoveryRestartedAnnotation(activeObjects)
     : activeObjects;
-}
-
-export function includeRecoveryRestartedAnnotation(objects: KubeManifest[]): KubeManifest[] {
-  return objects.map(
-    (object: KubeManifest): KubeManifest =>
-      object.kind === 'Deployment'
-        ? {
-            ...object,
-            metadata: {
-              ...object.metadata,
-              annotations: { ...object.metadata?.annotations, [recoveryRestartedAnnotation]: 'true' },
-            },
-          }
-        : object,
-  );
 }

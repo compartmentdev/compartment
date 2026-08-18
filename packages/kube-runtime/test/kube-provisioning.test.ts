@@ -180,8 +180,8 @@ describe('project namespace bootstrap provisioning', (): void => {
       spec: {
         limits: [
           {
-            default: { cpu: '1', memory: '512Mi' },
-            defaultRequest: { cpu: '50m', memory: '512Mi' },
+            default: { cpu: '1', 'ephemeral-storage': '1Gi', memory: '512Mi' },
+            defaultRequest: { cpu: '50m', 'ephemeral-storage': '1Gi', memory: '512Mi' },
             type: 'Container',
           },
         ],
@@ -210,9 +210,11 @@ describe('project namespace bootstrap provisioning', (): void => {
           'count/serviceaccounts': '10',
           'count/services': '50',
           'limits.cpu': '8',
+          'limits.ephemeral-storage': '9Gi',
           'limits.memory': '8Gi',
           pods: '50',
           'requests.cpu': '2',
+          'requests.ephemeral-storage': '9Gi',
           'requests.memory': '8Gi',
           'requests.storage': '20Gi',
         },
@@ -228,14 +230,16 @@ describe('project namespace bootstrap provisioning', (): void => {
   it('projects operator overrides without changing object counters', async (): Promise<void> => {
     const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow('prj-overridden'), {
       containerDefaults: {
-        limit: { cpu: '750m', memory: '768Mi' },
-        request: { cpu: '75m', memory: '384Mi' },
+        limit: { cpu: '750m', 'ephemeral-storage': '3Gi', memory: '512Mi' },
+        request: { cpu: '75m', 'ephemeral-storage': '384Mi', memory: '512Mi' },
       },
       quota: {
         limitsCpu: '12',
-        limitsMemory: '12Gi',
+        limitsEphemeralStorage: '12Gi',
+        limitsMemory: '1Gi',
         requestsCpu: '3',
-        requestsMemory: '3Gi',
+        requestsEphemeralStorage: '3Gi',
+        requestsMemory: '1Gi',
         requestsStorage: '30Gi',
       },
     });
@@ -248,7 +252,12 @@ describe('project namespace bootstrap provisioning', (): void => {
 
     expect(await serializeManifestOnTheWire(limitRange)).toMatchObject({
       spec: {
-        limits: [{ default: { cpu: '750m', memory: '768Mi' }, defaultRequest: { cpu: '75m', memory: '384Mi' } }],
+        limits: [
+          {
+            default: { cpu: '750m', 'ephemeral-storage': '3Gi', memory: '512Mi' },
+            defaultRequest: { cpu: '75m', 'ephemeral-storage': '384Mi', memory: '512Mi' },
+          },
+        ],
       },
     });
     expect(await serializeManifestOnTheWire(quota)).toMatchObject({
@@ -256,7 +265,11 @@ describe('project namespace bootstrap provisioning', (): void => {
         hard: {
           'count/services': '50',
           'limits.cpu': '12',
-          'requests.memory': '3Gi',
+          'limits.ephemeral-storage': '15Gi',
+          'limits.memory': '1Gi',
+          'requests.cpu': '3',
+          'requests.ephemeral-storage': '3456Mi',
+          'requests.memory': '1Gi',
           'requests.storage': '30Gi',
         },
       },

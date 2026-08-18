@@ -37,8 +37,10 @@ spec:
           resources:
             requests:
               cpu: {{ .Values.resources.projectContainerDefaults.request.cpu }}
+              ephemeral-storage: {{ index .Values.resources.projectContainerDefaults.request "ephemeral-storage" }}
               memory: {{ .Values.resources.projectContainerDefaults.request.memory }}
             limits:
               cpu: {{ .Values.resources.projectContainerDefaults.limit.cpu | quote }}
+              ephemeral-storage: {{ index .Values.resources.projectContainerDefaults.limit "ephemeral-storage" }}
               memory: {{ .Values.resources.projectContainerDefaults.limit.memory }}
 {{- end }}

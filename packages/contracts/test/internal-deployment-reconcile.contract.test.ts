@@ -19,6 +19,7 @@ describe('deployment reconcile contracts', (): void => {
       namespaceId: 'prj_1',
       organizationId: 'org_1',
       organizationName: 'Acme',
+      projectIsolationVersion: 3,
       projectId: 'prj_1',
       projectName: 'app',
       readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },

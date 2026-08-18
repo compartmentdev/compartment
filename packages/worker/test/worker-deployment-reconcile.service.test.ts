@@ -24,6 +24,7 @@ import { reconcileDeploymentTarget as reconcileDeploymentTargetWithKek } from '.
 import { DeploymentRolloutStartTracker } from '../src/services/worker-deployment-rollout-start-tracker.service';
 import { encryptTestTenantEnvironment, testTenantSecretsKek } from './tenant-secret-test.fixtures';
 import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
+import { appliedGate, kubeObservation, requester } from './worker-deployment-reconcile.service.test.helpers';
 import type {
   AppliedGateContainer,
   ApplyMockCall,
@@ -253,6 +254,28 @@ describe('deployment reconciliation', (): void => {
     expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalled();
   });
 
+  it('preserves the recovery Pod template marker on the next canonical active apply', async (): Promise<void> => {
+    const runtime: KubeRuntime & { apply: Mock; delete: Mock; observe: Mock; read: Mock } = activeRuntimeStub();
+    const observed: KubeManifest = readyDeployment(
+      kubeNamespaceName('prj_1'),
+      kubeApplicationIdentityName('env_1', 'svc_1'),
+    );
+    observed.metadata = {
+      ...observed.metadata,
+      annotations: { ...observed.metadata?.annotations, 'compartment.dev/recovery-restarted': 'true' },
+    };
+    runtime.read.mockResolvedValue(observed);
+    const candidate: DeploymentReconcileProjection = projection(null);
+    await reconcileDeploymentTarget(requester(), runtime, { ...target(candidate), active: candidate, state: 'active' });
+    const bundle: ApplyBundle = runtime.apply.mock.calls[0]?.[0] as ApplyBundle;
+    const deployment: KubeDeploymentManifest = bundle.objects.find(
+      (object: KubeManifest): boolean => object.kind === 'Deployment',
+    ) as KubeDeploymentManifest;
+    expect(deployment.metadata?.annotations?.['compartment.dev/recovery-restarted']).toBe('true');
+    expect(deployment.spec?.template.metadata.annotations?.['compartment.dev/recovery-restarted']).toBe('true');
+    expect(runtime.delete).not.toHaveBeenCalled();
+  });
+
   it('keeps an active Deployment active on a transient non-ready observation', async (): Promise<void> => {
     const runtime: KubeRuntime & { apply: Mock; observe: Mock; read: Mock } = activeRuntimeStub(false);
     const namespace: string = kubeNamespaceName('prj_1');
@@ -298,7 +321,7 @@ describe('deployment reconciliation', (): void => {
     );
   });
 
-  it('restarts a deadline-exceeded active Deployment without terminally failing its recovery claim', async (): Promise<void> => {
+  it('restarts a deadline-exceeded active Deployment without deleting its available ReplicaSet', async (): Promise<void> => {
     const runtime: KubeRuntime & { apply: Mock; delete: Mock } = activeRuntimeStub(false, true);
     const candidate: DeploymentReconcileProjection = projection(null);
     const pendingTarget: DeploymentReconcileTarget = {
@@ -308,9 +331,7 @@ describe('deployment reconciliation', (): void => {
     };
 
     await reconcileAt('2026-07-12T12:00:20.000Z', runtime, pendingTarget);
-
-    expect(runtime.delete).toHaveBeenCalledWith([expect.objectContaining({ kind: 'Deployment' })]);
-    expect(runtime.apply).toHaveBeenCalledWith(expect.objectContaining({ force: true }));
+    expect(runtime.delete).not.toHaveBeenCalled();
     expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ observation: 'pending', revision: 0 }),
@@ -401,7 +422,7 @@ describe('deployment reconciliation', (): void => {
 
     await reconcileAt('2026-07-12T12:00:40.000Z', runtime, pendingTarget);
 
-    expect(runtime.delete).toHaveBeenCalledTimes(1);
+    expect(runtime.delete).not.toHaveBeenCalled();
     expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ observation: 'ready', revision: 0 }),
@@ -422,7 +443,7 @@ describe('deployment reconciliation', (): void => {
     await reconcileAt('2026-07-12T12:01:20.000Z', runtime, pendingTarget);
     await reconcileAt('2026-07-12T12:01:20.001Z', runtime, pendingTarget);
 
-    expect(runtime.delete).toHaveBeenCalledTimes(1);
+    expect(runtime.delete).not.toHaveBeenCalled();
     expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ observation: 'failed', revision: 0 }),
@@ -525,7 +546,7 @@ describe('deployment reconciliation', (): void => {
     });
     await reconcileAt('2026-07-12T12:12:00.001Z', recoveryRuntime, recoveryTarget);
 
-    expect(recoveryRuntime.delete).toHaveBeenCalledTimes(1);
+    expect(recoveryRuntime.delete).not.toHaveBeenCalled();
     expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ deploymentId: 'dep_candidate', observation: 'failed' }),
@@ -545,7 +566,7 @@ describe('deployment reconciliation', (): void => {
     rolloutStarts = new DeploymentRolloutStartTracker();
     await reconcileAt('2026-07-12T12:01:20.000Z', runtime, pendingTarget);
 
-    expect(runtime.delete).toHaveBeenCalledTimes(1);
+    expect(runtime.delete).not.toHaveBeenCalled();
     const pendingApplyAfterRestart: ApplyBundle | undefined = (runtime.apply.mock.calls as ApplyMockCall[])
       .map((call: ApplyMockCall): ApplyBundle => call[0])
       .find(
@@ -554,7 +575,8 @@ describe('deployment reconciliation', (): void => {
           bundle.objects.some(
             (object: KubeManifest): boolean =>
               object.kind === 'Deployment' &&
-              object.metadata?.annotations?.['compartment.dev/recovery-restarted'] === 'true',
+              object.metadata?.annotations?.['compartment.dev/recovery-restarted'] === 'true' &&
+              object.spec?.template.metadata.annotations?.['compartment.dev/recovery-restarted'] === 'true',
           ),
       );
     expect(
@@ -888,6 +910,7 @@ function projection(releaseCommand: string | null): DeploymentReconcileProjectio
     namespaceId: 'prj_1',
     organizationId: 'org_1',
     organizationName: 'Acme',
+    projectIsolationVersion: 3,
     projectId: 'prj_1',
     projectName: 'checkout',
     readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
@@ -993,18 +1016,6 @@ function recoveryRuntimeStub(): RecoveryRuntime {
       return await Promise.resolve(kubeObservation([applicationPod('dep_candidate', startedAt)]));
     }),
     read: vi.fn(async (): Promise<KubeManifest> => await Promise.resolve(observedDeployment)),
-  } as never;
-}
-
-function kubeObservation(pods: KubeObservedManifest[]): KubeObservation {
-  return {
-    cache: new Map(
-      pods.map((pod: KubeObservedManifest, index: number): [string, KubeObservedManifest] => [
-        `pods/cpt-prj/${index.toString()}`,
-        pod,
-      ]),
-    ),
-    stop: vi.fn(async (): Promise<void> => await Promise.resolve()),
   } as never;
 }
 
@@ -1121,20 +1132,4 @@ function readyDeployment(
     metadata: { ...deployment.metadata, generation, name, namespace, uid },
     status: { availableReplicas: 1, observedGeneration: generation, replicas: 1, updatedReplicas: 1 },
   };
-}
-
-function requester(): CompartmentRequester {
-  return async function unexpectedRequest<TResult>(): Promise<TResult> {
-    await Promise.resolve();
-    throw new Error('Unexpected direct request.');
-  };
-}
-
-/** The reachability gate on the Deployment this reconcile applied, if it projected one. */
-function appliedGate(runtime: ApplyReadRuntime): AppliedGateContainer | undefined {
-  const bundle: ApplyBundle = runtime.apply.mock.calls.at(-1)?.[0] as ApplyBundle;
-  const deployment: KubeDeploymentManifest | undefined = bundle.objects.find(
-    (object: KubeManifest): object is KubeDeploymentManifest => object.kind === 'Deployment',
-  );
-  return deployment?.spec?.template.spec.initContainers?.[0];
 }

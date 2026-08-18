@@ -25,6 +25,7 @@ export interface DeploymentReconcileProjection {
   namespaceId: string;
   organizationId: string;
   organizationName: string;
+  projectIsolationVersion: number;
   projectId: string;
   projectName: string;
   readiness: ResolvedOptionalServiceReadinessConfig;
@@ -100,6 +101,7 @@ const deploymentReconcileProjectionSchema: ContractSchema<DeploymentReconcilePro
     namespaceId: z.string().min(1),
     organizationId: z.string().min(1),
     organizationName: z.string().min(1),
+    projectIsolationVersion: z.number().int().nonnegative(),
     projectId: z.string().min(1),
     projectName: z.string().min(1),
     readiness: resolvedOptionalServiceReadinessConfigSchema,

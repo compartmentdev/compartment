@@ -111,7 +111,9 @@ const transportAuditRegistry: readonly TransportAuditCase[] = [
     projection: 'projectLimitRangeManifest',
   },
   {
-    manifests: (): KubeManifest[] => [projectResourceQuotaManifest(namespace, namespaceId, projectId, projectQuota)],
+    manifests: (): KubeManifest[] => [
+      projectResourceQuotaManifest(namespace, namespaceId, projectId, projectQuota, projectContainerDefaults),
+    ],
     projection: 'projectResourceQuotaManifest',
   },
   {
@@ -209,6 +211,7 @@ function applicationRow(): ApplicationProjectionRow {
     namespaceId,
     organizationId: 'org-01jz',
     organizationName: 'Acme',
+    projectIsolationVersion: 3,
     projectId,
     projectName: 'Checkout',
     readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },

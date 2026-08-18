@@ -155,7 +155,9 @@ describe('projects service', (): void => {
       }),
     ).resolves.toBe(true);
     await expect(claimPendingProjectProvisioning('provision')).resolves.toMatchObject({
+      isolationVersion: projectIsolationVersion,
       organizationId: 'org_git_sources',
+      projectId: 'prj_ops',
     });
   });
 

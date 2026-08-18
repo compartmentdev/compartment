@@ -28,8 +28,8 @@ describe('LimitRange transport', (): void => {
 
     const serialized: SerializedLimitRange = JSON.parse(objectApi.body ?? '{}') as SerializedLimitRange;
     expect(serialized.spec.limits[0]).toEqual({
-      default: { cpu: '1', memory: '512Mi' },
-      defaultRequest: { cpu: '50m', memory: '512Mi' },
+      default: { cpu: '1', 'ephemeral-storage': '1Gi', memory: '512Mi' },
+      defaultRequest: { cpu: '50m', 'ephemeral-storage': '1Gi', memory: '512Mi' },
       type: 'Container',
     });
   });

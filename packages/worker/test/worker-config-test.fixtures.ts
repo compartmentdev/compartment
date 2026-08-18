@@ -33,10 +33,14 @@ export const testDataScheduling: KubeDataWorkloadScheduling = {
 
 export const testProjectResourceConfiguration: ProjectNamespaceResourceConfiguration = {
   containerDefaults: {
-    limit: { cpu: '1', memory: '512Mi' },
-    request: { cpu: '50m', memory: '512Mi' },
+    limit: { cpu: '1', 'ephemeral-storage': '1Gi', memory: '512Mi' },
+    request: { cpu: '50m', 'ephemeral-storage': '1Gi', memory: '512Mi' },
   },
-  quota: testOrganizationQuota,
+  quota: {
+    ...testOrganizationQuota,
+    limitsEphemeralStorage: '8Gi',
+    requestsEphemeralStorage: '8Gi',
+  },
 };
 
 /**

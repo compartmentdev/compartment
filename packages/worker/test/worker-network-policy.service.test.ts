@@ -123,6 +123,7 @@ function defaultApplicationProjection(): DeploymentReconcileProjection {
     namespaceId: 'project',
     organizationId: 'organization',
     organizationName: 'Acme',
+    projectIsolationVersion: 3,
     projectId: 'project',
     projectName: 'app',
     readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },

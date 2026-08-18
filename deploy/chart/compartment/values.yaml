@@ -276,12 +276,14 @@ podSecurityContext:
 
 resources:
   projectContainerDefaults:
-    request: { cpu: 50m, memory: 512Mi }
-    limit: { cpu: '1', memory: 512Mi }
+    request: { cpu: 50m, memory: 512Mi, ephemeral-storage: 1Gi }
+    limit: { cpu: '1', memory: 512Mi, ephemeral-storage: 1Gi }
   projectQuota:
     requestsCpu: '2'
+    requestsEphemeralStorage: 8Gi
     requestsMemory: 8Gi
     limitsCpu: '8'
+    limitsEphemeralStorage: 8Gi
     limitsMemory: 8Gi
     requestsStorage: 20Gi
   organizationQuota:

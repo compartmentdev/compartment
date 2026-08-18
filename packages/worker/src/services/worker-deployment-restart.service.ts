@@ -2,10 +2,11 @@ import type { DeploymentReconcileTarget } from '@compartment/contracts';
 import { type KubeManifest, type KubeRuntime, type KubeWorkloadScheduling } from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
 import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
-import { deploymentFromObjects, persistDeploymentObservation } from './worker-deployment-reconcile.helpers';
+import { persistDeploymentObservation } from './worker-deployment-reconcile.helpers';
 import { maximumRolloutDeadlineAt } from './worker-deployment-rollout-observation.service';
 import type { DeploymentRolloutStartTracker } from './worker-deployment-rollout-start-tracker.service';
-import { includeRecoveryRestartedAnnotation, projectApplicationObjects } from './worker-deployment-application.service';
+import { projectApplicationObjects } from './worker-deployment-application.service';
+import { includeRecoveryRestartedAnnotation } from './worker-deployment-recovery-annotation';
 import { projectProjectNetworkPolicyManifests } from './worker-network-policy.service';
 
 export async function restartActiveCandidate(
@@ -25,7 +26,6 @@ export async function restartActiveCandidate(
   const objects: KubeManifest[] = includeRecoveryRestartedAnnotation(
     buildRestartObjects(target, tenantSecretsKek, infrastructureTimeoutMs, scheduling, workerImage),
   );
-  await runtime.delete([deploymentFromObjects(objects)]);
   await runtime.apply({
     force: true,
     objects,

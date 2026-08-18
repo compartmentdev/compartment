@@ -7,12 +7,23 @@ const kubernetesQuantityPattern: RegExp =
   /^\+?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[numkMGTPE]|[KMGTPE]i|[eE][+-]?[0-9]+)?$/u;
 const kubernetesQuantityCapturePattern: RegExp =
   /^\+?([0-9]+(?:\.[0-9]*)?|\.[0-9]+)([numkMGTPE]|[KMGTPE]i|[eE][+-]?[0-9]+)?$/u;
-const kubernetesQuantitySchema: z.ZodString = z
+const maximumKubernetesQuantity: NormalizedKubernetesQuantity = ['9223372036854775807', 0n];
+const minimumKubernetesQuantityExponent: bigint = -18n;
+const maximumKubernetesQuantityExponent: bigint = 18n;
+const invalidKubernetesQuantityMessage: string = 'must be a valid non-negative Kubernetes quantity';
+const kubernetesQuantitySchema: z.ZodType<string> = z
   .string()
-  .regex(kubernetesQuantityPattern, 'must be a valid non-negative Kubernetes quantity');
-const computeResourcesSchema = z.object({ cpu: kubernetesQuantitySchema, memory: kubernetesQuantitySchema }).strict();
+  .regex(kubernetesQuantityPattern, invalidKubernetesQuantityMessage)
+  .refine(isSupportedKubernetesQuantity, invalidKubernetesQuantityMessage);
+const projectContainerResourcesSchema = z
+  .object({
+    cpu: kubernetesQuantitySchema,
+    'ephemeral-storage': kubernetesQuantitySchema,
+    memory: kubernetesQuantitySchema,
+  })
+  .strict();
 const projectContainerDefaultsSchema: z.ZodType<ProjectContainerDefaults> = z
-  .object({ limit: computeResourcesSchema, request: computeResourcesSchema })
+  .object({ limit: projectContainerResourcesSchema, request: projectContainerResourcesSchema })
   .strict()
   .superRefine((defaults: ProjectContainerDefaults, context: z.RefinementCtx): void => {
     if (compareKubernetesQuantities(defaults.request.cpu, defaults.limit.cpu) === 1) {
@@ -25,8 +36,36 @@ const projectContainerDefaultsSchema: z.ZodType<ProjectContainerDefaults> = z
         path: ['request', 'memory'],
       });
     }
+    if (compareKubernetesQuantities(defaults.request['ephemeral-storage'], defaults.limit['ephemeral-storage']) === 1) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'must not exceed limit.ephemeral-storage',
+        path: ['request', 'ephemeral-storage'],
+      });
+    }
   });
-const quotaSchema: z.ZodType<ProjectQuota> = z
+const projectQuotaSchema: z.ZodType<ProjectQuota> = z
+  .object({
+    limitsCpu: kubernetesQuantitySchema,
+    limitsEphemeralStorage: kubernetesQuantitySchema,
+    limitsMemory: kubernetesQuantitySchema,
+    requestsCpu: kubernetesQuantitySchema,
+    requestsEphemeralStorage: kubernetesQuantitySchema,
+    requestsMemory: kubernetesQuantitySchema,
+    requestsStorage: kubernetesQuantitySchema,
+  })
+  .strict()
+  .superRefine((quota: ProjectQuota, context: z.RefinementCtx): void => {
+    validateComputeQuotaOrdering(quota, context);
+    if (compareKubernetesQuantities(quota.requestsEphemeralStorage, quota.limitsEphemeralStorage) === 1) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'must not exceed limitsEphemeralStorage',
+        path: ['requestsEphemeralStorage'],
+      });
+    }
+  });
+const organizationQuotaSchema: z.ZodType<OrganizationQuotaCapacity> = z
   .object({
     limitsCpu: kubernetesQuantitySchema,
     limitsMemory: kubernetesQuantitySchema,
@@ -35,29 +74,33 @@ const quotaSchema: z.ZodType<ProjectQuota> = z
     requestsStorage: kubernetesQuantitySchema,
   })
   .strict()
-  .superRefine((quota: ProjectQuota, context: z.RefinementCtx): void => {
-    if (compareKubernetesQuantities(quota.requestsCpu, quota.limitsCpu) === 1) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: 'must not exceed limitsCpu', path: ['requestsCpu'] });
-    }
-    if (compareKubernetesQuantities(quota.requestsMemory, quota.limitsMemory) === 1) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'must not exceed limitsMemory',
-        path: ['requestsMemory'],
-      });
-    }
+  .superRefine((quota: OrganizationQuotaCapacity, context: z.RefinementCtx): void => {
+    validateComputeQuotaOrdering(quota, context);
   });
+
+function validateComputeQuotaOrdering(quota: OrganizationQuotaCapacity, context: z.RefinementCtx): void {
+  if (compareKubernetesQuantities(quota.requestsCpu, quota.limitsCpu) === 1) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'must not exceed limitsCpu', path: ['requestsCpu'] });
+  }
+  if (compareKubernetesQuantities(quota.requestsMemory, quota.limitsMemory) === 1) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'must not exceed limitsMemory',
+      path: ['requestsMemory'],
+    });
+  }
+}
 
 export function readProjectContainerDefaults(value: string, name: string): ProjectContainerDefaults {
   return readResourceConfiguration(value, name, projectContainerDefaultsSchema);
 }
 
 export function readProjectQuota(value: string, name: string): ProjectQuota {
-  return readResourceConfiguration(value, name, quotaSchema);
+  return readResourceConfiguration(value, name, projectQuotaSchema);
 }
 
 export function readOrganizationQuota(value: string, name: string): OrganizationQuotaCapacity {
-  return readResourceConfiguration(value, name, quotaSchema);
+  return readResourceConfiguration(value, name, organizationQuotaSchema);
 }
 
 function readResourceConfiguration<T>(value: string, name: string, schema: z.ZodType<T>): T {
@@ -84,6 +127,19 @@ function compareKubernetesQuantities(left: string, right: string): -1 | 0 | 1 | 
     return null;
   }
   return compareNormalizedKubernetesQuantities(leftQuantity, rightQuantity);
+}
+
+function isSupportedKubernetesQuantity(value: string): boolean {
+  const quantity: NormalizedKubernetesQuantity | null = normalizeKubernetesQuantity(value);
+  if (quantity === null) {
+    return false;
+  }
+  const exponent: bigint = quantity[1];
+  return (
+    exponent >= minimumKubernetesQuantityExponent &&
+    exponent <= maximumKubernetesQuantityExponent &&
+    compareNormalizedKubernetesQuantities(quantity, maximumKubernetesQuantity) !== 1
+  );
 }
 
 function compareNormalizedKubernetesQuantities(
@@ -150,7 +206,7 @@ function compareAlignedQuantityDigits(left: string, right: string): -1 | 0 | 1 {
 }
 
 function suffixDecimalExponent(suffix: string): bigint {
-  if (suffix.startsWith('e') || (suffix.startsWith('E') && suffix.length > 1)) {
+  if (/^[eE][+-]?[0-9]/u.test(suffix)) {
     return BigInt(suffix.slice(1));
   }
   switch (suffix) {

@@ -858,12 +858,12 @@
           "additionalProperties": false,
           "required": ["request", "limit"],
           "properties": {
-            "request": { "$ref": "#/definitions/requiredComputeResources" },
-            "limit": { "$ref": "#/definitions/requiredComputeResources" }
+            "request": { "$ref": "#/definitions/projectContainerResources" },
+            "limit": { "$ref": "#/definitions/projectContainerResources" }
           }
         },
-        "projectQuota": { "$ref": "#/definitions/tenantQuota" },
-        "organizationQuota": { "$ref": "#/definitions/tenantQuota" }
+        "projectQuota": { "$ref": "#/definitions/projectQuota" },
+        "organizationQuota": { "$ref": "#/definitions/organizationQuota" }
       }
     },
     "edge": {
@@ -931,7 +931,7 @@
     },
     "kubernetesQuantity": {
       "type": "string",
-      "pattern": "^\\+?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[numkMGTPE]|[KMGTPE]i|[eE][+-]?[0-9]+)?$"
+      "pattern": "^\\+?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[numkMGTPE]|[KMGTPE]i|[eE][+-]?(?:[0-9]|1[0-8]))?$"
     },
     "requiredComputeResources": {
       "type": "object",
@@ -942,7 +942,39 @@
         "memory": { "$ref": "#/definitions/kubernetesQuantity" }
       }
     },
-    "tenantQuota": {
+    "projectContainerResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpu", "ephemeral-storage", "memory"],
+      "properties": {
+        "cpu": { "$ref": "#/definitions/kubernetesQuantity" },
+        "ephemeral-storage": { "$ref": "#/definitions/kubernetesQuantity" },
+        "memory": { "$ref": "#/definitions/kubernetesQuantity" }
+      }
+    },
+    "projectQuota": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestsCpu",
+        "requestsEphemeralStorage",
+        "requestsMemory",
+        "limitsCpu",
+        "limitsEphemeralStorage",
+        "limitsMemory",
+        "requestsStorage"
+      ],
+      "properties": {
+        "requestsCpu": { "$ref": "#/definitions/kubernetesQuantity" },
+        "requestsEphemeralStorage": { "$ref": "#/definitions/kubernetesQuantity" },
+        "requestsMemory": { "$ref": "#/definitions/kubernetesQuantity" },
+        "limitsCpu": { "$ref": "#/definitions/kubernetesQuantity" },
+        "limitsEphemeralStorage": { "$ref": "#/definitions/kubernetesQuantity" },
+        "limitsMemory": { "$ref": "#/definitions/kubernetesQuantity" },
+        "requestsStorage": { "$ref": "#/definitions/kubernetesQuantity" }
+      }
+    },
+    "organizationQuota": {
       "type": "object",
       "additionalProperties": false,
       "required": ["requestsCpu", "requestsMemory", "limitsCpu", "limitsMemory", "requestsStorage"],

@@ -6,14 +6,16 @@ import type {
 } from '../src';
 
 export const projectContainerDefaults: ProjectContainerDefaults = {
-  limit: { cpu: '1', memory: '512Mi' },
-  request: { cpu: '50m', memory: '512Mi' },
+  limit: { cpu: '1', 'ephemeral-storage': '1Gi', memory: '512Mi' },
+  request: { cpu: '50m', 'ephemeral-storage': '1Gi', memory: '512Mi' },
 };
 
 export const projectQuota: ProjectQuota = {
   limitsCpu: '8',
+  limitsEphemeralStorage: '8Gi',
   limitsMemory: '8Gi',
   requestsCpu: '2',
+  requestsEphemeralStorage: '8Gi',
   requestsMemory: '8Gi',
   requestsStorage: '20Gi',
 };

@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { chmod, mkdir, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import {
@@ -42,6 +43,27 @@ interface GateExecFileOptions {
 interface GateExecFileResult {
   readonly stderr: string;
   readonly stdout: string;
+}
+
+interface NodeDiskPressureSnapshot {
+  lastTransitionTime: string;
+  name: string;
+  status: string;
+}
+
+interface NodeListPayload {
+  items?: NodePayload[] | undefined;
+}
+
+interface NodePayload {
+  metadata?: { name?: string | undefined } | undefined;
+  status?: { conditions?: NodeCondition[] | undefined } | undefined;
+}
+
+interface NodeCondition {
+  lastTransitionTime?: string | undefined;
+  status?: string | undefined;
+  type?: string | undefined;
 }
 
 const execFileAsync: (
@@ -151,7 +173,190 @@ describeSelfHostedUserSetupE2e('platform k3d G1 edge gate', (): void => {
     },
     selfHostedUserSetupTimeoutMs,
   );
+
+  it(
+    'contains writable-layer exhaustion without degrading a sibling namespace or node',
+    async (): Promise<void> => {
+      await setup.install();
+      const suffix: string = process.pid.toString();
+      const offenderNamespace: string = `ephemeral-offender-${suffix}`;
+      const siblingNamespace: string = `ephemeral-sibling-${suffix}`;
+      try {
+        await createEphemeralStorageGateNamespace(offenderNamespace);
+        await createEphemeralStorageGateNamespace(siblingNamespace);
+        await runEphemeralStoragePod(siblingNamespace, 'sibling', 'sleep 600');
+        await waitForPodCondition(siblingNamespace, 'sibling', 'Ready', 'true');
+        const diskPressureBaseline: NodeDiskPressureSnapshot[] = await readNodeDiskPressureSnapshot();
+        expect(
+          diskPressureBaseline.every((condition: NodeDiskPressureSnapshot): boolean => condition.status === 'False'),
+        ).toBe(true);
+        await runEphemeralStoragePod(
+          offenderNamespace,
+          'offender',
+          'dd if=/dev/zero of=/tmp/writable-layer-fill bs=1M count=96; sleep 600',
+        );
+        await waitForPodReason(offenderNamespace, 'offender', 'Evicted');
+        await waitForPodCondition(siblingNamespace, 'sibling', 'Ready', 'true');
+        expect(await readNodeDiskPressureSnapshot()).toEqual(diskPressureBaseline);
+        expect(
+          (
+            await gateKubectl([
+              'get',
+              'pod/sibling',
+              '--namespace',
+              siblingNamespace,
+              '--output=jsonpath={.status.phase}',
+            ])
+          ).stdout,
+        ).toBe('Running');
+      } finally {
+        await gateKubectl([
+          'delete',
+          'namespace',
+          offenderNamespace,
+          siblingNamespace,
+          '--ignore-not-found',
+          '--wait=false',
+        ]);
+      }
+    },
+    selfHostedUserSetupTimeoutMs,
+  );
 });
+
+async function createEphemeralStorageGateNamespace(namespace: string): Promise<void> {
+  await gateKubectl(['create', 'namespace', namespace]);
+  const directory: string = await mkdtemp(join(tmpdir(), 'compartment-ephemeral-gate-'));
+  const manifestPath: string = join(directory, 'resources.json');
+  try {
+    await writeFile(
+      manifestPath,
+      JSON.stringify({
+        apiVersion: 'v1',
+        items: [
+          {
+            apiVersion: 'v1',
+            kind: 'LimitRange',
+            metadata: { name: 'container-defaults', namespace },
+            spec: {
+              limits: [
+                {
+                  default: { 'ephemeral-storage': '32Mi' },
+                  defaultRequest: { 'ephemeral-storage': '8Mi' },
+                  type: 'Container',
+                },
+              ],
+            },
+          },
+          {
+            apiVersion: 'v1',
+            kind: 'ResourceQuota',
+            metadata: { name: 'ephemeral-budget', namespace },
+            spec: {
+              hard: { 'limits.ephemeral-storage': '64Mi', 'requests.ephemeral-storage': '16Mi' },
+            },
+          },
+        ],
+        kind: 'List',
+      }),
+    );
+    await gateKubectl(['apply', '--filename', manifestPath]);
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
+}
+
+async function runEphemeralStoragePod(namespace: string, name: string, command: string): Promise<void> {
+  await gateKubectl([
+    'run',
+    name,
+    '--namespace',
+    namespace,
+    '--image=busybox:1.36',
+    '--restart=Never',
+    '--overrides',
+    JSON.stringify({
+      spec: {
+        containers: [
+          {
+            args: ['-c', command],
+            command: ['sh'],
+            image: 'busybox:1.36',
+            name,
+            resources: {
+              limits: { 'ephemeral-storage': '32Mi' },
+              requests: { 'ephemeral-storage': '8Mi' },
+            },
+          },
+        ],
+        runtimeClassName: 'gvisor',
+      },
+    }),
+  ]);
+}
+
+async function readNodeDiskPressureSnapshot(): Promise<NodeDiskPressureSnapshot[]> {
+  const result: GateExecFileResult = await gateKubectl(['get', 'nodes', '--output=json']);
+  const payload: NodeListPayload = JSON.parse(result.stdout) as NodeListPayload;
+  return (payload.items ?? [])
+    .map((node: NodePayload): NodeDiskPressureSnapshot => {
+      const condition: NodeCondition | undefined = node.status?.conditions?.find(
+        (candidate: NodeCondition): boolean => candidate.type === 'DiskPressure',
+      );
+      return {
+        lastTransitionTime: condition?.lastTransitionTime ?? '',
+        name: node.metadata?.name ?? '',
+        status: condition?.status ?? '',
+      };
+    })
+    .sort(compareNodeNames);
+}
+
+function compareNodeNames(left: NodeDiskPressureSnapshot, right: NodeDiskPressureSnapshot): number {
+  if (left.name === right.name) {
+    return 0;
+  }
+  return left.name < right.name ? -1 : 1;
+}
+
+async function waitForPodCondition(namespace: string, name: string, condition: string, value: string): Promise<void> {
+  await gateKubectl([
+    'wait',
+    `pod/${name}`,
+    '--namespace',
+    namespace,
+    `--for=condition=${condition}=${value}`,
+    '--timeout=2m',
+  ]);
+}
+
+async function waitForPodReason(namespace: string, name: string, reason: string): Promise<void> {
+  const deadline: number = Date.now() + 120_000;
+  while (Date.now() < deadline) {
+    const result: GateExecFileResult = await gateKubectl([
+      'get',
+      `pod/${name}`,
+      '--namespace',
+      namespace,
+      '--output=jsonpath={.status.reason}',
+    ]);
+    if (result.stdout === reason) {
+      return;
+    }
+    await new Promise<void>((complete: () => void): void => {
+      setTimeout(complete, 1_000);
+    });
+  }
+  throw new Error(`Timed out waiting for ${namespace}/${name} to report ${reason}.`);
+}
+
+async function gateKubectl(args: readonly string[]): Promise<GateExecFileResult> {
+  return await execFileAsync('kubectl', ['--context', platformKubeContext, ...args], {
+    cwd: repositoryRoot,
+    env: process.env,
+    timeout: selfHostedUserSetupTimeoutMs,
+  });
+}
 
 interface GateCommandInput {
   readonly appSessionCookiePath: string;

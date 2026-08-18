@@ -113,6 +113,7 @@ function applicationRow(resourceProbe: KubeResourceReachabilityProbe | undefined
     namespaceId: 'prj_1',
     organizationId: 'org_1',
     organizationName: 'Acme',
+    projectIsolationVersion: 3,
     projectId: 'prj_1',
     projectName: 'checkout',
     readiness: null,
