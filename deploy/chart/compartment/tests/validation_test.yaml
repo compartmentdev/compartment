@@ -327,6 +327,32 @@ tests:
       - failedTemplate:
           errorPattern: resources.projectQuota.limitsEphemeralStorage.*pattern
 
+  - it: rejects a project ephemeral-storage quantity above the worker arithmetic range
+    set:
+      resources:
+        projectQuota:
+          limitsEphemeralStorage: '9223372036854775808'
+    asserts:
+      - failedTemplate:
+          errorPattern: resources.projectQuota.limitsEphemeralStorage.*allOf
+
+  - it: rejects an overflowing binary project ephemeral-storage quantity
+    set:
+      resources:
+        projectQuota:
+          limitsEphemeralStorage: 8Ei
+    asserts:
+      - failedTemplate:
+          errorPattern: resources.projectQuota.limitsEphemeralStorage.*allOf
+
+  - it: accepts the maximum project ephemeral-storage quantity
+    set:
+      resources:
+        projectQuota:
+          limitsEphemeralStorage: '9223372036854775807'
+    asserts:
+      - notFailedTemplate: {}
+
   - it: keeps project ephemeral storage out of organization quota
     set:
       resources:

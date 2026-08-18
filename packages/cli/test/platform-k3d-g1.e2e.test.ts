@@ -16,6 +16,7 @@ import {
 import { expect, it } from 'vitest';
 import type { SelfHostedUserSetupAppFixture } from './self-hosted-user-setup-app-fixture';
 import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
+import type { NodeCondition, NodeListPayload, NodePayload } from './platform-k3d-g1.e2e.test.types';
 import {
   buildSelfHostedAdvertisedCompartmentUrl,
   describeSelfHostedUserSetupE2e,
@@ -49,21 +50,6 @@ interface NodeDiskPressureSnapshot {
   lastTransitionTime: string;
   name: string;
   status: string;
-}
-
-interface NodeListPayload {
-  items?: NodePayload[] | undefined;
-}
-
-interface NodePayload {
-  metadata?: { name?: string | undefined } | undefined;
-  status?: { conditions?: NodeCondition[] | undefined } | undefined;
-}
-
-interface NodeCondition {
-  lastTransitionTime?: string | undefined;
-  status?: string | undefined;
-  type?: string | undefined;
 }
 
 const execFileAsync: (

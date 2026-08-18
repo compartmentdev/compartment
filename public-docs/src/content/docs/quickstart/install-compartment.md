@@ -183,24 +183,19 @@ values. This bounded disk-only headroom is shared admission capacity, not a rese
 reservation. Keep it unused for rolling replacement. CPU, memory, organization Capsule, and PVC storage quotas do
 not receive surge headroom.
 
-Organization quota changes are applied by periodic reconciliation. Ephemeral-storage quotas remain project-local;
-they are not part of the organization Capsule quota. This release advances the project isolation revision, so a
-system upgrade requeues every existing managed project after its organization quota is ready and server-side-applies
-the current project quota and container defaults. Before upgrading an installation with resource overrides, include
+Ephemeral-storage quotas remain project-local; they are not part of the organization Capsule quota. Before upgrading
+an installation with resource overrides, include
 application and resource containers and verify that their post-migration CPU, memory, and ephemeral-storage totals fit
 the configured steady-state project and organization values. Raise those values first if they do not; the disk-only
 headroom is added automatically. CPU and memory quotas are unchanged. A single-replica application cannot roll when
 the existing application and resource Pods already consume either compute quota, or when another workload has used
-the shared ephemeral hard-quota headroom: `maxSurge: 1` is rejected, while deleting the old Pod first would cause
-downtime. Compartment leaves the old available Pod running and retries; inspect the Deployment's Kubernetes
-conditions and events for the quota rejection. After namespace reconciliation succeeds,
-Compartment changes a stable application Pod template annotation. Kubernetes recreates existing managed application
-Pods with `maxUnavailable: 0` and `maxSurge: 1` when all relevant project and organization quotas admit the
-replacement. Stateful
+the shared ephemeral hard-quota headroom: admitting a replacement is rejected, while deleting the old Pod first would
+cause downtime. Compartment leaves the old available Pod running until all relevant project and organization quotas
+admit the replacement; inspect the Deployment's Kubernetes conditions and events for the quota rejection. Stateful
 resource workloads and their PVCs are not recreated by this migration. The namespace LimitRange gives every newly
 admitted database/resource container the same ephemeral-storage defaults for its writable layer and logs; persistent
-database data remains on its PVC and is accounted only by `requests.storage`. Later value-only changes require a newer isolation revision
-to requeue projects that already completed this revision. Application capacity is constrained by
+database data remains on its PVC and is accounted only by `requests.storage`. Later value-only changes do not
+retroactively update projects that already completed this migration. Application capacity is constrained by
 configured resource and object-count quotas and by workload requests and limits; there is no separate application-count
 value. Project object-count quotas remain fixed.
 

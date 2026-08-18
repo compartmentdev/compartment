@@ -143,6 +143,16 @@ Resource rollouts use the same operator-configured infrastructure deadline indep
 provisioning and for reaching the resource container's first Running state. Their declared readiness budget starts at
 that container's observed `Running.startedAt`; unused operation-only claims do not consume either budget.
 
+Project isolation revision 3 reclaims every succeeded project below the current revision after its organization quota
+is ready. The project provisioner server-side-applies the current namespace quota and container defaults before it
+marks the revision complete. LimitRange changes affect only newly admitted containers, so the revision is also stamped
+as a stable application Pod-template annotation. That annotation starts a rollout with `maxUnavailable: 0` and
+`maxSurge: 1`. If project or organization quota rejects the replacement, Kubernetes retains the old available Pod and
+reports the admission failure through Deployment conditions and events. Reconciliation reapplies the same stable
+template and retries without deleting the active Deployment. Stateful resource workloads and their PVCs are not
+recreated by this migration. A later value-only isolation change requires another revision bump to reclaim projects
+that already completed this revision.
+
 Tenant node-pool scheduling is installation-owned and opt-in. When configured, application and generic-resource
 Deployments plus product and provisioning Jobs project the tenant selector, tolerations, and `compartment-tenant`
 PriorityClass. Official PostgreSQL resource images instead project the required worker data-scheduling contract,

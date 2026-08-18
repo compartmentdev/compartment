@@ -6,7 +6,11 @@ import type {
 } from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
 import { vi } from 'vitest';
-import type { AppliedGateContainer, ApplyReadRuntime } from './worker-deployment-reconcile.service.test.types';
+import type {
+  AppliedGateContainer,
+  AppliedManifestBundle,
+  ApplyReadRuntime,
+} from './worker-deployment-reconcile.service.test.types';
 
 export function kubeObservation(pods: KubeObservedManifest[]): KubeObservation {
   return {
@@ -29,7 +33,12 @@ export function requester(): CompartmentRequester {
 
 /** The reachability gate on the Deployment this reconcile applied, if it projected one. */
 export function appliedGate(runtime: ApplyReadRuntime): AppliedGateContainer | undefined {
-  const bundle = runtime.apply.mock.calls.at(-1)?.[0] as { objects: KubeManifest[] };
+  const bundle: AppliedManifestBundle | undefined = runtime.apply.mock.calls.at(-1)?.[0] as
+    | AppliedManifestBundle
+    | undefined;
+  if (bundle === undefined) {
+    return undefined;
+  }
   const deployment: KubeDeploymentManifest | undefined = bundle.objects.find(
     (object: KubeManifest): object is KubeDeploymentManifest => object.kind === 'Deployment',
   );
