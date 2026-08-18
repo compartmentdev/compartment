@@ -29,7 +29,6 @@ const snapshotIds = (await readdir(snapshotRoot, { withFileTypes: true }))
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name)
   .sort(compareSnapshotIds);
-const copySnapshotIds = [];
 const linkSnapshotIds = [];
 for (const snapshotId of snapshotIds) {
   if (!/^\d+$/u.test(snapshotId)) {
@@ -44,7 +43,6 @@ for (const snapshotId of snapshotIds) {
 await writeManifest('worker-buildkit-runtime-digest', runtimeDigest);
 await writeManifest('railpack-builder-image', builderImage);
 await writeManifest('railpack-runtime-image', runtimeImage);
-await writeManifest('copy-snapshots', copySnapshotIds.join('\n'));
 await writeManifest('link-snapshots', linkSnapshotIds.join('\n'));
 
 function assertDigestImage(name, value) {

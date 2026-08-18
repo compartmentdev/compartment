@@ -54,7 +54,6 @@ worker_buildkit_runtime_digest="$(
 require_exact_value "$manifest_root/worker-buildkit-runtime-digest" "$worker_buildkit_runtime_digest"
 require_exact_value "$manifest_root/railpack-builder-image" "$COMPARTMENT_RAILPACK_BUILDER_IMAGE"
 require_exact_value "$manifest_root/railpack-runtime-image" "$COMPARTMENT_RAILPACK_RUNTIME_IMAGE"
-require_file "$manifest_root/copy-snapshots"
 require_file "$manifest_root/link-snapshots"
 
 if find "$buildkit_root" -mindepth 1 -print -quit | grep -q .; then
@@ -88,16 +87,6 @@ for seed_blob in "$seed_blob_directory"/*; do
   ln -s "$seed_blob" "$blob_directory/$(basename "$seed_blob")"
 done
 
-copy_snapshot() {
-  snapshot_id="$1"
-  [ -n "$snapshot_id" ] || return
-  if [ ! -d "$snapshot_source/$snapshot_id" ]; then
-    echo "BuildKit seed copy snapshot $snapshot_id is missing." >&2
-    exit 1
-  fi
-  cp -a "$snapshot_source/$snapshot_id" "$snapshot_target/$snapshot_id"
-}
-
 link_snapshot() {
   snapshot_id="$1"
   [ -n "$snapshot_id" ] || return
@@ -108,7 +97,6 @@ link_snapshot() {
   ln -s "$snapshot_source/$snapshot_id" "$snapshot_target/$snapshot_id"
 }
 
-while IFS= read -r snapshot_id; do copy_snapshot "$snapshot_id"; done < "$manifest_root/copy-snapshots"
 while IFS= read -r snapshot_id; do link_snapshot "$snapshot_id"; done < "$manifest_root/link-snapshots"
 
 seed_snapshot_count="$(find "$snapshot_source" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"

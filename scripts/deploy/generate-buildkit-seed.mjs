@@ -48,6 +48,7 @@ export async function generateBuildkitSeedContext(input) {
     ]);
     await waitForBuildkit(containerName);
     await runRequiredCommand('docker', ['exec', containerName, 'mkdir', '-p', '/tmp/seed-context']);
+    // The no-op step forces BuildKit to materialize the pinned builder layers as immutable cache records.
     await runRequiredCommand(
       'docker',
       ['exec', '--interactive', containerName, 'tee', '/tmp/seed-context/Dockerfile'],
