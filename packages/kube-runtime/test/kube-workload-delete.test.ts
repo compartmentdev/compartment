@@ -1,6 +1,7 @@
 import { KubernetesObjectApi } from '@kubernetes/client-node';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { KubeRuntime, type KubeManifest } from '../src';
+import { CapturingKubernetesObjectApi } from './kube-transport-capture.harness';
 
 describe('workload deletion', (): void => {
   const deleteObject: Mock = vi.fn(async (): Promise<object> => await Promise.resolve({}));
@@ -37,4 +38,24 @@ describe('workload deletion', (): void => {
       await expect(runtime.delete([object])).resolves.toBeUndefined();
     },
   );
+
+  it('serializes candidate Deployment deletion with foreground cascading', async (): Promise<void> => {
+    const objectApi = new CapturingKubernetesObjectApi('/apis/apps/v1/namespaces/cpt-project/deployments/candidate');
+    vi.spyOn(KubernetesObjectApi, 'makeApiClient').mockReturnValue(objectApi);
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): object => ({}) } as never);
+
+    await runtime.delete([
+      {
+        apiVersion: 'apps/v1',
+        kind: 'Deployment',
+        metadata: { name: 'candidate', namespace: 'cpt-project' },
+      },
+    ]);
+
+    expect(objectApi.method).toBe('DELETE');
+    expect(objectApi.url).toBe(
+      'https://kubernetes.test/apis/apps/v1/namespaces/cpt-project/deployments/candidate?propagationPolicy=Foreground',
+    );
+    expect(objectApi.body).toBeNull();
+  });
 });
