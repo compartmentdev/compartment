@@ -79,6 +79,8 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.ports.edge }}
+            - name: metrics
+              containerPort: {{ .Values.ports.metrics }}
           readinessProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 2

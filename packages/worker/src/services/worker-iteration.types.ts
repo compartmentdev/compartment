@@ -21,5 +21,7 @@ export interface AttemptClaimedDeploymentCompletionInput {
 }
 
 export interface WorkerBuildTask {
-  completion: Promise<void>;
+  completion: Promise<WorkerBuildResult>;
 }
+
+export type WorkerBuildResult = 'failed' | 'succeeded';

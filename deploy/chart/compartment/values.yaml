@@ -61,6 +61,7 @@ images:
 ports:
   api: 39444
   edge: 39081
+  metrics: 9464
   registry: 5000
   registryInternal: 5001
   dockerHubCache: 5002
@@ -103,6 +104,14 @@ worker:
 
 projectProvisioner:
   replicas: 1
+
+platformMetrics:
+  enabled: false
+  interval: 30s
+  additionalLabels: {}
+  namespaceSelector:
+    kubernetes.io/metadata.name: monitoring
+  podSelector: {}
 
 leaderElection:
   leaseDurationMs: 15000

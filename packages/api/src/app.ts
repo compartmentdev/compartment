@@ -11,6 +11,7 @@ import { registerUrlEncodedFormBodyParser } from './http/form-body';
 import { registerJsonBodyParsers } from './http/json-body';
 import { defaultRequestReceiveTimeoutMs } from './http/request-timeout';
 import { registerApiRequestLogging } from './http/request-logging';
+import { registerApiRequestMetrics } from './http/api-request-metrics';
 import { registerApiRateLimit } from './http/rate-limit';
 import { registerApiRoutes } from './routes/register-routes';
 import { registerSystemRoutes } from './routes/system/register-system-routes';
@@ -126,6 +127,7 @@ function createApiApp(logLevel: string): ApiApp {
   });
 
   registerApiRequestLogging(app);
+  registerApiRequestMetrics(app);
   app.register(multipart);
 
   return app;

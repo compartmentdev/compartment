@@ -11,11 +11,16 @@ import {
   createCompartmentRequester,
   type CompartmentRequester,
 } from '@compartment/sdk';
-import { waitForAbortOrTimeout } from '@compartment/utils';
+import { waitForAbortOrTimeout, type PrometheusMetricsServer } from '@compartment/utils';
 import pino, { type Logger } from 'pino';
 import { readProjectProvisionerConfig } from './project-provisioner-config';
 import type { ProjectProvisionerConfig } from './project-provisioner.types';
 import { executeProjectProvisioning } from './services/project-provisioning-execution.service';
+import {
+  recordProjectProvisioningAttempt,
+  setProjectProvisioningAttemptActive,
+  startProjectProvisionerPlatformMetrics,
+} from './services/project-provisioner-platform-metrics.service';
 
 export async function runProjectProvisioner(): Promise<void> {
   const config: ProjectProvisionerConfig = readProjectProvisionerConfig();
@@ -31,11 +36,16 @@ export async function runProjectProvisioner(): Promise<void> {
     onStandby: (): void => logger.info('Project provisioner is standing by.'),
   });
   const shutdown: AbortController = createShutdownController();
-  await election.run(
-    async (signal: AbortSignal): Promise<void> =>
-      await runProjectProvisioningLoop(config, logger, request, runtime, signal),
-    shutdown.signal,
-  );
+  const metricsServer: PrometheusMetricsServer = await startProjectProvisionerPlatformMetrics(config.metricsPort);
+  try {
+    await election.run(
+      async (signal: AbortSignal): Promise<void> =>
+        await runProjectProvisioningLoop(config, logger, request, runtime, signal),
+      shutdown.signal,
+    );
+  } finally {
+    await metricsServer.close();
+  }
 }
 
 async function runProjectProvisioningLoop(
@@ -75,13 +85,22 @@ async function provisionClaimedProject(
   target: ProjectProvisioningTargetV2,
   logger: Logger,
 ): Promise<void> {
-  const completion: WorkerCompleteProjectProvisioningV2Request = await executeProjectProvisioning(
-    request,
-    runtime,
-    config,
-    target,
-    logger,
-  );
-  await completeProjectProvisioningV2(request, completion);
-  logger.info({ projectId: target.projectId, status: completion.status }, 'Project provisioning completed.');
+  setProjectProvisioningAttemptActive(true);
+  try {
+    const completion: WorkerCompleteProjectProvisioningV2Request = await executeProjectProvisioning(
+      request,
+      runtime,
+      config,
+      target,
+      logger,
+    );
+    await completeProjectProvisioningV2(request, completion);
+    recordProjectProvisioningAttempt(completion.status === 'failed' ? 'failed' : 'succeeded');
+    logger.info({ projectId: target.projectId, status: completion.status }, 'Project provisioning completed.');
+  } catch (error) {
+    recordProjectProvisioningAttempt('failed');
+    throw error;
+  } finally {
+    setProjectProvisioningAttemptActive(false);
+  }
 }

@@ -31,6 +31,7 @@ import { archivedProjectDeploymentFailureMessage, finalizeFailedDeployment } fro
 import { planRollbackRetentionCleanup } from './deployment-retention.service';
 import type { DeploymentReconcileObservationResult } from './deployment-reconcile.service.types';
 import { encryptTenantSecretEnvironment } from './tenant-secret-environment.service';
+import { observeDeploymentSubmitToReady } from './platform-metrics.service';
 
 const defaultTerminationGracePeriodSeconds: number = 45;
 
@@ -72,6 +73,7 @@ export async function observeDeploymentReconcile(
       revision: input.revision,
     },
     writeCommittedAuditEventRowsToLocalFileSink,
+    observeDeploymentSubmitToReady,
   );
   if (applied && input.observation === 'ready') {
     await synchronizeEdgeAppAccessState();

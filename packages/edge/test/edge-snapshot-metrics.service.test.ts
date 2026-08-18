@@ -1,16 +1,22 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createEdgeSnapshotMetrics } from '../src/services/edge-snapshot-metrics.service';
 import type { EdgeSnapshotMetrics } from '../src/services/edge-snapshot-metrics.service.types';
 
+afterEach((): void => {
+  vi.useRealTimers();
+});
+
 describe('edge snapshot metrics', (): void => {
-  it('reports restore source, age, persistence, refresh, and expiry failures', (): void => {
+  it('reports restore source, age, persistence, refresh, and expiry failures', async (): Promise<void> => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-12T10:00:05.000Z'));
     const metrics: EdgeSnapshotMetrics = createEdgeSnapshotMetrics();
     metrics.recordRestore('disk', '2026-07-12T10:00:00.000Z');
     metrics.recordPersistenceError();
     metrics.recordRefreshError();
     metrics.recordFailClosedExpiry();
 
-    const output: string = metrics.render(new Date('2026-07-12T10:00:05.000Z'));
+    const output: string = await metrics.registry.metrics();
     expect(output).toContain('compartment_edge_snapshot_age_seconds 5');
     expect(output).toContain('compartment_edge_snapshot_restore_source{source="disk"} 1');
     expect(output).toContain('compartment_edge_snapshot_persistence_errors_total 1');

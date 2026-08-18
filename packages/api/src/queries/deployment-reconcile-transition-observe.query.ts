@@ -25,6 +25,7 @@ export async function findReconcileCandidate(
   return (
     await tx
       .select({
+        createdAt: deployments.createdAt,
         deploymentRunId: deployments.deploymentRunId,
         environmentId: deployments.environmentId,
         isActive: deployments.isActive,

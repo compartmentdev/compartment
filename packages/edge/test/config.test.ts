@@ -14,6 +14,7 @@ describe('readEdgeConfig', (): void => {
       COMPARTMENT_EDGE_SNAPSHOT_PATH: '/tmp/edge-snapshot.json',
       COMPARTMENT_EDGE_TOKEN: 'edge-token',
       COMPARTMENT_LOG_LEVEL: 'info',
+      COMPARTMENT_EDGE_METRICS_PORT: '9466',
       COMPARTMENT_PUBLIC_PROTOCOL: 'http',
     });
 
@@ -21,6 +22,7 @@ describe('readEdgeConfig', (): void => {
     expect(config.bindHost).toBe('127.0.0.1');
     expect(config.controlPlaneHost).toBe('console.localhost');
     expect(config.internalHost).toBe('127.0.0.1');
+    expect(config.metricsPort).toBe(9466);
     expect(config.port).toBe(39548);
     expect(config.publicProtocol).toBe('http');
     expect(config.replicaCount).toBe(2);

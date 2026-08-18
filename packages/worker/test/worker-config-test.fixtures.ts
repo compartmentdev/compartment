@@ -68,6 +68,7 @@ export function createWorkerTestConfig(overrides: Partial<WorkerConfig> = {}): W
     deploymentInfrastructureTimeoutMs: 600_000,
     organizationQuota: testOrganizationQuota,
     logLevel: 'silent',
+    metricsPort: 9464,
     leaderElection: {
       identity: 'worker-1',
       leaseDurationMs: 15_000,

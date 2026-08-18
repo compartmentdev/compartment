@@ -1,0 +1,115 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: platform metrics discovery and isolation
+templates:
+  - templates/*.yaml
+values:
+  - node-pools-values.yaml
+  - registry-values.yaml
+release:
+  name: compartment
+  namespace: compartment-system
+tests:
+  - it: omits Prometheus discovery by default
+    set:
+      platform.startupStage: full
+      platform.installationId: metrics-disabled
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: platform-metrics.yaml
+      - hasDocuments:
+          count: 4
+        template: platform-network-policy.yaml
+      - equal:
+          path: spec.ingress
+          value: []
+        template: platform-network-policy.yaml
+        documentIndex: 3
+
+  - it: discovers only platform pods on the dedicated metrics port
+    set: &metricsEnabled
+      platform.startupStage: full
+      platform.installationId: metrics-enabled
+      platformMetrics.enabled: true
+      platformMetrics.interval: 15s
+      platformMetrics.additionalLabels:
+        release: monitoring-stack
+      platformMetrics.namespaceSelector:
+        kubernetes.io/metadata.name: observability
+      platformMetrics.podSelector:
+        app.kubernetes.io/name: prometheus
+    asserts:
+      - isKind:
+          of: PodMonitor
+        template: platform-metrics.yaml
+      - equal:
+          path: metadata.labels.release
+          value: monitoring-stack
+        template: platform-metrics.yaml
+      - equal:
+          path: spec.podMetricsEndpoints[0]
+          value:
+            port: metrics
+            path: /metrics
+            interval: 15s
+        template: platform-metrics.yaml
+      - equal:
+          path: spec.selector.matchExpressions[0].values
+          value: [api, worker, project-provisioner, edge]
+        template: platform-metrics.yaml
+      - hasDocuments:
+          count: 4
+        template: platform-network-policy.yaml
+      - equal:
+          path: spec.ingress
+          value:
+            - from:
+                - namespaceSelector:
+                    matchLabels:
+                      kubernetes.io/metadata.name: observability
+                  podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: prometheus
+              ports:
+                - protocol: TCP
+                  port: 9464
+        template: platform-network-policy.yaml
+        documentIndex: 3
+
+  - it: places the dedicated port on every observed process
+    set: *metricsEnabled
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content: { name: metrics, containerPort: 9464 }
+        template: api.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content: { name: metrics, containerPort: 9464 }
+        template: worker.yaml
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content: { name: metrics, containerPort: 9464 }
+        template: project-provisioner.yaml
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content: { name: metrics, containerPort: 9464 }
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: data.COMPARTMENT_API_METRICS_PORT
+          value: '9464'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_WORKER_METRICS_PORT
+          value: '9464'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_EDGE_METRICS_PORT
+          value: '9464'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_PROJECT_PROVISIONER_METRICS_PORT
+          value: '9464'
+        template: configmap.yaml

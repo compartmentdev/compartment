@@ -10,6 +10,7 @@ interface SupersedePreviousKubeDeploymentInput {
 }
 
 export interface SupersedeCandidateContext {
+  createdAt: Date;
   deploymentRunId: string;
   environmentId: string;
   isActive: boolean;

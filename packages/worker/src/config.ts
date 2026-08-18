@@ -61,6 +61,7 @@ const buildResourceRequirementsSchema = z
 
 const workerBuildConfigSchema: z.ZodType<WorkerBuildConfigEnvironment> = workerProcessConfigSchema.and(
   z.object({
+    COMPARTMENT_WORKER_METRICS_PORT: z.coerce.number().int().positive(),
     COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME: z.string().trim().min(1),
     COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: z.string().trim().min(1),
     COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: z.coerce.number().int().positive(),
@@ -164,6 +165,7 @@ function readTenantSecretsKeyring(parsed: WorkerConfigEnvironment): TenantSecret
 function buildWorkerBuildConfig(parsed: WorkerBuildConfigEnvironment): WorkerBuildConfig {
   return {
     ...buildWorkerProcessConfig(parsed),
+    metricsPort: parsed.COMPARTMENT_WORKER_METRICS_PORT,
     workerImage: parsed.COMPARTMENT_WORKER_IMAGE,
     buildSandbox: {
       buildKitConfigMapName: parsed.COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME,

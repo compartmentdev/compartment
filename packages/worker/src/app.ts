@@ -16,6 +16,8 @@ import type { WorkerCaughtError, WorkerFetchError } from './logging/worker-error
 import { createWorkerLogger } from './logging/worker-logger';
 import type { WorkerBuildTask } from './services/worker-iteration.types';
 import { runAuxiliaryWorkerIteration, startNextBuild } from './services/worker.service';
+import { startWorkerPlatformMetrics, trackWorkerBuildCompletion } from './services/worker-platform-metrics.service';
+import type { WorkerPlatformMetricsRuntime } from './services/worker-platform-metrics.service.types';
 
 interface WorkerState {
   hasReachedApi: boolean;
@@ -40,10 +42,15 @@ export async function runWorker(config: WorkerConfig = readWorkerConfig()): Prom
     },
   );
   const shutdown: AbortController = createShutdownController();
-  await election.run(
-    async (signal: AbortSignal): Promise<void> => await runActiveWorker(config, runtime, logger, signal),
-    shutdown.signal,
-  );
+  const metrics: WorkerPlatformMetricsRuntime = await startWorkerPlatformMetrics(config);
+  try {
+    await election.run(
+      async (signal: AbortSignal): Promise<void> => await runActiveWorker(config, runtime, logger, signal),
+      shutdown.signal,
+    );
+  } finally {
+    await metrics.server.close();
+  }
 }
 
 async function runActiveWorker(
@@ -141,24 +148,12 @@ async function runBuildDispatcherCycle(
       await waitForBuildCapacityOrPollInterval(activeBuilds, config.pollIntervalMs, signal);
       return;
     }
-    trackBuildCompletion(activeBuilds, task, logger, state);
+    trackWorkerBuildCompletion(activeBuilds, task.completion, (error: WorkerCaughtError): void =>
+      recordWorkerIterationError(logger, state, error),
+    );
   } catch (error) {
     await handleWorkerIterationError(config, logger, state, error as WorkerCaughtError, signal);
   }
-}
-
-function trackBuildCompletion(
-  activeBuilds: Set<Promise<void>>,
-  task: WorkerBuildTask,
-  logger: pino.Logger<never, boolean>,
-  state: WorkerState,
-): void {
-  const trackedCompletion: Promise<void> = task.completion
-    .catch((error: WorkerCaughtError): void => recordWorkerIterationError(logger, state, error))
-    .finally((): void => {
-      activeBuilds.delete(trackedCompletion);
-    });
-  activeBuilds.add(trackedCompletion);
 }
 
 async function waitForBuildCapacityOrPollInterval(

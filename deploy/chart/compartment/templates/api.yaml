@@ -102,6 +102,8 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.ports.api }}
+            - name: metrics
+              containerPort: {{ .Values.ports.metrics }}
           readinessProbe:
             httpGet: {path: /readyz, port: http}
             periodSeconds: 2

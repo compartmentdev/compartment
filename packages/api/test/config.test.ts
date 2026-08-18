@@ -359,6 +359,7 @@ function createApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.
     COMPARTMENT_EDGE_TOKEN: 'edge-secret',
     COMPARTMENT_ENV: 'dev',
     COMPARTMENT_LOG_LEVEL: 'info',
+    COMPARTMENT_API_METRICS_PORT: '9464',
     COMPARTMENT_NEW_PROJECTS_PRIVATE_BY_DEFAULT: 'true',
     COMPARTMENT_INSTALL_TOKEN: 'install-secret',
     COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN: '',

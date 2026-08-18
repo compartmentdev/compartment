@@ -1,0 +1,25 @@
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- if and .Values.platformMetrics.enabled (eq $installState.effective.platform.startupStage "full") }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "compartment.fullname" . }}-platform
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    {{- with .Values.platformMetrics.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "compartment.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [api, worker, project-provisioner, edge]
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ .Values.platformMetrics.interval }}
+{{- end }}

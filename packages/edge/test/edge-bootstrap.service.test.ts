@@ -59,6 +59,7 @@ const edgeConfig: EdgeConfig = {
   edgeToken: 'test-edge-token',
   internalHost: '127.0.0.1',
   logLevel: 'silent',
+  metricsPort: 9464,
   controlPlaneHost: 'console.localhost',
   port: 9080,
   publicProtocol: 'http',
@@ -119,7 +120,7 @@ describe('edge bootstrap service', (): void => {
 
     expect(store.getRoute('billing.localhost')?.upstreamPort).toBe(31003);
     expect(mocks.getAppAccessState).toHaveBeenCalledTimes(1);
-    expect(metrics.render()).toContain('compartment_edge_snapshot_restore_source{source="disk"} 1');
+    expect(await metrics.registry.metrics()).toContain('compartment_edge_snapshot_restore_source{source="disk"} 1');
   });
 
   it('restores a fresh persisted snapshot without retrying when the API connection times out', async (): Promise<void> => {
@@ -133,7 +134,7 @@ describe('edge bootstrap service', (): void => {
 
     expect(store.getRoute('billing.localhost')?.upstreamPort).toBe(31003);
     expect(mocks.getAppAccessState).toHaveBeenCalledTimes(1);
-    expect(metrics.render()).toContain('compartment_edge_snapshot_restore_source{source="disk"} 1');
+    expect(await metrics.registry.metrics()).toContain('compartment_edge_snapshot_restore_source{source="disk"} 1');
   });
 
   it('does not retry an API connection timeout without a valid persisted snapshot', async (): Promise<void> => {
@@ -262,7 +263,7 @@ describe('edge bootstrap service', (): void => {
 
     expect(store.getRoute('billing.localhost')?.upstreamPort).toBe(31004);
     expect(mocks.getAppAccessState).toHaveBeenCalledTimes(2);
-    expect(metrics.render()).toContain('compartment_edge_snapshot_fail_closed_expiry_total 1');
+    expect(await metrics.registry.metrics()).toContain('compartment_edge_snapshot_fail_closed_expiry_total 1');
   });
 
   it('clears any existing snapshot and sessions when the API returns null state', async (): Promise<void> => {
@@ -295,7 +296,7 @@ describe('edge bootstrap service', (): void => {
         bootstrapEdgeAccessStateUntilReady(edgeConfig, store, metrics, pino({ enabled: false })),
       ).rejects.toThrow();
       expect(store.getRoute('billing.localhost')).toBeNull();
-      expect(metrics.render()).toContain('compartment_edge_snapshot_persistence_errors_total 1');
+      expect(await metrics.registry.metrics()).toContain('compartment_edge_snapshot_persistence_errors_total 1');
     },
   );
 
@@ -390,7 +391,7 @@ describe('edge bootstrap service', (): void => {
     await vi.advanceTimersByTimeAsync(5_000);
 
     expect(store.getRoute('billing.localhost')?.upstreamPort).toBe(31001);
-    expect(metrics.render()).toContain('compartment_edge_snapshot_refresh_errors_total 1');
+    expect(await metrics.registry.metrics()).toContain('compartment_edge_snapshot_refresh_errors_total 1');
     stopRefreshLoop();
   });
 

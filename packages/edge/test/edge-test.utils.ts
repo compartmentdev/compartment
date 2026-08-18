@@ -72,6 +72,7 @@ function createEdgeConfig(overrides: Partial<EdgeConfig> | undefined = undefined
     edgeToken: 'test-edge-token',
     internalHost: overrides?.internalHost ?? '127.0.0.1',
     logLevel: 'silent',
+    metricsPort: 9464,
     controlPlaneHost: 'console.localhost',
     port: 9081,
     publicProtocol: 'http',

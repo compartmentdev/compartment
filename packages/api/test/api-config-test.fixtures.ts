@@ -27,6 +27,7 @@ export function createApiTestConfig(overrides: Partial<ApiConfig> = {}): ApiConf
     edgeToken: 'test-edge-token',
     edgeUrl: 'http://127.0.0.1:9081',
     logLevel: 'silent',
+    metricsPort: 9464,
     newProjectsPrivateByDefault: true,
     port: 9443,
     publicHttpPort: 9080,

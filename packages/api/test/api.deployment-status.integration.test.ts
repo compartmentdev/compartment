@@ -44,11 +44,15 @@ import {
   deployments,
   environments,
   organizationQuotaReconciliation,
+  projectKubeProvisioning,
   projectServices,
   projects,
 } from '../src/db/schema';
 import { ingestDeploymentProductLogs } from '../src/services/deployment-product-logs.service';
 import { persistDeploymentReconcileObservation } from '../src/queries/deployment-reconcile.query';
+import { readPlatformMetricsSnapshot } from '../src/queries/platform-metrics.query';
+import type { PlatformBuildQueueRow, PlatformMetricsSnapshot } from '../src/queries/platform-metrics.query.types';
+import { projectProvisioningAttemptLimit } from '../src/queries/project-provisioning-policy';
 import { prepareDeploymentReconcile } from '../src/services/deployment-reconcile.service';
 import { publishPodMetricsSnapshot } from '../src/services/pod-metrics-snapshot.service';
 
@@ -79,6 +83,16 @@ type InvalidateEdgeAppAccessSessions = () => Promise<void>;
 type SynchronizeEdgeAppAccessState = () => Promise<void>;
 type ResolveDnsRecord = (hostname: string) => Promise<string[]>;
 type ResolveTxtRecord = (hostname: string) => Promise<string[][]>;
+
+function readGlobalBuildQueue(snapshot: PlatformMetricsSnapshot): PlatformBuildQueueRow {
+  const row: PlatformBuildQueueRow | undefined = snapshot.buildQueue.find(
+    (candidate: PlatformBuildQueueRow): boolean => candidate.organizationId === null,
+  );
+  if (row === undefined) {
+    throw new Error('Expected the platform metrics snapshot to contain a global build queue row.');
+  }
+  return row;
+}
 
 interface AppAccessEdgeServiceMocks {
   invalidateEdgeAppAccessSessions: Mock<InvalidateEdgeAppAccessSessions>;
@@ -179,6 +193,74 @@ describe('Phase 0 API integration deployment status', (): void => {
 
     hasInitializedApiIntegrationRuntime = false;
     await cleanupApiIntegrationRuntime(app, systemApp, pool);
+  });
+  it('reports stand-compatible queued, active-build, and rollout counts', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    const deployPayload: DeployResponse = deployResponseSchema.parse(
+      (await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev')).json(),
+    );
+    await db.update(projectKubeProvisioning).set({ attempts: projectProvisioningAttemptLimit - 1, state: 'failed' });
+    const retryableProvisioningSnapshot: PlatformMetricsSnapshot = await readPlatformMetricsSnapshot(db);
+    expect(retryableProvisioningSnapshot.provisioning).toContainEqual({ count: 1, state: 'failed' });
+    expect(retryableProvisioningSnapshot.provisioningSummary).toEqual({
+      attempts: projectProvisioningAttemptLimit - 1,
+      permanentlyUnprovisionable: 0,
+    });
+    await db.update(projectKubeProvisioning).set({ attempts: projectProvisioningAttemptLimit });
+    expect((await readPlatformMetricsSnapshot(db)).provisioningSummary).toEqual({
+      attempts: projectProvisioningAttemptLimit,
+      permanentlyUnprovisionable: 1,
+    });
+    await db.update(projectKubeProvisioning).set({ attempts: 0, state: 'succeeded' });
+
+    const queuedSnapshot: PlatformMetricsSnapshot = await readPlatformMetricsSnapshot(db);
+    expect(readGlobalBuildQueue(queuedSnapshot)).toMatchObject({ active: 0, queued: 1, running: 0 });
+    expect(
+      queuedSnapshot.buildQueue.filter((row: PlatformBuildQueueRow): boolean => row.organizationId !== null),
+    ).toHaveLength(1);
+    expect(readGlobalBuildQueue(queuedSnapshot).oldestQueuedAt).toBeInstanceOf(Date);
+
+    const claim: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
+    const activeBuildSnapshot: PlatformMetricsSnapshot = await readPlatformMetricsSnapshot(db);
+    expect(readGlobalBuildQueue(activeBuildSnapshot)).toMatchObject({ active: 1, queued: 0, running: 1 });
+
+    await prepareDeploymentReconcile({
+      deploymentId: claim.deploymentId,
+      deploymentName: `app-${claim.deploymentId}`,
+      imageRef: 'registry.example.test/runtime@sha256:abc',
+      namespace: `cpt-${claim.deploymentId}`,
+      networkPolicyNames: [],
+      routeHost: claim.routeHost,
+      serviceName: claim.service.name,
+    });
+    const rolloutSnapshot: PlatformMetricsSnapshot = await readPlatformMetricsSnapshot(db);
+    expect(readGlobalBuildQueue(rolloutSnapshot)).toMatchObject({ active: 0, queued: 0, running: 1 });
+    expect(rolloutSnapshot.deployments).toContainEqual({ count: 1, status: 'running' });
+    const readyAt: Date = new Date(Date.now() + 60_000);
+    await persistDeploymentReconcileObservation({
+      deploymentId: claim.deploymentId,
+      failureMessage: null,
+      observation: 'pending',
+      observedAt: readyAt,
+      revision: 0,
+    });
+    let readyDurationSeconds: number | null = null;
+    await persistDeploymentReconcileObservation(
+      {
+        deploymentId: claim.deploymentId,
+        failureMessage: null,
+        observation: 'ready',
+        observedAt: readyAt,
+        revision: 1,
+      },
+      undefined,
+      (durationSeconds: number): void => {
+        readyDurationSeconds = durationSeconds;
+      },
+    );
+    expect(readyDurationSeconds).toBeGreaterThan(59);
+    expect((await readPlatformMetricsSnapshot(db)).deployments).toContainEqual({ count: 1, status: 'succeeded' });
+    expect(deployPayload.deployments).toHaveLength(1);
   });
   it('does not sync service metadata when build env validation fails for an existing target', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);

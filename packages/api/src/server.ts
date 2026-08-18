@@ -7,6 +7,9 @@ import { startApiJobs } from './jobs/api-jobs';
 import type { ApiJobsRuntime } from './jobs/api-jobs.types';
 import { clearApiRuntime, configureApiRuntime } from './runtime/runtime';
 import { prepareSystemApiSocketPath, restrictSystemApiSocketPathPermissions } from './system-api-socket-path';
+import { createApiPlatformMetrics } from './services/platform-metrics.service';
+import type { ApiPlatformMetricsRuntime } from './services/platform-metrics.service.types';
+import { readPlatformMetricsSnapshot } from './queries/platform-metrics.query';
 
 type ShutdownSignal = 'SIGINT' | 'SIGTERM';
 
@@ -14,6 +17,7 @@ interface SharedServerRuntime {
   app: ApiApp;
   db: Database;
   pool: Pool;
+  platformMetrics: ApiPlatformMetricsRuntime;
   resourceOperationPool: Pool;
   systemApp: ApiApp;
 }
@@ -61,7 +65,16 @@ function createSharedServerRuntime(config: ApiConfig, pool: Pool, resourceOperat
     db,
     pool,
   });
-  return { app, db, pool, resourceOperationPool, systemApp };
+  const platformMetrics: ApiPlatformMetricsRuntime = createApiPlatformMetrics(
+    {
+      primaryPool: pool,
+      readSnapshot: async () => await readPlatformMetricsSnapshot(db),
+      resourceOperationPool,
+    },
+    config.bindHost,
+    config.metricsPort,
+  );
+  return { app, db, platformMetrics, pool, resourceOperationPool, systemApp };
 }
 
 async function startSharedServerRuntime(config: ApiConfig, runtime: SharedServerRuntime): Promise<ApiJobsRuntime> {
@@ -75,6 +88,7 @@ async function startSharedServerRuntime(config: ApiConfig, runtime: SharedServer
   });
   restrictSystemApiSocketPathPermissions(config.systemApiSocketPath);
   configureSharedApiRuntime(config, runtime.db);
+  await runtime.platformMetrics.start();
 
   const jobs: ApiJobsRuntime = await startApiJobs({
     config,
@@ -103,6 +117,7 @@ async function closeRunningSharedServerRuntime({
   app,
   jobs,
   pool,
+  platformMetrics,
   resourceOperationPool,
   systemApp,
 }: RunningSharedServerRuntime): Promise<void> {
@@ -113,6 +128,7 @@ async function closeRunningSharedServerRuntime({
   isShuttingDown = true;
   const closeResults: PromiseSettledResult<void>[] = await Promise.allSettled([
     jobs.stop(),
+    platformMetrics.stop(),
     app.close(),
     systemApp.close(),
   ]);
@@ -139,10 +155,11 @@ async function closeStartupSharedServerRuntime({
   app,
   jobs,
   pool,
+  platformMetrics,
   resourceOperationPool,
   systemApp,
 }: StartupSharedServerRuntime): Promise<void> {
-  const closeTasks: Promise<void>[] = [app.close(), systemApp.close()];
+  const closeTasks: Promise<void>[] = [app.close(), platformMetrics.stop(), systemApp.close()];
   if (jobs !== null) {
     closeTasks.unshift(jobs.stop());
   }

@@ -382,10 +382,11 @@
     "ports": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["api", "edge", "registry", "registryInternal", "dockerHubCache", "http"],
+      "required": ["api", "edge", "metrics", "registry", "registryInternal", "dockerHubCache", "http"],
       "properties": {
         "api": { "$ref": "#/definitions/tcpPort" },
         "edge": { "$ref": "#/definitions/tcpPort" },
+        "metrics": { "$ref": "#/definitions/tcpPort" },
         "registry": { "$ref": "#/definitions/tcpPort" },
         "registryInternal": { "$ref": "#/definitions/tcpPort" },
         "dockerHubCache": { "$ref": "#/definitions/tcpPort" },
@@ -403,6 +404,18 @@
       }
     },
     "projectProvisioner": { "$ref": "#/definitions/haComponent" },
+    "platformMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "interval", "additionalLabels", "namespaceSelector", "podSelector"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "interval": { "type": "string", "pattern": "^[1-9][0-9]*(ms|s|m|h)$" },
+        "additionalLabels": { "$ref": "#/definitions/labelSelectorLabels" },
+        "namespaceSelector": { "$ref": "#/definitions/nonEmptyLabelSelectorLabels" },
+        "podSelector": { "$ref": "#/definitions/labelSelectorLabels" }
+      }
+    },
     "leaderElection": {
       "type": "object",
       "additionalProperties": false,
@@ -944,6 +957,12 @@
     "labelSelectorLabels": {
       "description": "Kubernetes label selector. Operators choose the label keys, so only the value type is fixed.",
       "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "nonEmptyLabelSelectorLabels": {
+      "description": "A non-empty Kubernetes label selector used to keep metrics inaccessible from tenant namespaces.",
+      "type": "object",
+      "minProperties": 1,
       "additionalProperties": { "type": "string" }
     },
     "containerResourceQuantities": {
