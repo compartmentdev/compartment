@@ -348,7 +348,7 @@ cache import and export use the project/service-scoped cache repository for both
 
 The bootstrap role and controller role are derived from the immutable T5 artifacts. No
 production or seeded Compartment principal receives either role by default.
-Fresh installs require Kubernetes 1.35 or newer, or `ImageVolume=true` on kube-apiserver, every current eligible
+Installations and updates require Kubernetes 1.35 or newer, or `ImageVolume=true` on kube-apiserver, every current eligible
 kubelet, and every operator-owned autoscaler or machine-template bootstrap path. The CLI verifies API preservation and
 a real mount on every current Ready schedulable node before Helm, then installs a fail-closed
 `ValidatingAdmissionPolicy`. Every short-lived bootstrap ServiceAccount is
