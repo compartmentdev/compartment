@@ -13,8 +13,14 @@ import {
   managedVmFileIdentity,
   readManagedVmPathIdentity,
 } from './managed-vm-state.service';
+import {
+  renderManagedVmBuildRunscConfig,
+  renderManagedVmContainerdTemplate,
+  renderManagedVmRuntimeClasses,
+} from './managed-vm-sandbox-runtime-config.service';
 
 const gvisorRuntimeClassName: string = 'gvisor';
+const gvisorBuildRuntimeClassName: string = 'gvisor-build';
 const expectedRuntimeType: string = 'io.containerd.runsc.v1';
 
 interface ExpectedSandboxRuntimeFile {
@@ -38,7 +44,7 @@ export async function installManagedVmSandboxRuntime(
   await assertExpectedSandboxRuntimeFiles(expectedFiles);
   await execa('systemctl', ['restart', 'k3s']);
   await waitForManagedVmKubernetes();
-  await applyManagedVmRuntimeClass();
+  await applyManagedVmRuntimeClasses();
   await verifyManagedVmSandboxRuntime();
   await assertExpectedSandboxRuntimeFiles(expectedFiles);
   return { ...expectedSandboxRuntimeOwnedDigests(expectedFiles), ...directoryIdentities };
@@ -60,25 +66,37 @@ export async function verifyManagedVmSandboxRuntime(): Promise<void> {
     kubeconfigPath: '/etc/rancher/k3s/k3s.yaml',
     runtimeClassName: gvisorRuntimeClassName,
   });
+  await verifyKubernetesSandboxRuntime({
+    kubeContext: 'default',
+    kubeconfigPath: '/etc/rancher/k3s/k3s.yaml',
+    runtimeClassName: gvisorBuildRuntimeClassName,
+  });
 }
 
 async function verifyManagedVmSandboxRuntimeFiles(): Promise<void> {
   await assertManagedVmGvisorHelperDirectory(true);
-  const [version, template, runscConfig]: [ManagedVmCommandResult, string, string] = await Promise.all([
-    execa(managedVmSandboxRuntimePaths.runsc, ['--version']),
-    readFile(managedVmSandboxRuntimePaths.containerdTemplate, 'utf8'),
-    readFile(managedVmSandboxRuntimePaths.runscConfig, 'utf8'),
-  ]);
+  const [version, template, runscConfig, buildRunscConfig]: [ManagedVmCommandResult, string, string, string] =
+    await Promise.all([
+      execa(managedVmSandboxRuntimePaths.runsc, ['--version']),
+      readFile(managedVmSandboxRuntimePaths.containerdTemplate, 'utf8'),
+      readFile(managedVmSandboxRuntimePaths.runscConfig, 'utf8'),
+      readFile(managedVmSandboxRuntimePaths.buildRunscConfig, 'utf8'),
+    ]);
   if (!version.stdout.includes(managedVmReleaseMetadata.gvisorVersion)) {
     throw new Error('Managed-VM gVisor version verification failed.');
   }
-  if (template !== renderContainerdTemplate() || !runscConfig.includes('[runsc_config]')) {
+  if (
+    template !== renderManagedVmContainerdTemplate() ||
+    !runscConfig.includes('[runsc_config]') ||
+    !buildRunscConfig.includes('file-access-mounts = "exclusive"')
+  ) {
     throw new Error('Managed-VM runsc containerd configuration verification failed.');
   }
   const containerdConfig: string = await readFile(managedVmSandboxRuntimePaths.containerdConfig, 'utf8');
   if (
     !containerdConfig.includes(expectedRuntimeType) ||
     !containerdConfig.includes(managedVmSandboxRuntimePaths.runscConfig) ||
+    !containerdConfig.includes(managedVmSandboxRuntimePaths.buildRunscConfig) ||
     !containerdConfig.includes('pod_annotations = ["dev.gvisor.spec.mount.*"]')
   ) {
     throw new Error('Managed-VM K3s containerd did not register the runsc runtime handler.');
@@ -108,8 +126,8 @@ async function assertCanonicalK3sContainerdDirectory(): Promise<void> {
   }
 }
 
-async function applyManagedVmRuntimeClass(): Promise<void> {
-  await execa('k3s', ['kubectl', 'apply', '--filename', '-'], { input: renderRuntimeClass() });
+export async function applyManagedVmRuntimeClasses(): Promise<void> {
+  await execa('k3s', ['kubectl', 'apply', '--filename', '-'], { input: renderManagedVmRuntimeClasses() });
 }
 
 async function readExpectedSandboxRuntimeFiles(
@@ -121,25 +139,22 @@ async function readExpectedSandboxRuntimeFiles(
     expectedFile(artifacts.gvisorCheckpointGoferPath, managedVmSandboxRuntimePaths.checkpointGofer, 0o755),
     expectedFile(artifacts.gvisorMetricServerPath, managedVmSandboxRuntimePaths.metricServer, 0o755),
     expectedFile(artifacts.gvisorRunscConfigPath, managedVmSandboxRuntimePaths.runscConfig, 0o600),
+    expectedBuildRunscConfigFile(artifacts.gvisorRunscConfigPath),
     Promise.resolve({
-      content: Buffer.from(renderContainerdTemplate()),
+      content: Buffer.from(renderManagedVmContainerdTemplate()),
       destination: managedVmSandboxRuntimePaths.containerdTemplate,
       mode: 0o600,
     }),
   ]);
 }
 
-function renderContainerdTemplate(): string {
-  return `{{ template "base" . }}
-
-[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc]
-  runtime_type = "${expectedRuntimeType}"
-  pod_annotations = ["dev.gvisor.spec.mount.*"]
-
-[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc.options]
-  TypeUrl = "io.containerd.runsc.v1.options"
-  ConfigPath = "${managedVmSandboxRuntimePaths.runscConfig}"
-`;
+async function expectedBuildRunscConfigFile(source: string): Promise<ExpectedSandboxRuntimeFile> {
+  const base: string = String(await readFile(source, 'utf8'));
+  return {
+    content: renderManagedVmBuildRunscConfig(base),
+    destination: managedVmSandboxRuntimePaths.buildRunscConfig,
+    mode: 0o600,
+  };
 }
 
 async function expectedFile(source: string, destination: string, mode: number): Promise<ExpectedSandboxRuntimeFile> {
@@ -185,13 +200,4 @@ function expectedSandboxRuntimeOwnedDigests(
       managedVmFileIdentity(file.content, file.mode),
     ]),
   ]);
-}
-
-function renderRuntimeClass(): string {
-  return `apiVersion: node.k8s.io/v1
-kind: RuntimeClass
-metadata:
-  name: ${gvisorRuntimeClassName}
-handler: runsc
-`;
 }

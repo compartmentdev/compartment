@@ -277,7 +277,7 @@ tests:
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB
-          value: '1024'
+          value: '3072'
         template: configmap.yaml
       - hasDocuments:
           count: 2
@@ -718,7 +718,7 @@ tests:
         documentIndex: 4
       - matchRegex:
           path: spec.validations[0].expression
-          pattern: "runtimeClassName == 'gvisor'"
+          pattern: "runtimeClassName == 'gvisor-build'"
         template: buildkit.yaml
         documentIndex: 4
       - matchRegex:
@@ -739,6 +739,11 @@ tests:
       - matchRegex:
           path: spec.validations[6].expression
           pattern: "volume.name == 'buildkit-data' && quantity\\(volume.emptyDir.sizeLimit\\).compareTo\\(quantity\\('4Gi'\\)\\) == 0"
+        template: buildkit.yaml
+        documentIndex: 4
+      - matchRegex:
+          path: spec.validations[5].expression
+          pattern: "volume.name == 'buildkit-seed'.*volume.image.reference == 'ghcr.io/compartmentdev/compartment-buildkit-seed:latest'.*volume.image.pullPolicy == 'IfNotPresent'"
         template: buildkit.yaml
         documentIndex: 4
       - matchRegex:
@@ -763,12 +768,17 @@ tests:
         documentIndex: 4
       - matchRegex:
           path: spec.validations[11].expression
-          pattern: "!has\\(container.envFrom\\).*container.env.all\\(env, env.name in \\['BUILDKIT_ADDR', 'COMPARTMENT_BUILD_JOB_INPUT', 'COMPARTMENT_BUILD_JOB_SOURCE_ARCHIVE_CREDENTIAL', 'TMPDIR'\\] && !has\\(env.value\\) && has\\(env.valueFrom\\) && has\\(env.valueFrom.secretKeyRef\\)\\)"
+          pattern: "!has\\(container.envFrom\\).*container.env.all\\(env, env.name in \\['BUILDKIT_ADDR', 'COMPARTMENT_BUILD_JOB_INPUT', 'COMPARTMENT_BUILD_JOB_SOURCE_ARCHIVE_CREDENTIAL', 'COMPARTMENT_RAILPACK_BUILDER_IMAGE', 'COMPARTMENT_RAILPACK_RUNTIME_IMAGE', 'TMPDIR'\\] && !has\\(env.value\\) && has\\(env.valueFrom\\) && has\\(env.valueFrom.secretKeyRef\\)\\)"
         template: buildkit.yaml
         documentIndex: 4
       - matchRegex:
           path: spec.validations[12].expression
-          pattern: "container.image == 'ghcr.io/compartmentdev/compartment-worker:latest'.*buildkit-runc-gvisor.*!has\\(container.ports\\).*!has\\(container.envFrom\\).*!has\\(container.securityContext.procMount\\).*!has\\(container.securityContext.appArmorProfile\\)"
+          pattern: "container.image == 'ghcr.io/compartmentdev/compartment-worker:latest'.*start-seeded-buildkit.*buildkit-runc-gvisor.*!has\\(container.ports\\).*!has\\(container.envFrom\\).*!has\\(container.securityContext.procMount\\).*!has\\(container.securityContext.appArmorProfile\\)"
+        template: buildkit.yaml
+        documentIndex: 4
+      - matchRegex:
+          path: spec.validations[12].expression
+          pattern: "mount.name == 'buildkit-seed' && mount.mountPath == '/var/lib/buildkit-seed' && mount.readOnly == true"
         template: buildkit.yaml
         documentIndex: 4
       - isKind:

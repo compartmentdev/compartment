@@ -7,6 +7,7 @@ import {
   type DockerBuildImageInput,
   type DockerBuildImageResult,
   type DockerRegistryCredentials,
+  type DockerRailpackImages,
 } from '@compartment/docker';
 import { fetchBuildSourceArchive, readBuildSourceArchiveFetchRetryLine } from './build-source-archive-fetch';
 import type { BuildSourceArchiveFetchRetryDiagnostic } from './build-source-archive-fetch.types';
@@ -33,6 +34,7 @@ class BuildJobDockerImageInput implements DockerBuildImageInput {
   packer!: 'dockerfile' | 'railpack' | 'static';
   pushImageInsecureRegistry?: boolean | undefined;
   pushImageTag?: string | undefined;
+  railpackImages?: DockerRailpackImages | undefined;
   pushRegistryCredentials?: DockerRegistryCredentials | undefined;
   runtimeAptPackages?: string[] | undefined;
   staticOutputDirectory?: string | undefined;
@@ -44,9 +46,10 @@ class BuildJobDockerImageInput implements DockerBuildImageInput {
 
 async function main(): Promise<void> {
   const environment: WorkerBuildJobEnvironment = readWorkerBuildJobInputEnvironment(process.env);
+  const railpackImages: DockerRailpackImages = readRailpackImages(process.env);
   const result: DockerBuildImageResult =
     environment.kind === 'source'
-      ? await buildSourceImage(environment.input, environment.sourceArchiveCredential)
+      ? await buildSourceImage(environment.input, environment.sourceArchiveCredential, railpackImages)
       : await buildRegistryVerificationImage(environment.input.dockerfile, environment.input.docker);
   writeWorkerBuildJobLog({ result, type: 'result' });
 }
@@ -54,6 +57,7 @@ async function main(): Promise<void> {
 async function buildSourceImage(
   input: WorkerSourceBuildJobInput,
   sourceArchiveCredential: string,
+  railpackImages: DockerRailpackImages,
 ): Promise<DockerBuildImageResult> {
   const directory: string = await mkdtemp(join(tmpdir(), 'compartment-build-job-'));
   try {
@@ -71,7 +75,7 @@ async function buildSourceImage(
       input.service.requiresRoutesFile,
     );
     resolveCompartmentServiceRunExecution(input.service.run, prepared.packer, input.service.path);
-    return await buildDockerImage(buildDockerInput(input.docker, prepared));
+    return await buildDockerImage(buildDockerInput(input.docker, prepared, railpackImages));
   } finally {
     await rm(directory, { force: true, recursive: true });
   }
@@ -97,7 +101,11 @@ async function buildRegistryVerificationImage(
   }
 }
 
-function buildDockerInput(docker: WorkerBuildJobDockerInput, prepared: PreparedWorkerSource): DockerBuildImageInput {
+function buildDockerInput(
+  docker: WorkerBuildJobDockerInput,
+  prepared: PreparedWorkerSource,
+  railpackImages: DockerRailpackImages,
+): DockerBuildImageInput {
   const sourceBuildInput: PreparedWorkerSourceBuildInput | undefined = requirePreparedSourceBuildInput(prepared);
   return new BuildJobDockerImageInput({
     ...docker,
@@ -108,8 +116,23 @@ function buildDockerInput(docker: WorkerBuildJobDockerInput, prepared: PreparedW
     ...(prepared.dockerfilePath === undefined ? {} : { dockerfilePath: prepared.dockerfilePath }),
     onProgressLine: reportProgress,
     packer: prepared.packer,
+    railpackImages,
     ...(prepared.runtimeAptPackages.length === 0 ? {} : { runtimeAptPackages: prepared.runtimeAptPackages }),
   });
+}
+
+function readRailpackImages(env: NodeJS.ProcessEnv): DockerRailpackImages {
+  return {
+    builder: requireDigestImage(env.COMPARTMENT_RAILPACK_BUILDER_IMAGE, 'COMPARTMENT_RAILPACK_BUILDER_IMAGE'),
+    runtime: requireDigestImage(env.COMPARTMENT_RAILPACK_RUNTIME_IMAGE, 'COMPARTMENT_RAILPACK_RUNTIME_IMAGE'),
+  };
+}
+
+function requireDigestImage(value: string | undefined, name: string): string {
+  if (value === undefined || !/^.+@sha256:[a-f0-9]{64}$/u.test(value)) {
+    throw new Error(`${name} must be a digest-pinned image reference.`);
+  }
+  return value;
 }
 
 function requirePreparedSourceBuildInput(prepared: PreparedWorkerSource): PreparedWorkerSourceBuildInput | undefined {

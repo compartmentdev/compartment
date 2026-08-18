@@ -297,7 +297,8 @@ function renderRegistryTlsValues() {
 
 function renderSandboxRuntimeValues(gvisorAvailable) {
   const runtimeClassName = gvisorAvailable ? 'gvisor' : 'compartment-e2e-runc';
-  return `sandboxRuntime:\n  runtimeClassName: ${runtimeClassName}\n`;
+  const buildRuntimeClassName = gvisorAvailable ? 'gvisor-build' : 'compartment-e2e-runc-build';
+  return `sandboxRuntime:\n  buildRuntimeClassName: ${buildRuntimeClassName}\n  runtimeClassName: ${runtimeClassName}\n`;
 }
 
 function renderHighAvailabilityValues(highAvailability) {
@@ -314,10 +315,20 @@ function renderPlatformImageValues(imageDigestsByServiceName) {
   const imageValues = platformK3dServiceNames
     .map(
       (serviceName) =>
-        `  ${serviceName === 'dns01-solver' ? 'dns01Solver' : serviceName}:\n    repository: ${registryClusterHost}/compartment-${serviceName}\n    tag: ${platformImageTag}\n    digest: ${readRequiredPlatformImageDigest(imageDigestsByServiceName, serviceName)}`,
+        `  ${readPlatformImageValueName(serviceName)}:\n    repository: ${registryClusterHost}/compartment-${serviceName}\n    tag: ${platformImageTag}\n    digest: ${readRequiredPlatformImageDigest(imageDigestsByServiceName, serviceName)}`,
     )
     .join('\n');
   return `images:\n${imageValues}\n`;
+}
+
+function readPlatformImageValueName(serviceName) {
+  if (serviceName === 'dns01-solver') {
+    return 'dns01Solver';
+  }
+  if (serviceName === 'buildkit-seed') {
+    return 'buildkitSeed';
+  }
+  return serviceName;
 }
 
 async function upPlatform(command) {
@@ -449,11 +460,13 @@ async function waitForApiServerReadiness() {
 
 function installSandboxRuntimeClass() {
   const runtimeClassName = platformEnvironment.gvisorAvailable ? 'gvisor' : 'compartment-e2e-runc';
+  const buildRuntimeClassName = platformEnvironment.gvisorAvailable ? 'gvisor-build' : 'compartment-e2e-runc-build';
   const runtimeHandler = platformEnvironment.gvisorAvailable ? 'runsc' : 'runc';
+  const buildRuntimeHandler = platformEnvironment.gvisorAvailable ? 'runsc-build' : 'runc';
   const runtimeClassPath = join(dirname(platformValuesPath), `${clusterName}-sandbox-runtime-class.yaml`);
   writeFileSync(
     runtimeClassPath,
-    `apiVersion: node.k8s.io/v1\nkind: RuntimeClass\nmetadata:\n  name: ${runtimeClassName}\nhandler: ${runtimeHandler}\n`,
+    `apiVersion: node.k8s.io/v1\nkind: RuntimeClass\nmetadata:\n  name: ${runtimeClassName}\nhandler: ${runtimeHandler}\n---\napiVersion: node.k8s.io/v1\nkind: RuntimeClass\nmetadata:\n  name: ${buildRuntimeClassName}\nhandler: ${buildRuntimeHandler}\n`,
     { mode: 0o600 },
   );
   try {
@@ -722,6 +735,8 @@ export function buildPlatformK3dClusterCreateArgs() {
           `${gvisorContainerdConfigPath}:/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl@server:*;agent:*`,
           '--volume',
           '/etc/containerd/runsc.toml:/etc/containerd/runsc.toml@server:*;agent:*',
+          '--volume',
+          `${repositoryRoot}/scripts/deploy/fixtures/runsc-build.toml:/etc/containerd/runsc-build.toml@server:*;agent:*`,
         ]
       : []),
     '--timeout',

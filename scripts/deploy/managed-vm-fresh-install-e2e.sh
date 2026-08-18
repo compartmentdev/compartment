@@ -13,6 +13,10 @@ cleanup() {
     --namespace default \
     --ignore-not-found \
     --wait=false >/dev/null 2>&1 || true
+  sudo k3s kubectl delete pod/compartment-fresh-vm-gvisor-build-e2e \
+    --namespace default \
+    --ignore-not-found \
+    --wait=false >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -22,7 +26,8 @@ for forbidden_path in \
   /var/lib/compartment/installer \
   /usr/local/bin/k3s \
   /usr/local/bin/runsc \
-  /usr/local/bin/containerd-shim-runsc-v1; do
+  /usr/local/bin/containerd-shim-runsc-v1 \
+  /etc/containerd/runsc-build.toml; do
   if sudo test -e "${forbidden_path}"; then
     echo "Fresh-VM precondition failed: ${forbidden_path} already exists." >&2
     exit 1
@@ -54,6 +59,9 @@ sudo systemctl is-active --quiet k3s.service
 sudo k3s kubectl wait node --all --for=condition=Ready --timeout=5m
 
 sudo /usr/local/bin/runsc --version | grep -q "${expected_gvisor_version}"
+sudo grep --fixed-strings --quiet 'file-access-mounts = "exclusive"' /etc/containerd/runsc-build.toml
+test "$(sudo k3s kubectl get runtimeclass/gvisor --output=jsonpath='{.handler}')" = runsc
+test "$(sudo k3s kubectl get runtimeclass/gvisor-build --output=jsonpath='{.handler}')" = runsc-build
 
 cat >"${canary_manifest}" <<'EOF'
 apiVersion: v1
@@ -76,8 +84,15 @@ spec:
           drop: [ALL]
 EOF
 
+sed \
+  -e 's/compartment-fresh-vm-gvisor-e2e/compartment-fresh-vm-gvisor-build-e2e/g' \
+  -e 's/runtimeClassName: gvisor/runtimeClassName: gvisor-build/' \
+  "${canary_manifest}" | sudo k3s kubectl apply --filename -
+
 sudo k3s kubectl apply --filename "${canary_manifest}"
 sudo k3s kubectl wait pod/compartment-fresh-vm-gvisor-e2e --for=condition=Ready --timeout=5m
+sudo k3s kubectl wait pod/compartment-fresh-vm-gvisor-build-e2e --for=condition=Ready --timeout=5m
 sudo k3s kubectl exec pod/compartment-fresh-vm-gvisor-e2e -- dmesg | grep -qi gvisor
+sudo k3s kubectl exec pod/compartment-fresh-vm-gvisor-build-e2e -- dmesg | grep -qi gvisor
 
-echo 'Verified fresh managed-VM K3s capacity configuration and gVisor fail-closed sandboxing.'
+echo 'Verified fresh managed-VM K3s capacity configuration and both gVisor runtime handlers.'

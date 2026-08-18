@@ -1,4 +1,7 @@
 import { spawn } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
@@ -18,24 +21,65 @@ const defaultBaseImages = Object.freeze({
 });
 const dockerRateLimitRetryDelaysMs = Object.freeze([90_000, 180_000, 300_000]);
 const capturedOutputTailMaxLength = 96_000;
+const railpackBuilderImage =
+  'ghcr.io/railwayapp/railpack-builder@sha256:007845e88b6c78b3bf57df7c2379c336589545fa241b047f6389ba2ca0344129';
+const railpackRuntimeImage =
+  'ghcr.io/railwayapp/railpack-runtime@sha256:122904a97579630033432d6d4652ad4eb8751b9680756a429ebc7d0942222083';
 const dockerRegistryRateLimitPatterns = [
   '429 Too Many Requests',
   'toomanyrequests',
   'rate exceeded',
   'too many requests',
 ];
-
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 
 export async function buildSelfHostedImages(input) {
-  const buildPlan = buildSelfHostedImageBuildPlan(
-    input.imageRefsByServiceName,
-    input.env ?? process.env,
-    input.builderName,
-  );
+  const outputDirectory = await mkdtemp(join(tmpdir(), 'compartment-self-hosted-images-'));
+  try {
+    const buildPlan = buildSelfHostedImageBuildPlan(
+      input.imageRefsByServiceName,
+      input.env ?? process.env,
+      input.builderName,
+    );
 
-  for (const build of buildPlan) {
-    await runDockerBuildWithRegistryRetry(input.repositoryRoot, build);
+    for (const build of buildPlan) {
+      await runDockerBuildWithRegistryRetry(input.repositoryRoot, build);
+    }
+    await buildBuildkitSeedImage(input, outputDirectory);
+  } finally {
+    await rm(outputDirectory, { force: true, recursive: true });
+  }
+}
+
+async function buildBuildkitSeedImage(input, outputDirectory) {
+  const contextDirectory = join(outputDirectory, 'buildkit-seed-context');
+  await runRequiredCommand(input.repositoryRoot, 'sh', [
+    'packages/worker/scripts/generate-buildkit-seed.sh',
+    readRequiredImageRef(input.imageRefsByServiceName, 'worker'),
+    railpackBuilderImage,
+    railpackRuntimeImage,
+    contextDirectory,
+  ]);
+  await runDockerBuildWithRegistryRetry(input.repositoryRoot, {
+    args: [
+      'buildx',
+      'build',
+      ...(input.builderName === undefined ? [] : ['--builder', input.builderName]),
+      '--load',
+      '--tag',
+      readRequiredImageRef(input.imageRefsByServiceName, 'buildkit-seed'),
+      '--file',
+      'packages/worker/Dockerfile.buildkit-seed',
+      contextDirectory,
+    ],
+    name: 'buildkit-seed',
+  });
+}
+
+async function runRequiredCommand(repositoryRoot, command, args) {
+  const result = await runCommandProcess(repositoryRoot, command, args);
+  if (!result.ok) {
+    throw new Error(`Command failed: ${command} ${args.join(' ')}`);
   }
 }
 
@@ -144,8 +188,12 @@ async function runDockerBuildWithRegistryRetry(repositoryRoot, build) {
 }
 
 async function runDockerCommand(repositoryRoot, args) {
+  return await runCommandProcess(repositoryRoot, 'docker', args);
+}
+
+async function runCommandProcess(repositoryRoot, command, args) {
   return await new Promise((resolveCommand, rejectCommand) => {
-    const child = spawn('docker', args, {
+    const child = spawn(command, args, {
       cwd: repositoryRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
     });

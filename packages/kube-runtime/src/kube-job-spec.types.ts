@@ -18,6 +18,7 @@ export interface KubeJobSpec {
   env: Readonly<Record<string, string>>;
   id: string;
   image: string;
+  imageVolumes?: KubeJobImageVolume[] | undefined;
   imagePullSecretId?: string | undefined;
   jobClass: 'build' | 'release' | 'operation';
   labels: Readonly<Record<string, string>>;
@@ -44,6 +45,12 @@ export interface KubeJobEmptyDirVolume {
   gvisorTmpfs?: boolean | undefined;
   name: string;
   sizeLimit?: string | undefined;
+}
+
+export interface KubeJobImageVolume {
+  name: string;
+  pullPolicy: 'Always' | 'IfNotPresent';
+  reference: string;
 }
 
 export interface KubeJobSidecar {

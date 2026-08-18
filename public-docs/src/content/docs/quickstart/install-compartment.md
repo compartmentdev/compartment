@@ -61,7 +61,7 @@ Before installation, also provide:
   node container runtime and the machine running the CLI;
 - NetworkPolicy enforcement;
 - a persistent storage class;
-- gVisor installed on every Ready schedulable node, with a working RuntimeClass;
+- gVisor installed on every Ready schedulable node, with working tenant and build RuntimeClasses;
 - credentials permitted to install the Helm release and its cluster-scoped policy resources.
 
 The installer does not install or disable an ingress controller, reserve node ports, or change node container-runtime
@@ -181,12 +181,11 @@ neighbouring application or PostgreSQL.
 Build concurrency has separate logical and physical limits. Size the queue limits, namespace quota, and
 `resources.buildkit` and `resources.buildRunner` together for the concurrency the cluster can support.
 
-Builds run inside gVisor, which serves the build workspace from sandbox memory. A build Pod's memory limit therefore
-covers its whole scratch space, not just its processes. `buildkit.dataSizeLimit` configures the per-build memory-backed
-BuildKit data volume and defaults to `4Gi`. Set it to 1-8191 whole `Mi`, `Gi`, or `Ti`. gVisor
-returns `no space left on device` when a build reaches this limit. Keep the two container memory limits at least 2Gi
-above that value in total; otherwise the build fails before it starts. Raise the limits with the data volume for
-larger source builds, and keep `buildkit.gcKeepStorageMb` within the configured data volume.
+Builds run inside gVisor. `buildkit.dataSizeLimit` configures the per-build writable BuildKit data limit and defaults
+to `4Gi`. Set it to 1-8191 whole `Mi`, `Gi`, or `Ti`. gVisor returns `no space left on device` when a build reaches
+this limit. Keep the two container memory limits at least 2Gi above that value in total; otherwise the build fails
+before it starts. Raise the limits with the data volume for larger source builds, and keep
+`buildkit.gcKeepStorageMb` within the configured data volume.
 
 The namespace quota requires every build container to declare CPU and memory limits. Before upgrading, replace the
 removed `buildkit.maximumConcurrentBuildsPerProject` key with `buildkit.maximumConcurrentBuildsPerOrganization`.
@@ -198,18 +197,21 @@ Kubernetes Job continues consuming the configured build timeout while it waits f
 saturation can therefore fail builds; size the quota for the concurrency you expect or increase `buildkit.timeoutMs`
 to cover the expected wait.
 
-For an existing cluster, configure the operator-installed RuntimeClass listed above. Compartment does not mutate
-operator-managed nodes:
+For an existing cluster, configure separate operator-installed RuntimeClasses for tenant workloads and builds.
+The build class must use gVisor's exclusive file-access mode. Compartment does not mutate operator-managed nodes:
 
 ```yaml
 sandboxRuntime:
+  buildRuntimeClassName: gvisor-build
   runtimeClassName: gvisor
 ```
 
 Follow the official [gVisor containerd installation guide](https://gvisor.dev/docs/user_guide/containerd/quick_start/).
-Before Helm runs, Compartment launches a digest-pinned canary on each Ready schedulable node and fails closed unless
-the Pod proves the configured gVisor kernel boundary. Builds and tenant workloads use this class; platform components
-keep the node default runtime. Nodes must reach `registry-1.docker.io` to pull the canary image during preflight.
+Before Helm runs, Compartment launches digest-pinned canaries on each Ready schedulable node and fails closed unless
+both classes prove the configured gVisor kernel boundary. Builds use the exclusive class; tenant workloads use the
+shared class; platform components keep the node default runtime. Nodes must reach `registry-1.docker.io` to pull the
+canary image during preflight. Release images also include a digest-pinned BuildKit seed matched to the worker and
+Railpack images. Keep `images.buildkitSeed.digest` pinned when supplying custom release images.
 
 Compartment samples tenant CPU and memory usage every 60 seconds and retains hourly aggregates for 400 days by
 default. The metering interval also controls hosted application traffic flushes. Use

@@ -23,8 +23,14 @@ export interface DockerBuildImageInput {
   pushRegistryCredentials?: DockerRegistryCredentials | undefined;
   pushImageInsecureRegistry?: boolean | undefined;
   pushImageTag?: string | undefined;
+  railpackImages?: DockerRailpackImages | undefined;
   runtimeAptPackages?: string[] | undefined;
   staticOutputDirectory?: string | undefined;
+}
+
+export interface DockerRailpackImages {
+  builder: string;
+  runtime: string;
 }
 
 export interface DockerRegistryCredentials {

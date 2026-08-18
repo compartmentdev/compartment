@@ -1,6 +1,7 @@
 import { dirname } from 'node:path';
 
 interface ManagedVmSandboxRuntimePaths {
+  buildRunscConfig: string;
   checkpointGofer: string;
   containerdConfig: string;
   containerdDirectory: string;
@@ -18,6 +19,7 @@ const runscConfig: string = '/etc/containerd/runsc.toml';
 const containerdTemplate: string = '/var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.tmpl';
 
 export const managedVmSandboxRuntimePaths: ManagedVmSandboxRuntimePaths = {
+  buildRunscConfig: '/etc/containerd/runsc-build.toml',
   checkpointGofer: `${gvisorBinDirectory}/checkpointgofer`,
   containerdConfig: '/var/lib/rancher/k3s/agent/etc/containerd/config.toml',
   containerdDirectory: dirname(runscConfig),

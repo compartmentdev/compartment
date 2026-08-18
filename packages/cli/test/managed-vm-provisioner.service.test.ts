@@ -149,7 +149,7 @@ describe('managed VM provisioner runtime boundary', (): void => {
             throw new Error('Provisioning reached a mutation stage.');
           },
         }),
-      ).rejects.toThrow('metadata version 4 cannot resume with installer metadata version 5');
+      ).rejects.toThrow('metadata version 4 cannot resume with installer metadata version 6');
     } finally {
       process.getuid = getuid;
     }

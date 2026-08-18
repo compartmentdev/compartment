@@ -62,6 +62,8 @@ tests:
       - equal:
           path: data["buildkitd.toml"]
           value: |
+            [worker.oci]
+              snapshotter = "overlayfs"
             [registry."docker.io"]
               mirrors = ["compartment-dockerhub-cache.default.svc:5002"]
             [registry."compartment-dockerhub-cache.default.svc:5002"]

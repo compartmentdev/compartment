@@ -23,6 +23,11 @@ describe('readWorkerConfig', (): void => {
       dataSizeLimit: '2Gi',
       buildKitResources: { limits: { cpu: '2', memory: '3Gi' }, requests: { cpu: '250m', memory: '3Gi' } },
       gcKeepStorageMb: 1024,
+      seed: {
+        image: `compartment-buildkit-seed@sha256:${'c'.repeat(64)}`,
+        railpackBuilderImage: `ghcr.io/railwayapp/railpack-builder@sha256:${'a'.repeat(64)}`,
+        railpackRuntimeImage: `ghcr.io/railwayapp/railpack-runtime@sha256:${'b'.repeat(64)}`,
+      },
       namespace: 'compartment-build',
       runnerResources: { limits: { cpu: '1', memory: '1Gi' }, requests: { cpu: '100m', memory: '1Gi' } },
       scheduling: {
@@ -266,6 +271,7 @@ function validEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME: 'compartment-buildkit',
     COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: '2Gi',
     COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: '1024',
+    COMPARTMENT_BUILDKIT_SEED_IMAGE: `compartment-buildkit-seed@sha256:${'c'.repeat(64)}`,
     COMPARTMENT_BUILDKIT_RESOURCES: '{"limits":{"cpu":"2","memory":"3Gi"},"requests":{"cpu":"250m","memory":"3Gi"}}',
     COMPARTMENT_BUILD_NAMESPACE: 'compartment-build',
     COMPARTMENT_WORKER_IMAGE: 'compartment-worker@sha256:runner',
@@ -274,6 +280,8 @@ function validEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_BUILD_TIMEOUT_MS: '900000',
     COMPARTMENT_KUBE_BUILD_SCHEDULING:
       '{"nodeSelector":{"compartment.dev/node-pool":"build"},"runtimeClassName":"gvisor","tolerations":[]}',
+    COMPARTMENT_RAILPACK_BUILDER_IMAGE: `ghcr.io/railwayapp/railpack-builder@sha256:${'a'.repeat(64)}`,
+    COMPARTMENT_RAILPACK_RUNTIME_IMAGE: `ghcr.io/railwayapp/railpack-runtime@sha256:${'b'.repeat(64)}`,
     COMPARTMENT_KUBE_DATA_SCHEDULING:
       '{"nodeSelector":{"compartment.dev/node-pool":"data"},"runtimeClassName":"gvisor","tolerations":[{"effect":"NoSchedule","key":"compartment.dev/node-pool","operator":"Equal","value":"data"}]}',
     COMPARTMENT_MAX_CONCURRENT_BUILDS: '2',

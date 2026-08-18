@@ -1,5 +1,5 @@
 import { constants, type Stats } from 'node:fs';
-import { chmod, link, lstat, mkdir, open, unlink, type FileHandle } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, open, rename, unlink, type FileHandle } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { managedVmDirectoryIdentity, managedVmFileIdentity } from './managed-vm-state.service';
@@ -17,6 +17,48 @@ export async function installNewManagedVmFile(
     await removeManagedVmTemporaryFile(temporaryPath);
   }
   return managedVmFileIdentity(content, mode);
+}
+
+export async function replaceManagedVmFile(
+  destination: string,
+  expectedIdentity: string,
+  content: string | Buffer,
+  mode: number,
+): Promise<string> {
+  const observedIdentity: string = await readManagedVmRegularFileIdentity(destination);
+  if (observedIdentity !== expectedIdentity) {
+    throw new Error(`Managed-VM provisioning refuses unexpected content at ${destination}.`);
+  }
+  const temporaryPath: string = `${destination}.${String(process.pid)}.${randomUUID()}.tmp`;
+  await writeVerifiedManagedVmTemporaryFile(temporaryPath, content, mode);
+  try {
+    if ((await readManagedVmRegularFileIdentity(destination)) !== expectedIdentity) {
+      throw new Error(`Managed-VM provisioning refuses content changed during replacement at ${destination}.`);
+    }
+    await rename(temporaryPath, destination);
+  } finally {
+    await removeManagedVmTemporaryFile(temporaryPath);
+  }
+  return managedVmFileIdentity(content, mode);
+}
+
+async function readManagedVmRegularFileIdentity(path: string): Promise<string> {
+  const handle: FileHandle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const openedStats: Stats = await handle.stat();
+    const pathStats: Stats = await lstat(path);
+    if (
+      !openedStats.isFile() ||
+      openedStats.dev !== pathStats.dev ||
+      openedStats.ino !== pathStats.ino ||
+      openedStats.uid !== 0
+    ) {
+      throw new Error(`Managed-VM provisioning refuses an unsafe file at ${path}.`);
+    }
+    return managedVmFileIdentity(await handle.readFile(), openedStats.mode & 0o7777);
+  } finally {
+    await handle.close();
+  }
 }
 
 async function writeVerifiedManagedVmTemporaryFile(

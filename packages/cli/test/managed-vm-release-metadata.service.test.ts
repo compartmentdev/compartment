@@ -29,7 +29,7 @@ describe('managed VM release metadata', (): void => {
       url: 'https://storage.googleapis.com/gvisor/releases/pool/20260727.0/binary-amd64/runsc.deb',
       version: 'release-20260727.0',
     });
-    expect(managedVmReleaseMetadata.metadataVersion).toBe(5);
+    expect(managedVmReleaseMetadata.metadataVersion).toBe(6);
     expect(managedVmReleaseMetadata.helmVersion).toBe('v4.1.4');
     expect(managedVmReleaseMetadata.k3sChannel).not.toContain(managedVmReleaseMetadata.k3sVersion);
   });

@@ -8,13 +8,20 @@ interface KubernetesSandboxRuntimeSourceValues {
 }
 
 interface KubernetesSandboxRuntimeValueFields {
+  buildRuntimeClassName?: string | undefined;
   runtimeClassName?: string | undefined;
+}
+
+export interface KubernetesSandboxRuntimeClassNames {
+  build: string;
+  tenant: string;
 }
 
 const sandboxRuntimeValuesSchema: z.ZodType<KubernetesSandboxRuntimeSourceValues> = z
   .object({
     sandboxRuntime: z
       .object({
+        buildRuntimeClassName: z.string().optional(),
         runtimeClassName: z.string().optional(),
       })
       .passthrough()
@@ -22,20 +29,30 @@ const sandboxRuntimeValuesSchema: z.ZodType<KubernetesSandboxRuntimeSourceValues
   })
   .passthrough();
 
-export async function resolveKubernetesSandboxRuntimeClassName(
+export async function resolveKubernetesSandboxRuntimeClassNames(
   chartValues: JsonValue,
   valuesPath: string,
-): Promise<string> {
-  const chartRuntimeClassName: string | undefined = parseSandboxRuntimeClassName(chartValues, 'Helm chart defaults');
+): Promise<KubernetesSandboxRuntimeClassNames> {
+  const chartRuntime: KubernetesSandboxRuntimeValueFields = parseSandboxRuntimeClassNames(
+    chartValues,
+    'Helm chart defaults',
+  );
   const parsed: YamlFileValue = await readYamlFile(valuesPath, 'operator values file');
-  return parseSandboxRuntimeClassName(parsed, valuesPath) ?? chartRuntimeClassName ?? '';
+  const overrideRuntime: KubernetesSandboxRuntimeValueFields = parseSandboxRuntimeClassNames(parsed, valuesPath);
+  return {
+    build: overrideRuntime.buildRuntimeClassName ?? chartRuntime.buildRuntimeClassName ?? '',
+    tenant: overrideRuntime.runtimeClassName ?? chartRuntime.runtimeClassName ?? '',
+  };
 }
 
-function parseSandboxRuntimeClassName(values: JsonValue | YamlFileValue, source: string): string | undefined {
+function parseSandboxRuntimeClassNames(
+  values: JsonValue | YamlFileValue,
+  source: string,
+): KubernetesSandboxRuntimeValueFields {
   const result: z.SafeParseReturnType<YamlFileValue, KubernetesSandboxRuntimeSourceValues> =
     sandboxRuntimeValuesSchema.safeParse(values);
   if (!result.success) {
     throw formatSchemaValidationError(result.error, source);
   }
-  return result.data.sandboxRuntime?.runtimeClassName;
+  return result.data.sandboxRuntime ?? {};
 }

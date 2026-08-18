@@ -395,7 +395,7 @@ tolerations:
 {{- $pool = .Values.nodePools.system -}}
 {{- end -}}
 {{- $scheduling := dict "nodeSelector" $pool.nodeSelector "tolerations" $pool.tolerations -}}
-{{- $_ := set $scheduling "runtimeClassName" .Values.sandboxRuntime.runtimeClassName -}}
+{{- $_ := set $scheduling "runtimeClassName" .Values.sandboxRuntime.buildRuntimeClassName -}}
 {{- $scheduling | toJson -}}
 {{- end }}
 
