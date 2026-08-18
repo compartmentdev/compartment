@@ -27,6 +27,14 @@ export async function runCommandWithInput(command: readonly string[], input: str
   return await executeCommand(command, undefined, undefined, input);
 }
 
+export async function runCommandWithInputAndTimeout(
+  command: readonly string[],
+  input: string,
+  timeoutMs: number,
+): Promise<CommandResult> {
+  return await executeCommand(command, undefined, timeoutMs, input);
+}
+
 async function executeCommand(
   command: readonly string[],
   env?: NodeJS.ProcessEnv,

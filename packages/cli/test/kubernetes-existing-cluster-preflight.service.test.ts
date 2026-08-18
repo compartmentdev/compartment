@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi, type MockedFunction } from 'vitest';
-import { runCommand, runCommandWithInput } from '../src/command-runner';
+import { runCommand, runCommandWithInput, runCommandWithInputAndTimeout } from '../src/command-runner';
 import type { CommandResult } from '../src/command-runner.types';
 import { assertRetainedIdentity } from '../src/services/kubernetes-existing-cluster-preflight.resources';
 import { runKubernetesExistingClusterPreflight } from '../src/services/kubernetes-existing-cluster-preflight.service';
@@ -8,10 +8,13 @@ import type { KubernetesExistingClusterPreflightInput } from '../src/services/ku
 vi.mock('../src/command-runner', (): object => ({
   runCommand: vi.fn(),
   runCommandWithInput: vi.fn(),
+  runCommandWithInputAndTimeout: vi.fn(),
 }));
 
 const mockedRunCommand: MockedFunction<typeof runCommand> = vi.mocked(runCommand);
 const mockedRunCommandWithInput: MockedFunction<typeof runCommandWithInput> = vi.mocked(runCommandWithInput);
+const mockedRunCommandWithInputAndTimeout: MockedFunction<typeof runCommandWithInputAndTimeout> =
+  vi.mocked(runCommandWithInputAndTimeout);
 const certManagerInstruction: string =
   'kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.21.0/cert-manager.yaml';
 
@@ -56,6 +59,7 @@ describe('existing Kubernetes non-persistent preflight', (): void => {
     await expect(runKubernetesExistingClusterPreflight(input)).rejects.toThrow('Admin email');
     expect(mockedRunCommand).not.toHaveBeenCalled();
     expect(mockedRunCommandWithInput).not.toHaveBeenCalled();
+    expect(mockedRunCommandWithInputAndTimeout).not.toHaveBeenCalled();
   });
 
   it('allows a .test admin email through preflight', async (): Promise<void> => {
@@ -288,7 +292,8 @@ describe('existing Kubernetes non-persistent preflight', (): void => {
     await expect(runKubernetesExistingClusterPreflight(preflightInput())).resolves.toEqual({
       kubernetesVersion: 'v1.33.2',
     });
-    expect(mockedRunCommandWithInput).toHaveBeenCalledTimes(2);
+    expect(mockedRunCommandWithInput).toHaveBeenCalledOnce();
+    expect(mockedRunCommandWithInputAndTimeout).toHaveBeenCalledOnce();
     expect(
       mockedRunCommandWithInput.mock.calls.every((call: CommandWithInputCall): boolean =>
         call[0].includes('--dry-run=server'),
@@ -325,6 +330,9 @@ function installFixture(fixture: PreflightFixture): void {
     async (command: readonly string[]): Promise<CommandResult> => await Promise.resolve(routeCommand(fixture, command)),
   );
   mockedRunCommandWithInput.mockImplementation(
+    async (_command, input): Promise<CommandResult> => await Promise.resolve(success(parseDryRunManifest(input))),
+  );
+  mockedRunCommandWithInputAndTimeout.mockImplementation(
     async (_command, input): Promise<CommandResult> => await Promise.resolve(success(parseDryRunManifest(input))),
   );
 }
@@ -530,6 +538,7 @@ function allKubectlCalls(): string[][] {
   return [
     ...mockedRunCommand.mock.calls.map((call: CommandCall): string[] => [...call[0]]),
     ...mockedRunCommandWithInput.mock.calls.map((call: CommandWithInputCall): string[] => [...call[0]]),
+    ...mockedRunCommandWithInputAndTimeout.mock.calls.map((call): string[] => [...call[0]]),
   ].filter((command: string[]): boolean => command[0] === 'kubectl');
 }
 

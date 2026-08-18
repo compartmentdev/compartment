@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { JsonValue } from '@compartment/utils';
-import { runCommandWithInput, runCommandWithTimeout } from '../command-runner';
+import { runCommandWithInputAndTimeout, runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { buildKubectlCommand, formatKubernetesCommandFailure, readCommandOutput } from './kubernetes-command.support';
 import type { KubernetesImageVolumeCapabilityTarget } from './kubernetes-image-volume-preflight.service.types';
@@ -11,6 +11,7 @@ const imageVolumeName: string = 'image-volume';
 const probeImage: string = 'postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777';
 const canaryTimeoutMs: number = 5 * 60_000;
 const canaryKubernetesTimeout: string = '4m';
+const kubectlInputTimeoutMs: number = 30_000;
 const imageVolumePodSchema = z.object({
   spec: z.object({
     containers: z.array(
@@ -33,9 +34,10 @@ const imageVolumePodSchema = z.object({
 export async function assertKubernetesImageVolumeCapability(
   target: KubernetesImageVolumeCapabilityTarget,
 ): Promise<void> {
-  const result: CommandResult = await runCommandWithInput(
-    buildKubectlCommand(target, ['create', '--dry-run=server', '--filename=-', '--output=json']),
+  const result: CommandResult = await runCommandWithInputAndTimeout(
+    buildProbeKubectlCommand(target, ['create', '--dry-run=server', '--filename=-', '--output=json']),
     buildImageVolumeProbePod(),
+    kubectlInputTimeoutMs,
   );
   if (result.exitCode !== 0) {
     throw new Error(`Kubernetes ImageVolume capability probe failed: ${readCommandOutput(result)}`);
@@ -64,9 +66,22 @@ export async function verifyKubernetesImageVolumeRuntime(target: KubernetesImage
   if (nodeNames.length === 0) {
     throw new Error('No Ready schedulable Kubernetes nodes are available for ImageVolume runtime verification.');
   }
-  await Promise.all(
+  const results: PromiseSettledResult<void>[] = await Promise.allSettled(
     nodeNames.map(async (nodeName: string): Promise<void> => await runImageVolumeCanary(target, nodeName)),
   );
+  const failures: Error[] = results.flatMap((result): Error[] => {
+    if (result.status === 'fulfilled') {
+      return [];
+    }
+    return [result.reason instanceof Error ? result.reason : new Error('Kubernetes ImageVolume canary failed.')];
+  });
+  const firstFailure: Error | undefined = failures[0];
+  if (failures.length === 1 && firstFailure !== undefined) {
+    throw firstFailure;
+  }
+  if (failures.length > 1) {
+    throw new AggregateError(failures, 'ImageVolume runtime verification failed on multiple Kubernetes nodes.');
+  }
 }
 
 async function runImageVolumeCanary(target: KubernetesImageVolumeCapabilityTarget, nodeName: string): Promise<void> {
@@ -89,9 +104,10 @@ async function applyImageVolumeCanary(
   podName: string,
   nodeName: string,
 ): Promise<void> {
-  const result: CommandResult = await runCommandWithInput(
+  const result: CommandResult = await runCommandWithInputAndTimeout(
     buildProbeKubectlCommand(target, ['apply', '--filename=-']),
     buildImageVolumeProbePod(podName, nodeName),
+    kubectlInputTimeoutMs,
   );
   if (result.exitCode !== 0) {
     throw runtimeFailure(`Could not create the ImageVolume canary Pod on node "${nodeName}"`, result);
