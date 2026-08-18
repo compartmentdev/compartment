@@ -1194,6 +1194,6 @@ printf '      compartment login --api-url https://console.up.compartment.run\n\n
 printf '    More details:\n'
 printf '      https://up.compartment.dev/AGENTS.md\n\n'
 printf '  Self-hosted Compartment:\n'
-printf '    compartment login --api-url https://console.example.com\n\n'
+printf '    compartment login --api-url <control-plane-url>\n\n'
 printf 'More commands:\n'
 printf '  compartment --help\n'

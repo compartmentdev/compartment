@@ -100,7 +100,7 @@ describe('render-cli-install-script', (): void => {
     expect(result.stderr).toMatch(/^(?:tar: Failed to set default locale\n)?$/u);
     expect(result.stdout).toMatch(
       new RegExp(
-        `^Verified signed Compartment CLI\\nDownloaded CLI \\(\\d+(?:\\.\\d)? (?:B|KB|MB|GB)\\)\\nInstalled to ${escapeRegExp(join(binDirectory, 'compartment'))}\\n${escapeRegExp(expectedInstalledVersion)}\\n\\nGet started:\\n  Compartment Up:\\n    New account:\\n      compartment signup --api-url ${escapeRegExp(compartmentManagedCloudControlPlaneUrl)}\\n\\n    Existing account:\\n      compartment login --api-url ${escapeRegExp(compartmentManagedCloudControlPlaneUrl)}\\n\\n    More details:\\n      https:\\/\\/up\\.compartment\\.dev\\/AGENTS\\.md\\n\\n  Self-hosted Compartment:\\n    compartment login --api-url https:\\/\\/console\\.example\\.com\\n\\nMore commands:\\n  compartment --help\\n$`,
+        `^Verified signed Compartment CLI\\nDownloaded CLI \\(\\d+(?:\\.\\d)? (?:B|KB|MB|GB)\\)\\nInstalled to ${escapeRegExp(join(binDirectory, 'compartment'))}\\n${escapeRegExp(expectedInstalledVersion)}\\n\\nGet started:\\n  Compartment Up:\\n    New account:\\n      compartment signup --api-url ${escapeRegExp(compartmentManagedCloudControlPlaneUrl)}\\n\\n    Existing account:\\n      compartment login --api-url ${escapeRegExp(compartmentManagedCloudControlPlaneUrl)}\\n\\n    More details:\\n      https:\\/\\/up\\.compartment\\.dev\\/AGENTS\\.md\\n\\n  Self-hosted Compartment:\\n    compartment login --api-url <control-plane-url>\\n\\nMore commands:\\n  compartment --help\\n$`,
         'u',
       ),
     );
