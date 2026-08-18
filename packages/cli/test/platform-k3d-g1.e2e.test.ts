@@ -175,7 +175,7 @@ describeSelfHostedUserSetupE2e('platform k3d G1 edge gate', (): void => {
   );
 
   it(
-    'contains writable-layer exhaustion without degrading a sibling namespace or node',
+    'contains local ephemeral-storage exhaustion without degrading a sibling namespace or node',
     async (): Promise<void> => {
       await setup.install();
       const suffix: string = process.pid.toString();
@@ -193,7 +193,7 @@ describeSelfHostedUserSetupE2e('platform k3d G1 edge gate', (): void => {
         await runEphemeralStoragePod(
           offenderNamespace,
           'offender',
-          'dd if=/dev/zero of=/tmp/writable-layer-fill bs=1M count=96; sleep 600',
+          'dd if=/dev/zero of=/scratch/local-storage-fill bs=1M count=96; sleep 600',
         );
         await waitForPodReason(offenderNamespace, 'offender', 'Evicted');
         await waitForPodCondition(siblingNamespace, 'sibling', 'Ready', 'true');
@@ -287,9 +287,11 @@ async function runEphemeralStoragePod(namespace: string, name: string, command: 
               limits: { 'ephemeral-storage': '32Mi' },
               requests: { 'ephemeral-storage': '8Mi' },
             },
+            volumeMounts: [{ mountPath: '/scratch', name: 'scratch' }],
           },
         ],
         runtimeClassName: 'gvisor',
+        volumes: [{ emptyDir: { sizeLimit: '64Mi' }, name: 'scratch' }],
       },
     }),
   ]);
