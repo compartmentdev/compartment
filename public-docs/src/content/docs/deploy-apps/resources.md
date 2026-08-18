@@ -274,11 +274,12 @@ Use `--project`, `--env`, `--remote`, or `--output json` when you need an explic
 
 Built-in `deployer` and `admin` roles can inspect resource inventory and logs. Built-in `readonly` and `viewer` roles cannot.
 
-If you use custom roles, `resource list`, `inspect`, `logs`, `output list`, `output show`, and
-`bootstrap` requires `project.lifecycle.write`. `backup create|list|show|restore` require `deployment.create` on the target environment. This includes
-restore-to-new-resource with `--as`. Deploy-time creation of missing `generatedVariables` also uses
-`deployment.create`. `resource logs` also requires `deployment.logs.read`. Revealing a sensitive resource output with
-`output show --reveal` also requires `variable.value.read`.
+If you use custom roles, `resource list`, `inspect`, `logs`, `output list`, and `output show` require
+`deployment.create` on the target environment. `resource start`, `stop`, and `bootstrap` require
+`project.lifecycle.write`, while `resource delete` requires `project.delete`. `backup create|list|show|restore` also
+require `deployment.create`, including restore-to-new-resource with `--as`. Deploy-time creation of missing
+`generatedVariables` uses `deployment.create`. `resource logs` additionally requires `deployment.logs.read`, and
+revealing a sensitive resource output with `output show --reveal` additionally requires `variable.value.read`.
 
 ## Back up and restore
 

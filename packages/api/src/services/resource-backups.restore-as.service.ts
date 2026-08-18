@@ -61,7 +61,7 @@ interface RestoreBackupIntoCreatedResourceInput {
 export async function restoreResourceBackupAsForPrincipal(
   input: ResourceRestoreAsInput,
 ): Promise<ResourceRestoreAsResult> {
-  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
+  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input, 'deployment.create');
   const backup: ResourceBackupRow = await resolveRequiredResourceBackup(input.query.backupId);
   const sourceResource: ProjectResourceRow = await resolveRequiredBackupResourceById(backup.projectResourceId);
   assertResourceBackupBelongsToEnvironment(sourceResource, context.environment.id);

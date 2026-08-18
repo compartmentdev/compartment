@@ -38,7 +38,7 @@ import type {
 } from './resources.service.types';
 
 export async function createResourceBackupForPrincipal(input: ResourceActionInput): Promise<ResourceBackupResult> {
-  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
+  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input, 'deployment.create');
   const candidate: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
   assertResourceRunningForManualBackup(candidate);
 
@@ -60,7 +60,7 @@ export async function createResourceBackupForPrincipal(input: ResourceActionInpu
 }
 
 export async function listResourceBackupsForPrincipal(input: ResourceActionInput): Promise<ResourceBackupListResult> {
-  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
+  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input, 'deployment.create');
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
   const backups: ResourceBackupRow[] = await listResourceBackups(resource.id);
 
@@ -68,7 +68,7 @@ export async function listResourceBackupsForPrincipal(input: ResourceActionInput
 }
 
 export async function showResourceBackupForPrincipal(input: ResourceBackupShowInput): Promise<ResourceBackupResult> {
-  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
+  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input, 'deployment.create');
   const backup: ResourceBackupRow = await resolveRequiredResourceBackup(input.query.backupId);
   const resource: ProjectResourceRow = await resolveRequiredBackupResourceById(backup.projectResourceId);
   assertResourceBackupBelongsToEnvironment(resource, context.environment.id);
@@ -82,7 +82,7 @@ export async function showResourceBackupForPrincipal(input: ResourceBackupShowIn
 }
 
 export async function restoreResourceBackupForPrincipal(input: ResourceRestoreInput): Promise<ResourceRestoreResult> {
-  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
+  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input, 'deployment.create');
 
   return await runWithResourceOperationLock(
     context,
