@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.12.0](https://github.com/compartmentdev/compartment/compare/v0.11.0...v0.12.0) (2026-08-18)
+
+
+### Features
+
+* **release:** add post-install getting-started guidance ([#380](https://github.com/compartmentdev/compartment/issues/380)) ([ee94bc8](https://github.com/compartmentdev/compartment/commit/ee94bc822dac0fdc1fa673c07c256bbb630e2d63))
+* **root-config:** add a data node pool for stateful platform components ([#351](https://github.com/compartmentdev/compartment/issues/351)) ([13e3e32](https://github.com/compartmentdev/compartment/commit/13e3e32152b8e415fa58ba2d190a4bcdaa27009e))
+* **worker:** configure BuildKit data volume size ([#372](https://github.com/compartmentdev/compartment/issues/372)) ([7893158](https://github.com/compartmentdev/compartment/commit/78931583182b037574d4a0d71bb596f5b4b24d10))
+* **worker:** schedule PostgreSQL resources on data workers ([#371](https://github.com/compartmentdev/compartment/issues/371)) ([01de83e](https://github.com/compartmentdev/compartment/commit/01de83e943bc1ce67b3685837810b5f4f5fb78fd))
+
+
+### Bug Fixes
+
+* **docker:** use absolute static Caddy config path ([#374](https://github.com/compartmentdev/compartment/issues/374)) ([d46565f](https://github.com/compartmentdev/compartment/commit/d46565f1c43cfbaa39b4783997ff1951c6ffdeb6))
+* **kube-runtime:** enforce gVisor tmpfs size limits ([#378](https://github.com/compartmentdev/compartment/issues/378)) ([4fc251d](https://github.com/compartmentdev/compartment/commit/4fc251d1e35a91c17e976642f69b59ba68286efc))
+* **worker:** clean up failed deployment workloads ([#375](https://github.com/compartmentdev/compartment/issues/375)) ([8d87138](https://github.com/compartmentdev/compartment/commit/8d8713871b08dd83fa2de050add27606b158e9f9))
+* **worker:** clean up quota-rejected deployments ([#377](https://github.com/compartmentdev/compartment/issues/377)) ([1af645c](https://github.com/compartmentdev/compartment/commit/1af645cbe1a4e12db3107a45d368f3d231f25d7c))
+* **worker:** extract config environment types ([#373](https://github.com/compartmentdev/compartment/issues/373)) ([38260f6](https://github.com/compartmentdev/compartment/commit/38260f6a724e3db61479078d4e07f643b567c2d5))
+
+
+### Performance Improvements
+
+* **worker:** speed up cold Railpack builds ([#379](https://github.com/compartmentdev/compartment/issues/379)) ([2fce4db](https://github.com/compartmentdev/compartment/commit/2fce4db04b4c502a7e593be74c8c48b0772982d2))
+
 ## [0.11.0](https://github.com/compartmentdev/compartment/compare/v0.10.8...v0.11.0) (2026-08-17)
 
 
