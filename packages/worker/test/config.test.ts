@@ -25,8 +25,8 @@ describe('readWorkerConfig', (): void => {
       gcKeepStorageMb: 1024,
       seed: {
         image: `compartment-buildkit-seed@sha256:${'c'.repeat(64)}`,
-        railpackBuilderImage: `ghcr.io/railwayapp/railpack-builder@sha256:${'a'.repeat(64)}`,
-        railpackRuntimeImage: `ghcr.io/railwayapp/railpack-runtime@sha256:${'b'.repeat(64)}`,
+        railpackBuilderImage: `ghcr.io/railwayapp/railpack-builder:mise-test@sha256:${'a'.repeat(64)}`,
+        railpackRuntimeImage: `ghcr.io/railwayapp/railpack-runtime:mise-test@sha256:${'b'.repeat(64)}`,
       },
       namespace: 'compartment-build',
       runnerResources: { limits: { cpu: '1', memory: '1Gi' }, requests: { cpu: '100m', memory: '1Gi' } },
@@ -158,6 +158,16 @@ describe('readWorkerConfig', (): void => {
     expect(config.buildSandbox.dataSizeLimit).toBe(dataSizeLimit);
   });
 
+  it('requires the BuildKit seed image to be digest pinned', (): void => {
+    expect(
+      (): WorkerBuildConfig =>
+        readWorkerBuildConfig({
+          ...validEnvironment(),
+          COMPARTMENT_BUILDKIT_SEED_IMAGE: 'ghcr.io/compartmentdev/compartment-buildkit-seed:latest',
+        }),
+    ).toThrow();
+  });
+
   it('rejects unsafe worker trusted outbound host entries', (): void => {
     expect((): WorkerConfig => {
       return readWorkerConfig({
@@ -280,8 +290,8 @@ function validEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_BUILD_TIMEOUT_MS: '900000',
     COMPARTMENT_KUBE_BUILD_SCHEDULING:
       '{"nodeSelector":{"compartment.dev/node-pool":"build"},"runtimeClassName":"gvisor","tolerations":[]}',
-    COMPARTMENT_RAILPACK_BUILDER_IMAGE: `ghcr.io/railwayapp/railpack-builder@sha256:${'a'.repeat(64)}`,
-    COMPARTMENT_RAILPACK_RUNTIME_IMAGE: `ghcr.io/railwayapp/railpack-runtime@sha256:${'b'.repeat(64)}`,
+    COMPARTMENT_RAILPACK_BUILDER_IMAGE: `ghcr.io/railwayapp/railpack-builder:mise-test@sha256:${'a'.repeat(64)}`,
+    COMPARTMENT_RAILPACK_RUNTIME_IMAGE: `ghcr.io/railwayapp/railpack-runtime:mise-test@sha256:${'b'.repeat(64)}`,
     COMPARTMENT_KUBE_DATA_SCHEDULING:
       '{"nodeSelector":{"compartment.dev/node-pool":"data"},"runtimeClassName":"gvisor","tolerations":[{"effect":"NoSchedule","key":"compartment.dev/node-pool","operator":"Equal","value":"data"}]}',
     COMPARTMENT_MAX_CONCURRENT_BUILDS: '2',

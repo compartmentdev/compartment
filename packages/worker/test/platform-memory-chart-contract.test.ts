@@ -255,6 +255,7 @@ function managedPlatformValues(overrides: HelmValues = {}): string[] {
     'platform.tlsMode': 'broker-dns01',
     'platform.acmeEmail': 'admin@example.com',
     'nodePools.data.nodeSelector.compartment\\.dev/node-pool': 'data',
+    'images.buildkitSeed.digest': `sha256:${'b'.repeat(64)}`,
     'registry.hostname': ['10', '43', '250', '250'].join('.'),
     'registry.issuerRef.kind': 'Issuer',
     'registry.issuerRef.name': 'compartment-platform',

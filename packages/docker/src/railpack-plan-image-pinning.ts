@@ -5,29 +5,28 @@ import type {
   RailpackPlanInput,
   RailpackPlanJsonObject,
   RailpackPlanJsonValue,
+  RailpackPinnedImage,
   RailpackPinnedImageCounts,
+  RailpackResolvedImages,
   RailpackPlanStep,
 } from './railpack-plan-image-pinning.types';
 
 const builderRepository: string = 'ghcr.io/railwayapp/railpack-builder';
 const runtimeRepository: string = 'ghcr.io/railwayapp/railpack-runtime';
-const digestImagePattern: RegExp = /^.+@sha256:[a-f0-9]{64}$/u;
+const digestImagePattern: RegExp = /^(.+):([^@/:]+)@sha256:[a-f0-9]{64}$/u;
 
 export async function pinRailpackPlanImages(planPath: string, images: RailpackPlanImagePinningInput): Promise<void> {
-  assertPinnedImage(images.builder, builderRepository);
-  assertPinnedImage(images.runtime, runtimeRepository);
+  const builder: RailpackPinnedImage = readPinnedImage(images.builder, builderRepository);
+  const runtime: RailpackPinnedImage = readPinnedImage(images.runtime, runtimeRepository);
   const plan: RailpackPlan = parseRailpackPlan(await readFile(planPath, 'utf8'));
-  const counts: RailpackPinnedImageCounts = pinPlanInputs(plan.steps, images);
+  const counts: RailpackPinnedImageCounts = pinPlanInputs(plan.steps, { builder, runtime });
   if (counts.builder === 0) {
     throw new Error('Railpack plan must reference the configured builder image repository.');
   }
   await writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`, 'utf8');
 }
 
-function pinPlanInputs(
-  steps: readonly RailpackPlanStep[],
-  images: RailpackPlanImagePinningInput,
-): RailpackPinnedImageCounts {
+function pinPlanInputs(steps: readonly RailpackPlanStep[], images: RailpackResolvedImages): RailpackPinnedImageCounts {
   const counts: RailpackPinnedImageCounts = { builder: 0, runtime: 0 };
   for (const step of steps) {
     for (const input of step.inputs ?? []) {
@@ -39,14 +38,16 @@ function pinPlanInputs(
 
 function pinPlanInput(
   input: RailpackPlanInput,
-  images: RailpackPlanImagePinningInput,
+  images: RailpackResolvedImages,
   counts: RailpackPinnedImageCounts,
 ): void {
   if (referencesRepository(input.image, builderRepository)) {
-    input.image = images.builder;
+    assertExpectedPlanImage(input.image, images.builder);
+    input.image = images.builder.pinned;
     counts.builder += 1;
   } else if (referencesRepository(input.image, runtimeRepository)) {
-    input.image = images.runtime;
+    assertExpectedPlanImage(input.image, images.runtime);
+    input.image = images.runtime.pinned;
     counts.runtime += 1;
   }
 }
@@ -55,9 +56,17 @@ function referencesRepository(image: string | undefined, repository: string): bo
   return image?.startsWith(`${repository}:`) === true || image?.startsWith(`${repository}@`) === true;
 }
 
-function assertPinnedImage(image: string, repository: string): void {
-  if (!digestImagePattern.test(image) || !image.startsWith(`${repository}@`)) {
-    throw new Error(`Railpack image must pin ${repository} by digest.`);
+function readPinnedImage(image: string, repository: string): RailpackPinnedImage {
+  const match: RegExpExecArray | null = digestImagePattern.exec(image);
+  if (match?.[1] !== repository) {
+    throw new Error(`Railpack image must pin ${repository} by tag and digest.`);
+  }
+  return { pinned: image, repository, tagged: `${repository}:${match[2]}` };
+}
+
+function assertExpectedPlanImage(image: string | undefined, expected: RailpackPinnedImage): void {
+  if (image !== expected.tagged && image !== expected.pinned) {
+    throw new Error(`Railpack plan referenced ${String(image)}; expected ${expected.tagged}.`);
   }
 }
 

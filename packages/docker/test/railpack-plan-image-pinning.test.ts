@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { pinRailpackPlanImages } from '../src/railpack-plan-image-pinning';
 
-const builderImage: string = `ghcr.io/railwayapp/railpack-builder@sha256:${'a'.repeat(64)}`;
-const runtimeImage: string = `ghcr.io/railwayapp/railpack-runtime@sha256:${'b'.repeat(64)}`;
+const builderImage: string = `ghcr.io/railwayapp/railpack-builder:mise-current@sha256:${'a'.repeat(64)}`;
+const runtimeImage: string = `ghcr.io/railwayapp/railpack-runtime:mise-current@sha256:${'b'.repeat(64)}`;
 
 describe('Railpack plan image pinning', (): void => {
   it('replaces mutable Railpack base tags with the configured digests', async (): Promise<void> => {
@@ -20,7 +20,7 @@ describe('Railpack plan image pinning', (): void => {
       const rendered: string = await readFile(fixture.path, 'utf8');
       expect(rendered).toContain(`"image": "${builderImage}"`);
       expect(rendered).toContain(`"image": "${runtimeImage}"`);
-      expect(rendered).not.toContain('mise-current');
+      expect(rendered).not.toContain('"image": "ghcr.io/railwayapp/railpack-builder:mise-current"');
     } finally {
       await rm(fixture.directory, { force: true, recursive: true });
     }
@@ -48,6 +48,19 @@ describe('Railpack plan image pinning', (): void => {
       await expect(
         pinRailpackPlanImages(fixture.path, { builder: builderImage, runtime: runtimeImage }),
       ).rejects.toThrow('must reference the configured builder');
+    } finally {
+      await rm(fixture.directory, { force: true, recursive: true });
+    }
+  });
+
+  it('fails closed when Railpack emits a different image tag than the configured digest pin', async (): Promise<void> => {
+    const fixture: PlanFixture = await writePlan({
+      steps: [{ inputs: [{ image: 'ghcr.io/railwayapp/railpack-builder:mise-next' }] }],
+    });
+    try {
+      await expect(
+        pinRailpackPlanImages(fixture.path, { builder: builderImage, runtime: runtimeImage }),
+      ).rejects.toThrow('expected ghcr.io/railwayapp/railpack-builder:mise-current');
     } finally {
       await rm(fixture.directory, { force: true, recursive: true });
     }

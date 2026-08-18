@@ -25,3 +25,14 @@ export interface RailpackPinnedImageCounts {
   builder: number;
   runtime: number;
 }
+
+export interface RailpackPinnedImage {
+  pinned: string;
+  repository: string;
+  tagged: string;
+}
+
+export interface RailpackResolvedImages {
+  builder: RailpackPinnedImage;
+  runtime: RailpackPinnedImage;
+}

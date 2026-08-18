@@ -129,8 +129,8 @@ function readRailpackImages(env: NodeJS.ProcessEnv): DockerRailpackImages {
 }
 
 function requireDigestImage(value: string | undefined, name: string): string {
-  if (value === undefined || !/^.+@sha256:[a-f0-9]{64}$/u.test(value)) {
-    throw new Error(`${name} must be a digest-pinned image reference.`);
+  if (value === undefined || !/^.+:[^@/:]+@sha256:[a-f0-9]{64}$/u.test(value)) {
+    throw new Error(`${name} must be a tag-and-digest-pinned image reference.`);
   }
   return value;
 }

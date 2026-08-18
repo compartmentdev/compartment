@@ -14,6 +14,16 @@
 {{- regexReplaceAll "i$" (lower $value) "" -}}
 {{- end }}
 
+{{- define "compartment.railpackBuilderImage" -}}
+{{- $images := .Files.Get "railpack-images.json" | fromJson -}}
+{{- required "railpack-images.json must define builder" $images.builder -}}
+{{- end }}
+
+{{- define "compartment.railpackRuntimeImage" -}}
+{{- $images := .Files.Get "railpack-images.json" | fromJson -}}
+{{- required "railpack-images.json must define runtime" $images.runtime -}}
+{{- end }}
+
 {{- define "compartment.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}

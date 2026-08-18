@@ -2,4 +2,4 @@
 
 FROM scratch
 
-COPY seed /seed
+ADD seed.tar /

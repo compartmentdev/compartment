@@ -90,6 +90,7 @@ COPY --from=buildctl-build /out/buildkitd /usr/local/bin/buildkitd
 COPY --from=runc-build /out/buildkit-runc-gvisor /usr/local/bin/buildkit-runc-gvisor
 COPY --from=railpack-build /out/railpack /usr/local/bin/railpack
 COPY --chmod=755 packages/worker/scripts/start-seeded-buildkit.sh /usr/local/bin/start-seeded-buildkit
+COPY --chmod=755 packages/worker/scripts/package-buildkit-seed.mjs /usr/local/bin/package-buildkit-seed
 
 RUN apt-get update \
   && apt-get upgrade --yes --no-install-recommends \

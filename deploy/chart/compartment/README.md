@@ -5,7 +5,7 @@ existing-cluster preflight before applying it.
 
 ## Requirements
 
-- Kubernetes 1.30.0 or newer
+- Kubernetes 1.33.0 or newer (required for read-only image volumes used by sandboxed builds)
 - Helm 4.x
 - an existing Ingress Controller
 - cert-manager

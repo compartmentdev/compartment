@@ -54,8 +54,8 @@ export function createWorkerTestConfig(overrides: Partial<WorkerConfig> = {}): W
       gcKeepStorageMb: 1024,
       seed: {
         image: 'compartment-buildkit-seed@sha256:seed',
-        railpackBuilderImage: `ghcr.io/railwayapp/railpack-builder@sha256:${'a'.repeat(64)}`,
-        railpackRuntimeImage: `ghcr.io/railwayapp/railpack-runtime@sha256:${'b'.repeat(64)}`,
+        railpackBuilderImage: `ghcr.io/railwayapp/railpack-builder:mise-test@sha256:${'a'.repeat(64)}`,
+        railpackRuntimeImage: `ghcr.io/railwayapp/railpack-runtime:mise-test@sha256:${'b'.repeat(64)}`,
       },
       namespace: 'compartment-build',
       runnerResources: { limits: { memory: '1Gi' } },

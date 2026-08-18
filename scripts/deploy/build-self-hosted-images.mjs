@@ -12,6 +12,7 @@ import {
   defaultSelfHostedImageRepositoryPrefix,
   selfHostedRuntimeImageArtifacts,
 } from './self-hosted-runtime-services.mjs';
+import { generateBuildkitSeedContext } from './generate-buildkit-seed.mjs';
 
 const defaultBaseImages = Object.freeze({
   COMPARTMENT_CADDY_RUNTIME_IMAGE: 'alpine:3.22',
@@ -21,10 +22,6 @@ const defaultBaseImages = Object.freeze({
 });
 const dockerRateLimitRetryDelaysMs = Object.freeze([90_000, 180_000, 300_000]);
 const capturedOutputTailMaxLength = 96_000;
-const railpackBuilderImage =
-  'ghcr.io/railwayapp/railpack-builder@sha256:007845e88b6c78b3bf57df7c2379c336589545fa241b047f6389ba2ca0344129';
-const railpackRuntimeImage =
-  'ghcr.io/railwayapp/railpack-runtime@sha256:122904a97579630033432d6d4652ad4eb8751b9680756a429ebc7d0942222083';
 const dockerRegistryRateLimitPatterns = [
   '429 Too Many Requests',
   'toomanyrequests',
@@ -53,13 +50,10 @@ export async function buildSelfHostedImages(input) {
 
 async function buildBuildkitSeedImage(input, outputDirectory) {
   const contextDirectory = join(outputDirectory, 'buildkit-seed-context');
-  await runRequiredCommand(input.repositoryRoot, 'sh', [
-    'packages/worker/scripts/generate-buildkit-seed.sh',
-    readRequiredImageRef(input.imageRefsByServiceName, 'worker'),
-    railpackBuilderImage,
-    railpackRuntimeImage,
-    contextDirectory,
-  ]);
+  await generateBuildkitSeedContext({
+    outputDirectory: contextDirectory,
+    workerImage: readRequiredImageRef(input.imageRefsByServiceName, 'worker'),
+  });
   await runDockerBuildWithRegistryRetry(input.repositoryRoot, {
     args: [
       'buildx',
@@ -74,13 +68,6 @@ async function buildBuildkitSeedImage(input, outputDirectory) {
     ],
     name: 'buildkit-seed',
   });
-}
-
-async function runRequiredCommand(repositoryRoot, command, args) {
-  const result = await runCommandProcess(repositoryRoot, command, args);
-  if (!result.ok) {
-    throw new Error(`Command failed: ${command} ${args.join(' ')}`);
-  }
 }
 
 function buildSelfHostedImageBuildPlan(imageRefsByServiceName, env, builderName) {

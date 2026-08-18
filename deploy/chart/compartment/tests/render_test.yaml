@@ -773,7 +773,7 @@ tests:
         documentIndex: 4
       - matchRegex:
           path: spec.validations[12].expression
-          pattern: "container.image == 'ghcr.io/compartmentdev/compartment-worker:latest'.*start-seeded-buildkit.*buildkit-runc-gvisor.*!has\\(container.ports\\).*!has\\(container.envFrom\\).*!has\\(container.securityContext.procMount\\).*!has\\(container.securityContext.appArmorProfile\\)"
+          pattern: "container.image == 'ghcr.io/compartmentdev/compartment-worker:latest'.*start-seeded-buildkit.*buildkit-runc-gvisor.*!has\\(container.ports\\).*!has\\(container.envFrom\\).*container.env.size\\(\\) == 4.*!has\\(container.securityContext.procMount\\).*!has\\(container.securityContext.appArmorProfile\\)"
         template: buildkit.yaml
         documentIndex: 4
       - matchRegex:
@@ -1330,6 +1330,14 @@ tests:
       - equal:
           path: data.COMPARTMENT_WORKER_IMAGE
           value: ghcr.io/compartmentdev/compartment-worker:latest
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_RAILPACK_BUILDER_IMAGE
+          value: ghcr.io/railwayapp/railpack-builder:mise-2026.7.5@sha256:007845e88b6c78b3bf57df7c2379c336589545fa241b047f6389ba2ca0344129
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_RAILPACK_RUNTIME_IMAGE
+          value: ghcr.io/railwayapp/railpack-runtime:mise-2026.7.5@sha256:122904a97579630033432d6d4652ad4eb8751b9680756a429ebc7d0942222083
         template: configmap.yaml
       - hasDocuments:
           count: 4

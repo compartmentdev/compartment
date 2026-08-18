@@ -64,8 +64,6 @@ runs:
         COMPARTMENT_GO_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.6-bookworm
         COMPARTMENT_NODE_BUILD_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
         COMPARTMENT_NODE_RUNTIME_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm-slim
-        COMPARTMENT_RAILPACK_BUILDER_IMAGE: ghcr.io/railwayapp/railpack-builder@sha256:007845e88b6c78b3bf57df7c2379c336589545fa241b047f6389ba2ca0344129
-        COMPARTMENT_RAILPACK_RUNTIME_IMAGE: ghcr.io/railwayapp/railpack-runtime@sha256:122904a97579630033432d6d4652ad4eb8751b9680756a429ebc7d0942222083
         PRIMARY_TAG: sha-${{ inputs.publish-sha }}
         STAGING_TAG: staging-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.publish-sha }}
       run: |
@@ -227,11 +225,9 @@ runs:
         push_dockerhub_image compartment-worker packages/worker/Dockerfile.self-hosted "${worker_args[@]}"
         if [ -z "${scanned_digest_by_service[buildkit-seed]:-}" ]; then
           seed_context="./.compartment/release-assets/buildkit-seed-context"
-          packages/worker/scripts/generate-buildkit-seed.sh \
-            "${scanned_ref_by_service[worker]}" \
-            "$COMPARTMENT_RAILPACK_BUILDER_IMAGE" \
-            "$COMPARTMENT_RAILPACK_RUNTIME_IMAGE" \
-            "$seed_context"
+          node ./scripts/deploy/generate-buildkit-seed.mjs \
+            --worker-image "${scanned_ref_by_service[worker]}" \
+            --output-directory "$seed_context"
           seed_metadata="./.compartment/release-assets/compartment-buildkit-seed-build-metadata.json"
           docker buildx build "${common_args[@]}" \
             --tag "docker.io/compartmentdev/compartment-buildkit-seed:${STAGING_TAG}" \

@@ -31,22 +31,17 @@ require_exact_value() {
 }
 
 require_digest_ref() {
-  case "$2" in
-    *@sha256:????????????????????????????????????????????????????????????????) ;;
-    *)
-      echo "$1 must be a digest-pinned image reference." >&2
-      exit 1
-      ;;
-  esac
+  if ! printf '%s\n' "$2" | grep -Eq '^.+:[^/@:]+@sha256:[a-f0-9]{64}$'; then
+    echo "$1 must be a tag-and-digest-pinned image reference." >&2
+    exit 1
+  fi
 }
 
-: "${COMPARTMENT_WORKER_IMAGE:?COMPARTMENT_WORKER_IMAGE is required.}"
 : "${COMPARTMENT_RAILPACK_BUILDER_IMAGE:?COMPARTMENT_RAILPACK_BUILDER_IMAGE is required.}"
 : "${COMPARTMENT_RAILPACK_RUNTIME_IMAGE:?COMPARTMENT_RAILPACK_RUNTIME_IMAGE is required.}"
 
 require_digest_ref COMPARTMENT_RAILPACK_BUILDER_IMAGE "$COMPARTMENT_RAILPACK_BUILDER_IMAGE"
 require_digest_ref COMPARTMENT_RAILPACK_RUNTIME_IMAGE "$COMPARTMENT_RAILPACK_RUNTIME_IMAGE"
-require_digest_ref COMPARTMENT_WORKER_IMAGE "$COMPARTMENT_WORKER_IMAGE"
 worker_buildkit_runtime_digest="$(
   sha256sum \
     /usr/local/bin/buildkitd \

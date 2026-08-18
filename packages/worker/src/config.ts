@@ -65,7 +65,10 @@ const workerBuildConfigSchema: z.ZodType<WorkerBuildConfigEnvironment> = workerP
     COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME: z.string().trim().min(1),
     COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: z.string().trim().min(1),
     COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: z.coerce.number().int().positive(),
-    COMPARTMENT_BUILDKIT_SEED_IMAGE: z.string().trim().min(1),
+    COMPARTMENT_BUILDKIT_SEED_IMAGE: z
+      .string()
+      .trim()
+      .regex(/^.+@sha256:[a-f0-9]{64}$/u),
     COMPARTMENT_BUILDKIT_RESOURCES: z.string().trim().min(1),
     COMPARTMENT_BUILD_NAMESPACE: z.string().trim().min(1),
     COMPARTMENT_BUILD_RUNNER_RESOURCES: z.string().trim().min(1),
@@ -74,11 +77,11 @@ const workerBuildConfigSchema: z.ZodType<WorkerBuildConfigEnvironment> = workerP
     COMPARTMENT_RAILPACK_BUILDER_IMAGE: z
       .string()
       .trim()
-      .regex(/^.+@sha256:[a-f0-9]{64}$/u),
+      .regex(/^.+:[^@/:]+@sha256:[a-f0-9]{64}$/u),
     COMPARTMENT_RAILPACK_RUNTIME_IMAGE: z
       .string()
       .trim()
-      .regex(/^.+@sha256:[a-f0-9]{64}$/u),
+      .regex(/^.+:[^@/:]+@sha256:[a-f0-9]{64}$/u),
     COMPARTMENT_WORKER_IMAGE: z.string().trim().min(1),
   }),
 );

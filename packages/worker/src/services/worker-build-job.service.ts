@@ -138,7 +138,6 @@ function buildKitSidecar(config: WorkerBuildConfig): KubeJobSidecar {
     env: {
       COMPARTMENT_RAILPACK_BUILDER_IMAGE: config.buildSandbox.seed.railpackBuilderImage,
       COMPARTMENT_RAILPACK_RUNTIME_IMAGE: config.buildSandbox.seed.railpackRuntimeImage,
-      COMPARTMENT_WORKER_IMAGE: config.workerImage,
       HOME: '/tmp',
       TMPDIR: '/buildkit-tmp',
     },
