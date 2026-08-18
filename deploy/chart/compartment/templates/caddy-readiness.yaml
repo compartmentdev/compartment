@@ -84,12 +84,14 @@ spec:
           volumeMounts:
             - {name: caddyfile, mountPath: /etc/caddy-readiness, readOnly: true}
             - {name: runtime-config, mountPath: /config}
+            - {name: runtime-data, mountPath: /data}
             - {name: tmp, mountPath: /tmp}
       volumes:
         - name: caddyfile
           configMap:
             name: {{ $name }}
         - {name: runtime-config, emptyDir: {}}
+        - {name: runtime-data, emptyDir: {}}
         - {name: tmp, emptyDir: {}}
 ---
 apiVersion: networking.k8s.io/v1

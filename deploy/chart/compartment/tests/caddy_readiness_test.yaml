@@ -74,6 +74,11 @@ tests:
         documentIndex: 2
       - contains:
           path: spec.template.spec.containers[0].volumeMounts
+          content: { name: runtime-data, mountPath: /data }
+        template: caddy-readiness.yaml
+        documentIndex: 2
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
           content: { name: tmp, mountPath: /tmp }
         template: caddy-readiness.yaml
         documentIndex: 2
