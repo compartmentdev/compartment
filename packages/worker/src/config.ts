@@ -61,7 +61,7 @@ const buildResourceRequirementsSchema = z
 
 const workerBuildConfigSchema: z.ZodType<WorkerBuildConfigEnvironment> = workerProcessConfigSchema.and(
   z.object({
-    COMPARTMENT_WORKER_METRICS_PORT: z.coerce.number().int().positive(),
+    COMPARTMENT_WORKER_METRICS_PORT: z.coerce.number().int().min(1).max(65_535),
     COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME: z.string().trim().min(1),
     COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: z.string().trim().min(1),
     COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: z.coerce.number().int().positive(),

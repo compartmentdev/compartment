@@ -3,12 +3,16 @@ import pino from 'pino';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ApiApp } from '../src/app.types';
 import { registerApiRequestMetrics } from '../src/http/api-request-metrics';
+import type { ApiRequestMetricsServiceMock } from './api-request-metrics.test.types';
 
 const mocks = vi.hoisted(() => ({ observe: vi.fn() }));
 
-vi.mock('../src/services/platform-metrics.service', (): { observeApiHttpRequest: typeof mocks.observe } => ({
-  observeApiHttpRequest: mocks.observe,
-}));
+vi.mock(
+  '../src/services/platform-metrics.service',
+  (): ApiRequestMetricsServiceMock => ({
+    observeApiHttpRequest: mocks.observe,
+  }),
+);
 
 let app: ApiApp | null = null;
 

@@ -23,4 +23,17 @@ describe('edge snapshot metrics', (): void => {
     expect(output).toContain('compartment_edge_snapshot_refresh_errors_total 1');
     expect(output).toContain('compartment_edge_snapshot_fail_closed_expiry_total 1');
   });
+
+  it('rejects an invalid persisted timestamp without changing restore state', async (): Promise<void> => {
+    const metrics: EdgeSnapshotMetrics = createEdgeSnapshotMetrics();
+
+    expect((): void => metrics.recordRestore('disk', 'not-a-timestamp')).toThrow(
+      'Invalid Edge snapshot persistedAt timestamp.',
+    );
+
+    const output: string = await metrics.registry.metrics();
+    expect(output).toContain('compartment_edge_snapshot_age_seconds 0');
+    expect(output).toContain('compartment_edge_snapshot_restore_source{source="disk"} 0');
+    expect(output).toContain('compartment_edge_snapshot_restore_source{source="api"} 0');
+  });
 });

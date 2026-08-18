@@ -30,7 +30,7 @@ const edgeConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_EDGE_SNAPSHOT_PATH: z.string().min(1),
   COMPARTMENT_EDGE_TOKEN: z.string().min(1),
   COMPARTMENT_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
-  COMPARTMENT_EDGE_METRICS_PORT: z.coerce.number().int().positive(),
+  COMPARTMENT_EDGE_METRICS_PORT: z.coerce.number().int().min(1).max(65_535),
   COMPARTMENT_PUBLIC_PROTOCOL: z.enum(['http', 'https']),
 });
 

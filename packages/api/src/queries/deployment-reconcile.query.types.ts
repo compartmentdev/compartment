@@ -44,6 +44,14 @@ export interface PersistDeploymentReconcileObservationResult {
   readyDurationSeconds?: number | undefined;
 }
 
+export interface SupersedeCandidateContext {
+  createdAt: Date;
+  deploymentRunId: string;
+  environmentId: string;
+  isActive: boolean;
+  serviceId: string;
+}
+
 export type HandleCommittedDeploymentAuditEvents = (events: readonly AuditEventRow[]) => void;
 export type HandleCommittedDeploymentReadyDuration = (durationSeconds: number) => void;
 

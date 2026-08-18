@@ -9,7 +9,11 @@ import {
 import type { WorkerConfig } from '../config';
 import type { WorkerCaughtError } from '../logging/worker-error-log.types';
 import type { WorkerBuildResult } from './worker-iteration.types';
-import type { WorkerPlatformMetricsRuntime } from './worker-platform-metrics.service.types';
+import type {
+  HandleWorkerBuildFailure,
+  WorkerBuildMetricResult,
+  WorkerPlatformMetricsRuntime,
+} from './worker-platform-metrics.service.types';
 
 const registry: Registry = createPrometheusRegistry('worker');
 const activeBuilds: Gauge = new Gauge({
@@ -48,14 +52,14 @@ function setWorkerActiveBuilds(count: number): void {
   activeBuilds.set(count);
 }
 
-function recordWorkerBuild(result: 'failed' | 'succeeded'): void {
+function recordWorkerBuild(result: WorkerBuildMetricResult): void {
   builds.inc({ result });
 }
 
 export function trackWorkerBuildCompletion(
   activeBuildPromises: Set<Promise<void>>,
   completion: Promise<WorkerBuildResult>,
-  handleFailure: (error: WorkerCaughtError) => void,
+  handleFailure: HandleWorkerBuildFailure,
 ): void {
   const trackedCompletion: Promise<void> = completion
     .then((result: WorkerBuildResult): void => recordWorkerBuild(result))

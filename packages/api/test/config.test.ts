@@ -14,6 +14,10 @@ const generated24ByteSecret: string = '0123456789abcdef0123456789abcdef012345678
 const generated32ByteSecret: string = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 describe('readApiConfig', (): void => {
+  it('rejects a metrics port outside the TCP port range', (): void => {
+    expect((): ApiConfig => readApiConfig(createApiConfigEnv({ COMPARTMENT_API_METRICS_PORT: '65536' }))).toThrow();
+  });
+
   it('reads the required API runtime config from env', (): void => {
     const config: ApiConfig = readApiConfig(createApiConfigEnv());
 

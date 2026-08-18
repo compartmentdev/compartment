@@ -6,9 +6,10 @@ import {
 } from '@compartment/utils';
 import { z } from 'zod';
 import { auditFileSinkConfigEnvSchema } from './audit-file-sink-config';
-import { readApiAuthThrottleConfig, type ApiAuthThrottleConfig } from './auth-throttle-config';
-import { readApiRuntimeConfig, type ApiRuntimeConfig } from './api-runtime-config';
+import { readApiAuthThrottleConfig } from './auth-throttle-config';
+import { readApiRuntimeConfig } from './api-runtime-config';
 import type { ApiConfigEnv } from './config-env.types';
+import type { ApiConfig } from './config.types';
 import { parseOptionalAbsoluteUrl } from './config-parsers';
 import { parseTenantSecretsKek, parseVariablesMasterKey } from './lib/variables-crypto';
 import { normalizeApiHostValue, parseSessionTtl, readOptionalConfigText, readRequiredBoolean } from './config-value';
@@ -16,6 +17,7 @@ import { assertValidSystemApiSocketPath } from './system-api-socket-path';
 
 export type { AuditFileSinkConfig } from './audit-file-sink-config';
 export { readApiPublicIngressConfig, type ApiPublicIngressConfig } from './api-public-ingress-config';
+export type { ApiConfig } from './config.types';
 
 const installTokenSchema: z.ZodString = z.string().min(1);
 const apiConfigSchema: z.ZodTypeAny = z.object({
@@ -31,7 +33,7 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_EDGE_TOKEN: z.string().min(1),
   COMPARTMENT_ENV: z.enum(['dev', 'self-hosted']).optional(),
   COMPARTMENT_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
-  COMPARTMENT_API_METRICS_PORT: z.coerce.number().int().positive(),
+  COMPARTMENT_API_METRICS_PORT: z.coerce.number().int().min(1).max(65_535),
   COMPARTMENT_NEW_PROJECTS_PRIVATE_BY_DEFAULT: z.string().min(1),
   COMPARTMENT_INSTALL_TOKEN: installTokenSchema,
   COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN: z.string(),
@@ -62,37 +64,6 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_WORKER_IMAGE: z.string().min(1).optional(),
   COMPARTMENT_RUNTIME_CONTROL_TOKEN: z.string().min(1),
 });
-
-export interface ApiConfig extends ApiRuntimeConfig {
-  baseDomain: string;
-  bindHost: string;
-  tlsMode: 'broker-dns01' | 'internal' | 'issuer';
-  controlPlaneHost: string;
-  databaseUrl: string;
-  deploymentInfrastructureTimeoutMs: number;
-  edgeToken: string;
-  edgeUrl: string;
-  logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
-  metricsPort: number;
-  managedDomainAcmeDnsToken?: string | null;
-  managedDomainBrokerUrl?: string | null;
-  trustedOutboundHosts: string[];
-  sessionSecret: string;
-  sessionTtlMs: number;
-  signupEnabled: boolean;
-  port: number;
-  publicProtocol: 'http' | 'https';
-  publicHttpPort: number;
-  publicHttpsPort: number;
-  productLogIngestToken?: string | null;
-  throttle: ApiAuthThrottleConfig;
-  systemApiSocketPath: string;
-  systemToken: string;
-  tenantSecretsKek: Buffer;
-  tenantSecretsPreviousKek?: Buffer | undefined;
-  variablesMasterKey: Buffer;
-  runtimeControlToken: string;
-}
 
 type ApiCoreConfig = Pick<
   ApiConfig,

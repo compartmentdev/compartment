@@ -11,6 +11,16 @@ const podCidr: string = ['10', '42', '0', '0/16'].join('.');
 const serviceCidr: string = ['10', '43', '0', '0/16'].join('.');
 
 describe('readProjectProvisionerConfig', (): void => {
+  it('rejects a metrics port outside the TCP port range', (): void => {
+    expect(
+      (): ProjectProvisionerConfig =>
+        readProjectProvisionerConfig({
+          ...projectProvisionerEnvironment(),
+          COMPARTMENT_PROJECT_PROVISIONER_METRICS_PORT: '65536',
+        }),
+    ).toThrow();
+  });
+
   it('starts without worker controller-only custom-domain configuration', (): void => {
     const config: ProjectProvisionerConfig = readProjectProvisionerConfig(projectProvisionerEnvironment());
 

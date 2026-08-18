@@ -1,5 +1,6 @@
 import { and, eq, ne, sql } from 'drizzle-orm';
 import { deploymentKubeReferences, deployments } from '../db/schema';
+import type { SupersedeCandidateContext } from './deployment-reconcile.query.types';
 import type { DeploymentTransaction } from './deployments.query.types';
 
 interface SupersedePreviousKubeDeploymentInput {
@@ -7,14 +8,6 @@ interface SupersedePreviousKubeDeploymentInput {
   currentDeploymentId: string;
   observedAt: Date;
   previousActiveId: string | undefined;
-}
-
-export interface SupersedeCandidateContext {
-  createdAt: Date;
-  deploymentRunId: string;
-  environmentId: string;
-  isActive: boolean;
-  serviceId: string;
 }
 
 export async function supersedePreviousKubeDeployment(

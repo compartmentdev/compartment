@@ -24,7 +24,7 @@ const projectProvisionerEnvironmentSchema: z.ZodType<ProjectProvisionerEnvironme
   projectProvisioningEnvironmentSchema.and(
     z.object({
       COMPARTMENT_PROJECT_PROVISIONER_IMAGE: z.string().min(1),
-      COMPARTMENT_PROJECT_PROVISIONER_METRICS_PORT: z.coerce.number().int().positive(),
+      COMPARTMENT_PROJECT_PROVISIONER_METRICS_PORT: z.coerce.number().int().min(1).max(65_535),
       COMPARTMENT_KUBE_TENANT_SCHEDULING: z.string().min(1).optional(),
     }),
   );

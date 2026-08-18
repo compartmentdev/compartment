@@ -12,14 +12,12 @@ import {
   markReadyRunOperationsSucceeded,
   markRunOperationsFailed,
 } from './deployment-reconcile-run-completion.query';
-import {
-  supersedePreviousKubeDeployment,
-  type SupersedeCandidateContext,
-} from './deployment-reconcile-supersede.query';
+import { supersedePreviousKubeDeployment } from './deployment-reconcile-supersede.query';
 import type { DeploymentTransaction } from './deployments.query.types';
 import type {
   PersistDeploymentReconcileObservationInput,
   PersistDeploymentReconcileObservationResult,
+  SupersedeCandidateContext,
 } from './deployment-reconcile.query.types';
 import type { AuditEventRow } from './audit-events.query.types';
 

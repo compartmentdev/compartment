@@ -59,9 +59,13 @@ class PrometheusEdgeSnapshotMetrics implements EdgeSnapshotMetrics {
   }
 
   recordRestore(source: EdgeSnapshotRestoreSource, persistedAt?: string): void {
+    const persistedAtMs: number = persistedAt === undefined ? Date.now() : Date.parse(persistedAt);
+    if (!Number.isFinite(persistedAtMs)) {
+      throw new Error('Invalid Edge snapshot persistedAt timestamp.');
+    }
     this.#restoreSource.set({ source: 'api' }, source === 'api' ? 1 : 0);
     this.#restoreSource.set({ source: 'disk' }, source === 'disk' ? 1 : 0);
-    this.#persistedAtMs = persistedAt === undefined ? Date.now() : Date.parse(persistedAt);
+    this.#persistedAtMs = persistedAtMs;
   }
 
   #snapshotAgeSeconds(now: Date = new Date()): number {

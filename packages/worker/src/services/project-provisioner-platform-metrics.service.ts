@@ -6,6 +6,7 @@ import {
   type PrometheusMetricsServer,
   type Registry,
 } from '@compartment/utils';
+import type { ProjectProvisioningAttemptResult } from './project-provisioner-platform-metrics.service.types';
 
 const registry: Registry = createPrometheusRegistry('project-provisioner');
 const activeAttempts: Gauge = new Gauge({
@@ -31,6 +32,6 @@ export function setProjectProvisioningAttemptActive(active: boolean): void {
   activeAttempts.set(active ? 1 : 0);
 }
 
-export function recordProjectProvisioningAttempt(result: 'failed' | 'succeeded'): void {
+export function recordProjectProvisioningAttempt(result: ProjectProvisioningAttemptResult): void {
   attempts.inc({ result });
 }

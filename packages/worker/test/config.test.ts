@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { readWorkerBuildConfig, readWorkerConfig, type WorkerBuildConfig, type WorkerConfig } from '../src/config';
 
 describe('readWorkerConfig', (): void => {
+  it('rejects a metrics port outside the TCP port range', (): void => {
+    expect(
+      (): WorkerConfig => readWorkerConfig({ ...validEnvironment(), COMPARTMENT_WORKER_METRICS_PORT: '65536' }),
+    ).toThrow();
+  });
+
   it('reads the private node-pull and internal registry endpoints', (): void => {
     const config: WorkerConfig = readWorkerConfig(validEnvironment());
 
