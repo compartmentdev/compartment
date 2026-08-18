@@ -91,6 +91,10 @@ describe('sandboxed build Job projection', (): void => {
     ]);
     const serialized = await serializeManifestOnTheWire(manifest);
     expect(serialized).toHaveProperty('spec.template.spec.volumes', manifest.spec!.template.spec.volumes);
+    expect(serialized).toHaveProperty(
+      'spec.template.spec.initContainers.0.volumeMounts',
+      expect.arrayContaining([{ mountPath: '/var/lib/buildkit-seed', name: 'buildkit-seed', readOnly: true }]),
+    );
   });
 
   it('rejects a gVisor BuildKit sidecar outside an explicitly sandboxed build Job', (): void => {
