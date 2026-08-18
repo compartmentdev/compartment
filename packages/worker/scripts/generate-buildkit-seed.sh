@@ -14,6 +14,8 @@ container_name="compartment-buildkit-seed-$$"
 seed_directory="$output_directory/seed"
 state_directory="$seed_directory/state"
 manifest_directory="$seed_directory/manifest"
+host_uid="$(id -u)"
+host_gid="$(id -g)"
 
 require_digest_ref() {
   case "$2" in
@@ -35,8 +37,18 @@ fi
 mkdir -p "$state_directory" "$manifest_directory"
 chmod 0777 "$state_directory"
 
+restore_output_ownership() {
+  docker run --rm \
+    --user 0 \
+    --volume "$seed_directory:/seed" \
+    --entrypoint sh \
+    "$worker_image" \
+    -c 'chown -R "$1:$2" /seed' sh "$host_uid" "$host_gid"
+}
+
 cleanup() {
   docker rm --force "$container_name" >/dev/null 2>&1 || true
+  restore_output_ownership >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
 
@@ -75,6 +87,7 @@ docker exec "$container_name" buildctl --addr unix:///run/buildkit/buildkitd.soc
 
 docker stop "$container_name" >/dev/null
 docker rm "$container_name" >/dev/null
+restore_output_ownership
 trap - EXIT INT TERM
 
 docker run --rm --entrypoint sh "$worker_image" -c \
