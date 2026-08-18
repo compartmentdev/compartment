@@ -11,6 +11,7 @@ import { CapturingKubernetesObjectApi } from './kube-transport-capture.harness';
 const repositoryRoot: string = resolve(__dirname, '../../..');
 const chartPath: string = resolve(repositoryRoot, 'deploy/chart/compartment');
 const helmAvailable: boolean = spawnSync('helm', ['version', '--short'], { encoding: 'utf8' }).status === 0;
+const helmContractTimeoutMs = 15_000;
 const podCidr: string = ['10', '42', '0', '0/16'].join('.');
 const serviceCidr: string = ['10', '43', '0', '0/16'].join('.');
 
@@ -19,23 +20,27 @@ describe('Caddy readiness NetworkPolicy contract', (): void => {
     expect(helmAvailable).toBe(true);
   });
 
-  it.skipIf(!helmAvailable)('matches the tenant policies serialized to the Kubernetes API', async (): Promise<void> => {
-    const chartPolicies: KubeManifest[] = renderChartPolicies();
-    const projectedPolicies: KubeManifest[] = projectNetworkPolicyManifests(
-      'cpt-readiness',
-      'readiness',
-      'readiness',
-      projection(),
-    );
+  it.skipIf(!helmAvailable)(
+    'matches the tenant policies serialized to the Kubernetes API',
+    async (): Promise<void> => {
+      const chartPolicies: KubeManifest[] = renderChartPolicies();
+      const projectedPolicies: KubeManifest[] = projectNetworkPolicyManifests(
+        'cpt-readiness',
+        'readiness',
+        'readiness',
+        projection(),
+      );
 
-    for (const policy of ['default-deny', 'application-ingress']) {
-      const chartPolicy: KubeManifest = requirePolicy(chartPolicies, `-${policy}`);
-      const projectedPolicy: KubeManifest = requirePolicy(projectedPolicies, `np-${policy}-`);
-      const serializedPolicy: KubeManifest = await serializePolicy(projectedPolicy);
+      for (const policy of ['default-deny', 'application-ingress']) {
+        const chartPolicy: KubeManifest = requirePolicy(chartPolicies, `-${policy}`);
+        const projectedPolicy: KubeManifest = requirePolicy(projectedPolicies, `np-${policy}-`);
+        const serializedPolicy: KubeManifest = await serializePolicy(projectedPolicy);
 
-      expect(chartPolicy.spec).toEqual(serializedPolicy.spec);
-    }
-  });
+        expect(chartPolicy.spec).toEqual(serializedPolicy.spec);
+      }
+    },
+    helmContractTimeoutMs,
+  );
 });
 
 function renderChartPolicies(): KubeManifest[] {
