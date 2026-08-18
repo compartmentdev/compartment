@@ -1,4 +1,4 @@
-import type { Registry } from '@compartment/utils';
+import type { Registry } from '@compartment/utils/metrics';
 
 export type EdgeSnapshotRestoreSource = 'api' | 'disk';
 

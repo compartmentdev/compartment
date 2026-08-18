@@ -2,7 +2,7 @@ import { createEdgeApp } from './app';
 import { readEdgeConfig, type EdgeConfig } from './config';
 import type { EdgeApp } from './app.types';
 import { bootstrapEdgeAccessStateUntilReady } from './services/edge-bootstrap.service';
-import { startPrometheusMetricsServer, type PrometheusMetricsServer } from '@compartment/utils';
+import { startPrometheusMetricsServer, type PrometheusMetricsServer } from '@compartment/utils/metrics';
 
 async function startServer(): Promise<void> {
   const config: EdgeConfig = readEdgeConfig();
@@ -10,7 +10,7 @@ async function startServer(): Promise<void> {
   try {
     await bootstrapEdgeAccessStateUntilReady(config, app.edgeStore, app.edgeSnapshotMetrics, app.log);
     const metricsServer: PrometheusMetricsServer = await startPrometheusMetricsServer({
-      host: config.bindHost,
+      host: '0.0.0.0',
       port: config.metricsPort,
       registry: app.edgeSnapshotMetrics.registry,
     });

@@ -1,4 +1,4 @@
-import type { PrometheusMetricsServer } from '@compartment/utils';
+import type { PrometheusMetricsServer } from '@compartment/utils/metrics';
 import type { WorkerCaughtError } from '../logging/worker-error-log.types';
 
 export type HandleWorkerBuildFailure = (error: WorkerCaughtError) => void;

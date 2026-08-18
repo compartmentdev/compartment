@@ -4,10 +4,21 @@
   "private": true,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "metrics": [
+        "dist/prometheus-metrics.d.ts"
+      ]
+    }
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./metrics": {
+      "types": "./dist/prometheus-metrics.d.ts",
+      "default": "./dist/prometheus-metrics.js"
     }
   },
   "files": [

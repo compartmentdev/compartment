@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { PrometheusMetricsServer } from '@compartment/utils';
+import type { PrometheusMetricsServer } from '@compartment/utils/metrics';
 import {
   recordProjectProvisioningAttempt,
   setProjectProvisioningAttemptActive,

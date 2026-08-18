@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Pool } from 'pg';
-import { createPrometheusRegistry, type Registry } from '@compartment/utils';
+import { createPrometheusRegistry, type Registry } from '@compartment/utils/metrics';
 import type {
   PlatformMetricsSnapshot,
   PlatformProvisioningSummaryRow,
@@ -31,7 +31,6 @@ describe('API platform metrics', (): void => {
     const readSnapshot = vi.fn(async (): Promise<PlatformMetricsSnapshot> => await Promise.resolve(snapshot(now)));
     runtime = createApiPlatformMetrics(
       { primaryPool: pool(5, 3, 1), readSnapshot, resourceOperationPool: pool(2, 2, 0) },
-      '127.0.0.1',
       0,
     );
     const port: number = await runtime.start();
@@ -52,6 +51,9 @@ describe('API platform metrics', (): void => {
     expect(firstOutput).toContain(
       'compartment_api_http_requests_total{method="GET",route="/v1/projects/:projectId",status_code="200"} 1',
     );
+    expect(firstOutput).toContain(
+      'compartment_api_http_request_duration_seconds_sum{method="GET",route="/v1/projects/:projectId"} 0.025',
+    );
     expect(firstOutput).toContain('compartment_deployment_submit_to_ready_duration_seconds_bucket{le="120"} 1');
     expect(firstOutput).toContain('compartment_api_db_pool_connections{pool="primary",state="total"} 5');
     expect(firstOutput).toContain('compartment_platform_metrics_snapshot_age_seconds 5');
@@ -69,7 +71,6 @@ describe('API platform metrics', (): void => {
       .mockReturnValue(secondRefresh.promise);
     runtime = createApiPlatformMetrics(
       { primaryPool: pool(0, 0, 0), readSnapshot, resourceOperationPool: pool(0, 0, 0) },
-      '127.0.0.1',
       0,
     );
     await runtime.start();

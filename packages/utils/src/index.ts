@@ -52,6 +52,3 @@ export {
   issueBuildSourceArchiveCredential,
   verifyBuildSourceArchiveCredential,
 } from './build-source-archive-credential';
-export { Counter, Gauge, Histogram, Registry } from 'prom-client';
-export { createPrometheusRegistry, startPrometheusMetricsServer } from './prometheus-metrics';
-export type { PrometheusMetricsServer } from './prometheus-metrics.types';

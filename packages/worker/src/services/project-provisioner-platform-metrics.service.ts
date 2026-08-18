@@ -5,7 +5,7 @@ import {
   startPrometheusMetricsServer,
   type PrometheusMetricsServer,
   type Registry,
-} from '@compartment/utils';
+} from '@compartment/utils/metrics';
 import type { ProjectProvisioningAttemptResult } from './project-provisioner-platform-metrics.service.types';
 
 const registry: Registry = createPrometheusRegistry('project-provisioner');

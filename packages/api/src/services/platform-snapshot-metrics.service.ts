@@ -1,4 +1,4 @@
-import { Gauge, type Registry } from '@compartment/utils';
+import { Gauge, type Registry } from '@compartment/utils/metrics';
 import type {
   PlatformBuildQueueRow,
   PlatformDeploymentStatus,

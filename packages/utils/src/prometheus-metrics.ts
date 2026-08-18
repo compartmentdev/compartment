@@ -3,6 +3,9 @@ import type { AddressInfo } from 'node:net';
 import { collectDefaultMetrics, Registry } from 'prom-client';
 import type { PrometheusMetricsServer, PrometheusMetricsServerOptions } from './prometheus-metrics.types';
 
+export { Counter, Gauge, Histogram, Registry } from 'prom-client';
+export type { PrometheusMetricsServer } from './prometheus-metrics.types';
+
 const defaultMetricsPath: string = '/metrics';
 
 export function createPrometheusRegistry(service: string): Registry {

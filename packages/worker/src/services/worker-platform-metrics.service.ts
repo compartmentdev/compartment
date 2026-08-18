@@ -5,7 +5,7 @@ import {
   startPrometheusMetricsServer,
   type PrometheusMetricsServer,
   type Registry,
-} from '@compartment/utils';
+} from '@compartment/utils/metrics';
 import type { WorkerConfig } from '../config';
 import type { WorkerCaughtError } from '../logging/worker-error-log.types';
 import type { WorkerBuildResult } from './worker-iteration.types';

@@ -11,7 +11,8 @@ import {
   createCompartmentRequester,
   type CompartmentRequester,
 } from '@compartment/sdk';
-import { waitForAbortOrTimeout, type PrometheusMetricsServer } from '@compartment/utils';
+import { waitForAbortOrTimeout } from '@compartment/utils';
+import type { PrometheusMetricsServer } from '@compartment/utils/metrics';
 import pino, { type Logger } from 'pino';
 import { readProjectProvisionerConfig } from './project-provisioner-config';
 import type { ProjectProvisionerConfig } from './project-provisioner.types';

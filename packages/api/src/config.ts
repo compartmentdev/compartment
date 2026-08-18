@@ -6,10 +6,9 @@ import {
 } from '@compartment/utils';
 import { z } from 'zod';
 import { auditFileSinkConfigEnvSchema } from './audit-file-sink-config';
-import { readApiAuthThrottleConfig } from './auth-throttle-config';
-import { readApiRuntimeConfig } from './api-runtime-config';
+import { readApiAuthThrottleConfig, type ApiAuthThrottleConfig } from './auth-throttle-config';
+import { readApiRuntimeConfig, type ApiRuntimeConfig } from './api-runtime-config';
 import type { ApiConfigEnv } from './config-env.types';
-import type { ApiConfig } from './config.types';
 import { parseOptionalAbsoluteUrl } from './config-parsers';
 import { parseTenantSecretsKek, parseVariablesMasterKey } from './lib/variables-crypto';
 import { normalizeApiHostValue, parseSessionTtl, readOptionalConfigText, readRequiredBoolean } from './config-value';
@@ -17,7 +16,37 @@ import { assertValidSystemApiSocketPath } from './system-api-socket-path';
 
 export type { AuditFileSinkConfig } from './audit-file-sink-config';
 export { readApiPublicIngressConfig, type ApiPublicIngressConfig } from './api-public-ingress-config';
-export type { ApiConfig } from './config.types';
+
+export interface ApiConfig extends ApiRuntimeConfig {
+  baseDomain: string;
+  bindHost: string;
+  tlsMode: 'broker-dns01' | 'internal' | 'issuer';
+  controlPlaneHost: string;
+  databaseUrl: string;
+  deploymentInfrastructureTimeoutMs: number;
+  edgeToken: string;
+  edgeUrl: string;
+  logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
+  metricsPort: number;
+  managedDomainAcmeDnsToken?: string | null;
+  managedDomainBrokerUrl?: string | null;
+  trustedOutboundHosts: string[];
+  sessionSecret: string;
+  sessionTtlMs: number;
+  signupEnabled: boolean;
+  port: number;
+  publicProtocol: 'http' | 'https';
+  publicHttpPort: number;
+  publicHttpsPort: number;
+  productLogIngestToken?: string | null;
+  throttle: ApiAuthThrottleConfig;
+  systemApiSocketPath: string;
+  systemToken: string;
+  tenantSecretsKek: Buffer;
+  tenantSecretsPreviousKek?: Buffer | undefined;
+  variablesMasterKey: Buffer;
+  runtimeControlToken: string;
+}
 
 const installTokenSchema: z.ZodString = z.string().min(1);
 const apiConfigSchema: z.ZodTypeAny = z.object({

@@ -71,7 +71,6 @@ function createSharedServerRuntime(config: ApiConfig, pool: Pool, resourceOperat
       readSnapshot: async () => await readPlatformMetricsSnapshot(db),
       resourceOperationPool,
     },
-    config.bindHost,
     config.metricsPort,
   );
   return { app, db, platformMetrics, pool, resourceOperationPool, systemApp };

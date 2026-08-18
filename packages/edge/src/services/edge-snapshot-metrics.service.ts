@@ -1,4 +1,4 @@
-import { Counter, Gauge, createPrometheusRegistry, type Registry } from '@compartment/utils';
+import { Counter, Gauge, createPrometheusRegistry, type Registry } from '@compartment/utils/metrics';
 import type { EdgeSnapshotMetrics, EdgeSnapshotRestoreSource } from './edge-snapshot-metrics.service.types';
 
 export function createEdgeSnapshotMetrics(): EdgeSnapshotMetrics {
