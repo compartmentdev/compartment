@@ -48,13 +48,14 @@ recovery.
 ## Existing Kubernetes
 
 Use this target when your organization already operates Kubernetes 1.35 or newer, or a cluster with
-`ImageVolume=true` on kube-apiserver and every eligible kubelet:
+`ImageVolume=true` on kube-apiserver, every eligible kubelet, and every autoscaler or machine-template bootstrap path:
 
 ```bash
 compartment install --target kubernetes --kube-context production
 ```
 
-The installer verifies the required Kubernetes APIs, cert-manager, ingress, storage, registry trust, policy
+The installer verifies the image-volume API and a real mount on every current Ready schedulable node, then checks the
+remaining required Kubernetes APIs, cert-manager, ingress, storage, registry trust, policy
 enforcement, and permissions before installing the Helm release. It discovers namespaced Issuers and cluster-wide
 ClusterIssuers and lets you select an observed issuer. If cert-manager is absent or no issuer resource is discovered,
 setup stops with the prerequisite and exact next commands before collecting an impossible issuer name. It does not

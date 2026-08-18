@@ -24,8 +24,9 @@ measures and enforces that budget, and the shard owner is the suite named above.
 installation for all of its scenarios.
 
 Sandboxed builds require the `ImageVolume` capability. Use Kubernetes 1.35 or newer, or enable the
-`ImageVolume=true` feature gate on kube-apiserver and every eligible kubelet. Installation and updates verify the
-API behavior with a server-side dry-run instead of inferring support from the version number.
+`ImageVolume=true` feature gate on kube-apiserver and every eligible kubelet. Installation and updates verify API
+preservation with a server-side dry-run and a real mount on every current Ready schedulable node. Configure the same
+gate in every autoscaler or machine-template bootstrap path so replacement and scale-out nodes remain eligible.
 Exact managed k3s
 builds are reproducible installation inputs, not an upper compatibility limit for existing clusters.
 
