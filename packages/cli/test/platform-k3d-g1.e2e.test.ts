@@ -202,7 +202,8 @@ describeSelfHostedUserSetupE2e('platform k3d G1 edge gate', (): void => {
           offenderNamespace,
           siblingNamespace,
           '--ignore-not-found',
-          '--wait=false',
+          '--wait=true',
+          '--timeout=4m',
         ]);
       }
     },
