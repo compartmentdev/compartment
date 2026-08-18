@@ -741,6 +741,16 @@ tests:
           pattern: "buildkit-data.options'\\] == 'rw,rprivate,size=4g'.*buildkit-run.options'\\] == 'rw,rprivate,size=128m'.*buildkit-tmp.options'\\] == 'rw,rprivate,size=512m'.*tmp.options'\\] == 'rw,rprivate,size=384m'"
         template: buildkit.yaml
         documentIndex: 4
+      - equal:
+          path: spec.validations[4].expression
+          value: 'has(object.spec.template.spec.volumes) && object.spec.template.spec.volumes.size() == 6'
+        template: buildkit.yaml
+        documentIndex: 4
+      - equal:
+          path: spec.validations[4].message
+          value: Build Jobs must use exactly six volumes.
+        template: buildkit.yaml
+        documentIndex: 4
       - matchRegex:
           path: spec.validations[6].expression
           pattern: "volume.name == 'buildkit-data' && quantity\\(volume.emptyDir.sizeLimit\\).compareTo\\(quantity\\('4Gi'\\)\\) == 0"

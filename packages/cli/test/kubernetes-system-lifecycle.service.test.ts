@@ -30,22 +30,32 @@ interface CapturedUpdateValues {
 type VerifyUpdateImages = (input: VerifyUpdateInput) => Promise<void>;
 
 interface LifecycleMocks {
+  assertImageVolume: Mock<() => Promise<void>>;
   runCommand: Mock<RunCommand>;
   verifyUpdateImages: Mock<VerifyUpdateImages>;
 }
 
 const mocks: LifecycleMocks = vi.hoisted(
-  (): LifecycleMocks => ({ runCommand: vi.fn<RunCommand>(), verifyUpdateImages: vi.fn<VerifyUpdateImages>() }),
+  (): LifecycleMocks => ({
+    assertImageVolume: vi.fn<() => Promise<void>>(),
+    runCommand: vi.fn<RunCommand>(),
+    verifyUpdateImages: vi.fn<VerifyUpdateImages>(),
+  }),
 );
 
 vi.mock('../src/command-runner', (): object => ({ runCommand: mocks.runCommand }));
 vi.mock('../src/services/kubernetes-image-trust.service', (): object => ({
   writeVerifiedKubernetesReleaseImageValues: mocks.verifyUpdateImages,
 }));
+vi.mock('../src/services/kubernetes-image-volume-preflight.service', (): object => ({
+  assertKubernetesImageVolumeCapability: mocks.assertImageVolume,
+}));
 
 describe('Kubernetes system lifecycle', (): void => {
   afterEach((): void => {
     mocks.runCommand.mockReset();
+    mocks.assertImageVolume.mockReset();
+    mocks.assertImageVolume.mockResolvedValue();
     mocks.verifyUpdateImages.mockReset();
   });
 
@@ -111,6 +121,10 @@ describe('Kubernetes system lifecycle', (): void => {
       const valuesPath: string = resolve(directory, 'values.yaml');
       await writeFile(valuesPath, '{}');
       const events: string[] = [];
+      mocks.assertImageVolume.mockImplementation(async (): Promise<void> => {
+        events.push('image-volume');
+        await Promise.resolve();
+      });
       mocks.verifyUpdateImages.mockImplementation(async (input: VerifyUpdateInput): Promise<void> => {
         events.push('verify');
         const updateValuesPath: string | undefined = input.operatorValuesPaths[1];
@@ -154,7 +168,7 @@ describe('Kubernetes system lifecycle', (): void => {
         version: 'sha-target',
       });
 
-      expect(events).toEqual(['verify', 'helm']);
+      expect(events).toEqual(['image-volume', 'verify', 'helm']);
       expect(result).toMatchObject({ updated: true, version: 'sha-target' });
     } finally {
       await rm(directory, { force: true, recursive: true });
@@ -176,6 +190,28 @@ describe('Kubernetes system lifecycle', (): void => {
           version: 'sha-target',
         }),
       ).rejects.toThrow('image signature rejected');
+      expect(mocks.runCommand).not.toHaveBeenCalled();
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it('stops before image verification and Helm when the ImageVolume capability is unavailable', async (): Promise<void> => {
+    const directory: string = await mkdtemp(resolve(tmpdir(), 'compartment-update-test-'));
+    try {
+      const valuesPath: string = resolve(directory, 'values.yaml');
+      await writeFile(valuesPath, '{}');
+      mocks.assertImageVolume.mockRejectedValue(new Error('ImageVolume was pruned'));
+
+      await expect(
+        updateKubernetesSystem({
+          ...target(),
+          chartPath: resolve(directory, 'chart'),
+          valuesPath,
+          version: 'sha-target',
+        }),
+      ).rejects.toThrow('ImageVolume was pruned');
+      expect(mocks.verifyUpdateImages).not.toHaveBeenCalled();
       expect(mocks.runCommand).not.toHaveBeenCalled();
     } finally {
       await rm(directory, { force: true, recursive: true });

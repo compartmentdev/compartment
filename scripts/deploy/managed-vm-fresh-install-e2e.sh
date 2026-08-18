@@ -20,6 +20,32 @@ cleanup() {
 }
 trap cleanup EXIT
 
+render_image_volume_probe() {
+  cat <<'EOF'
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: compartment-image-volume-e2e
+  namespace: default
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: probe
+          image: registry.k8s.io/pause:3.10.1
+          volumeMounts:
+            - name: image-volume
+              mountPath: /image
+              readOnly: true
+      volumes:
+        - name: image-volume
+          image:
+            reference: registry.k8s.io/pause:3.10.1
+            pullPolicy: IfNotPresent
+EOF
+}
+
 for forbidden_path in \
   /etc/rancher/k3s \
   /var/lib/rancher/k3s \
@@ -50,13 +76,22 @@ openssl rand -base64 36 >"${password_file}"
   --admin-password-file "${password_file}" 2>&1 | tee "${install_log}"
 
 for expected_kubelet_arg in \
+  '  - "feature-gates=ImageVolume=true"' \
   '  - "system-reserved=memory=512Mi"' \
   '  - "kube-reserved=memory=512Mi"' \
   '  - "eviction-hard=memory.available<512Mi,nodefs.available<10%,imagefs.available<15%,nodefs.inodesFree<5%,imagefs.inodesFree<5%"'; do
   sudo grep --fixed-strings --line-regexp --quiet -- "${expected_kubelet_arg}" /etc/rancher/k3s/config.yaml
 done
+sudo grep --fixed-strings --line-regexp --quiet -- 'kube-apiserver-arg:' /etc/rancher/k3s/config.yaml
+sudo grep --fixed-strings --line-regexp --quiet -- '  - "feature-gates=ImageVolume=true"' /etc/rancher/k3s/config.yaml
 sudo systemctl is-active --quiet k3s.service
 sudo k3s kubectl wait node --all --for=condition=Ready --timeout=5m
+
+image_volume_reference="$(render_image_volume_probe | sudo k3s kubectl create --dry-run=server --filename=- --output=jsonpath='{.spec.template.spec.volumes[?(@.name=="image-volume")].image.reference}')"
+test "${image_volume_reference}" = 'registry.k8s.io/pause:3.10.1'
+
+image_volume_mount="$(render_image_volume_probe | sudo k3s kubectl create --dry-run=server --filename=- --output=jsonpath='{.spec.template.spec.containers[?(@.name=="probe")].volumeMounts[?(@.name=="image-volume")].mountPath}')"
+test "${image_volume_mount}" = '/image'
 
 sudo /usr/local/bin/runsc --version | grep -q "${expected_gvisor_version}"
 sudo grep --fixed-strings --quiet 'file-access-mounts = "exclusive"' /etc/containerd/runsc-build.toml

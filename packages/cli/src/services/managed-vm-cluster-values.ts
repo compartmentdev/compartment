@@ -7,7 +7,10 @@ node-label:
   - "compartment.dev/node-pool=data"
 etcd-snapshot-schedule-cron: "0 */12 * * *"
 etcd-snapshot-retention: 5
+kube-apiserver-arg:
+  - "feature-gates=ImageVolume=true"
 kubelet-arg:
+  - "feature-gates=ImageVolume=true"
   - "system-reserved=memory=512Mi"
   - "kube-reserved=memory=512Mi"
   - "eviction-hard=memory.available<512Mi,nodefs.available<10%,imagefs.available<15%,nodefs.inodesFree<5%,imagefs.inodesFree<5%"
