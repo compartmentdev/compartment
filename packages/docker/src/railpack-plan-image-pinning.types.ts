@@ -1,25 +1,20 @@
-export interface RailpackPlanImagePinningInput {
-  builder: string;
-  runtime: string;
-}
-
 export type RailpackPlanJsonValue = boolean | null | number | RailpackPlanJsonObject | RailpackPlanJsonValue[] | string;
 
 export interface RailpackPlanJsonObject {
   [key: string]: RailpackPlanJsonValue;
 }
 
-export type RailpackPlanInput = RailpackPlanJsonObject & {
-  image?: string | undefined;
-};
+export interface RailpackPlanInput extends RailpackPlanJsonObject {
+  image?: string;
+}
 
-export type RailpackPlanStep = RailpackPlanJsonObject & {
-  inputs?: RailpackPlanInput[] | undefined;
-};
+export interface RailpackPlanStep extends RailpackPlanJsonObject {
+  inputs?: RailpackPlanInput[];
+}
 
-export type RailpackPlan = RailpackPlanJsonObject & {
+export interface RailpackPlan extends RailpackPlanJsonObject {
   steps: RailpackPlanStep[];
-};
+}
 
 export interface RailpackPinnedImageCounts {
   builder: number;

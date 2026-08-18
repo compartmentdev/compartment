@@ -1,3 +1,5 @@
+import type { DockerRailpackImages } from './docker-railpack-images.types';
+
 export type DockerBuildPacker = 'dockerfile' | 'railpack' | 'static';
 export type DockerLogStream = 'stdout' | 'stderr';
 
@@ -26,11 +28,6 @@ export interface DockerBuildImageInput {
   railpackImages?: DockerRailpackImages | undefined;
   runtimeAptPackages?: string[] | undefined;
   staticOutputDirectory?: string | undefined;
-}
-
-export interface DockerRailpackImages {
-  builder: string;
-  runtime: string;
 }
 
 export interface DockerRegistryCredentials {

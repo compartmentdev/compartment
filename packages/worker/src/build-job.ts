@@ -19,6 +19,7 @@ import type {
 } from './services/worker-build-job.types';
 import { prepareServiceDirectory } from './services/worker-source.service';
 import type { PreparedWorkerSource, PreparedWorkerSourceBuildInput } from './services/worker-source.service.types';
+import { isTagAndDigestPinnedContainerImageReference } from './container-image-reference';
 
 class BuildJobDockerImageInput implements DockerBuildImageInput {
   appPath?: string | undefined;
@@ -129,7 +130,7 @@ function readRailpackImages(env: NodeJS.ProcessEnv): DockerRailpackImages {
 }
 
 function requireDigestImage(value: string | undefined, name: string): string {
-  if (value === undefined || !/^.+:[^@/:]+@sha256:[a-f0-9]{64}$/u.test(value)) {
+  if (value === undefined || !isTagAndDigestPinnedContainerImageReference(value)) {
     throw new Error(`${name} must be a tag-and-digest-pinned image reference.`);
   }
   return value;

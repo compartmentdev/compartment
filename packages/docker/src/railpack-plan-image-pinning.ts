@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
+import type { DockerRailpackImages } from './docker-railpack-images.types';
 import type {
   RailpackPlan,
-  RailpackPlanImagePinningInput,
   RailpackPlanInput,
   RailpackPlanJsonObject,
   RailpackPlanJsonValue,
@@ -15,7 +15,7 @@ const builderRepository: string = 'ghcr.io/railwayapp/railpack-builder';
 const runtimeRepository: string = 'ghcr.io/railwayapp/railpack-runtime';
 const digestImagePattern: RegExp = /^(.+):([^@/:]+)@sha256:[a-f0-9]{64}$/u;
 
-export async function pinRailpackPlanImages(planPath: string, images: RailpackPlanImagePinningInput): Promise<void> {
+export async function pinRailpackPlanImages(planPath: string, images: DockerRailpackImages): Promise<void> {
   const builder: RailpackPinnedImage = readPinnedImage(images.builder, builderRepository);
   const runtime: RailpackPinnedImage = readPinnedImage(images.runtime, runtimeRepository);
   const plan: RailpackPlan = parseRailpackPlan(await readFile(planPath, 'utf8'));

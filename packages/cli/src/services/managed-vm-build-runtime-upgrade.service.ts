@@ -10,8 +10,9 @@ import {
 } from './managed-vm-sandbox-runtime-config.service';
 import { applyManagedVmRuntimeClasses, verifyManagedVmSandboxRuntime } from './managed-vm-sandbox-runtime.service';
 import { managedVmFileIdentity, readManagedVmPathIdentity } from './managed-vm-state.service';
+import type { ManagedVmOwnedFileDigests } from './managed-vm-provisioning.types';
 
-export async function upgradeManagedVmBuildSandboxRuntime(): Promise<Readonly<Record<string, string>>> {
+export async function upgradeManagedVmBuildSandboxRuntime(): Promise<ManagedVmOwnedFileDigests> {
   const buildConfigIdentity: string = await ensureBuildRunscConfig();
   const templateIdentity: string = await ensureContainerdTemplate();
   await execa('systemctl', ['restart', 'k3s']);

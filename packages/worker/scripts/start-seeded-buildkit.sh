@@ -99,6 +99,7 @@ link_snapshot() {
 
 while IFS= read -r snapshot_id; do link_snapshot "$snapshot_id"; done < "$manifest_root/link-snapshots"
 
+require_directory "$snapshot_source"
 seed_snapshot_count="$(find "$snapshot_source" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
 initialized_snapshot_count="$(find "$snapshot_target" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')"
 if [ "$seed_snapshot_count" != "$initialized_snapshot_count" ]; then

@@ -88,10 +88,11 @@ async function prepareRailpackBuildPlan(
   input: DockerBuildImageInput,
   railpackPlanPaths: RailpackPlanPaths,
 ): Promise<void> {
-  await prepareRailpackPlan(buildPrepareRailpackPlanInput(input, railpackPlanPaths));
-  if (input.railpackImages !== undefined) {
-    await pinRailpackPlanImages(railpackPlanPaths.planPath, input.railpackImages);
+  if (input.railpackImages === undefined) {
+    throw new Error('Railpack image pins are required for Railpack and static builds.');
   }
+  await prepareRailpackPlan(buildPrepareRailpackPlanInput(input, railpackPlanPaths));
+  await pinRailpackPlanImages(railpackPlanPaths.planPath, input.railpackImages);
   if (input.packer === 'static') {
     await normalizeStaticRailpackPlan(railpackPlanPaths.planPath, requireStaticOutputDirectory(input));
   }

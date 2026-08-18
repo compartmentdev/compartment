@@ -168,6 +168,16 @@ describe('readWorkerConfig', (): void => {
     ).toThrow();
   });
 
+  it.each([
+    `ghcr.io/compartmentdev/compartment buildkit-seed@sha256:${'c'.repeat(64)}`,
+    `GHCR.IO/compartmentdev/compartment-buildkit-seed@sha256:${'c'.repeat(64)}`,
+    `ghcr.io//compartment-buildkit-seed@sha256:${'c'.repeat(64)}`,
+  ])('rejects malformed BuildKit seed image reference %s', (image: string): void => {
+    expect((): WorkerBuildConfig => {
+      return readWorkerBuildConfig({ ...validEnvironment(), COMPARTMENT_BUILDKIT_SEED_IMAGE: image });
+    }).toThrow();
+  });
+
   it('rejects unsafe worker trusted outbound host entries', (): void => {
     expect((): WorkerConfig => {
       return readWorkerConfig({

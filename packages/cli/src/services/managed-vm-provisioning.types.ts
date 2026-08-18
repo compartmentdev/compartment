@@ -190,3 +190,4 @@ export interface ManagedVmUpdateState {
   startedAt: string;
   updatedAt: string;
 }
+export type ManagedVmOwnedFileDigests = Readonly<Record<string, string>>;

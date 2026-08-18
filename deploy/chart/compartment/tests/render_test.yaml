@@ -458,6 +458,9 @@ tests:
         baseDomain: apps.example.com
         publicProtocol: https
         managedDomainBrokerUrl: ''
+      images:
+        buildkitSeed:
+          digest: sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
       secrets: *stableSecrets
     asserts:
       - notFailedTemplate: {}
@@ -743,7 +746,7 @@ tests:
         documentIndex: 4
       - matchRegex:
           path: spec.validations[5].expression
-          pattern: "volume.name == 'buildkit-seed'.*volume.image.reference == 'ghcr.io/compartmentdev/compartment-buildkit-seed:latest'.*volume.image.pullPolicy == 'IfNotPresent'"
+          pattern: "volume.name == 'buildkit-seed'.*volume.image.reference == 'ghcr.io/compartmentdev/compartment-buildkit-seed@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'.*volume.image.pullPolicy == 'IfNotPresent'"
         template: buildkit.yaml
         documentIndex: 4
       - matchRegex:
@@ -1728,6 +1731,8 @@ tests:
           digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
         caddy:
           digest: sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+        buildkitSeed:
+          digest: sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
       secrets: *stableSecrets
     asserts:
       - notFailedTemplate: {}
@@ -1743,6 +1748,10 @@ tests:
       - equal:
           path: data.COMPARTMENT_WORKER_IMAGE
           value: ghcr.io/compartmentdev/compartment-worker@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_BUILDKIT_SEED_IMAGE
+          value: ghcr.io/compartmentdev/compartment-buildkit-seed@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
         template: configmap.yaml
       - equal:
           path: spec.template.spec.containers[0].image

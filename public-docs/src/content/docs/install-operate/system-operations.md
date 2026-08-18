@@ -22,7 +22,7 @@ curl -fsSL https://compartment.dev/install.sh | sh
 ```
 
 Before updating an operator-owned cluster, upgrade it to Kubernetes 1.33 or newer. The current chart rejects
-Kubernetes 1.29 and older; Compartment does not upgrade operator-owned clusters.
+Kubernetes 1.32 and older; Compartment does not upgrade operator-owned clusters.
 
 The organization quota release supports clean installations only. It does not retrofit quota state onto organizations
 from an older installation; install it on a new database instead of using `system update` for that cutover.
