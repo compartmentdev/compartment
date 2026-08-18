@@ -81,6 +81,7 @@ async function verifyCapsuleImageValues(
 function createEmptyVerifiedImages(): Record<KubernetesPlatformImageName, KubernetesVerifiedImageValue> {
   return {
     api: { digest: '' },
+    buildkitSeed: { digest: '' },
     caddy: { digest: '' },
     dns01Solver: { digest: '' },
     edge: { digest: '' },
@@ -94,6 +95,7 @@ function readEffectivePlatformImages(
 ): KubernetesPlatformImageValues {
   return {
     api: readEffectiveImage(baseValues, overrideValues, 'api'),
+    buildkitSeed: readEffectiveImage(baseValues, overrideValues, 'buildkitSeed'),
     caddy: readEffectiveImage(baseValues, overrideValues, 'caddy'),
     dns01Solver: readEffectiveImage(baseValues, overrideValues, 'dns01Solver'),
     edge: readEffectiveImage(baseValues, overrideValues, 'edge'),

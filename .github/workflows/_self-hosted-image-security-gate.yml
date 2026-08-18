@@ -90,7 +90,10 @@ jobs:
       - name: Load self-hosted images from cache
         timeout-minutes: 5
         run: |
-          for service in api caddy dns01-solver edge worker; do
+          set -euo pipefail
+          mapfile -t services < <(node ./scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs)
+          [ "${#services[@]}" -gt 0 ] || { echo "No self-hosted runtime images were listed." >&2; exit 1; }
+          for service in "${services[@]}"; do
             docker load --input "./.compartment/self-hosted-image-cache/${service}.tar"
           done
 
@@ -98,11 +101,11 @@ jobs:
         timeout-minutes: 2
         run: |
           set -euo pipefail
-          docker image inspect \
-            "ghcr.io/compartmentdev/compartment-api:sha-${{ github.sha }}" \
-            "ghcr.io/compartmentdev/compartment-caddy:sha-${{ github.sha }}" \
-            "ghcr.io/compartmentdev/compartment-edge:sha-${{ github.sha }}" \
-            "ghcr.io/compartmentdev/compartment-worker:sha-${{ github.sha }}" >/dev/null
+          mapfile -t services < <(node ./scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs)
+          [ "${#services[@]}" -gt 0 ] || { echo "No self-hosted runtime images were listed." >&2; exit 1; }
+          for service in "${services[@]}"; do
+            docker image inspect "ghcr.io/compartmentdev/compartment-${service}:sha-${{ github.sha }}" >/dev/null
+          done
 
       - name: Check self-hosted image vulnerabilities
         timeout-minutes: 20

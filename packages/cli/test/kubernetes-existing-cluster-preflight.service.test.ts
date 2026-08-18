@@ -95,7 +95,7 @@ describe('existing Kubernetes non-persistent preflight', (): void => {
     installFixture(fixture);
 
     await expect(runKubernetesExistingClusterPreflight(preflightInput())).rejects.toThrow(
-      'Kubernetes 1.30 or newer is required; detected v1.29.9.',
+      'Kubernetes 1.33 or newer is required; detected v1.29.9.',
     );
   });
 

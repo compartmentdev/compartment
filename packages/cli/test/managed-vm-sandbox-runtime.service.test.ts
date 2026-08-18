@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ManagedVmDownloadedArtifacts } from '../src/services/managed-vm-artifacts.service.types';
+import { managedVmReleaseMetadata } from '../src/services/managed-vm-release-metadata.service';
+import { renderManagedVmContainerdTemplate } from '../src/services/managed-vm-sandbox-runtime-config.service';
 
 interface TestFile {
   content: Buffer;
@@ -28,6 +30,7 @@ interface SandboxRuntimeMocks {
   open: Mock;
   readFile: Mock;
   readdir: Mock;
+  replaceManagedVmFile: Mock;
 }
 
 const files: Map<string, TestFile> = new Map<string, TestFile>();
@@ -42,6 +45,7 @@ const mocks: SandboxRuntimeMocks = vi.hoisted(
     open: vi.fn(),
     readFile: vi.fn(),
     readdir: vi.fn(),
+    replaceManagedVmFile: vi.fn(),
   }),
 );
 
@@ -73,6 +77,7 @@ vi.mock(
   (): Record<string, Mock> => ({
     ensureManagedVmDirectory: mocks.ensureManagedVmDirectory,
     installNewManagedVmFile: mocks.installNewManagedVmFile,
+    replaceManagedVmFile: mocks.replaceManagedVmFile,
   }),
 );
 
@@ -97,16 +102,16 @@ beforeEach((): void => {
     directories.set(path, { gid: 0, kind: 'directory', mode, uid: 0 });
     return 'directory';
   });
-  mocks.readFile.mockImplementation(async (path: string): Promise<Buffer> => {
+  mocks.readFile.mockImplementation(async (path: string, encoding?: string): Promise<Buffer | string> => {
     await Promise.resolve();
     if (directories.get(path)?.kind === 'file') {
-      return Buffer.from('unexpected K3s path content');
+      return encoding === 'utf8' ? 'unexpected K3s path content' : Buffer.from('unexpected K3s path content');
     }
     const file: TestFile | undefined = files.get(path);
     if (file === undefined) {
       throw missing();
     }
-    return file.content;
+    return encoding === 'utf8' ? file.content.toString('utf8') : file.content;
   });
   mocks.lstat.mockImplementation(async (path: string): Promise<object> => {
     await Promise.resolve();
@@ -127,7 +132,14 @@ beforeEach((): void => {
     if (file === undefined) {
       throw missing();
     }
-    return { dev: 1, ino: inode(path), isFile: (): boolean => true, mode: file.mode };
+    return {
+      dev: 1,
+      ino: inode(path),
+      isDirectory: (): boolean => false,
+      isFile: (): boolean => true,
+      isSymbolicLink: (): boolean => false,
+      mode: file.mode,
+    };
   });
   mocks.open.mockImplementation(async (path: string): Promise<object> => {
     await Promise.resolve();
@@ -162,9 +174,46 @@ beforeEach((): void => {
       .filter((name: string): boolean => files.has(`/usr/local/bin/gvisor-bin/${name}`))
       .map((name: string): object => ({ isFile: (): boolean => true, name }));
   });
+  mocks.replaceManagedVmFile.mockImplementation(
+    async (destination: string, _expectedIdentity: string, content: Buffer | string, mode: number): Promise<string> => {
+      await Promise.resolve();
+      files.set(destination, { content: Buffer.isBuffer(content) ? content : Buffer.from(content), mode });
+      return 'replacement-identity';
+    },
+  );
 });
 
 describe('managed VM sandbox runtime installation', (): void => {
+  it('upgrades the legacy handler before verifying the build runtime', async (): Promise<void> => {
+    mocks.execa.mockResolvedValue({ exitCode: 0, stderr: '', stdout: managedVmReleaseMetadata.gvisorVersion });
+    files.set('/var/lib/rancher/k3s/agent/etc/containerd/config.toml', {
+      content: Buffer.from(
+        'io.containerd.runsc.v1 /etc/containerd/runsc.toml /etc/containerd/runsc-build.toml pod_annotations = ["dev.gvisor.spec.mount.*"]',
+      ),
+      mode: 0o600,
+    });
+    files.set('/tmp/runsc.toml', { content: Buffer.from('[runsc_config]\n  rootless = true\n'), mode: 0o600 });
+    const { installManagedVmSandboxRuntime } = await import('../src/services/managed-vm-sandbox-runtime.service');
+    const { upgradeManagedVmBuildSandboxRuntime } =
+      await import('../src/services/managed-vm-build-runtime-upgrade.service');
+    await installManagedVmSandboxRuntime(artifacts());
+    const templatePath: string = '/var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.tmpl';
+    const currentTemplate: Buffer = Buffer.from(renderManagedVmContainerdTemplate());
+    files.set(templatePath, { content: Buffer.from(renderManagedVmContainerdTemplate(false)), mode: 0o600 });
+    files.delete('/etc/containerd/runsc-build.toml');
+
+    const identities: Readonly<Record<string, string>> = await upgradeManagedVmBuildSandboxRuntime();
+    expect(identities['/etc/containerd/runsc-build.toml']).toMatch(/^file:0600:/u);
+    expect(identities[templatePath]).toMatch(/^file:0600:/u);
+    expect(mocks.installNewManagedVmFile).toHaveBeenCalledWith(
+      '/etc/containerd/runsc-build.toml',
+      expect.any(Buffer),
+      0o600,
+    );
+    expect(mocks.replaceManagedVmFile).toHaveBeenCalledOnce();
+    expect(files.get(templatePath)?.content).toEqual(currentTemplate);
+  });
+
   it('rejects a changed partial install on retry', async (): Promise<void> => {
     mocks.execa.mockRejectedValueOnce(new Error('k3s restart failed'));
     const { installManagedVmSandboxRuntime } = await import('../src/services/managed-vm-sandbox-runtime.service');

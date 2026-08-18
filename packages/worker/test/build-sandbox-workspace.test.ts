@@ -18,15 +18,15 @@ const chartDirectory: string = resolve(__dirname, '../../../deploy/chart/compart
 const valuesPath: string = resolve(chartDirectory, 'values.yaml');
 
 describe('build sandbox workspace', (): void => {
-  it('refuses a build Pod memory limit that cannot hold the gVisor tmpfs workspace', (): void => {
+  it('refuses a build Pod memory limit below the conservative gVisor workspace budget', (): void => {
     expect((): void =>
       assertBuildSandboxMemoryBudget(buildSandboxConfig({ buildKitMemory: '1536Mi', runnerMemory: '512Mi' })),
     ).toThrow('The build Pod memory limit of 2048Mi does not cover the 3072Mi gVisor tmpfs build workspace');
   });
 
-  it('refuses BuildKit cache retention that outgrows the memory-backed data volume', (): void => {
+  it('refuses BuildKit cache retention that outgrows the writable data volume', (): void => {
     expect((): void => assertBuildSandboxMemoryBudget(buildSandboxConfig({ gcKeepStorageMb: 4096 }))).toThrow(
-      'buildkit.gcKeepStorageMb reserves 3906Mi of BuildKit cache inside the 2048Mi memory-backed build data volume',
+      'buildkit.gcKeepStorageMb reserves 3906Mi of BuildKit cache inside the 2048Mi writable build data volume',
     );
   });
 
@@ -57,6 +57,11 @@ function buildSandboxConfig(overrides: {
     dataSizeLimit: overrides.dataSizeLimit ?? '2Gi',
     buildKitResources: { limits: { memory: overrides.buildKitMemory ?? '3Gi' } },
     gcKeepStorageMb: overrides.gcKeepStorageMb ?? 1024,
+    seed: {
+      image: 'compartment-buildkit-seed@sha256:seed',
+      railpackBuilderImage: `ghcr.io/railwayapp/railpack-builder:mise-test@sha256:${'a'.repeat(64)}`,
+      railpackRuntimeImage: `ghcr.io/railwayapp/railpack-runtime:mise-test@sha256:${'b'.repeat(64)}`,
+    },
     namespace: 'compartment-build',
     runnerResources: { limits: { memory: overrides.runnerMemory ?? '1Gi' } },
     scheduling: { nodeSelector: {}, runtimeClassName: 'gvisor', tolerations: [] },

@@ -2,6 +2,7 @@ import type { KubernetesPlatformImageName } from './kubernetes-platform-image.ty
 
 export const kubernetesPlatformImageNames: readonly KubernetesPlatformImageName[] = [
   'api',
+  'buildkitSeed',
   'worker',
   'edge',
   'caddy',

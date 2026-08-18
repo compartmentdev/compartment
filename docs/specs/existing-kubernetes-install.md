@@ -130,12 +130,12 @@ The operator must provide:
 
 - local `helm` version 4.0.0 or newer and `kubectl` version 1.30.0 or newer on `PATH`, with the `kubectl` client
   compatible with the target Kubernetes server;
-- a supported Kubernetes version;
+- Kubernetes 1.33 or newer, which provides the image-volume API used by the BuildKit seed;
 - a working kube context;
 - permissions required by the Helm release and project bootstrap model;
 - an installed and ready Ingress Controller with an IngressClass;
 - installed and ready cert-manager CRDs and controllers;
-- gVisor installed and registered on every eligible build and tenant node through the configured RuntimeClass;
+- gVisor installed and registered on every eligible node through the configured tenant and build RuntimeClasses;
 - an existing cert-manager CA Issuer or ClusterIssuer whose CA is already in the trust store of every node container
   runtime;
 - a usable StorageClass;
@@ -535,9 +535,9 @@ The model does not protect against:
 - a node kernel or container runtime escape;
 - a compromise of the trusted Compartment control plane.
 
-Firecracker, Kata, dedicated nodes, and per-organization clusters are deferred. An operator-selected and verified
-gVisor RuntimeClass supplies the required kernel sandbox for builds and tenant workloads; namespace isolation alone
-does not satisfy that boundary.
+Firecracker, Kata, dedicated nodes, and per-organization clusters are deferred. Operator-selected and verified gVisor
+RuntimeClasses supply the required kernel sandbox for builds and tenant workloads. The build class additionally uses
+exclusive file access for the read-only BuildKit seed; namespace isolation alone does not satisfy that boundary.
 
 ### API and database boundary
 
@@ -992,7 +992,8 @@ NetworkPolicy manifests and CI enforcement tests are retained.
 
 - Firecracker integration.
 - gVisor installation or node mutation in the existing-cluster path.
-- automatic RuntimeClass selection; the operator names one class through `sandboxRuntime.runtimeClassName`.
+- automatic RuntimeClass selection; the operator names the tenant and build classes through
+  `sandboxRuntime.runtimeClassName` and `sandboxRuntime.buildRuntimeClassName`.
 - Kata Containers installation or detection.
 - a security claim that Kubernetes namespaces provide VM-level isolation.
 

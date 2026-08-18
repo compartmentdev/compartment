@@ -12,6 +12,7 @@ export interface KubeVolumeMount {
 export interface KubePodVolume {
   configMap?: KubeConfigMapVolumeSource | undefined;
   emptyDir?: KubeEmptyDirVolume | undefined;
+  image?: KubeImageVolumeSource | undefined;
   name: string;
   persistentVolumeClaim?: { claimName: string; readOnly?: boolean | undefined } | undefined;
   projected?:
@@ -21,6 +22,11 @@ export interface KubePodVolume {
       }
     | undefined;
   secret?: { secretName: string } | undefined;
+}
+
+export interface KubeImageVolumeSource {
+  pullPolicy: 'Always' | 'IfNotPresent';
+  reference: string;
 }
 
 export interface KubeConfigMapVolumeSource {

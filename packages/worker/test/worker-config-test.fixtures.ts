@@ -52,6 +52,11 @@ export function createWorkerTestConfig(overrides: Partial<WorkerConfig> = {}): W
       dataSizeLimit: '2Gi',
       buildKitResources: { limits: { memory: '3Gi' } },
       gcKeepStorageMb: 1024,
+      seed: {
+        image: 'compartment-buildkit-seed@sha256:seed',
+        railpackBuilderImage: `ghcr.io/railwayapp/railpack-builder:mise-test@sha256:${'a'.repeat(64)}`,
+        railpackRuntimeImage: `ghcr.io/railwayapp/railpack-runtime:mise-test@sha256:${'b'.repeat(64)}`,
+      },
       namespace: 'compartment-build',
       runnerResources: { limits: { memory: '1Gi' } },
       scheduling: { nodeSelector: {}, runtimeClassName: 'gvisor', tolerations: [] },

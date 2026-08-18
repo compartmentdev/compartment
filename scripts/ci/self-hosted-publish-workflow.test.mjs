@@ -108,6 +108,9 @@ describe('self-hosted publish workflows', () => {
     expect(pushStep.run).toContain('scan_args+=(--image-ref "${scanned_ref_by_service[$service]}")');
     expect(pushStep.run).toContain('--metadata-file "$metadata_file"');
     expect(pushStep.run).toContain('--read-build-metadata-digest "$metadata_file"');
+    expect(pushStep.run).toContain('node ./scripts/deploy/generate-buildkit-seed.mjs');
+    expect(pushStep.env).not.toHaveProperty('COMPARTMENT_RAILPACK_BUILDER_IMAGE');
+    expect(pushStep.env).not.toHaveProperty('COMPARTMENT_RAILPACK_RUNTIME_IMAGE');
     expect(pushStep.run).toContain('--resolve-scanned-digest');
     expect(pushStep.run).toContain('canonical_ref="$scanned_ref"');
     expect(pushStep.run).toContain('Failed to determine whether immutable image');

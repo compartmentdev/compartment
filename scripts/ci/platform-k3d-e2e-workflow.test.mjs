@@ -189,6 +189,8 @@ describe('platform k3d e2e workflow', () => {
     const steps = job.steps;
     const acquireIndex = steps.findIndex((step) => step.name === 'Acquire shared image cache lock');
     const scanIndex = steps.findIndex((step) => step.name === 'Check self-hosted image vulnerabilities');
+    const loadStep = steps.find((step) => step.name === 'Load self-hosted images from cache');
+    const inspectStep = steps.find((step) => step.name === 'Verify cached self-hosted image refs');
     const releaseIndex = steps.findIndex((step) => step.name === 'Release shared image cache lock');
     const protectedSteps = steps.slice(acquireIndex + 1, releaseIndex);
 
@@ -201,5 +203,9 @@ describe('platform k3d e2e workflow', () => {
     expect(steps[releaseIndex].if).toContain("steps.acquire-image-cache-lock.outcome == 'success'");
     expect(steps[acquireIndex].run).toContain('manage-platform-image-cache-lock.mjs acquire');
     expect(steps[releaseIndex].run).toContain('manage-platform-image-cache-lock.mjs release');
+    expect(loadStep.run).toContain('list-self-hosted-runtime-image-artifacts.mjs');
+    expect(inspectStep.run).toContain('list-self-hosted-runtime-image-artifacts.mjs');
+    expect(loadStep.run).toContain('[ "${#services[@]}" -gt 0 ]');
+    expect(inspectStep.run).toContain('[ "${#services[@]}" -gt 0 ]');
   });
 });

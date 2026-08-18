@@ -4,7 +4,7 @@ description: Compartment platform runtime for Kubernetes
 type: application
 version: 0.1.0
 appVersion: 0.12.0
-kubeVersion: '>=1.30.0-0'
+kubeVersion: '>=1.33.0-0'
 dependencies:
   - name: capsule
     version: 0.13.11

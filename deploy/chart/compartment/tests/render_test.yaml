@@ -277,7 +277,7 @@ tests:
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB
-          value: '1024'
+          value: '3072'
         template: configmap.yaml
       - hasDocuments:
           count: 2
@@ -458,6 +458,9 @@ tests:
         baseDomain: apps.example.com
         publicProtocol: https
         managedDomainBrokerUrl: ''
+      images:
+        buildkitSeed:
+          digest: sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
       secrets: *stableSecrets
     asserts:
       - notFailedTemplate: {}
@@ -718,7 +721,7 @@ tests:
         documentIndex: 4
       - matchRegex:
           path: spec.validations[0].expression
-          pattern: "runtimeClassName == 'gvisor'"
+          pattern: "runtimeClassName == 'gvisor-build'"
         template: buildkit.yaml
         documentIndex: 4
       - matchRegex:
@@ -739,6 +742,11 @@ tests:
       - matchRegex:
           path: spec.validations[6].expression
           pattern: "volume.name == 'buildkit-data' && quantity\\(volume.emptyDir.sizeLimit\\).compareTo\\(quantity\\('4Gi'\\)\\) == 0"
+        template: buildkit.yaml
+        documentIndex: 4
+      - matchRegex:
+          path: spec.validations[5].expression
+          pattern: "volume.name == 'buildkit-seed'.*volume.image.reference == 'ghcr.io/compartmentdev/compartment-buildkit-seed@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'.*volume.image.pullPolicy == 'IfNotPresent'"
         template: buildkit.yaml
         documentIndex: 4
       - matchRegex:
@@ -763,12 +771,17 @@ tests:
         documentIndex: 4
       - matchRegex:
           path: spec.validations[11].expression
-          pattern: "!has\\(container.envFrom\\).*container.env.all\\(env, env.name in \\['BUILDKIT_ADDR', 'COMPARTMENT_BUILD_JOB_INPUT', 'COMPARTMENT_BUILD_JOB_SOURCE_ARCHIVE_CREDENTIAL', 'TMPDIR'\\] && !has\\(env.value\\) && has\\(env.valueFrom\\) && has\\(env.valueFrom.secretKeyRef\\)\\)"
+          pattern: "!has\\(container.envFrom\\).*container.env.all\\(env, env.name in \\['BUILDKIT_ADDR', 'COMPARTMENT_BUILD_JOB_INPUT', 'COMPARTMENT_BUILD_JOB_SOURCE_ARCHIVE_CREDENTIAL', 'COMPARTMENT_RAILPACK_BUILDER_IMAGE', 'COMPARTMENT_RAILPACK_RUNTIME_IMAGE', 'TMPDIR'\\] && !has\\(env.value\\) && has\\(env.valueFrom\\) && has\\(env.valueFrom.secretKeyRef\\)\\)"
         template: buildkit.yaml
         documentIndex: 4
       - matchRegex:
           path: spec.validations[12].expression
-          pattern: "container.image == 'ghcr.io/compartmentdev/compartment-worker:latest'.*buildkit-runc-gvisor.*!has\\(container.ports\\).*!has\\(container.envFrom\\).*!has\\(container.securityContext.procMount\\).*!has\\(container.securityContext.appArmorProfile\\)"
+          pattern: "container.image == 'ghcr.io/compartmentdev/compartment-worker:latest'.*start-seeded-buildkit.*buildkit-runc-gvisor.*!has\\(container.ports\\).*!has\\(container.envFrom\\).*container.env.size\\(\\) == 4.*!has\\(container.securityContext.procMount\\).*!has\\(container.securityContext.appArmorProfile\\)"
+        template: buildkit.yaml
+        documentIndex: 4
+      - matchRegex:
+          path: spec.validations[12].expression
+          pattern: "mount.name == 'buildkit-seed' && mount.mountPath == '/var/lib/buildkit-seed' && mount.readOnly == true"
         template: buildkit.yaml
         documentIndex: 4
       - isKind:
@@ -1321,6 +1334,14 @@ tests:
           path: data.COMPARTMENT_WORKER_IMAGE
           value: ghcr.io/compartmentdev/compartment-worker:latest
         template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_RAILPACK_BUILDER_IMAGE
+          value: ghcr.io/railwayapp/railpack-builder:mise-2026.7.5@sha256:007845e88b6c78b3bf57df7c2379c336589545fa241b047f6389ba2ca0344129
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_RAILPACK_RUNTIME_IMAGE
+          value: ghcr.io/railwayapp/railpack-runtime:mise-2026.7.5@sha256:122904a97579630033432d6d4652ad4eb8751b9680756a429ebc7d0942222083
+        template: configmap.yaml
       - hasDocuments:
           count: 4
         template: pvc.yaml
@@ -1710,6 +1731,8 @@ tests:
           digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
         caddy:
           digest: sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+        buildkitSeed:
+          digest: sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
       secrets: *stableSecrets
     asserts:
       - notFailedTemplate: {}
@@ -1725,6 +1748,10 @@ tests:
       - equal:
           path: data.COMPARTMENT_WORKER_IMAGE
           value: ghcr.io/compartmentdev/compartment-worker@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_BUILDKIT_SEED_IMAGE
+          value: ghcr.io/compartmentdev/compartment-buildkit-seed@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
         template: configmap.yaml
       - equal:
           path: spec.template.spec.containers[0].image

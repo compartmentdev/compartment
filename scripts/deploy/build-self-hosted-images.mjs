@@ -1,4 +1,7 @@
 import { spawn } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
@@ -9,6 +12,7 @@ import {
   defaultSelfHostedImageRepositoryPrefix,
   selfHostedRuntimeImageArtifacts,
 } from './self-hosted-runtime-services.mjs';
+import { generateBuildkitSeedContext } from './generate-buildkit-seed.mjs';
 
 const defaultBaseImages = Object.freeze({
   COMPARTMENT_CADDY_RUNTIME_IMAGE: 'alpine:3.22',
@@ -24,19 +28,46 @@ const dockerRegistryRateLimitPatterns = [
   'rate exceeded',
   'too many requests',
 ];
-
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 
 export async function buildSelfHostedImages(input) {
-  const buildPlan = buildSelfHostedImageBuildPlan(
-    input.imageRefsByServiceName,
-    input.env ?? process.env,
-    input.builderName,
-  );
+  const outputDirectory = await mkdtemp(join(tmpdir(), 'compartment-self-hosted-images-'));
+  try {
+    const buildPlan = buildSelfHostedImageBuildPlan(
+      input.imageRefsByServiceName,
+      input.env ?? process.env,
+      input.builderName,
+    );
 
-  for (const build of buildPlan) {
-    await runDockerBuildWithRegistryRetry(input.repositoryRoot, build);
+    for (const build of buildPlan) {
+      await runDockerBuildWithRegistryRetry(input.repositoryRoot, build);
+    }
+    await buildBuildkitSeedImage(input, outputDirectory);
+  } finally {
+    await rm(outputDirectory, { force: true, recursive: true });
   }
+}
+
+async function buildBuildkitSeedImage(input, outputDirectory) {
+  const contextDirectory = join(outputDirectory, 'buildkit-seed-context');
+  await generateBuildkitSeedContext({
+    outputDirectory: contextDirectory,
+    workerImage: readRequiredImageRef(input.imageRefsByServiceName, 'worker'),
+  });
+  await runDockerBuildWithRegistryRetry(input.repositoryRoot, {
+    args: [
+      'buildx',
+      'build',
+      ...(input.builderName === undefined ? [] : ['--builder', input.builderName]),
+      '--load',
+      '--tag',
+      readRequiredImageRef(input.imageRefsByServiceName, 'buildkit-seed'),
+      '--file',
+      'packages/worker/Dockerfile.buildkit-seed',
+      contextDirectory,
+    ],
+    name: 'buildkit-seed',
+  });
 }
 
 function buildSelfHostedImageBuildPlan(imageRefsByServiceName, env, builderName) {
@@ -144,8 +175,12 @@ async function runDockerBuildWithRegistryRetry(repositoryRoot, build) {
 }
 
 async function runDockerCommand(repositoryRoot, args) {
+  return await runCommandProcess(repositoryRoot, 'docker', args);
+}
+
+async function runCommandProcess(repositoryRoot, command, args) {
   return await new Promise((resolveCommand, rejectCommand) => {
-    const child = spawn('docker', args, {
+    const child = spawn(command, args, {
       cwd: repositoryRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
     });

@@ -75,6 +75,7 @@ describe('Kubernetes install Helm material', (): void => {
       expect(JSON.parse(await readFile(material.platformImageValuesPath, 'utf8'))).toEqual({
         images: {
           api: { digest: '', tag: '0.9.2' },
+          buildkitSeed: { digest: '', tag: '0.9.2' },
           caddy: { digest: '', tag: '0.9.2' },
           dns01Solver: { digest: '', tag: '0.9.2' },
           edge: { digest: '', tag: '0.9.2' },

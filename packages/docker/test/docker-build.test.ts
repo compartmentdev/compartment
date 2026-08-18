@@ -2,9 +2,11 @@ import { access, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type * as BuildkitCommandModule from '../src/buildkit-command';
+import type * as RailpackPlanImagePinningModule from '../src/railpack-plan-image-pinning';
 import { buildDockerImage } from '../src/docker-build';
 import { buildDockerfileBuildctlArgs } from '../src/docker-buildkit-args';
 import type { DockerBuildImageInput, DockerProgressReporter, DockerRegistryCredentials } from '../src/docker-models';
+import type { DockerRailpackImages } from '../src/docker-railpack-images.types';
 import type { PrepareRailpackPlanInput } from '../src/railpack-command.types';
 
 type RunBuildctlCommandWithOptionalProgressReporter = (
@@ -13,10 +15,16 @@ type RunBuildctlCommandWithOptionalProgressReporter = (
   registryCredentials?: DockerRegistryCredentials,
 ) => Promise<void>;
 type PrepareRailpackPlan = (input: PrepareRailpackPlanInput) => Promise<void>;
+type PinRailpackPlanImages = typeof RailpackPlanImagePinningModule.pinRailpackPlanImages;
 
 const testImageDigest: string = `sha256:${'e'.repeat(64)}`;
+const testRailpackImages: DockerRailpackImages = {
+  builder: `ghcr.io/railwayapp/railpack-builder:mise-test@sha256:${'a'.repeat(64)}`,
+  runtime: `ghcr.io/railwayapp/railpack-runtime:mise-test@sha256:${'b'.repeat(64)}`,
+};
 
 interface DockerBuildTestMocks {
+  pinRailpackPlanImages: Mock<PinRailpackPlanImages>;
   prepareRailpackPlan: Mock<PrepareRailpackPlan>;
   runBuildctlCommandWithOptionalProgressReporter: Mock<RunBuildctlCommandWithOptionalProgressReporter>;
 }
@@ -53,6 +61,7 @@ interface StaticCaddyfilePathTestCase {
 
 const mocks: DockerBuildTestMocks = vi.hoisted(
   (): DockerBuildTestMocks => ({
+    pinRailpackPlanImages: vi.fn<PinRailpackPlanImages>(),
     prepareRailpackPlan: vi.fn<PrepareRailpackPlan>(),
     runBuildctlCommandWithOptionalProgressReporter: vi.fn<RunBuildctlCommandWithOptionalProgressReporter>(),
   }),
@@ -74,9 +83,14 @@ vi.mock('../src/railpack-command', (): { prepareRailpackPlan: Mock<PrepareRailpa
   prepareRailpackPlan: mocks.prepareRailpackPlan,
 }));
 
+vi.mock('../src/railpack-plan-image-pinning', (): { pinRailpackPlanImages: Mock<PinRailpackPlanImages> } => ({
+  pinRailpackPlanImages: mocks.pinRailpackPlanImages,
+}));
+
 beforeEach((): void => {
   delete process.env.BUILDKIT_ADDR;
   mocks.prepareRailpackPlan.mockReset();
+  mocks.pinRailpackPlanImages.mockReset();
   mocks.runBuildctlCommandWithOptionalProgressReporter.mockReset();
 });
 
@@ -234,6 +248,7 @@ describe('buildDockerImage', (): void => {
           'compartment.namespace': 'compartment-e2e',
         },
         packer: 'railpack',
+        railpackImages: testRailpackImages,
         pushImageInsecureRegistry: true,
         pushImageTag: 'registry:5000/compartment-web:art_123',
       }),
@@ -274,6 +289,21 @@ describe('buildDockerImage', (): void => {
     );
   });
 
+  it('refuses Railpack builds without trusted builder and runtime image pins', async (): Promise<void> => {
+    process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
+
+    await expect(
+      buildDockerImage({
+        contextDirectory: '/tmp/source',
+        imageTag: 'registry.example/compartment-web:art_123',
+        packer: 'railpack',
+      }),
+    ).rejects.toThrow('Railpack image pins are required for Railpack and static builds.');
+
+    expect(mocks.prepareRailpackPlan).not.toHaveBeenCalled();
+    expect(mocks.runBuildctlCommandWithOptionalProgressReporter).not.toHaveBeenCalled();
+  });
+
   it('passes Railpack apt package env values as BuildKit secrets for the generated plan', async (): Promise<void> => {
     const digest: string = testImageDigest;
 
@@ -288,6 +318,7 @@ describe('buildDockerImage', (): void => {
         contextDirectory: '/tmp/source',
         imageTag: 'registry.example/compartment-web:art_123',
         packer: 'railpack',
+        railpackImages: testRailpackImages,
         runtimeAptPackages: ['jq'],
       }),
     ).resolves.toEqual({
@@ -363,6 +394,7 @@ describe('buildDockerImage', (): void => {
           imageTag: 'registry.example/compartment-web:art_123',
           labels: { 'compartment.namespace': 'compartment-e2e' },
           packer: 'static',
+          railpackImages: testRailpackImages,
           runtimeAptPackages: ['jq'],
           staticOutputDirectory: 'public-docs/dist',
         }),

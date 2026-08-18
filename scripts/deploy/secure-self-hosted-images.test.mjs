@@ -222,6 +222,7 @@ describe('scanSelfHostedImages', () => {
         'localhost:5000/custom/compartment-dns01-solver:from-tag',
         'localhost:5000/custom/compartment-edge:from-tag',
         'localhost:5000/custom/compartment-worker:from-tag',
+        'localhost:5000/custom/compartment-buildkit-seed:from-tag',
       ];
 
       const result = spawnSync(
@@ -645,7 +646,7 @@ import { appendFileSync } from 'node:fs';
 appendFileSync(process.env.COMMAND_ARGS_LOG, JSON.stringify({ file: 'docker', args: process.argv.slice(2) }) + '\\n');
 const imageRef = process.argv.at(-1) ?? '';
 const service = imageRef.match(/compartment-([a-z-]+):/)?.[1] ?? 'api';
-const digestByService = { api: '${'a'.repeat(64)}', caddy: '${'b'.repeat(64)}', 'dns01-solver': '${'e'.repeat(64)}', edge: '${'c'.repeat(64)}', worker: '${'d'.repeat(64)}' };
+const digestByService = { api: '${'a'.repeat(64)}', 'buildkit-seed': '${'f'.repeat(64)}', caddy: '${'b'.repeat(64)}', 'dns01-solver': '${'e'.repeat(64)}', edge: '${'c'.repeat(64)}', worker: '${'d'.repeat(64)}' };
 process.stdout.write('sha256:' + digestByService[service]);
 `;
 }
@@ -688,6 +689,7 @@ function renderExpectedScannedImageRefs() {
     'ghcr.io/compartmentdev/compartment-dns01-solver:sha-test',
     'ghcr.io/compartmentdev/compartment-edge:sha-test',
     'ghcr.io/compartmentdev/compartment-worker:sha-test',
+    'ghcr.io/compartmentdev/compartment-buildkit-seed:sha-test',
   ];
 }
 

@@ -5,3 +5,4 @@ export type {
   DockerProgressLine,
   DockerRegistryCredentials,
 } from './docker-models';
+export type { DockerRailpackImages } from './docker-railpack-images.types';

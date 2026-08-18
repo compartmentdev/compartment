@@ -53,12 +53,18 @@ export interface ManagedVmRuntimeConfigReleaseMetadata extends ManagedVmReleaseM
   metadataVersion: 4;
 }
 
-export interface ManagedVmCurrentReleaseMetadata extends ManagedVmReleaseMetadataBase {
+export interface ManagedVmBuildRuntimePreviousReleaseMetadata extends ManagedVmReleaseMetadataBase {
   gvisorVersion: string;
   metadataVersion: 5;
 }
 
+export interface ManagedVmCurrentReleaseMetadata extends ManagedVmReleaseMetadataBase {
+  gvisorVersion: string;
+  metadataVersion: 6;
+}
+
 export type ManagedVmReleaseMetadata =
+  | ManagedVmBuildRuntimePreviousReleaseMetadata
   | ManagedVmCurrentReleaseMetadata
   | ManagedVmNodeIdentityReleaseMetadata
   | ManagedVmLegacyReleaseMetadata
@@ -164,6 +170,12 @@ export interface ManagedVmOwnedPath {
   stage: ManagedVmInstallStage;
 }
 
+export interface ManagedVmReleaseMigrationInput {
+  ownedFileDigests: Readonly<Record<string, string>>;
+  ownedPaths: readonly ManagedVmOwnedPath[];
+  releaseMetadata: ManagedVmCurrentReleaseMetadata;
+}
+
 export type ManagedVmUpdateStage =
   | 'preflight'
   | 'snapshot-created'
@@ -178,3 +190,4 @@ export interface ManagedVmUpdateState {
   startedAt: string;
   updatedAt: string;
 }
+export type ManagedVmOwnedFileDigests = Readonly<Record<string, string>>;

@@ -23,6 +23,7 @@ export function renderManagedVmValues(publicAddress: string): string {
 storage:
   storageClass: local-path
 sandboxRuntime:
+  buildRuntimeClassName: gvisor-build
   runtimeClassName: gvisor
 nodePools:
   data:

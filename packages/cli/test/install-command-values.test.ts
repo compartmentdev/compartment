@@ -165,6 +165,7 @@ nodePools:
     nodeSelector:
       compartment.dev/node-pool: system
 sandboxRuntime:
+  buildRuntimeClassName: gvisor-build
   runtimeClassName: gvisor
 `);
 

@@ -3,15 +3,13 @@ import type { WorkerBuildSandboxConfig } from '../config.types';
 import { parseKubernetesQuantity } from './kubernetes-quantity';
 
 /**
- * gVisor serves every build volume from Sentry memory through the
- * `dev.gvisor.spec.mount.<name>.type=tmpfs` hints, so the whole workspace is charged to the build
- * Pod memory cgroup alongside the BuildKit, runner, and Sentry process memory. A build that
- * exhausted that cgroup was killed with `oom_memcg` naming the Pod slice, not either container.
- * Kubernetes cannot enforce `emptyDir.sizeLimit` on a mount owned by Sentry, so the Job projection
- * passes the same limits through gVisor's tmpfs `size=` option. That produces synchronous ENOSPC at
- * the declared boundary, while the Pod memory limit must still fund the whole workspace plus the
- * processes writing into it. The shipped chart defaults sit exactly on that line: 5120Mi of
- * workspace and 1024Mi of process memory against a 6144Mi Pod memory limit.
+ * gVisor presents the hinted build volumes as tmpfs inside the sandbox and stores their file data
+ * in a node-local filestore under the Job's emptyDir. The Job projects each limit through both
+ * Kubernetes `emptyDir.sizeLimit` and gVisor's tmpfs `size=` option, which produces synchronous
+ * ENOSPC at the declared boundary. Active filestore page cache can still be charged to the Pod, so
+ * the conservative memory guard funds the worst-case writable workspace plus BuildKit, runner, and
+ * Sentry process memory. The shipped defaults provide 5120Mi of writable workspace and 1024Mi of
+ * process headroom against a 6144Mi Pod memory limit.
  */
 const buildkitRunSizeLimit: string = '128Mi';
 const buildkitTmpSizeLimit: string = '512Mi';
@@ -53,7 +51,7 @@ function assertWorkspaceFitsPodMemory(config: WorkerBuildSandboxConfig): void {
 /**
  * BuildKit reads `--oci-worker-gc-keepstorage` as decimal megabytes of reserved space that garbage
  * collection never prunes below. It is a retention floor rather than a ceiling on the volume, so
- * this only refuses retention the memory-backed data volume can never hold.
+ * this only refuses retention the writable data volume can never hold.
  */
 function assertRetainedCacheFitsDataVolume(config: WorkerBuildSandboxConfig): void {
   const dataVolume: number = readConfiguredMemoryLimit(config.dataSizeLimit, 'buildkit.dataSizeLimit');
@@ -61,7 +59,7 @@ function assertRetainedCacheFitsDataVolume(config: WorkerBuildSandboxConfig): vo
   if (retained > dataVolume) {
     throw new Error(
       `buildkit.gcKeepStorageMb reserves ${formatUsed(retained)} of BuildKit cache inside the ` +
-        `${formatUsed(dataVolume)} memory-backed build data volume. Lower buildkit.gcKeepStorageMb to at most ` +
+        `${formatUsed(dataVolume)} writable build data volume. Lower buildkit.gcKeepStorageMb to at most ` +
         `${String(Math.floor(dataVolume / megabyte))}.`,
     );
   }
