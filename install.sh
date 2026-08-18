@@ -1184,3 +1184,16 @@ if [ "$init_login" = "1" ]; then
   run_init_login "$install_path" "$init_api_url" "$init_email" "$init_organization" "$init_onboarding_session"
   exit 0
 fi
+
+printf '\nGet started:\n'
+printf '  Compartment Up:\n'
+printf '    New account:\n'
+printf '      compartment signup --api-url https://console.up.compartment.run\n\n'
+printf '    Existing account:\n'
+printf '      compartment login --api-url https://console.up.compartment.run\n\n'
+printf '    More details:\n'
+printf '      https://up.compartment.dev/AGENTS.md\n\n'
+printf '  Self-hosted Compartment:\n'
+printf '    compartment login --api-url <control-plane-url>\n\n'
+printf 'More commands:\n'
+printf '  compartment --help\n'
