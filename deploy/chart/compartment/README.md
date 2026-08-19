@@ -133,8 +133,8 @@ API contract, while each edge replica independently refreshes its route and auth
 snapshots and the optional API audit file sink are package-local recovery features and require their component to be
 set to one replica.
 
-Caddy is an internal HTTP proxy and has no persistent storage or certificate material. A replacement Caddy Pod does
-not start until an init container reaches a chart-owned target through a Service and the same
+Caddy is an internal HTTP proxy and has no persistent storage or certificate material. The main Caddy container does
+not start, and the replacement Pod is not Ready, until an init container reaches a chart-owned target through the same
 namespace-and-Pod-selected ingress policy used by tenant applications. Together with zero unavailable replicas this
 keeps the previous proxy serving while a policy controller admits the new Pod IP. The proof is bounded: after five
 minutes the replacement starts anyway and logs the failure, so an unavailable readiness target can delay a rollout but
