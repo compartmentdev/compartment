@@ -450,7 +450,7 @@ const loginUrl = new URL(first.headers.get('location'));
 const state = loginUrl.searchParams.get('state');
 const flowName = \`__Host-compartment_app_flow_\${state}\`;
 const flowCookie = readCookie(first, flowName);
-const page = await request(loginUrl, { redirect: 'manual' });
+const page = await waitForConsole(loginUrl);
 const csrf = readCookie(page, '__Host-compartment_csrf');
 const login = await request(new URL('/v1/auth/login', loginUrl), {
   body: JSON.stringify({ email: ${JSON.stringify(input.viewerEmail)}, host: loginUrl.searchParams.get('host'), password: ${JSON.stringify(input.viewerPassword)}, path: loginUrl.searchParams.get('path'), sessionDelivery: 'cookie', state }),
@@ -471,6 +471,16 @@ async function waitForLoginRedirect(url) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
   throw new Error(\`Route did not converge to a login redirect. Last status: \${lastStatus}.\`);
+}
+async function waitForConsole(url) {
+  let lastStatus = 0;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const response = await request(url, { redirect: 'manual' });
+    lastStatus = response.status;
+    if (response.status < 500) return response;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error(\`Console did not converge after the API restore. Last status: \${lastStatus}.\`);
 }
 async function request(url, options) {
   const target = new URL(url);
