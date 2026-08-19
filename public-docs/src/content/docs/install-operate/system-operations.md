@@ -40,6 +40,9 @@ compartment system update \
 The command verifies the target images, updates the Helm release, runs database migrations, and waits for platform
 readiness. Your cluster, ingress controller, storage system, and node lifecycle remain operator-owned.
 
+During an update, Compartment keeps the running application proxy serving until its replacement can accept hosted
+application traffic. Hosted applications stay reachable and do not receive 502 responses while the update proceeds.
+
 An update re-reads the defaults of the chart shipped with the CLI you run, so a release picks up defaults that
 changed since it was installed. The `system domain` commands rewrite the same release and behave the same way.
 Values you set stay yours: anything from your `--values` file, or set on an earlier install or update, is reapplied

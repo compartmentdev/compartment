@@ -197,6 +197,10 @@ tests:
   - it: accepts Caddy traffic from an existing cluster ingress controller
     asserts:
       - equal:
+          path: spec.policyTypes
+          value: [Ingress]
+        template: caddy-network-policy.yaml
+      - equal:
           path: spec.podSelector.matchLabels
           value:
             app.kubernetes.io/name: compartment

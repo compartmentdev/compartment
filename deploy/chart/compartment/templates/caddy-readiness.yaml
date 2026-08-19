@@ -1,0 +1,151 @@
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- if eq $installState.effective.platform.startupStage "full" }}
+{{- $name := include "compartment.caddyReadinessService" . -}}
+{{- $namespace := include "compartment.caddyReadinessNamespace" . -}}
+{{- $targetPort := 8080 -}}
+{{- $deniedPort := 8081 -}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $namespace }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: caddy-readiness
+spec:
+  selector:
+    {{- include "compartment.componentLabels" (dict "root" . "component" "caddy-readiness") | nindent 4 }}
+  ports:
+    - {name: http, port: 80, protocol: TCP, targetPort: http}
+    - {name: denied, port: 81, protocol: TCP, targetPort: denied}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: caddy-readiness
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "caddy-readiness") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "compartment.componentLabels" (dict "root" . "component" "caddy-readiness") | nindent 8 }}
+    spec:
+      topologySpreadConstraints:
+        {{- include "compartment.topologySpreadConstraint" (dict "root" . "component" "caddy-readiness") | nindent 8 }}
+      priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
+      runtimeClassName: {{ .Values.sandboxRuntime.runtimeClassName }}
+      {{- include "compartment.nodePool" .Values.nodePools.tenant | nindent 6 }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: readiness-target
+          image: {{ include "compartment.image" .Values.images.caddy }}
+          imagePullPolicy: {{ .Values.images.caddy.pullPolicy }}
+          command: [/usr/bin/caddy]
+          args: [run, --config, /etc/caddy-readiness/Caddyfile, --adapter, caddyfile]
+          ports:
+            - {name: http, containerPort: {{ $targetPort }}, protocol: TCP}
+            - {name: denied, containerPort: {{ $deniedPort }}, protocol: TCP}
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - {{ printf "wget -q -O /dev/null http://127.0.0.1:%v/ && wget -q -O /dev/null http://127.0.0.1:%v/" $targetPort $deniedPort | quote }}
+            periodSeconds: 2
+            timeoutSeconds: 1
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 32Mi}
+          securityContext:
+            {{- include "compartment.containerSecurityContext" . | nindent 12 }}
+            runAsUser: 1000
+            runAsGroup: 1000
+          volumeMounts:
+            - {name: caddyfile, mountPath: /etc/caddy-readiness, readOnly: true}
+            - {name: runtime-config, mountPath: /config}
+            - {name: runtime-data, mountPath: /data}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: caddyfile
+          configMap:
+            name: {{ $name }}
+        - {name: runtime-config, emptyDir: {}}
+        - {name: runtime-data, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-default-deny
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-application-ingress
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "caddy-readiness") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+          podSelector:
+            matchLabels:
+              {{- include "compartment.caddyPodLabels" . | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: {{ $targetPort }}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: caddy-readiness
+data:
+  Caddyfile: |
+    {
+      admin off
+      auto_https off
+    }
+    :{{ $targetPort }} {
+      respond 204
+    }
+    :{{ $deniedPort }} {
+      respond 204
+    }
+{{- end }}

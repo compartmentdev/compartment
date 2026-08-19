@@ -1,0 +1,174 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: Caddy tenant-path readiness
+templates:
+  - templates/caddy-readiness.yaml
+  - templates/caddy.yaml
+  - templates/configmap.yaml
+  - templates/install-state-secret.yaml
+  - templates/secret.yaml
+values:
+  - registry-values.yaml
+  - node-pools-values.yaml
+release:
+  name: compartment
+  namespace: compartment
+tests:
+  - it: omits the target before the full startup stage
+    set:
+      platform:
+        startupStage: foundation
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: caddy-readiness.yaml
+
+  - it: proves the Caddy to policy-protected Service path before readiness
+    set:
+      platform:
+        startupStage: full
+        installationId: caddy-readiness-test
+        baseDomain: apps.example.com
+    asserts:
+      - equal:
+          path: metadata.labels["pod-security.kubernetes.io/enforce"]
+          value: restricted
+        template: caddy-readiness.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.ports[0]
+          value: { name: http, port: 80, protocol: TCP, targetPort: http }
+        template: caddy-readiness.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.ports[1]
+          value: { name: denied, port: 81, protocol: TCP, targetPort: denied }
+        template: caddy-readiness.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.replicas
+          value: 1
+        template: caddy-readiness.yaml
+        documentIndex: 2
+      - equal:
+          path: spec.strategy
+          value: { type: Recreate }
+        template: caddy-readiness.yaml
+        documentIndex: 2
+      - equal:
+          path: spec.template.spec.runtimeClassName
+          value: gvisor
+        template: caddy-readiness.yaml
+        documentIndex: 2
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.exec.command
+          value:
+            - /bin/sh
+            - -ec
+            - wget -q -O /dev/null http://127.0.0.1:8080/ && wget -q -O /dev/null http://127.0.0.1:8081/
+        template: caddy-readiness.yaml
+        documentIndex: 2
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content: { name: runtime-config, mountPath: /config }
+        template: caddy-readiness.yaml
+        documentIndex: 2
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content: { name: runtime-data, mountPath: /data }
+        template: caddy-readiness.yaml
+        documentIndex: 2
+      - contains:
+          path: spec.template.spec.volumes
+          content: { name: runtime-data, emptyDir: {} }
+        template: caddy-readiness.yaml
+        documentIndex: 2
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content: { name: tmp, mountPath: /tmp }
+        template: caddy-readiness.yaml
+        documentIndex: 2
+      - equal:
+          path: spec
+          value:
+            podSelector: {}
+            policyTypes: [Ingress, Egress]
+        template: caddy-readiness.yaml
+        documentIndex: 3
+      - equal:
+          path: spec.ingress[0].from[0]
+          value:
+            namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: compartment
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/name: compartment
+                app.kubernetes.io/instance: compartment
+                app.kubernetes.io/component: caddy
+        template: caddy-readiness.yaml
+        documentIndex: 4
+      - equal:
+          path: spec.ingress[0].ports
+          value:
+            - { protocol: TCP, port: 8080 }
+        template: caddy-readiness.yaml
+        documentIndex: 4
+      - equal:
+          path: data.Caddyfile
+          value: |
+            {
+              admin off
+              auto_https off
+            }
+            :8080 {
+              respond 204
+            }
+            :8081 {
+              respond 204
+            }
+        template: caddy-readiness.yaml
+        documentIndex: 5
+      - equal:
+          path: spec.template.spec.initContainers[2].name
+          value: prove-tenant-path
+        template: caddy.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: spec.template.spec.initContainers[2].command[2]
+          pattern: http://compartment-caddy-readiness\.compartment-readiness-a5fa5665f16a\.svc:81/
+        template: caddy.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: spec.template.spec.initContainers[2].command[2]
+          pattern: deadline=.*300
+        template: caddy.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: spec.template.spec.initContainers[2].command[2]
+          pattern: sleep 2
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.tcpSocket
+          value: { port: http }
+        template: caddy.yaml
+        documentIndex: 1
+
+  - it: keeps readiness resource and upstream names valid for a long override
+    set:
+      fullnameOverride: compartment-platform-with-a-maximum-length-custom-resource-name
+      platform:
+        startupStage: full
+        installationId: caddy-readiness-long-name-test
+        baseDomain: apps.example.com
+    asserts:
+      - matchRegex:
+          path: metadata.name
+          pattern: ^.{1,63}$
+        template: caddy-readiness.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: spec.template.spec.initContainers[2].command[2]
+          pattern: http://compartment-platform-with-a-maximum-length-custom-resource-name\.compartment-readiness-a5fa5665f16a\.svc/
+        template: caddy.yaml
+        documentIndex: 1
