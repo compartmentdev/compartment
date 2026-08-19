@@ -45,6 +45,7 @@ spec:
       priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
       {{- include "compartment.nodePool" .Values.nodePools.system | nindent 6 }}
       {{- include "compartment.waiterPodSpec" . | nindent 6 }}
+      terminationGracePeriodSeconds: {{ add .Values.platform.routerDrainSeconds 25 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
         fsGroup: 1000
@@ -92,6 +93,10 @@ spec:
         - name: caddy
           image: {{ include "compartment.image" .Values.images.caddy }}
           imagePullPolicy: {{ .Values.images.caddy.pullPolicy }}
+          lifecycle:
+            preStop:
+              exec:
+                command: [sleep, {{ .Values.platform.routerDrainSeconds | quote }}]
           command:
             - /bin/sh
             - -ec

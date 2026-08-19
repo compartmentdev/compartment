@@ -138,6 +138,9 @@ platform:
   trustedOutboundHosts: ''
   workerPollIntervalMs: 1000
   usageMeteringIntervalMs: 60000
+  # Seconds a terminating Caddy/edge router Pod keeps serving (preStop) while ingress and kube-proxy drop its
+  # endpoint. Without it a rolling update returns 502 for the propagation window.
+  routerDrainSeconds: 5
   usageRetentionDays: 400
   auditRetentionDays: 90
   auditCleanupCron: '0 3 * * *'

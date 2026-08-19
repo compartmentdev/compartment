@@ -1,0 +1,77 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: Router Pods drain before terminating
+templates:
+  - templates/caddy.yaml
+  - templates/edge.yaml
+  - templates/configmap.yaml
+  - templates/install-state-secret.yaml
+  - templates/secret.yaml
+values:
+  - registry-values.yaml
+  - node-pools-values.yaml
+release:
+  name: compartment
+  namespace: compartment
+tests:
+  - it: keeps Caddy and edge Pods serving while their endpoints are withdrawn
+    set:
+      platform:
+        startupStage: full
+        installationId: router-drain-test
+        baseDomain: apps.example.com
+      secrets:
+        installToken: test-install-token
+        postgresPassword: test-postgres-password
+    asserts:
+      - equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 30
+        documentSelector: { path: kind, value: Deployment }
+        template: caddy.yaml
+      - equal:
+          path: spec.template.spec.containers[0].lifecycle.preStop.exec.command
+          value: [sleep, '5']
+        documentSelector: { path: kind, value: Deployment }
+        template: caddy.yaml
+      - equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 30
+        documentSelector: { path: kind, value: Deployment }
+        template: edge.yaml
+      - equal:
+          path: spec.template.spec.containers[0].lifecycle.preStop.exec.command
+          value: [sleep, '5']
+        documentSelector: { path: kind, value: Deployment }
+        template: edge.yaml
+
+  - it: derives the drain window from platform.routerDrainSeconds
+    set:
+      platform:
+        startupStage: full
+        installationId: router-drain-test
+        baseDomain: apps.example.com
+        routerDrainSeconds: 12
+      secrets:
+        installToken: test-install-token
+        postgresPassword: test-postgres-password
+    asserts:
+      - equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 37
+        documentSelector: { path: kind, value: Deployment }
+        template: caddy.yaml
+      - equal:
+          path: spec.template.spec.containers[0].lifecycle.preStop.exec.command
+          value: [sleep, '12']
+        documentSelector: { path: kind, value: Deployment }
+        template: caddy.yaml
+      - equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 37
+        documentSelector: { path: kind, value: Deployment }
+        template: edge.yaml
+      - equal:
+          path: spec.template.spec.containers[0].lifecycle.preStop.exec.command
+          value: [sleep, '12']
+        documentSelector: { path: kind, value: Deployment }
+        template: edge.yaml
