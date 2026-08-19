@@ -64,4 +64,14 @@ tests:
           path: spec.template.spec.containers[0].lifecycle.preStop.exec.command
           value: [sleep, '12']
         documentSelector: { path: kind, value: Deployment }
+        template: caddy.yaml
+      - equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 37
+        documentSelector: { path: kind, value: Deployment }
+        template: edge.yaml
+      - equal:
+          path: spec.template.spec.containers[0].lifecycle.preStop.exec.command
+          value: [sleep, '12']
+        documentSelector: { path: kind, value: Deployment }
         template: edge.yaml
