@@ -14,6 +14,7 @@ git apply /patches/buildkit-gvisor-overlay-xattr.patch
 export GOFLAGS=-mod=mod
 go get \
   github.com/containerd/containerd/v2@v2.2.5 \
+  github.com/moby/go-archive@v0.3.0 \
   github.com/sigstore/rekor@v1.5.2 \
   golang.org/x/crypto@v0.53.0 \
   golang.org/x/net@v0.56.0 \
