@@ -321,6 +321,11 @@ resources:
   caddyInit:
     requests: { cpu: 10m, memory: 128Mi }
     limits: { cpu: 100m, memory: 128Mi }
+  # Readiness sentinel Caddy that the caddy rollout gate probes. It runs under gVisor, whose Sentry adds
+  # tens of MiB on top of the Caddy process: 32Mi was OOMKilled in production. Keep it at the caddy floor.
+  caddyReadiness:
+    requests: { cpu: 10m, memory: 128Mi }
+    limits: { cpu: 100m, memory: 128Mi }
   postgres:
     requests: { cpu: 100m, memory: 1Gi }
     limits: { cpu: '1', memory: 1Gi }
