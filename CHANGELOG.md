@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.13.0](https://github.com/compartmentdev/compartment/compare/v0.12.0...v0.13.0) (2026-08-19)
+
+
+### Features
+
+* **api:** expose operator platform metrics ([#381](https://github.com/compartmentdev/compartment/issues/381)) ([c409d56](https://github.com/compartmentdev/compartment/commit/c409d56e91dd7280668dd79a95f3767649afaee5))
+
+
+### Bug Fixes
+
+* **api:** enforce scoped resource operation permissions ([#383](https://github.com/compartmentdev/compartment/issues/383)) ([3e026b0](https://github.com/compartmentdev/compartment/commit/3e026b05f625a6332467ae6feb08442d8bf308d1))
+* **cli:** bound image volume canaries ([6aff857](https://github.com/compartmentdev/compartment/commit/6aff85784824181c58bb56d74e339112812e18d7))
+* **cli:** require BuildKit image volume capability ([fd750a4](https://github.com/compartmentdev/compartment/commit/fd750a46d65ce84268172f93edb513b4a61f4c88))
+* **cli:** verify image volumes on kubelets ([bfc4b1e](https://github.com/compartmentdev/compartment/commit/bfc4b1ed147e430a97ed2289acc88b0a14db6980))
+* **kube-runtime:** gate caddy rollout on tenant path ([#388](https://github.com/compartmentdev/compartment/issues/388)) ([cfebcf0](https://github.com/compartmentdev/compartment/commit/cfebcf0653176cbe64d6de5cccccb223487f77a0))
+* **kube-runtime:** isolate tenant ephemeral storage ([#386](https://github.com/compartmentdev/compartment/issues/386)) ([28a9f03](https://github.com/compartmentdev/compartment/commit/28a9f03683fc7f4b4a247eb159d25ec8f21111bc))
+* **root-config:** drain Caddy and edge router Pods before termination ([#392](https://github.com/compartmentdev/compartment/issues/392)) ([15373e7](https://github.com/compartmentdev/compartment/commit/15373e704de52f3700f0f4f67c2eacbb85023a99))
+* **root-config:** give the caddy readiness sentinel a gVisor-sized memory budget ([#390](https://github.com/compartmentdev/compartment/issues/390)) ([233794b](https://github.com/compartmentdev/compartment/commit/233794b6610ac043513e3819d7858107876b928e))
+* **worker:** update BuildKit archive dependency ([#389](https://github.com/compartmentdev/compartment/issues/389)) ([bfcb23d](https://github.com/compartmentdev/compartment/commit/bfcb23d6957f392798c189380c49ce947b5814ab))
+* **worker:** update golang.org/x/mod dependency ([#391](https://github.com/compartmentdev/compartment/issues/391)) ([f849a97](https://github.com/compartmentdev/compartment/commit/f849a979d5c6f147fb5397d66936f4c998485fd0))
+
+
+### Performance Improvements
+
+* **worker:** seed BuildKit for faster Railpack builds ([#384](https://github.com/compartmentdev/compartment/issues/384)) ([ade1798](https://github.com/compartmentdev/compartment/commit/ade1798f5b059d279bd6b27bf54ae5d6a6bf7c94))
+
 ## [0.12.0](https://github.com/compartmentdev/compartment/compare/v0.11.0...v0.12.0) (2026-08-18)
 
 
