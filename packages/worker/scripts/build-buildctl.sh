@@ -17,6 +17,7 @@ go get \
   github.com/moby/go-archive@v0.3.0 \
   github.com/sigstore/rekor@v1.5.2 \
   golang.org/x/crypto@v0.53.0 \
+  golang.org/x/mod@v0.40.0 \
   golang.org/x/net@v0.56.0 \
   golang.org/x/text@v0.40.0 \
   google.golang.org/grpc@v1.82.1
