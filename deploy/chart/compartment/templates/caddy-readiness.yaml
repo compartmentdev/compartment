@@ -75,8 +75,7 @@ spec:
             periodSeconds: 2
             timeoutSeconds: 1
           resources:
-            requests: {cpu: 10m, memory: 32Mi}
-            limits: {cpu: 100m, memory: 32Mi}
+            {{- toYaml .Values.resources.caddyReadiness | nindent 12 }}
           securityContext:
             {{- include "compartment.containerSecurityContext" . | nindent 12 }}
             runAsUser: 1000

@@ -60,6 +60,13 @@ tests:
         template: caddy-readiness.yaml
         documentIndex: 2
       - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            requests: { cpu: 10m, memory: 128Mi }
+            limits: { cpu: 100m, memory: 128Mi }
+        template: caddy-readiness.yaml
+        documentIndex: 2
+      - equal:
           path: spec.template.spec.containers[0].readinessProbe.exec.command
           value:
             - /bin/sh
