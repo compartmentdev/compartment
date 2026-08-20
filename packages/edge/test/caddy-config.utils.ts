@@ -176,6 +176,8 @@ function readRenderedCaddyContainerEnvironment(): Record<string, string> {
       '--set',
       'registry.issuerRef.name=compartment',
       '--set-string',
+      `images.buildkitSeed.digest=sha256:${'e'.repeat(64)}`,
+      '--set-string',
       'nodePools.data.nodeSelector.compartment\\.dev/node-pool=data',
       '--set',
       `secrets.productLogIngestToken=${renderedSecretPlaceholder}`,
