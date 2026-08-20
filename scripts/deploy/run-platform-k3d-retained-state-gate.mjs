@@ -176,6 +176,7 @@ async function runRetainedInstallStateGate() {
       `buildkit.namespace=${buildNamespace}`,
       '--set',
       'productLogs.enabled=false',
+      ...buildkitSeedHelmArgs(),
       ...dataNodePoolHelmArgs(),
       ...registryHelmArgs(registryClusterIp),
     ]);
