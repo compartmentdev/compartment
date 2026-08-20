@@ -24,6 +24,10 @@ describe('readWorkerConfig', (): void => {
       buildKitResources: { limits: { cpu: '2', memory: '3Gi' }, requests: { cpu: '250m', memory: '3Gi' } },
       gcKeepStorageMb: 1024,
       seed: {
+        cache: {
+          image: `registry.example.com/compartment-buildkit-seed@sha256:${'c'.repeat(64)}`,
+          manifestUrl: `http://buildkit-seed-cache:5003/v2/compartment-buildkit-seed/manifests/sha256:${'c'.repeat(64)}`,
+        },
         image: `compartment-buildkit-seed@sha256:${'c'.repeat(64)}`,
         railpackBuilderImage: `ghcr.io/railwayapp/railpack-builder:mise-test@sha256:${'a'.repeat(64)}`,
         railpackRuntimeImage: `ghcr.io/railwayapp/railpack-runtime:mise-test@sha256:${'b'.repeat(64)}`,
@@ -292,6 +296,8 @@ function validEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: '2Gi',
     COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: '1024',
     COMPARTMENT_BUILDKIT_SEED_IMAGE: `compartment-buildkit-seed@sha256:${'c'.repeat(64)}`,
+    COMPARTMENT_BUILDKIT_SEED_CACHE_IMAGE: `registry.example.com/compartment-buildkit-seed@sha256:${'c'.repeat(64)}`,
+    COMPARTMENT_BUILDKIT_SEED_CACHE_MANIFEST_URL: `http://buildkit-seed-cache:5003/v2/compartment-buildkit-seed/manifests/sha256:${'c'.repeat(64)}`,
     COMPARTMENT_BUILDKIT_RESOURCES: '{"limits":{"cpu":"2","memory":"3Gi"},"requests":{"cpu":"250m","memory":"3Gi"}}',
     COMPARTMENT_BUILD_NAMESPACE: 'compartment-build',
     COMPARTMENT_WORKER_IMAGE: 'compartment-worker@sha256:runner',

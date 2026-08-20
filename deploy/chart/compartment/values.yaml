@@ -70,6 +70,7 @@ ports:
   registry: 5000
   registryInternal: 5001
   dockerHubCache: 5002
+  buildkitSeedCache: 5003
   http: 8080
 
 ingress:
@@ -97,6 +98,7 @@ storage:
   postgres: 2Gi
   registry: 2Gi
   dockerHubCache: 20Gi
+  buildkitSeedCache: 4Gi
   edgeSnapshots: 1Gi
   api: 1Gi
 
@@ -235,6 +237,10 @@ dockerHubCache:
   credentials:
     existingSecret: ''
 
+buildkitSeedCache:
+  sourceRegistryScheme: https
+  ttl: 24h
+
 edge:
   replicas: 1
   snapshots:
@@ -342,6 +348,9 @@ resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { cpu: 500m, memory: 128Mi }
   dockerHubCache:
+    requests: { cpu: 50m, memory: 512Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  buildkitSeedCache:
     requests: { cpu: 50m, memory: 512Mi }
     limits: { cpu: 500m, memory: 512Mi }
   # Reserve memory for BuildKit, the runner, Sentry, and worst-case active workspace page cache. The worker refuses

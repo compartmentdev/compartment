@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { DockerBuildImageResult, DockerProgressLine } from '@compartment/docker';
 import {
   KubeJobLogAttachmentError,
@@ -13,6 +13,25 @@ import type {
   WorkerBuildJobEnvironment,
   WorkerSourceBuildJobInput,
 } from '../src/services/worker-build-job.types';
+import type { WorkerConfig } from '../src/config';
+import type { WorkerBuildKitSeedConfig } from '../src/config.types';
+
+const resolveWorkerBuildKitSeedImageMock: Mock = vi.hoisted((): Mock => vi.fn());
+
+vi.mock('../src/services/worker-buildkit-seed-cache.service', (): object => ({
+  resolveWorkerBuildKitSeedImage: resolveWorkerBuildKitSeedImageMock,
+}));
+
+beforeEach((): void => {
+  resolveWorkerBuildKitSeedImageMock.mockImplementation(
+    async (seed: WorkerBuildKitSeedConfig): Promise<object> =>
+      await Promise.resolve({ cacheAvailable: true, image: seed.image }),
+  );
+});
+
+afterEach((): void => {
+  vi.unstubAllGlobals();
+});
 
 describe('runWorkerBuildJob', (): void => {
   it('publishes streamed progress before the Kubernetes Job completes without replaying it', async (): Promise<void> => {
@@ -308,6 +327,98 @@ describe('runWorkerBuildJob', (): void => {
 });
 
 describe('build Job credential environment', (): void => {
+  it('uses the LAN seed reference after the internal manifest probe succeeds', async (): Promise<void> => {
+    resolveWorkerBuildKitSeedImageMock.mockResolvedValueOnce({ cacheAvailable: true, image: cachedSeedImage });
+    const runJob: Mock<(spec: KubeJobSpec) => Promise<KubeJobResult>> = vi.fn(
+      async (): Promise<KubeJobResult> => await Promise.resolve(successfulResult(vi.fn(), 'done')),
+    );
+
+    await runWorkerBuildJob({ runJob }, seedLocalityConfig(), { build: buildInput().build, id: 'art_123' });
+
+    expect(runJob.mock.calls[0]?.[0].imageVolumes).toEqual([
+      { name: 'buildkit-seed', pullPolicy: 'IfNotPresent', reference: cachedSeedImage },
+    ]);
+  });
+
+  it('falls back to the verified public seed and reports the degraded path', async (): Promise<void> => {
+    resolveWorkerBuildKitSeedImageMock.mockResolvedValueOnce({ cacheAvailable: false, image: sourceSeedImage });
+    const reporter: Mock = vi.fn();
+    const runJob: Mock<(spec: KubeJobSpec) => Promise<KubeJobResult>> = vi.fn(
+      async (): Promise<KubeJobResult> => await Promise.resolve(successfulResult(vi.fn(), 'done')),
+    );
+
+    await runWorkerBuildJob({ runJob }, seedLocalityConfig(), buildInput(reporter));
+
+    expect(runJob.mock.calls[0]?.[0].imageVolumes).toEqual([
+      { name: 'buildkit-seed', pullPolicy: 'IfNotPresent', reference: sourceSeedImage },
+    ]);
+    expect(reporter).toHaveBeenCalledWith({
+      message: 'BuildKit seed cache is unavailable; falling back to the verified public seed image.',
+      stream: 'stderr',
+    });
+  });
+
+  it('retries a cache image-pull timeout with the verified public seed before the build starts', async (): Promise<void> => {
+    resolveWorkerBuildKitSeedImageMock.mockResolvedValueOnce({ cacheAvailable: true, image: cachedSeedImage });
+    const failedFinalize: Mock = vi.fn(async (): Promise<void> => await Promise.resolve());
+    const successfulFinalize: Mock = vi.fn(async (): Promise<void> => await Promise.resolve());
+    const runJob: Mock<(spec: KubeJobSpec) => Promise<KubeJobResult>> = vi
+      .fn()
+      .mockResolvedValueOnce({
+        completedAt: new Date(),
+        exitCode: null,
+        finalize: failedFinalize,
+        jobName: 'job-art-123',
+        logs: '',
+        podName: 'job-art-123-pod',
+        preExecutionFailure: 'image-pull',
+        status: 'timed-out',
+      })
+      .mockResolvedValueOnce(successfulResult(successfulFinalize, 'done'));
+    const reporter: Mock = vi.fn();
+
+    await expect(runWorkerBuildJob({ runJob }, seedLocalityConfig(), buildInput(reporter))).resolves.toMatchObject({
+      pushed: true,
+    });
+
+    expect(runJob).toHaveBeenCalledTimes(2);
+    expect(runJob.mock.calls.map((call: [KubeJobSpec]): string => call[0].id)).toEqual([
+      'art_123',
+      'art_123-seed-fallback',
+    ]);
+    expect(
+      runJob.mock.calls.map((call: [KubeJobSpec]): string | undefined => call[0].imageVolumes?.[0]?.reference),
+    ).toEqual([cachedSeedImage, sourceSeedImage]);
+    expect(failedFinalize).toHaveBeenCalledOnce();
+    expect(successfulFinalize).toHaveBeenCalledOnce();
+    expect(reporter).toHaveBeenCalledWith({
+      message: 'BuildKit seed cache is unavailable; falling back to the verified public seed image.',
+      stream: 'stderr',
+    });
+  });
+
+  it('does not retry an unrelated pre-execution timeout', async (): Promise<void> => {
+    resolveWorkerBuildKitSeedImageMock.mockResolvedValueOnce({ cacheAvailable: true, image: cachedSeedImage });
+    const finalize: Mock = vi.fn(async (): Promise<void> => await Promise.resolve());
+    const runJob: Mock<(spec: KubeJobSpec) => Promise<KubeJobResult>> = vi.fn(
+      async (): Promise<KubeJobResult> =>
+        await Promise.resolve({
+          completedAt: new Date(),
+          exitCode: null,
+          finalize,
+          jobName: 'job-art-123',
+          logs: '',
+          podName: 'job-art-123-pod',
+          status: 'timed-out',
+        }),
+    );
+
+    await expect(runWorkerBuildJob({ runJob }, seedLocalityConfig(), buildInput())).rejects.toThrow('timed-out');
+
+    expect(runJob).toHaveBeenCalledOnce();
+    expect(finalize).toHaveBeenCalledOnce();
+  });
+
   it('submits the BuildKit mirror ConfigMap in the Kubernetes Job request', async (): Promise<void> => {
     const runJob: Mock<(spec: KubeJobSpec) => Promise<KubeJobResult>> = vi.fn(
       async (): Promise<KubeJobResult> => await Promise.resolve(successfulResult(vi.fn(), 'done')),
@@ -412,6 +523,26 @@ describe('build Job credential environment', (): void => {
     ).toMatchObject({ kind: 'source', sourceArchiveCredential: 'scoped-credential' });
   });
 });
+
+const sourceSeedImage: string = `ghcr.io/compartmentdev/compartment-buildkit-seed@sha256:${'c'.repeat(64)}`;
+const cachedSeedImage: string = `10.43.0.20/compartmentdev/compartment-buildkit-seed@sha256:${'c'.repeat(64)}`;
+
+function seedLocalityConfig(): WorkerConfig {
+  const config: WorkerConfig = createWorkerTestConfig();
+  return createWorkerTestConfig({
+    buildSandbox: {
+      ...config.buildSandbox,
+      seed: {
+        ...config.buildSandbox.seed,
+        cache: {
+          image: cachedSeedImage,
+          manifestUrl: `http://registry-auth:5001/v2/compartmentdev/compartment-buildkit-seed/manifests/sha256:${'c'.repeat(64)}`,
+        },
+        image: sourceSeedImage,
+      },
+    },
+  });
+}
 
 function sourceBuild(): WorkerSourceBuildJobInput {
   return {

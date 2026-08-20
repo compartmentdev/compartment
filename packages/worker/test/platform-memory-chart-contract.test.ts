@@ -70,10 +70,12 @@ interface RenderedPodTemplate {
 const executeFile = promisify(execFile);
 const chartDirectory: string = resolve(__dirname, '../../../deploy/chart/compartment');
 const expectedWorkloadContainers: readonly string[] = [
+  'DaemonSet/memory-contract-compartment-buildkit-seed-node-warm/hold-seed',
   'DaemonSet/memory-contract-compartment-log-agent/vector',
   'Deployment/memory-contract-capsule-controller-manager/manager',
   'Deployment/memory-contract-compartment-api/api',
   'Deployment/memory-contract-compartment-api/wait-for-api-migrate',
+  'Deployment/memory-contract-compartment-buildkit-seed-cache/registry',
   'Deployment/memory-contract-compartment-caddy-readiness/readiness-target',
   'Deployment/memory-contract-compartment-caddy/caddy',
   'Deployment/memory-contract-compartment-caddy/prepare-caddy',
@@ -100,6 +102,7 @@ const expectedWorkloadContainers: readonly string[] = [
   'Job/memory-contract-capsule-admission-cleanup/cleanup',
   'Job/memory-contract-compartment-api-migrate-1/api-migrate',
   'Job/memory-contract-compartment-api-migrate-1/wait-for-foundation',
+  'Job/memory-contract-compartment-buildkit-seed-warm-1/verify-seed',
 ];
 describe('shipped platform memory contract', (): void => {
   it('renders every platform container with an honest memory request', async (): Promise<void> => {

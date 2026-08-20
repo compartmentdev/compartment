@@ -218,5 +218,5 @@ tests:
         template: api-migrate.yaml
         documentIndex: 0
       - hasDocuments:
-          count: 3
+          count: 4
         template: pvc.yaml

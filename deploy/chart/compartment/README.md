@@ -224,6 +224,18 @@ cache misses to Docker Hub, set `dockerHubCache.credentials.existingSecret` to a
 containing `username` and `password`. The chart never creates or stores those credentials. BuildKit prefers this
 cache and uses its native direct Docker Hub fallback only while the cache is unavailable or a mirrored request fails.
 
+The digest-pinned BuildKit seed remains sourced and verified from GHCR. During every full install or update, a Helm
+Job pulls that exact digest through a dedicated internal pull-through cache before Helm completes. Build nodes,
+including nodes added later, then fetch the same digest through the retained registry ClusterIP over the cluster
+network. A build-node DaemonSet mounts the cached ImageVolume, so existing nodes warm during install/update and new
+autoscaler nodes warm as soon as they join; user builds then reuse the node-local image. The cache uses a retained
+`4Gi` PVC and a `24h` expiry by default, and registry deletion reclaims expired
+seed manifests and blobs. Budget roughly `1Gi` per release retained inside that window for the current 797 MB seed;
+increase `storage.buildkitSeedCache` if the release cadence or seed size needs more headroom. If the cache probe or
+the cache-backed image pull fails before the build runner starts, the worker reports the degraded path and retries
+once with the verified GHCR reference. A failed install- or update-time warm Job fails Helm visibly; the previous
+release and its public-source fallback remain usable.
+
 Project provisioning creates repository-scoped credentials and project-scoped image pull Secrets. NetworkPolicy
 projections retain tenant isolation and the configured RFC1918 egress policy. OCI output and artifact-registry
 behavior are unchanged.

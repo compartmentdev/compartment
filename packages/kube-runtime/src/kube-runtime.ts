@@ -7,6 +7,7 @@ import { readKubePodMetrics } from './kube-pod-metrics';
 import type { KubePodMetricCollection, ObservePodMetrics } from './kube-pod-metrics.types';
 import { waitForTerminalJob } from './kube-job';
 import type { TerminalJob } from './kube-job.types';
+import { readPreExecutionFailure } from './kube-job-pre-execution-failure';
 import { createOrJoinKubeJob } from './kube-job-reconciliation';
 import {
   kubeFinalizedJobManifest,
@@ -241,6 +242,7 @@ export class KubeRuntime {
       jobName,
       logs: output,
       podName: podNames.at(-1) ?? null,
+      preExecutionFailure: await readPreExecutionFailure(this.coreApi, spec.namespace, podNames, spec.imageVolumes),
       status: 'timed-out',
     };
   }

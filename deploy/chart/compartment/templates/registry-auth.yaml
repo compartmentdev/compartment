@@ -82,6 +82,10 @@ spec:
               value: {{ .Values.ports.registryInternal | quote }}
             - name: COMPARTMENT_ARTIFACT_REGISTRY_PROXY_TARGET_URL
               value: {{ printf "http://%s-registry:%v" (include "compartment.fullname" .) .Values.ports.registry | quote }}
+            - name: COMPARTMENT_BUILDKIT_SEED_CACHE_PROXY_TARGET_URL
+              value: {{ printf "http://%s-buildkit-seed-cache:%v" (include "compartment.fullname" .) .Values.ports.buildkitSeedCache | quote }}
+            - name: COMPARTMENT_BUILDKIT_SEED_CACHE_REPOSITORY
+              value: {{ include "compartment.buildkitSeedRepositoryPath" . | quote }}
             - name: COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY
               valueFrom:
                 secretKeyRef:

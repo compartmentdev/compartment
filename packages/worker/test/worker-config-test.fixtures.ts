@@ -57,6 +57,10 @@ export function createWorkerTestConfig(overrides: Partial<WorkerConfig> = {}): W
       buildKitResources: { limits: { memory: '3Gi' } },
       gcKeepStorageMb: 1024,
       seed: {
+        cache: {
+          image: 'registry-cache/compartment-buildkit-seed@sha256:seed',
+          manifestUrl: 'http://buildkit-seed-cache:5003/v2/compartment-buildkit-seed/manifests/sha256:seed',
+        },
         image: 'compartment-buildkit-seed@sha256:seed',
         railpackBuilderImage: `ghcr.io/railwayapp/railpack-builder:mise-test@sha256:${'a'.repeat(64)}`,
         railpackRuntimeImage: `ghcr.io/railwayapp/railpack-runtime:mise-test@sha256:${'b'.repeat(64)}`,

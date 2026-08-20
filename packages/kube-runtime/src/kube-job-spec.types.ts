@@ -69,6 +69,7 @@ export interface KubeJobResult {
   jobName: string;
   logs: string;
   podName: string | null;
+  preExecutionFailure?: 'image-pull' | undefined;
   status: 'succeeded' | 'failed' | 'timed-out';
   finalize(): Promise<void>;
 }

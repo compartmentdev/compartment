@@ -10,6 +10,9 @@
 {{- if and .Values.dockerHubCache.enabled (eq $installState.effective.platform.startupStage "full") -}}
 {{- $_ := set $claims "dockerhub-cache" .Values.storage.dockerHubCache -}}
 {{- end -}}
+{{- if and .Values.buildkit.enabled (eq $installState.effective.platform.startupStage "full") -}}
+{{- $_ := set $claims "buildkit-seed-cache" .Values.storage.buildkitSeedCache -}}
+{{- end -}}
 {{- if eq $installState.effective.platform.startupStage "full" -}}
 {{- if eq (int .Values.api.replicas) 1 -}}
 {{- $_ := set $claims "api" .Values.storage.api -}}

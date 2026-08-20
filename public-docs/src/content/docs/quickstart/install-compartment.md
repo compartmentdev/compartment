@@ -397,6 +397,17 @@ set `storage.dockerHubCache` to a bounded size that fits the installation's base
 Docker Hub pulls, set `dockerHubCache.credentials.existingSecret` to a Secret in the Compartment release namespace
 with `username` and `password` keys. Do not put Docker Hub credentials in values files. BuildKit prefers the cache;
 if it is unavailable or rejects a mirrored request, BuildKit falls back directly to Docker Hub so builds can continue.
+
+Compartment also warms the release's digest-pinned BuildKit seed into a separate internal cache before a full install
+or `system update` completes. New build nodes pull that unchanged, GHCR-verified digest over the cluster network. The
+platform prewarms the seed on every build node, including autoscaler nodes as they join, so the first user build reuses
+the node-local image. The retained cache PVC defaults to `4Gi`, and cached seed data expires after
+`buildkitSeedCache.ttl` (`24h` by default).
+Budget roughly `1Gi` for each release retained inside that window for the current 797 MB seed, and increase
+`storage.buildkitSeedCache` when your release cadence or seed size needs more headroom. Expired blobs are deleted. A
+failed warm blocks the install or update with Helm diagnostics. If the cache probe or cache-backed image pull fails
+before the build runner starts, the worker retries once with the verified public GHCR reference and reports the slower
+fallback in deployment logs.
 Project NetworkPolicies preserve tenant isolation and the configured RFC1918 egress policy.
 
 Kubernetes cluster administrators and anyone able to escape a container remain outside the tenant-isolation boundary.

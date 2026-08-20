@@ -318,7 +318,7 @@ function renderPlatformImageValues(imageDigestsByServiceName) {
         `  ${readPlatformImageValueName(serviceName)}:\n    repository: ${registryClusterHost}/compartment-${serviceName}\n    tag: ${platformImageTag}\n    digest: ${readRequiredPlatformImageDigest(imageDigestsByServiceName, serviceName)}`,
     )
     .join('\n');
-  return `images:\n${imageValues}\n`;
+  return `images:\n${imageValues}\nbuildkitSeedCache:\n  sourceRegistryScheme: http\n`;
 }
 
 function readPlatformImageValueName(serviceName) {

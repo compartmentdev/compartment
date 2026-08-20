@@ -44,6 +44,24 @@
 {{- printf "%s-registry-auth.%s.svc" (include "compartment.fullname" .) .Release.Namespace -}}
 {{- end }}
 
+{{- define "compartment.buildkitSeedRepositoryPath" -}}
+{{- regexReplaceAll "^[^/]+/" .Values.images.buildkitSeed.repository "" -}}
+{{- end }}
+
+{{- define "compartment.buildkitSeedRegistryHost" -}}
+{{- regexFind "^[^/]+" .Values.images.buildkitSeed.repository -}}
+{{- end }}
+
+{{- define "compartment.buildkitSeedSourceRegistryUrl" -}}
+{{- printf "%s://%s" .Values.buildkitSeedCache.sourceRegistryScheme (include "compartment.buildkitSeedRegistryHost" .) -}}
+{{- end }}
+
+{{- define "compartment.buildkitSeedCacheImage" -}}
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- $repository := printf "%s/%s" $installState.effective.registry.hostname (include "compartment.buildkitSeedRepositoryPath" .) -}}
+{{- include "compartment.image" (dict "repository" $repository "tag" .Values.images.buildkitSeed.tag "digest" .Values.images.buildkitSeed.digest) -}}
+{{- end }}
+
 {{- define "compartment.caddyReadinessNamespace" -}}
 {{- printf "compartment-readiness-%s" (printf "%s/%s" .Release.Namespace .Release.Name | sha256sum | trunc 12) -}}
 {{- end }}
