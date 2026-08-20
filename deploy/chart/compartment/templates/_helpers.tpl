@@ -82,7 +82,7 @@ health:
     interval: 10s
     threshold: 3
 proxy:
-  remoteurl: {{ include "compartment.buildkitSeedSourceRegistryUrl" . }}
+  remoteurl: {{ include "compartment.buildkitSeedSourceRegistryUrl" . | quote }}
   ttl: {{ .Values.buildkitSeedCache.ttl }}
 {{- end }}
 

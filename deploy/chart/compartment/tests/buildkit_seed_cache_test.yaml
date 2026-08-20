@@ -39,7 +39,7 @@ tests:
         template: buildkit-seed-cache.yaml
       - matchRegex:
           path: data["config.yml"]
-          pattern: "(?m)^  remoteurl: https://ghcr.io\\n  ttl: 24h$"
+          pattern: '(?m)^  remoteurl: "https://ghcr.io"\n  ttl: 24h$'
         documentSelector:
           path: kind
           value: ConfigMap
@@ -171,7 +171,7 @@ tests:
     asserts:
       - matchRegex:
           path: data["config.yml"]
-          pattern: "(?m)^  remoteurl: http://172\\.19\\.0\\.2:5111$"
+          pattern: '(?m)^  remoteurl: "http://172\.19\.0\.2:5111"$'
         documentSelector:
           path: kind
           value: ConfigMap

@@ -190,6 +190,41 @@ tests:
       - failedTemplate:
           errorPattern: acmeEmail.*oneOf
 
+  - it: rejects whitespace in a BuildKit seed source registry URL
+    set:
+      buildkitSeedCache.sourceRegistryUrl: 'https://registry.example invalid'
+    asserts:
+      - failedTemplate:
+          errorPattern: sourceRegistryUrl.*pattern
+
+  - it: rejects a path in a BuildKit seed source registry URL
+    set:
+      buildkitSeedCache.sourceRegistryUrl: https://registry.example/seed
+    asserts:
+      - failedTemplate:
+          errorPattern: sourceRegistryUrl.*pattern
+
+  - it: rejects a query in a BuildKit seed source registry URL
+    set:
+      buildkitSeedCache.sourceRegistryUrl: 'https://registry.example?seed=true'
+    asserts:
+      - failedTemplate:
+          errorPattern: sourceRegistryUrl.*pattern
+
+  - it: rejects a fragment in a BuildKit seed source registry URL
+    set:
+      buildkitSeedCache.sourceRegistryUrl: 'https://registry.example#seed'
+    asserts:
+      - failedTemplate:
+          errorPattern: sourceRegistryUrl.*pattern
+
+  - it: rejects userinfo in a BuildKit seed source registry URL
+    set:
+      buildkitSeedCache.sourceRegistryUrl: https://user@registry.example
+    asserts:
+      - failedTemplate:
+          errorPattern: sourceRegistryUrl.*pattern
+
   - it: rejects a non-positive rollback retention limit through the values schema
     set:
       platform:

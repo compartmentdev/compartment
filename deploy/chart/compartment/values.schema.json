@@ -557,7 +557,7 @@
         "sourceRegistryUrl": {
           "description": "Optional root URL override for the seed source registry. Empty derives it from images.buildkitSeed.repository.",
           "type": "string",
-          "pattern": "^(?:|https?://[^/]+)$"
+          "pattern": "^(?:|https?://[^\\s/?#@]+)$"
         },
         "ttl": { "type": "string", "pattern": "^[1-9][0-9]*h$" }
       }
