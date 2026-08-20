@@ -239,6 +239,7 @@ dockerHubCache:
 
 buildkitSeedCache:
   sourceRegistryScheme: https
+  sourceRegistryUrl: ''
   ttl: 24h
 
 edge:

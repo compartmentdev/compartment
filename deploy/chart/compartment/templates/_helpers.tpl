@@ -53,7 +53,37 @@
 {{- end }}
 
 {{- define "compartment.buildkitSeedSourceRegistryUrl" -}}
+{{- if .Values.buildkitSeedCache.sourceRegistryUrl -}}
+{{- .Values.buildkitSeedCache.sourceRegistryUrl -}}
+{{- else -}}
 {{- printf "%s://%s" .Values.buildkitSeedCache.sourceRegistryScheme (include "compartment.buildkitSeedRegistryHost" .) -}}
+{{- end -}}
+{{- end }}
+
+{{- define "compartment.buildkitSeedCacheConfig" -}}
+version: 0.1
+log:
+  fields:
+    service: registry
+storage:
+  cache:
+    blobdescriptor: inmemory
+  filesystem:
+    rootdirectory: /var/lib/registry
+  delete:
+    enabled: true
+http:
+  addr: {{ printf "0.0.0.0:%v" .Values.ports.buildkitSeedCache }}
+  headers:
+    X-Content-Type-Options: [nosniff]
+health:
+  storagedriver:
+    enabled: true
+    interval: 10s
+    threshold: 3
+proxy:
+  remoteurl: {{ include "compartment.buildkitSeedSourceRegistryUrl" . }}
+  ttl: {{ .Values.buildkitSeedCache.ttl }}
 {{- end }}
 
 {{- define "compartment.buildkitSeedCacheImage" -}}

@@ -1,6 +1,16 @@
 {{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
 {{- if and .Values.buildkit.enabled (eq $installState.effective.platform.startupStage "full") }}
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "compartment.fullname" . }}-buildkit-seed-cache
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+data:
+  config.yml: |
+    {{- include "compartment.buildkitSeedCacheConfig" . | nindent 4 }}
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "compartment.fullname" . }}-buildkit-seed-cache
@@ -32,6 +42,8 @@ spec:
     metadata:
       labels:
         {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit-seed-cache") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include "compartment.buildkitSeedCacheConfig" . | sha256sum }}
     spec:
       priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
       {{- include "compartment.nodePool" .Values.nodePools.system | nindent 6 }}
@@ -49,15 +61,6 @@ spec:
             runAsGroup: 1000
           resources:
             {{- toYaml .Values.resources.buildkitSeedCache | nindent 12 }}
-          env:
-            - name: REGISTRY_HTTP_ADDR
-              value: {{ printf "0.0.0.0:%v" .Values.ports.buildkitSeedCache | quote }}
-            - name: REGISTRY_PROXY_REMOTEURL
-              value: {{ include "compartment.buildkitSeedSourceRegistryUrl" . | quote }}
-            - name: REGISTRY_PROXY_TTL
-              value: {{ .Values.buildkitSeedCache.ttl | quote }}
-            - name: REGISTRY_STORAGE_DELETE_ENABLED
-              value: "true"
           ports:
             - name: http
               containerPort: {{ .Values.ports.buildkitSeedCache }}
@@ -66,11 +69,15 @@ spec:
             periodSeconds: 2
           volumeMounts:
             - {name: data, mountPath: /var/lib/registry}
+            - {name: config, mountPath: /etc/docker/registry/config.yml, subPath: config.yml, readOnly: true}
             - {name: tmp, mountPath: /tmp}
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "compartment.fullname" . }}-buildkit-seed-cache
+        - name: config
+          configMap:
+            name: {{ include "compartment.fullname" . }}-buildkit-seed-cache
         - name: tmp
           emptyDir: {}
 ---

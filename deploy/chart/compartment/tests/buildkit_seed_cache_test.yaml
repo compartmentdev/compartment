@@ -30,23 +30,27 @@ tests:
           name: compartment-buildkit-seed-cache
           any: true
         template: buildkit-seed-cache.yaml
-      - contains:
-          path: spec.template.spec.containers[0].env
-          content: { name: REGISTRY_PROXY_REMOTEURL, value: https://ghcr.io }
+      - matchRegex:
+          path: data["config.yml"]
+          pattern: "(?m)^  delete:\\n    enabled: true$"
         documentSelector:
           path: kind
-          value: Deployment
+          value: ConfigMap
         template: buildkit-seed-cache.yaml
-      - contains:
-          path: spec.template.spec.containers[0].env
-          content: { name: REGISTRY_PROXY_TTL, value: 24h }
+      - matchRegex:
+          path: data["config.yml"]
+          pattern: "(?m)^  remoteurl: https://ghcr.io\\n  ttl: 24h$"
         documentSelector:
           path: kind
-          value: Deployment
+          value: ConfigMap
         template: buildkit-seed-cache.yaml
-      - contains:
-          path: spec.template.spec.containers[0].env
-          content: { name: REGISTRY_STORAGE_DELETE_ENABLED, value: 'true' }
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[1]
+          value:
+            name: config
+            mountPath: /etc/docker/registry/config.yml
+            subPath: config.yml
+            readOnly: true
         documentSelector:
           path: kind
           value: Deployment
@@ -163,15 +167,14 @@ tests:
       images.buildkitSeed.repository: k3d-compartment-registry.localhost:5111/compartment-buildkit-seed
       images.buildkitSeed.digest: sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
       buildkitSeedCache.sourceRegistryScheme: http
+      buildkitSeedCache.sourceRegistryUrl: http://172.19.0.2:5111
     asserts:
-      - contains:
-          path: spec.template.spec.containers[0].env
-          content:
-            name: REGISTRY_PROXY_REMOTEURL
-            value: http://k3d-compartment-registry.localhost:5111
+      - matchRegex:
+          path: data["config.yml"]
+          pattern: "(?m)^  remoteurl: http://172\\.19\\.0\\.2:5111$"
         documentSelector:
           path: kind
-          value: Deployment
+          value: ConfigMap
         template: buildkit-seed-cache.yaml
       - equal:
           path: spec.template.spec.volumes[0].image.reference

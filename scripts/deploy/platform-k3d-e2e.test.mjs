@@ -436,7 +436,12 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).not.toContain('maximumConcurrentBuildsPerOrganization:');
     expect(values).toContain('namespace: compartment-build');
     expect(values).toContain('clusterIP: 10.43.250.250');
-    expect(values).toContain('buildkitSeedCache:\n  sourceRegistryScheme: http');
+    expect(values).toContain(
+      'buildkitSeedCache:\n  sourceRegistryScheme: http\n  sourceRegistryUrl: http://k3d-compartment-e2e-registry:15500',
+    );
+    expect(renderPlatformK3dValues(createTestImageDigests(), false, false, 'http://172.19.0.2:5000')).toContain(
+      'sourceRegistryUrl: http://172.19.0.2:5000',
+    );
     expect(values).not.toContain('hostname:');
     expect(values).toContain(
       'registry:\n  clusterIP: 10.43.250.250\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer',
