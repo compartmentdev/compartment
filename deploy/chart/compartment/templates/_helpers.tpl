@@ -256,6 +256,7 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- $_ = required "platform.baseDomain is required for a full installation" $effective.platform.baseDomain -}}
 {{- $_ = required "registry.hostname is required for a full installation" $effective.registry.hostname -}}
 {{- $_ = required "registry.issuerRef.name is required for a full installation" $effective.registryIssuerRef.name -}}
+{{- $_ = required "images.buildkitSeed.digest is required for a full installation" .Values.images.buildkitSeed.digest -}}
 {{- if and (not (empty $effective.secrets.managedDomainAcmeDnsToken)) (empty $effective.platform.managedDomainBrokerUrl) -}}
 {{- fail "platform.managedDomainBrokerUrl is required when secrets.managedDomainAcmeDnsToken is configured" -}}
 {{- end -}}

@@ -4,6 +4,10 @@ registry:
     kind: ClusterIssuer
     name: registry-test-issuer
 
+images:
+  buildkitSeed:
+    digest: sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+
 nodePools:
   data:
     nodeSelector: { compartment.dev/node-pool: data }

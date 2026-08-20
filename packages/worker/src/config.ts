@@ -34,6 +34,7 @@ import {
 import { readOrganizationQuota } from './resource-quota-config';
 import { parseKubernetesQuantity } from './services/kubernetes-quantity';
 import {
+  assertSameImageDigest,
   isDigestPinnedContainerImageReference,
   isTagAndDigestPinnedContainerImageReference,
 } from './container-image-reference';
@@ -118,12 +119,14 @@ export function readWorkerProcessConfig(env: NodeJS.ProcessEnv = process.env): W
 export function readWorkerBuildConfig(env: NodeJS.ProcessEnv = process.env): WorkerBuildConfig {
   const parsed: WorkerBuildConfigEnvironment = workerBuildConfigSchema.parse(env);
   readWorkerTrustedOutboundHosts(parsed);
+  assertSameImageDigest(parsed.COMPARTMENT_BUILDKIT_SEED_IMAGE, parsed.COMPARTMENT_BUILDKIT_SEED_CACHE_IMAGE);
   return buildWorkerBuildConfig(parsed);
 }
 
 export function readWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
   const parsed: WorkerConfigEnvironment = workerConfigSchema.parse(env);
   readWorkerTrustedOutboundHosts(parsed);
+  assertSameImageDigest(parsed.COMPARTMENT_BUILDKIT_SEED_IMAGE, parsed.COMPARTMENT_BUILDKIT_SEED_CACHE_IMAGE);
   const tenantScheduling: KubeWorkloadScheduling | undefined = readTenantWorkloadScheduling(
     parsed.COMPARTMENT_KUBE_TENANT_SCHEDULING,
   );

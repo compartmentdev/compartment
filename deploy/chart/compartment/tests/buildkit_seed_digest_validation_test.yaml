@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: BuildKit seed digest validation
+templates:
+  - templates/configmap.yaml
+release:
+  name: compartment
+  namespace: default
+tests:
+  - it: rejects a full installation without a digest-pinned seed
+    set:
+      platform.startupStage: full
+      platform.installationId: seed-cache-test
+      platform.baseDomain: compartment.localhost
+      registry.hostname: 10.43.250.250
+      registry.issuerRef.name: compartment-registry
+    asserts:
+      - failedTemplate:
+          errorMessage: images.buildkitSeed.digest is required for a full installation

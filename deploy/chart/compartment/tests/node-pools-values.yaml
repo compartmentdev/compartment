@@ -5,6 +5,10 @@ platform:
   publicProtocol: http
   tlsMode: issuer
 
+images:
+  buildkitSeed:
+    digest: sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+
 secrets:
   installToken: test-install-token
   postgresPassword: test-postgres-password

@@ -436,6 +436,7 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).not.toContain('maximumConcurrentBuildsPerOrganization:');
     expect(values).toContain('namespace: compartment-build');
     expect(values).toContain('clusterIP: 10.43.250.250');
+    expect(values).toContain('buildkitSeedCache:\n  sourceRegistryScheme: http');
     expect(values).not.toContain('hostname:');
     expect(values).toContain(
       'registry:\n  clusterIP: 10.43.250.250\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer',

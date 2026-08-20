@@ -394,6 +394,7 @@ async function expectWarmBuildKitSeedPath(revision: number): Promise<void> {
     `daemonset/${releaseName}-buildkit-seed-node-warm`,
     '--timeout=60s',
   ]);
+  await runRequired(['docker', 'exec', nodeContainerName, 'crictl', 'inspecti', cachedSeedImage]);
   let sourceRegistryPaused: boolean = false;
   let localityError: Error | null = null;
   try {

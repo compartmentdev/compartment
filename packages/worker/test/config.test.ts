@@ -172,6 +172,16 @@ describe('readWorkerConfig', (): void => {
     ).toThrow();
   });
 
+  it('requires the BuildKit seed source and cache images to use the same digest', (): void => {
+    expect(
+      (): WorkerBuildConfig =>
+        readWorkerBuildConfig({
+          ...validEnvironment(),
+          COMPARTMENT_BUILDKIT_SEED_CACHE_IMAGE: `registry.example.com/compartment-buildkit-seed@sha256:${'d'.repeat(64)}`,
+        }),
+    ).toThrow('The BuildKit seed source and cache images must use the same digest.');
+  });
+
   it.each([
     `ghcr.io/compartmentdev/compartment buildkit-seed@sha256:${'c'.repeat(64)}`,
     `GHCR.IO/compartmentdev/compartment-buildkit-seed@sha256:${'c'.repeat(64)}`,

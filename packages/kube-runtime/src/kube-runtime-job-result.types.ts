@@ -4,6 +4,6 @@ export interface TerminalJobResult {
   jobName: string;
   logs: string;
   podName: string | null;
-  preExecutionFailure?: 'image-pull' | undefined;
+  preExecutionFailure?: 'evidence-unavailable' | 'image-pull' | undefined;
   status: 'succeeded' | 'failed' | 'timed-out';
 }

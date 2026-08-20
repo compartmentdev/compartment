@@ -26,6 +26,17 @@ describe('Job pre-execution failure evidence', (): void => {
       ),
     ).resolves.toBeUndefined();
   });
+
+  it('distinguishes unavailable event evidence from no matching failure', async (): Promise<void> => {
+    const listNamespacedEvent: Mock = vi.fn(
+      async (): Promise<CoreV1EventList> => await Promise.reject(new Error('event API unavailable')),
+    );
+    const fixture: Pick<CoreV1Api, 'listNamespacedEvent'> = { listNamespacedEvent };
+
+    await expect(readPreExecutionFailure(fixture as CoreV1Api, 'builds', ['job-pod'], imageVolumes)).resolves.toBe(
+      'evidence-unavailable',
+    );
+  });
 });
 
 function coreApi(value: CoreV1Event): CoreV1Api {

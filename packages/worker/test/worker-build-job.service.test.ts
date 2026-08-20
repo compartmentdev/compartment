@@ -397,7 +397,7 @@ describe('build Job credential environment', (): void => {
     });
   });
 
-  it('does not retry an unrelated pre-execution timeout', async (): Promise<void> => {
+  it('does not retry when pre-execution event evidence is unavailable', async (): Promise<void> => {
     resolveWorkerBuildKitSeedImageMock.mockResolvedValueOnce({ cacheAvailable: true, image: cachedSeedImage });
     const finalize: Mock = vi.fn(async (): Promise<void> => await Promise.resolve());
     const runJob: Mock<(spec: KubeJobSpec) => Promise<KubeJobResult>> = vi.fn(
@@ -409,6 +409,7 @@ describe('build Job credential environment', (): void => {
           jobName: 'job-art-123',
           logs: '',
           podName: 'job-art-123-pod',
+          preExecutionFailure: 'evidence-unavailable',
           status: 'timed-out',
         }),
     );
