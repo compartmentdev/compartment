@@ -14,6 +14,7 @@ const registryHostname: string = ['10', '43', '250', '250'].join('.');
 // A full installation is the only stage that renders the worker, and these are the values that stage
 // requires. None of them reach the labels: the release name does, and it is fixed above.
 const chartValues: Record<string, string> = {
+  'images.buildkitSeed.digest': `sha256:${'f'.repeat(64)}`,
   'platform.baseDomain': 'apps.example.com',
   'platform.installationId': 'network-policy-gate',
   'platform.startupStage': 'full',
