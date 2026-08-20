@@ -758,7 +758,7 @@ tests:
         documentIndex: 4
       - matchRegex:
           path: spec.validations[5].expression
-          pattern: "volume.name == 'buildkit-seed'.*volume.image.reference == 'ghcr.io/compartmentdev/compartment-buildkit-seed@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'.*volume.image.pullPolicy == 'IfNotPresent'"
+          pattern: "volume.name == 'buildkit-seed'.*volume.image.reference in \\['ghcr.io/compartmentdev/compartment-buildkit-seed@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', '10.43.250.250/compartmentdev/compartment-buildkit-seed@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'\\].*volume.image.pullPolicy == 'IfNotPresent'"
         template: buildkit.yaml
         documentIndex: 4
       - matchRegex:
@@ -1263,17 +1263,17 @@ tests:
           path: spec.ingress[0].ports[0].port
           value: 5001
         template: registry-network-policy.yaml
-        documentIndex: 1
+        documentIndex: 2
       - equal:
           path: spec.ingress[0].from[0].podSelector.matchLabels["app.kubernetes.io/component"]
           value: worker
         template: registry-network-policy.yaml
-        documentIndex: 1
+        documentIndex: 2
       - equal:
           path: spec.ingress[0].from[1].podSelector.matchLabels["compartment.dev/job-class"]
           value: build
         template: registry-network-policy.yaml
-        documentIndex: 1
+        documentIndex: 2
       - contains:
           path: spec.ports
           content:
@@ -1355,7 +1355,7 @@ tests:
           value: ghcr.io/railwayapp/railpack-runtime:mise-2026.7.5@sha256:122904a97579630033432d6d4652ad4eb8751b9680756a429ebc7d0942222083
         template: configmap.yaml
       - hasDocuments:
-          count: 4
+          count: 5
         template: pvc.yaml
       - equal:
           path: spec.template.spec.volumes[?(@.name == "snapshots")].emptyDir
@@ -1764,6 +1764,10 @@ tests:
       - equal:
           path: data.COMPARTMENT_BUILDKIT_SEED_IMAGE
           value: ghcr.io/compartmentdev/compartment-buildkit-seed@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_BUILDKIT_SEED_CACHE_IMAGE
+          value: 10.43.250.250/compartmentdev/compartment-buildkit-seed@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
         template: configmap.yaml
       - equal:
           path: spec.template.spec.containers[0].image

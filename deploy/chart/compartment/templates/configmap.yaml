@@ -41,6 +41,8 @@ data:
   COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: {{ .Values.buildkit.dataSizeLimit | quote }}
   COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: {{ .Values.buildkit.gcKeepStorageMb | quote }}
   COMPARTMENT_BUILDKIT_SEED_IMAGE: {{ include "compartment.image" .Values.images.buildkitSeed | quote }}
+  COMPARTMENT_BUILDKIT_SEED_CACHE_IMAGE: {{ include "compartment.buildkitSeedCacheImage" . | quote }}
+  COMPARTMENT_BUILDKIT_SEED_CACHE_MANIFEST_URL: {{ printf "http://%s-buildkit-seed-cache:%v/v2/%s/manifests/%s" (include "compartment.fullname" .) .Values.ports.buildkitSeedCache (include "compartment.buildkitSeedRepositoryPath" .) .Values.images.buildkitSeed.digest | quote }}
   COMPARTMENT_BUILDKIT_CONFIG_MAP_NAME: {{ printf "%s-buildkit" (include "compartment.fullname" .) | quote }}
   COMPARTMENT_BUILDKIT_RESOURCES: {{ .Values.resources.buildkit | toJson | quote }}
   COMPARTMENT_PROJECT_CONTAINER_DEFAULTS: {{ .Values.resources.projectContainerDefaults | toJson | quote }}

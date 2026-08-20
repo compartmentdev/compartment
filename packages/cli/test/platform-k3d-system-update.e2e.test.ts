@@ -56,6 +56,16 @@ interface ReleaseConfigValues {
   images?: Record<string, PlatformImageValue> | undefined;
 }
 
+interface KubernetesJobStatus {
+  completionTime?: string | undefined;
+  startTime?: string | undefined;
+  succeeded?: number | undefined;
+}
+
+interface KubernetesJobOutput {
+  status?: KubernetesJobStatus | undefined;
+}
+
 const platformModeEnvName: string = 'COMPARTMENT_E2E_PLATFORM_MODE';
 const platformApiUrl: string = process.env.COMPARTMENT_E2E_API_URL ?? 'http://console.compartment.localhost:18680';
 const platformKubeContext: string = process.env.COMPARTMENT_E2E_KUBE_CONTEXT ?? 'k3d-compartment-e2e-system-update';
@@ -134,6 +144,7 @@ describe.sequential('production Kubernetes system update', (): void => {
       const updatedApiImage: string = await readApiImage();
       expect(updatedApiImage).not.toBe(previousApiImage);
       expect(updatedApiImage).toBe(await readTargetApiImage());
+      await expectWarmBuildKitSeedPath(updatedRevision);
 
       const ownerEmail: string = requireEnvironment('COMPARTMENT_E2E_SEED_ADMIN_EMAIL');
       const ownerPassword: string = requireEnvironment('COMPARTMENT_E2E_SEED_ADMIN_PASSWORD');
@@ -307,7 +318,7 @@ async function expectUpdatedImageVersions(): Promise<void> {
     'json',
   ]);
   const values: HelmImageValues = JSON.parse(result.stdout) as HelmImageValues;
-  for (const imageName of ['api', 'caddy', 'dns01Solver', 'edge', 'worker']) {
+  for (const imageName of ['api', 'buildkitSeed', 'caddy', 'dns01Solver', 'edge', 'worker']) {
     expect(values.images?.[imageName]?.tag).toBe(updateVersion);
   }
 }
@@ -333,6 +344,205 @@ async function readTargetApiImage(): Promise<string> {
     throw new Error('Expected target API repository and digest values.');
   }
   return `${api.repository}@${api.digest}`;
+}
+
+async function expectWarmBuildKitSeedPath(revision: number): Promise<void> {
+  const warmJobName: string = `${releaseName}-buildkit-seed-warm-${revision.toString()}`;
+  const warmJob: KubernetesJobOutput = JSON.parse(
+    (
+      await runRequired([
+        'kubectl',
+        '--context',
+        platformKubeContext,
+        '--namespace',
+        platformNamespace,
+        'get',
+        `job/${warmJobName}`,
+        '--output=json',
+      ])
+    ).stdout,
+  ) as KubernetesJobOutput;
+  expect(warmJob.status?.succeeded).toBe(1);
+  const releaseWarmDurationMs: number = readJobDurationMs(warmJob.status);
+  const cachedSeedImage: string = await readConfigMapValue('COMPARTMENT_BUILDKIT_SEED_CACHE_IMAGE');
+  const cachedSeedManifestUrl: string = await readConfigMapValue('COMPARTMENT_BUILDKIT_SEED_CACHE_MANIFEST_URL');
+  const workerImage: string = await readConfigMapValue('COMPARTMENT_WORKER_IMAGE');
+  const clusterName: string = process.env.COMPARTMENT_E2E_CLUSTER_NAME ?? platformKubeContext.replace(/^k3d-/u, '');
+  const nodeContainerName: string = `k3d-${clusterName}-server-0`;
+  const registryName: string = process.env.COMPARTMENT_E2E_REGISTRY_NAME ?? `${clusterName}-registry`;
+  const sourceRegistryContainerName: string = `k3d-${registryName}`;
+  const canaryName: string = 'buildkit-seed-locality-canary';
+
+  await runRequired([
+    'kubectl',
+    '--context',
+    platformKubeContext,
+    '--namespace',
+    platformNamespace,
+    'delete',
+    `job/${warmJobName}`,
+    '--wait=true',
+  ]);
+  await runRequired([
+    'kubectl',
+    '--context',
+    platformKubeContext,
+    '--namespace',
+    platformNamespace,
+    'rollout',
+    'status',
+    `daemonset/${releaseName}-buildkit-seed-node-warm`,
+    '--timeout=60s',
+  ]);
+  await runRequired(['docker', 'exec', nodeContainerName, 'crictl', 'inspecti', cachedSeedImage]);
+  let sourceRegistryPaused: boolean = false;
+  let localityError: Error | null = null;
+  try {
+    const localityStartedAt: number = Date.now();
+    await runRequired([
+      'kubectl',
+      '--context',
+      platformKubeContext,
+      '--namespace',
+      platformNamespace,
+      'exec',
+      `deployment/${releaseName}-worker`,
+      '--',
+      'node',
+      '-e',
+      [
+        "const response = await fetch(process.argv[1], {headers: {accept: '",
+        'application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, ',
+        'application/vnd.docker.distribution.manifest.list.v2+json, ',
+        "application/vnd.docker.distribution.manifest.v2+json'}, method: 'HEAD'}); ",
+        'if (!response.ok) process.exit(1);',
+      ].join(''),
+      cachedSeedManifestUrl,
+    ]);
+    await runRequired(['docker', 'pause', sourceRegistryContainerName]);
+    sourceRegistryPaused = true;
+    await runRequiredWithInput(
+      ['kubectl', '--context', platformKubeContext, '--namespace', platformNamespace, 'apply', '--filename=-'],
+      buildSeedLocalityCanaryManifest(canaryName, nodeContainerName, workerImage, cachedSeedImage),
+    );
+    await runRequired(
+      [
+        'kubectl',
+        '--context',
+        platformKubeContext,
+        '--namespace',
+        platformNamespace,
+        'wait',
+        `pod/${canaryName}`,
+        '--for=condition=Ready',
+        '--timeout=10s',
+      ],
+      15_000,
+    );
+    const warmPathDurationMs: number = Date.now() - localityStartedAt;
+    expect(warmPathDurationMs).toBeLessThanOrEqual(10_000);
+    process.stdout.write(
+      `BuildKit seed locality timings: release warm Job ${releaseWarmDurationMs.toString()} ms; ` +
+        `prewarmed first-build selection and mount ${warmPathDurationMs.toString()} ms.\n`,
+    );
+  } catch (error) {
+    localityError = error instanceof Error ? error : new Error(String(error));
+  }
+  const cleanupCommands: Promise<SelfHostedUserSetupCommandResult>[] = [
+    runRequired([
+      'kubectl',
+      '--context',
+      platformKubeContext,
+      '--namespace',
+      platformNamespace,
+      'delete',
+      `pod/${canaryName}`,
+      '--ignore-not-found=true',
+      '--wait=true',
+    ]),
+  ];
+  if (sourceRegistryPaused) {
+    cleanupCommands.push(runRequired(['docker', 'unpause', sourceRegistryContainerName]));
+  }
+  const cleanupResults: PromiseSettledResult<SelfHostedUserSetupCommandResult>[] =
+    await Promise.allSettled(cleanupCommands);
+  const cleanupErrors: Error[] = cleanupResults
+    .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+    .map(
+      (result: PromiseRejectedResult): Error =>
+        result.reason instanceof Error ? result.reason : new Error(String(result.reason)),
+    );
+  if (localityError !== null || cleanupErrors.length > 0) {
+    throw new AggregateError(
+      localityError === null ? cleanupErrors : [localityError, ...cleanupErrors],
+      'BuildKit seed locality gate or cleanup failed.',
+    );
+  }
+}
+
+function readJobDurationMs(status: KubernetesJobStatus | undefined): number {
+  const startedAt: number = Date.parse(status?.startTime ?? '');
+  const completedAt: number = Date.parse(status?.completionTime ?? '');
+  expect(Number.isFinite(startedAt)).toBe(true);
+  expect(Number.isFinite(completedAt)).toBe(true);
+  expect(completedAt).toBeGreaterThanOrEqual(startedAt);
+  return completedAt - startedAt;
+}
+
+async function readConfigMapValue(key: string): Promise<string> {
+  const result: SelfHostedUserSetupCommandResult = await runRequired([
+    'kubectl',
+    '--context',
+    platformKubeContext,
+    '--namespace',
+    platformNamespace,
+    'get',
+    `configmap/${releaseName}`,
+    `--output=jsonpath={.data.${key}}`,
+  ]);
+  expect(result.stdout.trim()).not.toBe('');
+  return result.stdout.trim();
+}
+
+function buildSeedLocalityCanaryManifest(
+  name: string,
+  nodeName: string,
+  workerImage: string,
+  seedImage: string,
+): string {
+  return stringify({
+    apiVersion: 'v1',
+    kind: 'Pod',
+    metadata: { name },
+    spec: {
+      automountServiceAccountToken: false,
+      containers: [
+        {
+          command: [
+            'node',
+            '-e',
+            "require('node:fs').readdirSync('/var/lib/buildkit-seed'); setInterval(() => {}, 1000)",
+          ],
+          image: workerImage,
+          name: 'verify-seed',
+          volumeMounts: [{ mountPath: '/var/lib/buildkit-seed', name: 'buildkit-seed', readOnly: true }],
+        },
+      ],
+      nodeName,
+      restartPolicy: 'Never',
+      volumes: [{ name: 'buildkit-seed', image: { pullPolicy: 'IfNotPresent', reference: seedImage } }],
+    },
+  });
+}
+
+async function runRequiredWithInput(
+  argv: readonly string[],
+  input: string,
+  timeoutMs: number = 60_000,
+): Promise<SelfHostedUserSetupCommandResult> {
+  const result: SelfHostedUserSetupCommandResult = await runCommand({ argv, input, timeoutMs });
+  expectSuccessfulCommand(result, argv.join(' '));
+  return result;
 }
 
 async function runRequired(

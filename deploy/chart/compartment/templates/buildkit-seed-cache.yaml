@@ -1,0 +1,166 @@
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- if and .Values.buildkit.enabled (eq $installState.effective.platform.startupStage "full") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "compartment.fullname" . }}-buildkit-seed-cache
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+data:
+  config.yml: |
+    {{- include "compartment.buildkitSeedCacheConfig" . | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "compartment.fullname" . }}-buildkit-seed-cache
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit-seed-cache") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.ports.buildkitSeedCache }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "compartment.fullname" . }}-buildkit-seed-cache
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: buildkit-seed-cache
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit-seed-cache") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit-seed-cache") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include "compartment.buildkitSeedCacheConfig" . | sha256sum }}
+    spec:
+      priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
+      {{- include "compartment.nodePool" .Values.nodePools.system | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: registry
+          image: {{ include "compartment.image" .Values.images.registry }}
+          imagePullPolicy: {{ .Values.images.registry.pullPolicy }}
+          securityContext:
+            {{- include "compartment.containerSecurityContext" . | nindent 12 }}
+            runAsUser: 1000
+            runAsGroup: 1000
+          resources:
+            {{- toYaml .Values.resources.buildkitSeedCache | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ports.buildkitSeedCache }}
+          readinessProbe:
+            httpGet: {path: /v2/, port: http}
+            periodSeconds: 2
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/registry}
+            - {name: config, mountPath: /etc/docker/registry/config.yml, subPath: config.yml, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "compartment.fullname" . }}-buildkit-seed-cache
+        - name: config
+          configMap:
+            name: {{ include "compartment.fullname" . }}-buildkit-seed-cache
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "compartment.fullname" . }}-buildkit-seed-warm-{{ .Release.Revision }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: buildkit-seed-warm
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit-seed-warm") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
+      {{- include "compartment.nodePool" .Values.nodePools.system | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: verify-seed
+          image: {{ include "compartment.image" .Values.images.worker }}
+          imagePullPolicy: {{ .Values.images.worker.pullPolicy }}
+          command: ["node", "-e"]
+          args: ["require('node:fs').readdirSync('/var/lib/buildkit-seed')"]
+          securityContext:
+            {{- include "compartment.containerSecurityContext" . | nindent 12 }}
+            runAsUser: 10001
+            runAsGroup: 10001
+          resources:
+            {{- toYaml .Values.resources.wait | nindent 12 }}
+          volumeMounts:
+            - {name: buildkit-seed, mountPath: /var/lib/buildkit-seed, readOnly: true}
+      volumes:
+        - name: buildkit-seed
+          image:
+            reference: {{ include "compartment.buildkitSeedCacheImage" . }}
+            pullPolicy: Always
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "compartment.fullname" . }}-buildkit-seed-node-warm
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: buildkit-seed-node-warm
+spec:
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit-seed-node-warm") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit-seed-node-warm") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
+      {{- include "compartment.buildNodePool" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: hold-seed
+          image: {{ include "compartment.image" .Values.images.worker }}
+          imagePullPolicy: {{ .Values.images.worker.pullPolicy }}
+          command: ["node", "-e"]
+          args: ["require('node:fs').readdirSync('/var/lib/buildkit-seed'); setInterval(() => undefined, 3600000)"]
+          securityContext:
+            {{- include "compartment.containerSecurityContext" . | nindent 12 }}
+            runAsUser: 10001
+            runAsGroup: 10001
+          resources:
+            {{- toYaml .Values.resources.wait | nindent 12 }}
+          volumeMounts:
+            - {name: buildkit-seed, mountPath: /var/lib/buildkit-seed, readOnly: true}
+      volumes:
+        - name: buildkit-seed
+          image:
+            reference: {{ include "compartment.buildkitSeedCacheImage" . }}
+            pullPolicy: Always
+{{- end }}

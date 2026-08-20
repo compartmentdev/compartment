@@ -43,9 +43,15 @@ export interface WorkerBuildSandboxConfig {
 }
 
 export interface WorkerBuildKitSeedConfig {
+  cache: WorkerBuildKitSeedCacheConfig;
   image: string;
   railpackBuilderImage: string;
   railpackRuntimeImage: string;
+}
+
+export interface WorkerBuildKitSeedCacheConfig {
+  image: string;
+  manifestUrl: string;
 }
 
 /**

@@ -1,0 +1,185 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: BuildKit seed locality
+templates:
+  - templates/buildkit-seed-cache.yaml
+  - templates/registry-auth.yaml
+  - templates/registry-network-policy.yaml
+  - templates/configmap.yaml
+  - templates/secret.yaml
+  - templates/pvc.yaml
+  - templates/buildkit.yaml
+values:
+  - registry-values.yaml
+release:
+  name: compartment
+  namespace: default
+  revision: 9
+tests:
+  - it: warms the verified seed through a bounded GHCR pull-through cache
+    set:
+      platform.startupStage: full
+      platform.installationId: seed-cache-test
+      images.buildkitSeed.digest: sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+      nodePools.build.nodeSelector.pool: build
+      nodePools.build.tolerations:
+        - { key: workload, operator: Equal, value: build, effect: NoSchedule }
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: compartment-buildkit-seed-cache
+          any: true
+        template: buildkit-seed-cache.yaml
+      - matchRegex:
+          path: data["config.yml"]
+          pattern: "(?m)^  delete:\\n    enabled: true$"
+        documentSelector:
+          path: kind
+          value: ConfigMap
+        template: buildkit-seed-cache.yaml
+      - matchRegex:
+          path: data["config.yml"]
+          pattern: '(?m)^  remoteurl: "https://ghcr.io"\n  ttl: 24h$'
+        documentSelector:
+          path: kind
+          value: ConfigMap
+        template: buildkit-seed-cache.yaml
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[1]
+          value:
+            name: config
+            mountPath: /etc/docker/registry/config.yml
+            subPath: config.yml
+            readOnly: true
+        documentSelector:
+          path: kind
+          value: Deployment
+        template: buildkit-seed-cache.yaml
+      - equal:
+          path: metadata.name
+          value: compartment-buildkit-seed-warm-9
+        documentSelector:
+          path: kind
+          value: Job
+        template: buildkit-seed-cache.yaml
+      - equal:
+          path: spec.template.spec.volumes[0].image
+          value:
+            reference: 10.43.250.250/compartmentdev/compartment-buildkit-seed@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+            pullPolicy: Always
+        documentSelector:
+          path: kind
+          value: Job
+        template: buildkit-seed-cache.yaml
+      - equal:
+          path: spec.ttlSecondsAfterFinished
+          value: 300
+        documentSelector:
+          path: kind
+          value: Job
+        template: buildkit-seed-cache.yaml
+      - equal:
+          path: spec.template.spec.volumes[0].image
+          value:
+            reference: 10.43.250.250/compartmentdev/compartment-buildkit-seed@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+            pullPolicy: Always
+        documentSelector:
+          path: kind
+          value: DaemonSet
+        template: buildkit-seed-cache.yaml
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: compartment-platform
+        documentSelector:
+          path: kind
+          value: DaemonSet
+        template: buildkit-seed-cache.yaml
+      - equal:
+          path: spec.template.spec.nodeSelector
+          value: { pool: build }
+        documentSelector:
+          path: kind
+          value: DaemonSet
+        template: buildkit-seed-cache.yaml
+      - equal:
+          path: spec.template.spec.tolerations
+          value:
+            - { key: workload, operator: Equal, value: build, effect: NoSchedule }
+        documentSelector:
+          path: kind
+          value: DaemonSet
+        template: buildkit-seed-cache.yaml
+      - equal:
+          path: spec.resources.requests.storage
+          value: 4Gi
+        documentSelector:
+          path: metadata.name
+          value: compartment-buildkit-seed-cache
+        template: pvc.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_BUILDKIT_SEED_CACHE_PROXY_TARGET_URL
+            value: http://compartment-buildkit-seed-cache:5003
+        documentSelector:
+          path: kind
+          value: Deployment
+        template: registry-auth.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_BUILDKIT_SEED_CACHE_REPOSITORY
+            value: compartmentdev/compartment-buildkit-seed
+        documentSelector:
+          path: kind
+          value: Deployment
+        template: registry-auth.yaml
+      - equal:
+          path: data.COMPARTMENT_BUILDKIT_SEED_CACHE_IMAGE
+          value: 10.43.250.250/compartmentdev/compartment-buildkit-seed@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_BUILDKIT_SEED_CACHE_MANIFEST_URL
+          value: http://compartment-buildkit-seed-cache:5003/v2/compartmentdev/compartment-buildkit-seed/manifests/sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+        template: configmap.yaml
+      - matchRegex:
+          path: spec.validations[5].expression
+          pattern: "volume.image.reference in \\['ghcr.io/compartmentdev/compartment-buildkit-seed@sha256:e{64}', '10.43.250.250/compartmentdev/compartment-buildkit-seed@sha256:e{64}'\\]"
+        documentSelector:
+          path: kind
+          value: ValidatingAdmissionPolicy
+        template: buildkit.yaml
+      - contains:
+          path: rules
+          content:
+            apiGroups: ['']
+            resources: ['events']
+            verbs: ['list']
+        documentSelector:
+          path: kind
+          value: Role
+        template: buildkit.yaml
+
+  - it: preserves a local k3d source registry without contacting GHCR
+    set:
+      platform.startupStage: full
+      platform.installationId: seed-cache-k3d
+      images.buildkitSeed.repository: k3d-compartment-registry.localhost:5111/compartment-buildkit-seed
+      images.buildkitSeed.digest: sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+      buildkitSeedCache.sourceRegistryScheme: http
+      buildkitSeedCache.sourceRegistryUrl: http://172.19.0.2:5111
+    asserts:
+      - matchRegex:
+          path: data["config.yml"]
+          pattern: '(?m)^  remoteurl: "http://172\.19\.0\.2:5111"$'
+        documentSelector:
+          path: kind
+          value: ConfigMap
+        template: buildkit-seed-cache.yaml
+      - equal:
+          path: spec.template.spec.volumes[0].image.reference
+          value: 10.43.250.250/compartment-buildkit-seed@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+        documentSelector:
+          path: kind
+          value: Job
+        template: buildkit-seed-cache.yaml

@@ -2,6 +2,7 @@
 {{- if and .Values.buildkit.enabled (eq $installState.effective.platform.startupStage "full") }}
 {{- $workerImage := include "compartment.image" .Values.images.worker -}}
 {{- $buildkitSeedImage := include "compartment.image" .Values.images.buildkitSeed -}}
+{{- $buildkitSeedCacheImage := include "compartment.buildkitSeedCacheImage" . -}}
 {{- $buildkitGcKeepStorage := printf "%v" .Values.buildkit.gcKeepStorageMb -}}
 {{- $buildkitDataSizeLimit := .Values.buildkit.dataSizeLimit -}}
 {{- $buildkitDataGvisorSizeLimit := include "compartment.gvisorTmpfsSizeLimit" $buildkitDataSizeLimit -}}
@@ -47,6 +48,9 @@ rules:
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -93,7 +97,7 @@ spec:
       message: Build Jobs must use the RuntimeDefault seccomp profile.
     - expression: "has(object.spec.template.spec.volumes) && object.spec.template.spec.volumes.size() == 6"
       message: Build Jobs must use exactly six volumes.
-    - expression: {{ printf "object.spec.template.spec.volumes.all(volume, has(volume.emptyDir) || (volume.name == 'buildkit-config' && has(volume.configMap) && volume.configMap.name == '%s-buildkit') || (volume.name == 'buildkit-seed' && has(volume.image) && volume.image.reference == '%s' && volume.image.pullPolicy == 'IfNotPresent'))" (include "compartment.fullname" .) $buildkitSeedImage | quote }}
+    - expression: {{ printf "object.spec.template.spec.volumes.all(volume, has(volume.emptyDir) || (volume.name == 'buildkit-config' && has(volume.configMap) && volume.configMap.name == '%s-buildkit') || (volume.name == 'buildkit-seed' && has(volume.image) && volume.image.reference in ['%s', '%s'] && volume.image.pullPolicy == 'IfNotPresent'))" (include "compartment.fullname" .) $buildkitSeedImage $buildkitSeedCacheImage | quote }}
       message: Build Jobs may use only bounded emptyDir volumes, the platform BuildKit ConfigMap, and the pinned BuildKit seed image.
     - expression: {{ printf "object.spec.template.spec.volumes.exists(volume, volume.name == 'buildkit-data' && quantity(volume.emptyDir.sizeLimit).compareTo(quantity('%s')) == 0)" $buildkitDataSizeLimit | quote }}
       message: {{ printf "Build Jobs must use a %s buildkit-data emptyDir." $buildkitDataSizeLimit | quote }}

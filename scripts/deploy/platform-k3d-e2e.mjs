@@ -51,6 +51,7 @@ const {
 const contextName = `k3d-${clusterName}`;
 const registryClusterHost = `k3d-${registryName}:${registryHostPort}`;
 const registryPushHost = `localhost:${registryHostPort}`;
+const registryContainerPort = 5000;
 const bundledRegistryClusterIp = '10.43.250.250';
 const platformBaseDomain = 'compartment.localhost';
 const consoleHost = `console.${platformBaseDomain}`;
@@ -265,8 +266,9 @@ export function renderPlatformK3dValues(
   imageDigestsByServiceName,
   gvisorAvailable = platformEnvironment.gvisorAvailable,
   highAvailability = platformEnvironment.highAvailability,
+  buildkitSeedSourceRegistryUrl = `http://${registryClusterHost}`,
 ) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorAvailable)}${renderDataNodePoolValues()}${renderHighAvailabilityValues(highAvailability)}ingress:\n  className: ${ingressClassName}\n${renderRegistryTlsValues()}platform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\nbuildkit:\n  namespace: ${platformNamespace}-build\n${renderE2eTenantResourceValues()}`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName, buildkitSeedSourceRegistryUrl)}${renderSandboxRuntimeValues(gvisorAvailable)}${renderDataNodePoolValues()}${renderHighAvailabilityValues(highAvailability)}ingress:\n  className: ${ingressClassName}\n${renderRegistryTlsValues()}platform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\nbuildkit:\n  namespace: ${platformNamespace}-build\n${renderE2eTenantResourceValues()}`;
 }
 
 export function renderPreviousPlatformK3dValues() {
@@ -276,15 +278,17 @@ export function renderPreviousPlatformK3dValues() {
 export function renderManagedPlatformK3dValues(
   imageDigestsByServiceName,
   gvisorAvailable = platformEnvironment.gvisorAvailable,
+  buildkitSeedSourceRegistryUrl = `http://${registryClusterHost}`,
 ) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorAvailable)}${renderDataNodePoolValues()}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\n  targetsJson: '[{"type":"A","value":"8.8.4.4"}]'\n${renderRegistryTlsValues()}tls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nbuildkit:\n  namespace: ${managedNamespace}-build\n`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName, buildkitSeedSourceRegistryUrl)}${renderSandboxRuntimeValues(gvisorAvailable)}${renderDataNodePoolValues()}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\n  targetsJson: '[{"type":"A","value":"8.8.4.4"}]'\n${renderRegistryTlsValues()}tls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nbuildkit:\n  namespace: ${managedNamespace}-build\n`;
 }
 
 export function renderPublicOperatorPlatformK3dValues(
   imageDigestsByServiceName,
   gvisorAvailable = platformEnvironment.gvisorAvailable,
+  buildkitSeedSourceRegistryUrl = `http://${registryClusterHost}`,
 ) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderSandboxRuntimeValues(gvisorAvailable)}${renderDataNodePoolValues()}ingress:\n  className: ${ingressClassName}\nstorage:\n  storageClass: local-path\n${renderRegistryTlsValues()}platform:\n  publicProtocol: http\nbuildkit:\n  namespace: ${managedNamespace}-public-operator-build\n`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName, buildkitSeedSourceRegistryUrl)}${renderSandboxRuntimeValues(gvisorAvailable)}${renderDataNodePoolValues()}ingress:\n  className: ${ingressClassName}\nstorage:\n  storageClass: local-path\n${renderRegistryTlsValues()}platform:\n  publicProtocol: http\nbuildkit:\n  namespace: ${managedNamespace}-public-operator-build\n`;
 }
 
 function renderDataNodePoolValues() {
@@ -311,14 +315,14 @@ function renderHighAvailabilityValues(highAvailability) {
 function renderE2eTenantResourceValues() {
   return `resources:\n  projectQuota:\n    requestsCpu: '10'\n    requestsEphemeralStorage: 10Gi\n    requestsMemory: 10Gi\n    limitsCpu: '20'\n    limitsEphemeralStorage: 20Gi\n    limitsMemory: 20Gi\n    requestsStorage: 100Gi\n  organizationQuota:\n    requestsCpu: '20'\n    requestsMemory: 20Gi\n    limitsCpu: '20'\n    limitsMemory: 20Gi\n    requestsStorage: 100Gi\n`;
 }
-function renderPlatformImageValues(imageDigestsByServiceName) {
+function renderPlatformImageValues(imageDigestsByServiceName, buildkitSeedSourceRegistryUrl) {
   const imageValues = platformK3dServiceNames
     .map(
       (serviceName) =>
         `  ${readPlatformImageValueName(serviceName)}:\n    repository: ${registryClusterHost}/compartment-${serviceName}\n    tag: ${platformImageTag}\n    digest: ${readRequiredPlatformImageDigest(imageDigestsByServiceName, serviceName)}`,
     )
     .join('\n');
-  return `images:\n${imageValues}\n`;
+  return `images:\n${imageValues}\nbuildkitSeedCache:\n  sourceRegistryScheme: http\n  sourceRegistryUrl: ${buildkitSeedSourceRegistryUrl}\n`;
 }
 
 function readPlatformImageValueName(serviceName) {
@@ -353,16 +357,38 @@ async function upPlatform(command) {
       extractPebbleManagementCertificateAuthority();
     }
     const preparedImages = await settlePlatformK3dStartup(createCluster(), prepareAndPushPlatformImages(command));
-    writeFileSync(platformValuesPath, renderPlatformK3dValues(preparedImages.imageDigestsByServiceName), {
-      mode: 0o600,
-    });
+    const buildkitSeedSourceRegistryUrl = readBuildKitSeedSourceRegistryUrl();
+    writeFileSync(
+      platformValuesPath,
+      renderPlatformK3dValues(
+        preparedImages.imageDigestsByServiceName,
+        platformEnvironment.gvisorAvailable,
+        platformEnvironment.highAvailability,
+        buildkitSeedSourceRegistryUrl,
+      ),
+      {
+        mode: 0o600,
+      },
+    );
     writeFileSync(previousPlatformValuesPath, renderPreviousPlatformK3dValues(), { mode: 0o600 });
-    writeFileSync(managedPlatformValuesPath, renderManagedPlatformK3dValues(preparedImages.imageDigestsByServiceName), {
-      mode: 0o600,
-    });
+    writeFileSync(
+      managedPlatformValuesPath,
+      renderManagedPlatformK3dValues(
+        preparedImages.imageDigestsByServiceName,
+        platformEnvironment.gvisorAvailable,
+        buildkitSeedSourceRegistryUrl,
+      ),
+      {
+        mode: 0o600,
+      },
+    );
     writeFileSync(
       publicOperatorValuesPath,
-      renderPublicOperatorPlatformK3dValues(preparedImages.imageDigestsByServiceName),
+      renderPublicOperatorPlatformK3dValues(
+        preparedImages.imageDigestsByServiceName,
+        platformEnvironment.gvisorAvailable,
+        buildkitSeedSourceRegistryUrl,
+      ),
       { mode: 0o600 },
     );
   } catch (error) {
@@ -1203,6 +1229,25 @@ function registryExists() {
 async function recreateRegistry() {
   deleteRegistry();
   runCommand('k3d', ['registry', 'create', registryName, '--port', `127.0.0.1:${registryHostPort}`], repositoryRoot);
+}
+
+function readBuildKitSeedSourceRegistryUrl() {
+  const registryContainerName = `k3d-${registryName}`;
+  const clusterNetworkName = `k3d-${clusterName}`;
+  const address = captureCommand(
+    'docker',
+    [
+      'inspect',
+      '--format',
+      `{{(index .NetworkSettings.Networks "${clusterNetworkName}").IPAddress}}`,
+      registryContainerName,
+    ],
+    repositoryRoot,
+  ).trim();
+  if (!/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/u.test(address)) {
+    throw new Error(`Could not resolve the k3d registry address on ${clusterNetworkName}.`);
+  }
+  return `http://${address}:${registryContainerPort}`;
 }
 
 function deleteRegistry() {

@@ -44,6 +44,54 @@
 {{- printf "%s-registry-auth.%s.svc" (include "compartment.fullname" .) .Release.Namespace -}}
 {{- end }}
 
+{{- define "compartment.buildkitSeedRepositoryPath" -}}
+{{- regexReplaceAll "^[^/]+/" .Values.images.buildkitSeed.repository "" -}}
+{{- end }}
+
+{{- define "compartment.buildkitSeedRegistryHost" -}}
+{{- regexFind "^[^/]+" .Values.images.buildkitSeed.repository -}}
+{{- end }}
+
+{{- define "compartment.buildkitSeedSourceRegistryUrl" -}}
+{{- if .Values.buildkitSeedCache.sourceRegistryUrl -}}
+{{- .Values.buildkitSeedCache.sourceRegistryUrl -}}
+{{- else -}}
+{{- printf "%s://%s" .Values.buildkitSeedCache.sourceRegistryScheme (include "compartment.buildkitSeedRegistryHost" .) -}}
+{{- end -}}
+{{- end }}
+
+{{- define "compartment.buildkitSeedCacheConfig" -}}
+version: 0.1
+log:
+  fields:
+    service: registry
+storage:
+  cache:
+    blobdescriptor: inmemory
+  filesystem:
+    rootdirectory: /var/lib/registry
+  delete:
+    enabled: true
+http:
+  addr: {{ printf "0.0.0.0:%v" .Values.ports.buildkitSeedCache }}
+  headers:
+    X-Content-Type-Options: [nosniff]
+health:
+  storagedriver:
+    enabled: true
+    interval: 10s
+    threshold: 3
+proxy:
+  remoteurl: {{ include "compartment.buildkitSeedSourceRegistryUrl" . | quote }}
+  ttl: {{ .Values.buildkitSeedCache.ttl }}
+{{- end }}
+
+{{- define "compartment.buildkitSeedCacheImage" -}}
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- $repository := printf "%s/%s" $installState.effective.registry.hostname (include "compartment.buildkitSeedRepositoryPath" .) -}}
+{{- include "compartment.image" (dict "repository" $repository "tag" .Values.images.buildkitSeed.tag "digest" .Values.images.buildkitSeed.digest) -}}
+{{- end }}
+
 {{- define "compartment.caddyReadinessNamespace" -}}
 {{- printf "compartment-readiness-%s" (printf "%s/%s" .Release.Namespace .Release.Name | sha256sum | trunc 12) -}}
 {{- end }}
@@ -238,6 +286,7 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- $_ = required "platform.baseDomain is required for a full installation" $effective.platform.baseDomain -}}
 {{- $_ = required "registry.hostname is required for a full installation" $effective.registry.hostname -}}
 {{- $_ = required "registry.issuerRef.name is required for a full installation" $effective.registryIssuerRef.name -}}
+{{- $_ = required "images.buildkitSeed.digest is required for a full installation" .Values.images.buildkitSeed.digest -}}
 {{- if and (not (empty $effective.secrets.managedDomainAcmeDnsToken)) (empty $effective.platform.managedDomainBrokerUrl) -}}
 {{- fail "platform.managedDomainBrokerUrl is required when secrets.managedDomainAcmeDnsToken is configured" -}}
 {{- end -}}

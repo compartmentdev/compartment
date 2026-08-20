@@ -1,4 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
+import { readFileSync } from 'node:fs';
+
+import { parse } from 'yaml';
 
 import { captureCommand, runCommand } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
@@ -17,8 +20,40 @@ const registryAuthName = `${platformName}-registry-auth`;
 const previousRegistryAddressServiceName = `${release}-previous-registry-address`;
 const deploymentConvergenceAttempts = 180;
 const deploymentConvergenceDelayMs = 1_000;
+const platformValuesPath =
+  process.env.COMPARTMENT_E2E_PLATFORM_VALUES_PATH ?? '.compartment/platform-k3d-e2e-values.yaml';
 function registryHelmArgs(clusterIp) {
   return ['--set', `registry.hostname=${clusterIp}`, '--set', 'registry.issuerRef.name=retained-registry-issuer'];
+}
+
+function buildkitSeedHelmArgs() {
+  return createBuildkitSeedHelmArgs(parse(readFileSync(platformValuesPath, 'utf8')));
+}
+
+export function createBuildkitSeedHelmArgs(values) {
+  const seed = values?.images?.buildkitSeed;
+  const cache = values?.buildkitSeedCache;
+  if (
+    typeof seed?.repository !== 'string' ||
+    typeof seed.tag !== 'string' ||
+    typeof seed.digest !== 'string' ||
+    typeof cache?.sourceRegistryScheme !== 'string' ||
+    typeof cache.sourceRegistryUrl !== 'string'
+  ) {
+    throw new Error('Expected BuildKit seed image and cache source values from the platform k3d topology.');
+  }
+  return [
+    '--set-string',
+    `images.buildkitSeed.repository=${seed.repository}`,
+    '--set-string',
+    `images.buildkitSeed.tag=${seed.tag}`,
+    '--set-string',
+    `images.buildkitSeed.digest=${seed.digest}`,
+    '--set-string',
+    `buildkitSeedCache.sourceRegistryScheme=${cache.sourceRegistryScheme}`,
+    '--set-string',
+    `buildkitSeedCache.sourceRegistryUrl=${cache.sourceRegistryUrl}`,
+  ];
 }
 
 function dataNodePoolHelmArgs() {
@@ -101,6 +136,7 @@ async function runRetainedInstallStateGate() {
       'edge.replicas=1',
       '--set',
       'edge.snapshots.enabled=true',
+      ...buildkitSeedHelmArgs(),
       ...dataNodePoolHelmArgs(),
       ...registryHelmArgs(registryClusterIp),
     ]);
@@ -140,6 +176,7 @@ async function runRetainedInstallStateGate() {
       `buildkit.namespace=${buildNamespace}`,
       '--set',
       'productLogs.enabled=false',
+      ...buildkitSeedHelmArgs(),
       ...dataNodePoolHelmArgs(),
       ...registryHelmArgs(registryClusterIp),
     ]);
@@ -169,6 +206,7 @@ async function runRetainedInstallStateGate() {
       'edge.replicas=1',
       '--set',
       'edge.snapshots.enabled=true',
+      ...buildkitSeedHelmArgs(),
       ...dataNodePoolHelmArgs(),
       ...registryHelmArgs(reinstalledRegistryClusterIp),
     ]);

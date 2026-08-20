@@ -320,6 +320,20 @@ The fresh-VM workflow is dispatched only onto a disposable `compartment-fresh-vm
 K3s or gVisor state before the job and must be destroyed after it; a persistent self-hosted runner is not valid for
 this coverage path.
 
+The verified GHCR BuildKit seed reference is also projected through a dedicated Distribution pull-through cache on
+the retained, node-trusted registry endpoint. A revision-scoped Helm Job mounts the cached digest as an ImageVolume,
+so `system update --wait-for-jobs` cannot complete until the current seed is available inside the cluster. Later build
+nodes pull the identical digest from that endpoint. A build-node DaemonSet mounts the cached digest before user work,
+including on nodes added by the autoscaler, so the first build reuses the node-local image. The worker probes the
+cached manifest before creating a build Job;
+an unavailable probe selects the original verified GHCR reference, while a cache image-pull failure before runner
+startup triggers one bounded retry with that reference. Both fallback paths emit a deployment-log warning. The
+admission policy permits only those two digest-identical locations. A 24-hour proxy TTL and deletion bound superseded
+cache content; the retained 4 GiB default budgets roughly 1 GiB per release in that window.
+The system-update k3d gate waits for node prewarming, makes the source registry unavailable, and requires a first-build
+ImageVolume Pod to become Ready from the node-local cache within ten seconds while reporting cold-fill and build-path
+timings.
+
 Each Job uses only `emptyDir` local cache and a project/service-scoped registry cache; no unencrypted cache volume is
 shared between tenants. The worker admits up to 100 build claims by default, caps each organization at two active
 claims, and chooses the least-active eligible organization before applying FIFO order. The build namespace

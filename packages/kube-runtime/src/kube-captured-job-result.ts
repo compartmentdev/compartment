@@ -9,6 +9,7 @@ export class CapturedKubeJobResult implements KubeJobResult {
   public readonly jobName: string;
   public readonly logs: string;
   public readonly podName: string | null;
+  public readonly preExecutionFailure: 'evidence-unavailable' | 'image-pull' | undefined;
   public readonly status: 'succeeded' | 'failed' | 'timed-out';
 
   public constructor(
@@ -20,6 +21,7 @@ export class CapturedKubeJobResult implements KubeJobResult {
     this.jobName = result.jobName;
     this.logs = result.logs;
     this.podName = result.podName;
+    this.preExecutionFailure = result.preExecutionFailure;
     this.status = result.status;
   }
 

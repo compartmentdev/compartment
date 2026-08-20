@@ -384,7 +384,16 @@
     "ports": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["api", "edge", "metrics", "registry", "registryInternal", "dockerHubCache", "http"],
+      "required": [
+        "api",
+        "edge",
+        "metrics",
+        "registry",
+        "registryInternal",
+        "dockerHubCache",
+        "buildkitSeedCache",
+        "http"
+      ],
       "properties": {
         "api": { "$ref": "#/definitions/tcpPort" },
         "edge": { "$ref": "#/definitions/tcpPort" },
@@ -392,6 +401,7 @@
         "registry": { "$ref": "#/definitions/tcpPort" },
         "registryInternal": { "$ref": "#/definitions/tcpPort" },
         "dockerHubCache": { "$ref": "#/definitions/tcpPort" },
+        "buildkitSeedCache": { "$ref": "#/definitions/tcpPort" },
         "http": { "$ref": "#/definitions/tcpPort" }
       }
     },
@@ -536,6 +546,20 @@
             }
           }
         }
+      }
+    },
+    "buildkitSeedCache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceRegistryScheme", "sourceRegistryUrl", "ttl"],
+      "properties": {
+        "sourceRegistryScheme": { "type": "string", "enum": ["http", "https"] },
+        "sourceRegistryUrl": {
+          "description": "Optional root URL override for the seed source registry. Empty derives it from images.buildkitSeed.repository.",
+          "type": "string",
+          "pattern": "^(?:|https?://[^\\s/?#@]+)$"
+        },
+        "ttl": { "type": "string", "pattern": "^[1-9][0-9]*h$" }
       }
     },
     "platform": {
@@ -833,6 +857,7 @@
         "registryAuth",
         "dns01Solver",
         "dockerHubCache",
+        "buildkitSeedCache",
         "buildkit",
         "buildRunner",
         "productLogAgent",
@@ -856,6 +881,7 @@
         "registryAuth": { "$ref": "#/definitions/containerResources" },
         "dns01Solver": { "$ref": "#/definitions/containerResources" },
         "dockerHubCache": { "$ref": "#/definitions/containerResources" },
+        "buildkitSeedCache": { "$ref": "#/definitions/containerResources" },
         "buildkit": { "$ref": "#/definitions/buildContainerResources" },
         "buildRunner": { "$ref": "#/definitions/buildContainerResources" },
         "productLogAgent": { "$ref": "#/definitions/containerResources" },
@@ -893,7 +919,15 @@
     "storage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["storageClass", "postgres", "registry", "dockerHubCache", "edgeSnapshots", "api"],
+      "required": [
+        "storageClass",
+        "postgres",
+        "registry",
+        "dockerHubCache",
+        "buildkitSeedCache",
+        "edgeSnapshots",
+        "api"
+      ],
       "properties": {
         "storageClass": {
           "description": "StorageClass for every platform claim. Empty means the cluster default.",
@@ -902,6 +936,7 @@
         "postgres": { "$ref": "#/definitions/kubernetesQuantity" },
         "registry": { "$ref": "#/definitions/kubernetesQuantity" },
         "dockerHubCache": { "$ref": "#/definitions/kubernetesQuantity" },
+        "buildkitSeedCache": { "$ref": "#/definitions/kubernetesQuantity" },
         "edgeSnapshots": { "$ref": "#/definitions/kubernetesQuantity" },
         "api": { "$ref": "#/definitions/kubernetesQuantity" }
       }

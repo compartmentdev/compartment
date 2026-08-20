@@ -34,6 +34,7 @@ import {
 import { readOrganizationQuota } from './resource-quota-config';
 import { parseKubernetesQuantity } from './services/kubernetes-quantity';
 import {
+  assertSameImageDigest,
   isDigestPinnedContainerImageReference,
   isTagAndDigestPinnedContainerImageReference,
 } from './container-image-reference';
@@ -70,6 +71,8 @@ const workerBuildConfigSchema: z.ZodType<WorkerBuildConfigEnvironment> = workerP
     COMPARTMENT_BUILDKIT_DATA_SIZE_LIMIT: z.string().trim().min(1),
     COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: z.coerce.number().int().positive(),
     COMPARTMENT_BUILDKIT_SEED_IMAGE: z.string().trim().refine(isDigestPinnedContainerImageReference),
+    COMPARTMENT_BUILDKIT_SEED_CACHE_IMAGE: z.string().trim().refine(isDigestPinnedContainerImageReference),
+    COMPARTMENT_BUILDKIT_SEED_CACHE_MANIFEST_URL: z.string().url(),
     COMPARTMENT_BUILDKIT_RESOURCES: z.string().trim().min(1),
     COMPARTMENT_BUILD_NAMESPACE: z.string().trim().min(1),
     COMPARTMENT_BUILD_RUNNER_RESOURCES: z.string().trim().min(1),
@@ -116,12 +119,14 @@ export function readWorkerProcessConfig(env: NodeJS.ProcessEnv = process.env): W
 export function readWorkerBuildConfig(env: NodeJS.ProcessEnv = process.env): WorkerBuildConfig {
   const parsed: WorkerBuildConfigEnvironment = workerBuildConfigSchema.parse(env);
   readWorkerTrustedOutboundHosts(parsed);
+  assertSameImageDigest(parsed.COMPARTMENT_BUILDKIT_SEED_IMAGE, parsed.COMPARTMENT_BUILDKIT_SEED_CACHE_IMAGE);
   return buildWorkerBuildConfig(parsed);
 }
 
 export function readWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
   const parsed: WorkerConfigEnvironment = workerConfigSchema.parse(env);
   readWorkerTrustedOutboundHosts(parsed);
+  assertSameImageDigest(parsed.COMPARTMENT_BUILDKIT_SEED_IMAGE, parsed.COMPARTMENT_BUILDKIT_SEED_CACHE_IMAGE);
   const tenantScheduling: KubeWorkloadScheduling | undefined = readTenantWorkloadScheduling(
     parsed.COMPARTMENT_KUBE_TENANT_SCHEDULING,
   );
@@ -186,6 +191,10 @@ function buildWorkerBuildConfig(parsed: WorkerBuildConfigEnvironment): WorkerBui
       ),
       gcKeepStorageMb: parsed.COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB,
       seed: {
+        cache: {
+          image: parsed.COMPARTMENT_BUILDKIT_SEED_CACHE_IMAGE,
+          manifestUrl: parsed.COMPARTMENT_BUILDKIT_SEED_CACHE_MANIFEST_URL,
+        },
         image: parsed.COMPARTMENT_BUILDKIT_SEED_IMAGE,
         railpackBuilderImage: parsed.COMPARTMENT_RAILPACK_BUILDER_IMAGE,
         railpackRuntimeImage: parsed.COMPARTMENT_RAILPACK_RUNTIME_IMAGE,

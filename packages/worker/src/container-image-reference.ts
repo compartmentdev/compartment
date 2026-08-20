@@ -13,3 +13,9 @@ export function isDigestPinnedContainerImageReference(value: string): boolean {
 export function isTagAndDigestPinnedContainerImageReference(value: string): boolean {
   return tagAndDigestPinnedImagePattern.test(value);
 }
+
+export function assertSameImageDigest(left: string, right: string): void {
+  if (left.split('@').at(1) !== right.split('@').at(1)) {
+    throw new Error('The BuildKit seed source and cache images must use the same digest.');
+  }
+}

@@ -13,7 +13,11 @@ import {
   parseProductLogBufferBytes,
   parseProductLogBufferMaxBytes,
 } from './run-platform-k3d-product-log-gate.mjs';
-import { findReadyNonTerminatingPodName, isDeploymentConverged } from './run-platform-k3d-retained-state-gate.mjs';
+import {
+  createBuildkitSeedHelmArgs,
+  findReadyNonTerminatingPodName,
+  isDeploymentConverged,
+} from './run-platform-k3d-retained-state-gate.mjs';
 import {
   describeDeployment,
   describeNetworkPolicy,
@@ -22,6 +26,35 @@ import {
 } from './sample-platform-k3d-tenant-state.mjs';
 
 describe('platform k3d diagnostics and product-log gates', () => {
+  it('reuses the isolated topology BuildKit seed when exercising retained installs', () => {
+    expect(
+      createBuildkitSeedHelmArgs({
+        buildkitSeedCache: {
+          sourceRegistryScheme: 'http',
+          sourceRegistryUrl: 'http://172.18.0.2:5000',
+        },
+        images: {
+          buildkitSeed: {
+            digest: `sha256:${'f'.repeat(64)}`,
+            repository: 'k3d-compartment-e2e-registry/compartment-buildkit-seed',
+            tag: 'e2e',
+          },
+        },
+      }),
+    ).toEqual([
+      '--set-string',
+      'images.buildkitSeed.repository=k3d-compartment-e2e-registry/compartment-buildkit-seed',
+      '--set-string',
+      'images.buildkitSeed.tag=e2e',
+      '--set-string',
+      `images.buildkitSeed.digest=sha256:${'f'.repeat(64)}`,
+      '--set-string',
+      'buildkitSeedCache.sourceRegistryScheme=http',
+      '--set-string',
+      'buildkitSeedCache.sourceRegistryUrl=http://172.18.0.2:5000',
+    ]);
+  });
+
   it('waits for the current deployment generation and selects only its stable pod', () => {
     expect(
       isDeploymentConverged(

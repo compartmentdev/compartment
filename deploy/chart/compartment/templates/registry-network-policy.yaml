@@ -24,6 +24,28 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: {{ include "compartment.fullname" . }}-buildkit-seed-cache
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit-seed-cache") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "compartment.componentLabels" (dict "root" . "component" "registry-auth") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "compartment.componentLabels" (dict "root" . "component" "worker") | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: {{ .Values.ports.buildkitSeedCache }}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: {{ include "compartment.fullname" . }}-registry-auth
   labels:
     {{- include "compartment.labels" . | nindent 4 }}

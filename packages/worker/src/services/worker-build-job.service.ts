@@ -17,9 +17,12 @@ import type {
   WorkerRegistryVerificationBuildJobInput,
   WorkerSourceBuildJobInput,
 } from './worker-build-job.types';
-import { isBuildSourceArchiveFetchRetryLine } from '../build-source-archive-fetch';
 import { readBuildLogRecord, readBuildLogRecords } from './worker-build-log-record';
 import { workerJobCommand, workerJobEntrypoints } from '../worker-entrypoints';
+import { resolveWorkerBuildKitSeedImage } from './worker-buildkit-seed-cache.service';
+import type { WorkerBuildKitSeedResolution } from './worker-buildkit-seed-cache.service.types';
+import { readCapturedBuildFailure } from './worker-build-failure';
+import { publishSeedCacheFallback, shouldRetryWithPublicSeed } from './worker-buildkit-seed-fallback';
 
 const buildKitAddress: string = 'tcp://127.0.0.1:1234';
 const buildJobInputEnvironmentName: string = 'COMPARTMENT_BUILD_JOB_INPUT';
@@ -33,9 +36,7 @@ export async function runWorkerBuildJob(
   assertBuildSandboxMemoryBudget(config.buildSandbox);
   const progress: BuildProgressStream | undefined =
     input.onProgressLine === undefined ? undefined : new BuildProgressStream(input.onProgressLine);
-  const options: KubeRunJobOptions | undefined =
-    progress === undefined ? undefined : new WorkerBuildJobRunOptions(progress);
-  const capture: KubeJobResult = await runtime.runJob(buildKubeJobSpec(config, input), undefined, options);
+  const capture: KubeJobResult = await runBuildJobWithSeedFallback(runtime, config, input, progress);
   try {
     await progress?.drain();
     await progress?.publishCapturedFallback(capture.logs);
@@ -48,6 +49,39 @@ export async function runWorkerBuildJob(
   } finally {
     await capture.finalize();
   }
+}
+
+async function runBuildJobWithSeedFallback(
+  runtime: Pick<KubeRuntime, 'runJob'>,
+  config: WorkerBuildConfig,
+  input: RunWorkerBuildJobInput,
+  progress: BuildProgressStream | undefined,
+): Promise<KubeJobResult> {
+  const options: KubeRunJobOptions | undefined =
+    progress === undefined ? undefined : new WorkerBuildJobRunOptions(progress);
+  const seed: WorkerBuildKitSeedResolution = await resolveBuildKitSeedImage(config, input);
+  const capture: KubeJobResult = await runtime.runJob(buildKubeJobSpec(config, input, seed.image), undefined, options);
+  if (!seed.cacheAvailable || !shouldRetryWithPublicSeed(capture)) {
+    return capture;
+  }
+  await capture.finalize();
+  await publishSeedCacheFallback(input);
+  return await runtime.runJob(
+    buildKubeJobSpec(config, { ...input, id: `${input.id}-seed-fallback` }, config.buildSandbox.seed.image),
+    undefined,
+    options,
+  );
+}
+
+async function resolveBuildKitSeedImage(
+  config: WorkerBuildConfig,
+  input: RunWorkerBuildJobInput,
+): Promise<WorkerBuildKitSeedResolution> {
+  const seed: WorkerBuildKitSeedResolution = await resolveWorkerBuildKitSeedImage(config.buildSandbox.seed);
+  if (!seed.cacheAvailable) {
+    await publishSeedCacheFallback(input);
+  }
+  return seed;
 }
 
 class WorkerBuildJobRunOptions implements KubeRunJobOptions {
@@ -88,7 +122,7 @@ export function writeWorkerBuildJobLog(record: WorkerBuildJobLogRecord): void {
   process.stdout.write(`${JSON.stringify(record)}\n`);
 }
 
-function buildKubeJobSpec(config: WorkerBuildConfig, input: RunWorkerBuildJobInput): KubeJobSpec {
+function buildKubeJobSpec(config: WorkerBuildConfig, input: RunWorkerBuildJobInput, seedImage: string): KubeJobSpec {
   return {
     cleanupPolicy: 'delete',
     command: workerJobCommand(workerJobEntrypoints.build),
@@ -97,7 +131,7 @@ function buildKubeJobSpec(config: WorkerBuildConfig, input: RunWorkerBuildJobInp
     env: buildJobEnvironment(config, input),
     id: input.id,
     image: config.workerImage,
-    imageVolumes: [{ name: 'buildkit-seed', pullPolicy: 'IfNotPresent', reference: config.buildSandbox.seed.image }],
+    imageVolumes: [{ name: 'buildkit-seed', pullPolicy: 'IfNotPresent', reference: seedImage }],
     jobClass: 'build',
     labels: { 'compartment.dev/job-class': 'build' },
     namespace: config.buildSandbox.namespace,
@@ -234,38 +268,4 @@ function readCapturedBuildResult(logs: string): DockerBuildImageResult {
     throw new Error('Sandboxed build Job did not emit a result.');
   }
   return record.result;
-}
-
-function readCapturedBuildFailure(logs: string): string {
-  const records: WorkerBuildJobLogRecord[] = readBuildLogRecords(logs);
-  const record: WorkerBuildJobLogRecord | undefined = records.findLast(
-    (candidate: WorkerBuildJobLogRecord): boolean => candidate.type === 'failure',
-  );
-  const message: string = record?.type === 'failure' ? record.message : 'runner exited without a structured failure';
-  const sourceFetchDiagnostics: string = records
-    .filter(
-      (candidate: WorkerBuildJobLogRecord): boolean =>
-        candidate.type === 'progress' && isBuildSourceArchiveFetchRetryLine(candidate.progress.message),
-    )
-    .map((candidate: WorkerBuildJobLogRecord): string =>
-      candidate.type === 'progress' ? candidate.progress.message : '',
-    )
-    .join('\n');
-  const terminalProgress: string = records
-    .filter(
-      (candidate: WorkerBuildJobLogRecord): boolean =>
-        candidate.type === 'progress' && !isBuildSourceArchiveFetchRetryLine(candidate.progress.message),
-    )
-    .slice(-20)
-    .map((candidate: WorkerBuildJobLogRecord): string =>
-      candidate.type === 'progress' ? `[${candidate.progress.stream}] ${candidate.progress.message}` : '',
-    )
-    .join('\n');
-  return [
-    message,
-    sourceFetchDiagnostics === '' ? '' : `Source archive fetch diagnostics:\n${sourceFetchDiagnostics}`,
-    terminalProgress === '' ? '' : `BuildKit terminal output:\n${terminalProgress}`,
-  ]
-    .filter((section: string): boolean => section !== '')
-    .join('\n');
 }
