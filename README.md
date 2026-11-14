@@ -85,6 +85,10 @@ compartment logs
 
 For branch-driven deploys, connect the repository through the Console or with `compartment source connect git`. See [Deploy using Git](https://docs.compartment.dev/deploy-apps/deploy-using-git/) for the full flow.
 
+## One-Click Deploy
+
+[![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/Compartment/)
+
 ## Repository Layout
 
 | Path                 | Purpose                                                                         |
